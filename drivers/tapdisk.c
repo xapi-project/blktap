@@ -30,6 +30,7 @@
 #include <linux/fs.h>
 #include "blktaplib.h"
 #include "tapdisk.h"
+#include "lock.h"
 
 #if 1                                                                        
 #define ASSERT(_p) \
@@ -47,6 +48,10 @@ static int maxfds, fds[2], run = 1;
 static pid_t process;
 int connected_disks = 0;
 fd_list_entry_t *fd_start = NULL;
+
+#if defined(USE_NFS_LOCKS)
+static char vmuid[12]; /*wkc temp, until vm's uuid gets passed in to us*/
+#endif
 
 int do_cow_read(struct disk_driver *dd, blkif_request_t *req, 
 		int sidx, uint64_t sector, int nr_secs);
@@ -99,6 +104,15 @@ static void unmap_disk(struct td_state *s)
 	dd = s->disks;
 	while (dd) {
 		tmp = dd->next;
+#if defined(USE_NFS_LOCKS)
+                /* need vmuid */
+#if defined(EXCLUSIVE_LOCK)
+                unlock(dd->name, vmuid);
+#else
+                unlock(dd->name, vmuid, (dd->flags == TD_RDONLY) ? 1 : 0);
+#endif
+#endif
+
 		dd->drv->td_close(dd);
 		free_driver(dd);
 		dd = tmp;
@@ -308,6 +322,19 @@ static int open_disk(struct td_state *s,
 	s->disks = d = disk_init(s, drv, dup, flags);
 	if (!d)
 		return -ENOMEM;
+
+#if defined(USE_NFS_LOCKS)
+        /* need vmuid */
+#if defined(EXCLUSIVE_LOCK)
+        if (lock(d->name, vmuid, 0) == -1)
+#else
+        if (lock(d->name, vmuid, 0, (d->flags == TD_RDONLY) ? 1 : 0) == -1)
+#endif
+        {
+                DPRINTF("failed to get lock for %s\n", d->name);
+                goto fail;
+        }
+#endif
 
 	err = drv->td_open(d, path, flags);
 	if (err) {
@@ -762,6 +789,34 @@ static void get_io_request(struct td_state *s)
 	return;
 }
 
+#if defined(USE_NFS_LOCKS)
+static int req_locks(void)
+{
+        fd_list_entry_t *ptr;
+
+        /* reassert locks for all disks */
+        ptr = fd_start;
+        while (ptr != NULL) {
+                struct disk_driver *dd;
+                td_for_each_disk(ptr->s, dd) {
+                        /* need vmuid */
+#if defined(EXCLUSIVE_LOCK)
+                        if (lock(dd->name, vmuid, 0) == -1)
+#else
+                        if (lock(dd->name, vmuid, 0, (dd->flags == TD_RDONLY) ? 1 : 0) == -1)
+#endif
+                        {
+                                DPRINTF("failed to get lock for %s\n", dd->name);
+                                return -1;
+                        }
+                }
+                ptr = ptr->next;
+        }
+
+        return 0;
+}
+#endif
+
 int main(int argc, char *argv[])
 {
 	int len, msglen, ret;
@@ -770,12 +825,18 @@ int main(int argc, char *argv[])
 	fd_list_entry_t *ptr;
 	struct td_state *s;
 	char openlogbuf[128];
+        struct timeval timeout;
 
 	if (argc != 3) usage();
 
 	daemonize();
 
 	snprintf(openlogbuf, sizeof(openlogbuf), "TAPDISK[%d]", getpid());
+#if defined(USE_NFS_LOCKS)
+        /*wkc temp, until vm's uuid gets passed in to us*/
+        strcpy(vmuid, "1234");
+#endif
+
 	openlog(openlogbuf, LOG_CONS|LOG_ODELAY, LOG_DAEMON);
 	/*Setup signal handlers*/
 	signal (SIGBUS, sig_handler);
@@ -799,6 +860,9 @@ int main(int argc, char *argv[])
 		exit(-1);
 	}
 
+        timeout.tv_sec = LEASE_TIME_SECS;
+        timeout.tv_usec = 0;
+
 	while (run) 
         {
 		ret = 0;
@@ -809,9 +873,23 @@ int main(int argc, char *argv[])
 		/*Set all tap fds*/
 		LOCAL_FD_SET(&readfds);
 
+#if defined(USE_NFS_LOCKS)
+                if (timeout.tv_sec == 0) {
+                        /* only reassert locks when timeout less than a second */
+                        if (req_locks() == -1) {
+                                /* cleanup and bail? */
+                        }
+                        timeout.tv_sec = LEASE_TIME_SECS;
+                        timeout.tv_usec = 0;
+                } 
+#else
+                timeout.tv_sec = LEASE_TIME_SECS;
+                timeout.tv_usec = 0;
+#endif
+
 		/*Wait for incoming messages*/
 		ret = select(maxfds + 1, &readfds, (fd_set *) 0, 
-			     (fd_set *) 0, NULL);
+                             (fd_set *) 0, &timeout);
 
 		if (ret > 0) 
 		{
