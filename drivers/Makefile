@@ -1,18 +1,18 @@
-XEN_ROOT = ../../..
 include $(XEN_ROOT)/tools/Rules.mk
 
 INCLUDES += -I.. -I../lib
 
 IBIN         = blktapctrl tapdisk
 QCOW_UTIL    = img2qcow qcow2raw qcow-create
+VHD_UTIL     = vhd-create
 INST_DIR     = /usr/sbin
-LIBAIO_DIR   = ../../libaio/src
+LIBAIO_DIR   = $(XEN_ROOT)/tools/libaio/src
 
 CFLAGS   += -Werror
 CFLAGS   += -Wno-unused
 CFLAGS   += -fno-strict-aliasing
 CFLAGS   += -I $(XEN_LIBXC) -I $(LIBAIO_DIR)
-CFLAGS   += $(INCLUDES) -I. -I../../xenstore 
+CFLAGS   += $(INCLUDES) -I. -I$(XEN_ROOT)/tools/xenstore 
 CFLAGS   += -D_GNU_SOURCE
 CFLAGS   += -DUSE_NFS_LOCKS
 #CFLAGS   += -DEXCLUSIVE_LOCK
@@ -27,6 +27,7 @@ LIBS      += -L$(XEN_LIBXC)
 LIBS      += -lblktap -lxenctrl
 LIBS      += -lcrypto
 LIBS      += -lz
+LIBS      += -luuid
 LIBS      += -L$(XEN_XENSTORE) -lxenstore
 
 AIOLIBS   := $(LIBAIO_DIR)/libaio.a
@@ -34,13 +35,15 @@ AIOLIBS   := $(LIBAIO_DIR)/libaio.a
 BLK-OBJS  := block-aio.o
 BLK-OBJS  += block-sync.o
 BLK-OBJS  += block-vmdk.o
+BLK-OBJS  += block-vhdsync.o
+BLK-OBJS  += block-vhd.o
 BLK-OBJS  += block-ram.o
 BLK-OBJS  += block-qcow.o
 BLK-OBJS  += aes.o
 BLK-OBJS  += lockex.o
 BLK-OBJS  += lock.o
 
-all: $(IBIN) qcow-util
+all: $(IBIN) vhd-util qcow-util
 
 LINUX_ROOT := $(wildcard $(XEN_ROOT)/linux-2.6.*-xen-sparse)
 
@@ -57,6 +60,13 @@ qcow-util: img2qcow qcow2raw qcow-create
 
 img2qcow qcow2raw qcow-create: %: $(BLK-OBJS)
 	$(CC) $(CFLAGS) -o $* $(BLK-OBJS) $*.c $(AIOLIBS) $(LIBS)
+
+.PHONY: vhd-util
+vhd-util: vhd-create
+
+vhd-create: %: $(BLK_OBJS)
+	$(CC) $(CFLAGS) -o $* $(BLK-OBJS) $*.c $(AIOLIBS) $(LIBS)
+
 
 install: all
 	$(INSTALL_PROG) $(IBIN) $(QCOW_UTIL) $(VHD_UTIL) $(DESTDIR)$(INST_DIR)
