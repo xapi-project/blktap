@@ -109,7 +109,7 @@ static void unmap_disk(struct td_state *s)
 #if defined(EXCLUSIVE_LOCK)
                 unlock(dd->name, vmuid);
 #else
-                unlock(dd->name, vmuid, (dd->flags == TD_RDONLY) ? 1 : 0);
+                unlock(dd->name, vmuid, (dd->flags & TD_RDONLY) ? 1 : 0);
 #endif
 #endif
 
@@ -328,7 +328,7 @@ static int open_disk(struct td_state *s,
 #if defined(EXCLUSIVE_LOCK)
         if (lock(d->name, vmuid, 0) == -1)
 #else
-        if (lock(d->name, vmuid, 0, (d->flags == TD_RDONLY) ? 1 : 0) == -1)
+        if (lock(d->name, vmuid, 0, (d->flags & TD_RDONLY) ? 1 : 0) == -1)
 #endif
         {
                 DPRINTF("failed to get lock for %s\n", d->name);
@@ -803,7 +803,7 @@ static int req_locks(void)
 #if defined(EXCLUSIVE_LOCK)
                         if (lock(dd->name, vmuid, 0) == -1)
 #else
-                        if (lock(dd->name, vmuid, 0, (dd->flags == TD_RDONLY) ? 1 : 0) == -1)
+                        if (lock(dd->name, vmuid, 0, (dd->flags & TD_RDONLY) ? 1 : 0) == -1)
 #endif
                         {
                                 DPRINTF("failed to get lock for %s\n", dd->name);
