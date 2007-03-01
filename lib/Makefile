@@ -1,3 +1,4 @@
+XEN_ROOT ?= ../../..
 include $(XEN_ROOT)/tools/Rules.mk
 
 MAJOR    = 3.0
