@@ -478,6 +478,11 @@ int lock_delta(char *fn)
                         if (lstat(dptr->d_name, &statbuf) != -1) {
                                 int diff = (int)statnow.st_mtime - 
                                            (int)statbuf.st_mtime;
+                                /* adjust diff if someone updated the lock
+                                   between now and when we created the "now"
+                                   file 
+                                 */
+                                diff = (diff < 0) ? 0 : diff;
                                 result = diff < result ? diff : result;
                         }
                 }
