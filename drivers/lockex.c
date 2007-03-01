@@ -325,6 +325,7 @@ int lock_delta(char *fn_to_check)
         unlink(buf);
          
         result = (int)statnow.st_mtime - (int)statbuf.st_mtime;
+        if (result < 0) result = 0;
 
 finish:
         free(buf);
