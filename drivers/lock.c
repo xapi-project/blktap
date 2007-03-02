@@ -9,8 +9,9 @@
  */
 
 /* TODO: 
-  o deal w/ error's on unlink
+  o deal w/ errors better
   o return error codes(?) through errno(?)
+  o decide if we want random/fixed sleep on retry?
  */
 
 #if !defined(EXCLUSIVE_LOCK)
@@ -171,20 +172,6 @@ finish:
         return status;
 }
 
-static int establish_rw_lock(char *lockfn_link)
-{
-        int status = -1;
-        int fd;
-
-        fd = open(lockfn_link, O_WRONLY | O_CREAT | O_EXCL, 0644); 
-        if (fd != -1) 
-                status = 0;
-
-        close(fd);
-
-        return status;
-}
-
 int lock(char *fn_to_lock, char *uuid, int force, int readonly)
 {
         char *lockfn = 0;
@@ -197,7 +184,9 @@ int lock(char *fn_to_lock, char *uuid, int force, int readonly)
         int retry_attempts = 0;
         int clstat;
         int tmpstat;
-        int stealw, stealr = 0;
+        int stealx = 0;
+        int stealw = 0;
+        int stealr = 0;
     
         if (!fn_to_lock || !uuid)
                 return status;
@@ -218,30 +207,24 @@ try_again:
         /* try to open lockfile */
         fd = open(lockfn, O_WRONLY | O_CREAT | O_EXCL, 0644); 
         if (fd == -1) {
-                LOG("Initial lockfile creation failed %s force=%d\n", 
+                LOG("Initial lockfile creation failed %s force=%d\n",
                      lockfn, force);
-                /* force gets first chance */
-                if (force) {
-                        /* assume the caller knows when forcing is necessary */
-                        status = unlink(lockfn);
-                        if (unlikely(status == -1)) {
-                                LOG("force removal of %s lockfile failed, "
-                                    "errno=%d, trying again\n", lockfn, errno);
-                        }
-                        goto try_again;
-                }
-                /* already owned? (hostname & uuid match) */
+                /* already owned? (hostname & uuid match, skip time bits) */
                 fd = open(lockfn, O_RDWR, 0644);
                 if (fd != -1) {
                         buf = malloc(strlen(lockfn_xlink)+1);
-                        if (read(fd, buf, strlen(lockfn_xlink)) != 
+                        if (!buf) {
+                            close(fd);
+                            goto finish;
+                        }
+                        if (read(fd, buf, strlen(lockfn_xlink)) !=
                            (strlen(lockfn_xlink))) {
                                 clstat = close(fd);
                                 if (unlikely(clstat == -1)) {
                                         LOG("fail on close\n");
                                 }
                                 free(buf);
-                                goto try_again;
+                                goto force_lock;
                         }
                         if (!strncmp(buf, lockfn_xlink, strlen(lockfn_xlink)-1)) {
                                 LOG("lock owned by us, reasserting\n");
@@ -251,7 +234,7 @@ try_again:
                                         if (unlikely(clstat == -1)) {
                                                 LOG("fail on close\n");
                                         }
-                                        goto finish;
+                                        goto force_lock;
                                 }
                                 free(buf);
                                 goto skip;
@@ -262,7 +245,17 @@ try_again:
                                 LOG("fail on close\n");
                         }
                 }
-                goto finish;
+force_lock:
+                if (force) {
+                        /* remove lock file, we are forcing lock, try again */
+                        status = unlink(lockfn);
+                        if (unlikely(status == -1)) {
+                                LOG("force removal of %s lockfile failed, "
+                                    "errno=%d, trying again\n", lockfn, errno);
+                        }
+                        stealx = 1;
+                }
+                goto try_again;
         }
 
         LOG("lockfile created %s\n", lockfn);
@@ -349,8 +342,6 @@ finish:
                 } else if (lock_holder(fn_to_lock, lockfn, lockfn_flink, force,
                                      readonly, &stealr, reader_eval)) {
                         status = -1;
-                } else if (establish_rw_lock(lockfn_flink) == -1) {
-                        status = -1;
                 } 
         }
 
@@ -373,7 +364,7 @@ skip_scan:
                 }
         }
 
-        if (!status && force && (stealw || stealr)) {
+        if (!status && force && (stealx || stealw || stealr)) {
                 struct timeval timeout;
 
                 /* enforce quiet time on steal */
