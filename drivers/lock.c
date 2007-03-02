@@ -455,18 +455,29 @@ int lock_delta(char *fn)
         ptr = strrchr(fn, '/');
         if (!ptr) {
                 strcpy(dirname, ".");
+                ptr = fn;
         } else {
                 int numbytes = ptr - fn;
                 strncpy(dirname, fn, numbytes);
+                ptr += 1;
         }
         pd = opendir(dirname); 
         if (!pd) goto finish;
 
         dptr = readdir(pd);
         while (dptr) {
-                if (strcmp(dptr->d_name, fn) &&
-                    !strncmp(dptr->d_name, fn,  strlen(fn))) {
-                        if (lstat(dptr->d_name, &statbuf) != -1) {
+                if (strcmp(dptr->d_name, ptr) &&
+                    !strncmp(dptr->d_name, ptr,  strlen(ptr))) {
+                        char *fpath = malloc(strlen(dptr->d_name) + 
+                                             strlen(dirname) + 1);
+                        if (!fpath) {
+                            closedir(pd);
+                            goto finish;
+                        }
+                        strcpy(fpath, dirname);
+                        strcat(fpath, "/");
+                        strcat(fpath, dptr->d_name);
+                        if (lstat(fpath, &statbuf) != -1) {
                                 int diff = (int)statnow.st_mtime - 
                                            (int)statbuf.st_mtime;
                                 /* adjust diff if someone updated the lock
@@ -476,6 +487,7 @@ int lock_delta(char *fn)
                                 diff = (diff < 0) ? 0 : diff;
                                 result = diff < result ? diff : result;
                         }
+                        free(fpath);
                 }
                 dptr = readdir(pd);
         }
