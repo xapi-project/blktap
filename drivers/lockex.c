@@ -11,6 +11,7 @@
 /* TODO: 
   o deal w/ errors better
   o return error codes(?) through errno(?)
+  o decide if we want random/fixed sleep on retry?
  */
 
 #if defined(EXCLUSIVE_LOCK)
@@ -95,6 +96,7 @@ int lock(char *fn_to_lock, char *uuid, int force)
         struct stat stat1, stat2;
         int retry_attempts = 0;
         int clstat;
+        int stole = 0;
     
         if (!fn_to_lock || !uuid)
                 return status;
@@ -114,20 +116,14 @@ try_again:
         if (fd == -1) {
                 LOG("Initial lockfile creation failed %s force=%d\n", 
                      lockfn, force);
-                /* force gets first chance */
-                if (force) {
-                        /* assume the caller knows when forcing is necessary */
-                        status = unlink(lockfn);
-                        if (unlikely(status == -1)) {
-                                LOG("force removal of %s lockfile failed, "
-                                    "errno=%d, trying again\n", lockfn, errno);
-                        }
-                        goto try_again;
-                }
                 /* already owned? (hostname & uuid match, skip time bits) */
                 fd = open(lockfn, O_RDWR, 0644);
                 if (fd != -1) {
                         buf = malloc(strlen(lockfn_link)+1);
+                        if (!buf) {
+                            close(fd);
+                            goto finish;
+                        }
                         if (read(fd, buf, strlen(lockfn_link)) != 
                            (strlen(lockfn_link))) {
                                 clstat = close(fd);
@@ -135,7 +131,7 @@ try_again:
                                         LOG("fail on close\n");
                                 }
                                 free(buf);
-                                goto try_again;
+                                goto force_lock;
                         }
                         if (!strncmp(buf, lockfn_link, strlen(lockfn_link)-1)) {
                                 LOG("lock owned by us, reasserting\n");
@@ -145,7 +141,7 @@ try_again:
                                         if (unlikely(clstat == -1)) {
                                                 LOG("fail on close\n");
                                         }
-                                        goto finish;
+                                        goto force_lock;
                                 }
                                 free(buf);
                                 goto skip;
@@ -156,7 +152,17 @@ try_again:
                                 LOG("fail on close\n");
                         }
                 }
-                goto finish;
+force_lock:
+                if (force) {
+                        /* remove lock file, we are forcing lock, try again */
+                        status = unlink(lockfn);
+                        if (unlikely(status == -1)) {
+                                LOG("force removal of %s lockfile failed, "
+                                    "errno=%d, trying again\n", lockfn, errno);
+                        }
+                        stole = 1;
+                }
+                goto try_again;
         }
 
         LOG("lockfile created %s\n", lockfn);
@@ -214,6 +220,15 @@ skip:
         }
 
 finish:
+        if (!status && force && stole) {
+                struct timeval timeout;
+
+                /* enforce quiet time on steal */
+                timeout.tv_sec = LEASE_TIME_SECS;
+                timeout.tv_usec = 0;
+                select(0, 0, 0, 0, &timeout);
+        }
+
         free(lockfn);
         free(lockfn_link);
 
@@ -341,7 +356,17 @@ finish:
 #if defined(TEST)
 static void usage(char *prg)
 {
-        printf("usage %s [dwtru <filename>] [l <filename> (0|1)]\n", prg);
+        printf("usage %s\n"
+               "    [dwtr <filename>]\n"
+               "    [p <filename> [num iterations]\n"
+               "    [u <filename> [<uniqid>]\n"
+               "    [l <filename> [0|1] ([q <uniqid>] ]\n", prg);
+        printf("        p : perf test lock take and reassert\n"); 
+        printf("        d : delta lock time\n");
+        printf("        t : test the file (after random locks)\n");
+        printf("        r : random lock tests (must ^C)\n");
+        printf("        u : unlock, optional uniqID (default is PID)\n");
+        printf("        l : lock, force?, optional uniqID (default is PID)\n");
 }
 
 static void test_file(char *fn)
@@ -456,7 +481,9 @@ static void perf_lock(char *fn, int loops)
 int main(int argc, char *argv[])
 {
         int status;
+        char *ptr;
         char uuid[12];
+        int force;
 
         if (argc < 3) {
                 usage(argv[0]);
@@ -464,27 +491,32 @@ int main(int argc, char *argv[])
         }
 
         sprintf(uuid, "%08d", getpid());
+        ptr = uuid;
 
         if (!strcmp(argv[1],"d")) {
                 status = lock_delta(argv[2]);
-                printf("lock delta for %s failed, errno=%d\n", argv[2], status);
+                printf("lock delta for %s is %d seconds\n", argv[2], status);
         } else if (!strcmp(argv[1],"t")) {
                 test_file(argv[2]);
         } else if (!strcmp(argv[1],"r")) {
-                random_locks(argv[2]);
+                random_locks(argv[2]); 
         } else if (!strcmp(argv[1],"p")) {
                 perf_lock(argv[2], argc < 3 ? 100000 : atoi(argv[3]));
-        } else if (!strcmp(argv[1],"l")) {
-                status = lock(argv[2], uuid, argc < 4 ? 0 : atoi(argv[3]));
+        } else if (!strcmp(argv[1],"l")) { 
+                if (argc < 4) force = 0; else force = atoi(argv[3]);
+                if (argc == 5) ptr = argv[4];
+                status = lock(argv[2], ptr, force);
                 printf("lock status = %d\n", status);
-        } else if (!strcmp(argv[1],"u") && (argc == 3)) {
-                status = unlock(argv[2], uuid);
+        } else if (!strcmp(argv[1],"u") ) {
+                if (argc == 4) ptr = argv[3];
+                status = unlock(argv[2], ptr);
                 printf("unlock status = %d\n", status);
         } else {
                 usage(argv[0]);
         }
 
         return 0;
+
 }
 #endif
 #endif
