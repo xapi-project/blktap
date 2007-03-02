@@ -108,6 +108,7 @@ struct td_state {
 	void *image;
 	void *ring_info;
 	void *fd_entry;
+	char *vm_uuid;
 	unsigned long      sector_size;
 	unsigned long long size;
 	unsigned int       info;

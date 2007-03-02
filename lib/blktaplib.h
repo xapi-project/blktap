@@ -130,6 +130,7 @@ typedef struct blkif {
 
 typedef struct blkif_info {
 	char *params;
+	char *vm_uuid;
 } blkif_info_t;
 
 void register_new_devmap_hook(int (*fn)(blkif_t *blkif));
@@ -169,12 +170,19 @@ typedef struct image {
 } image_t;
 
 typedef struct msg_hdr {
-	uint16_t    type;
+	uint16_t   type;
 	uint16_t   len;
 	uint16_t   drivertype;
 	uint16_t   cookie;
-	uint8_t    readonly;
 } msg_hdr_t;
+
+typedef struct msg_params {
+	uint8_t    readonly;
+	int        path_off;
+	int        path_len;
+	int        uuid_off;
+	int        uuid_len;
+} msg_params_t;
 
 typedef struct msg_newdev {
 	uint8_t     devnum;

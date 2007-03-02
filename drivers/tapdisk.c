@@ -86,56 +86,6 @@ void daemonize(void)
 	return;
 }
 
-static void free_driver(struct disk_driver *d)
-{
-	if (d->name)
-		free(d->name);
-	if (d->private)
-		free(d->private);
-	free(d);
-}
-
-static void unmap_disk(struct td_state *s)
-{
-	tapdev_info_t *info = s->ring_info;
-	struct disk_driver *dd, *tmp;
-	fd_list_entry_t *entry;
-
-	dd = s->disks;
-	while (dd) {
-		tmp = dd->next;
-#if defined(USE_NFS_LOCKS)
-                /* need vmuid */
-#if defined(EXCLUSIVE_LOCK)
-                unlock(dd->name, vmuid);
-#else
-                unlock(dd->name, vmuid, (dd->flags & TD_RDONLY) ? 1 : 0);
-#endif
-#endif
-
-		dd->drv->td_close(dd);
-		free_driver(dd);
-		dd = tmp;
-	}
-
-	if (info != NULL && info->mem > 0)
-	        munmap(info->mem, getpagesize() * BLKTAP_MMAP_REGION_SIZE);
-
-	entry = s->fd_entry;
-	*entry->pprev = entry->next;
-	if (entry->next)
-		entry->next->pprev = entry->pprev;
-
-	close(info->fd);
-
-	free(s->fd_entry);
-	free(s->blkif);
-	free(s->ring_info);
-	free(s);
-
-	return;
-}
-
 void sig_handler(int sig)
 {
 	/*Received signal to close. If no disks are active, we close app.*/
@@ -208,7 +158,7 @@ static struct tap_disk *get_driver(int drivertype)
 	return dtypes[drivertype]->drv;
 }
 
-static struct td_state *state_init(void)
+static struct td_state *state_init(char *vm_uuid)
 {
 	int i;
 	struct td_state *s;
@@ -216,6 +166,7 @@ static struct td_state *state_init(void)
 
 	s = malloc(sizeof(struct td_state));
 	blkif = s->blkif = malloc(sizeof(blkif_t));
+	s->vm_uuid = vm_uuid;
 	s->ring_info = calloc(1, sizeof(tapdev_info_t));
 
 	for (i = 0; i < MAX_REQUESTS; i++) {
@@ -224,6 +175,48 @@ static struct td_state *state_init(void)
 	}
 
 	return s;
+}
+
+static void free_state(struct td_state *s)
+{
+	free(s->fd_entry);
+	free(s->blkif);
+	free(s->vm_uuid);
+	free(s->ring_info);
+	free(s);
+}
+
+static struct disk_driver *disk_init(struct td_state *s, 
+				     struct tap_disk *drv, 
+				     char *name, td_flag_t flags)
+{
+	struct disk_driver *dd;
+
+	dd = calloc(1, sizeof(struct disk_driver));
+	if (!dd)
+		return NULL;
+	
+	dd->private = malloc(drv->private_data_size);
+	if (!dd->private) {
+		free(dd);
+		return NULL;
+	}
+
+	dd->drv      = drv;
+	dd->td_state = s;
+	dd->name     = name;
+	dd->flags    = flags;
+
+	return dd;
+}
+
+static void free_driver(struct disk_driver *d)
+{
+	if (d->name)
+		free(d->name);
+	if (d->private)
+		free(d->private);
+	free(d);
 }
 
 static int map_new_dev(struct td_state *s, int minor)
@@ -281,28 +274,41 @@ static int map_new_dev(struct td_state *s, int minor)
 	return -1;
 }
 
-static struct disk_driver *disk_init(struct td_state *s, 
-				     struct tap_disk *drv, 
-				     char *name, td_flag_t flags)
+static void unmap_disk(struct td_state *s)
 {
-	struct disk_driver *dd;
+	tapdev_info_t *info = s->ring_info;
+	struct disk_driver *dd, *tmp;
+	fd_list_entry_t *entry;
 
-	dd = calloc(1, sizeof(struct disk_driver));
-	if (!dd)
-		return NULL;
-	
-	dd->private = malloc(drv->private_data_size);
-	if (!dd->private) {
-		free(dd);
-		return NULL;
+	dd = s->disks;
+	while (dd) {
+		tmp = dd->next;
+#if defined(USE_NFS_LOCKS)
+                /* need vmuid */
+#if defined(EXCLUSIVE_LOCK)
+                unlock(dd->name, vmuid);
+#else
+                unlock(dd->name, vmuid, (dd->flags & TD_RDONLY) ? 1 : 0);
+#endif
+#endif
+
+		dd->drv->td_close(dd);
+		free_driver(dd);
+		dd = tmp;
 	}
 
-	dd->drv      = drv;
-	dd->td_state = s;
-	dd->name     = name;
-	dd->flags    = flags;
+	if (info != NULL && info->mem > 0)
+	        munmap(info->mem, getpagesize() * BLKTAP_MMAP_REGION_SIZE);
 
-	return dd;
+	entry = s->fd_entry;
+	*entry->pprev = entry->next;
+	if (entry->next)
+		entry->next->pprev = entry->pprev;
+
+	close(info->fd);
+	free_state(s);
+
+	return;
 }
 
 static int open_disk(struct td_state *s, 
@@ -397,9 +403,10 @@ static int open_disk(struct td_state *s,
 static int read_msg(char *buf)
 {
 	int length, len, msglen, tap_fd, *io_fd;
-	char *ptr, *path;
+	char *path = NULL, *vm_uuid = NULL;
 	image_t *img;
 	msg_hdr_t *msg;
+	msg_params_t *msg_p;
 	msg_newdev_t *msg_dev;
 	msg_pid_t *msg_pid;
 	struct tap_disk *drv;
@@ -416,13 +423,18 @@ static int read_msg(char *buf)
 			length,msg->type,msg->cookie);
 
 		switch (msg->type) {
-		case CTLMSG_PARAMS: 			
-			ptr = buf + sizeof(msg_hdr_t);
-			len = (length - sizeof(msg_hdr_t));
-			path = calloc(1, len);
-			
-			memcpy(path, ptr, len); 
-			DPRINTF("Received CTLMSG_PARAMS: [%s]\n", path);
+		case CTLMSG_PARAMS:
+			msg_p   = (msg_params_t *)(buf + sizeof(msg_hdr_t));
+			path    = calloc(1, msg_p->path_len);
+			vm_uuid = calloc(1, msg_p->uuid_len);
+			if (!path || !vm_uuid)
+				goto params_done;
+
+			memcpy(path, &buf[msg_p->path_off], msg_p->path_len);
+			memcpy(vm_uuid, &buf[msg_p->uuid_off], msg_p->uuid_len);
+
+			DPRINTF("Received CTLMSG_PARAMS: [%s, %s]\n", 
+				path, vm_uuid);
 
 			/*Assign driver*/
 			drv = get_driver(msg->drivertype);
@@ -433,13 +445,13 @@ static int read_msg(char *buf)
 				drv->disk_type, msg->drivertype);
 
 			/* Allocate the disk structs */
-			s = state_init();
+			s = state_init(vm_uuid);
 			if (s == NULL)
 				goto params_done;
 
 			/*Open file*/
 			ret = open_disk(s, drv, path, 
-					((msg->readonly) ? TD_RDONLY : 0));
+					((msg_p->readonly) ? TD_RDONLY : 0));
 			if (ret)
 				goto params_done;
 
@@ -461,9 +473,11 @@ static int read_msg(char *buf)
 				msglen = sizeof(msg_hdr_t);
 				msg->type = CTLMSG_IMG_FAIL;
 				msg->len = msglen;
+				if (s) free_state(s);
+				if (vm_uuid) free(vm_uuid);
 			}
 			len = write(fds[WRITE], buf, msglen);
-			free(path);
+			if (path) free(path);
 			return 1;
 			
 		case CTLMSG_NEWDEV:

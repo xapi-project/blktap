@@ -275,8 +275,9 @@ static int write_msg(int fd, int msgtype, void *ptr, void *ptr2)
 	blkif_t *blkif;
 	blkif_info_t *blk;
 	msg_hdr_t *msg;
+	msg_params_t *msg_p;
 	msg_newdev_t *msg_dev;
-	char *p, *buf, *path;
+	char *buf, *path;
 	int msglen, len, ret;
 	fd_set writefds;
 	struct timeval timeout;
@@ -295,7 +296,8 @@ static int write_msg(int fd, int msgtype, void *ptr, void *ptr2)
 		DPRINTF("Write_msg called: CTLMSG_PARAMS, sending [%s, %s]\n",
 			blk->params, path);
 
-		msglen = sizeof(msg_hdr_t) + strlen(path) + 1;
+		msglen = sizeof(msg_hdr_t) + sizeof(msg_params_t) +
+			strlen(path) + strlen(blk->vm_uuid) + 2;
 		buf = malloc(msglen);
 
 		/*Assign header fields*/
@@ -303,15 +305,22 @@ static int write_msg(int fd, int msgtype, void *ptr, void *ptr2)
 		msg->type = CTLMSG_PARAMS;
 		msg->len = msglen;
 		msg->drivertype = blkif->drivertype;
-		msg->readonly = blkif->readonly;
 
 		gettimeofday(&timeout, NULL);
 		msg->cookie = blkif->cookie;
 		DPRINTF("Generated cookie, %d\n",blkif->cookie);
 
 		/*Copy blk->params to msg*/
-		p = buf + sizeof(msg_hdr_t);
-		memcpy(p, path, strlen(path) + 1);
+		msg_p           = (msg_params_t *)(buf + sizeof(msg_hdr_t));
+		msg_p->readonly = blkif->readonly;
+
+		msg_p->path_off = sizeof(msg_hdr_t) + sizeof(msg_params_t);
+		msg_p->path_len = strlen(path) + 1;
+		memcpy(&buf[msg_p->path_off], path, msg_p->path_len);
+
+		msg_p->uuid_off = msg_p->path_off + msg_p->path_len;
+		msg_p->uuid_len = strlen(blk->vm_uuid) + 1;
+		memcpy(&buf[msg_p->uuid_off], blk->vm_uuid, msg_p->uuid_len);
 
 		break;
 
