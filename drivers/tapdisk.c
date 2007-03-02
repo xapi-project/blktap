@@ -49,10 +49,6 @@ static pid_t process;
 int connected_disks = 0;
 fd_list_entry_t *fd_start = NULL;
 
-#if defined(USE_NFS_LOCKS)
-static char vmuid[12]; /*wkc temp, until vm's uuid gets passed in to us*/
-#endif
-
 int do_cow_read(struct disk_driver *dd, blkif_request_t *req, 
 		int sidx, uint64_t sector, int nr_secs);
 
@@ -284,11 +280,10 @@ static void unmap_disk(struct td_state *s)
 	while (dd) {
 		tmp = dd->next;
 #if defined(USE_NFS_LOCKS)
-                /* need vmuid */
 #if defined(EXCLUSIVE_LOCK)
-                unlock(dd->name, vmuid);
+                unlock(dd->name, s->vm_uuid);
 #else
-                unlock(dd->name, vmuid, (dd->flags & TD_RDONLY) ? 1 : 0);
+                unlock(dd->name, s->vm_uuid, (dd->flags & TD_RDONLY) ? 1 : 0);
 #endif
 #endif
 
@@ -330,11 +325,10 @@ static int open_disk(struct td_state *s,
 		return -ENOMEM;
 
 #if defined(USE_NFS_LOCKS)
-        /* need vmuid */
 #if defined(EXCLUSIVE_LOCK)
-        if (lock(d->name, vmuid, 0) == -1)
+        if (lock(d->name, s->vm_uuid, 0) == -1)
 #else
-        if (lock(d->name, vmuid, 0, (d->flags & TD_RDONLY) ? 1 : 0) == -1)
+        if (lock(d->name, s->vm_uuid, 0, (d->flags & TD_RDONLY) ? 1 : 0) == -1)
 #endif
         {
                 DPRINTF("failed to get lock for %s\n", d->name);
@@ -813,11 +807,10 @@ static int req_locks(void)
         while (ptr != NULL) {
                 struct disk_driver *dd;
                 td_for_each_disk(ptr->s, dd) {
-                        /* need vmuid */
 #if defined(EXCLUSIVE_LOCK)
-                        if (lock(dd->name, vmuid, 0) == -1)
+                        if (lock(dd->name, ptr->s->vm_uuid, 0) == -1)
 #else
-                        if (lock(dd->name, vmuid, 0, (dd->flags & TD_RDONLY) ? 1 : 0) == -1)
+                        if (lock(dd->name, ptr->s->vm_uuid, 0, (dd->flags & TD_RDONLY) ? 1 : 0) == -1)
 #endif
                         {
                                 DPRINTF("failed to get lock for %s\n", dd->name);
@@ -846,11 +839,6 @@ int main(int argc, char *argv[])
 	daemonize();
 
 	snprintf(openlogbuf, sizeof(openlogbuf), "TAPDISK[%d]", getpid());
-#if defined(USE_NFS_LOCKS)
-        /*wkc temp, until vm's uuid gets passed in to us*/
-        strcpy(vmuid, "1234");
-#endif
-
 	openlog(openlogbuf, LOG_CONS|LOG_ODELAY, LOG_DAEMON);
 	/*Setup signal handlers*/
 	signal (SIGBUS, sig_handler);
