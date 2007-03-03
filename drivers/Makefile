@@ -65,7 +65,7 @@ img2qcow qcow2raw qcow-create: %: $(BLK-OBJS)
 .PHONY: vhd-util
 vhd-util: vhd-create
 
-vhd-create: %: $(BLK_OBJS)
+vhd-create: %: $(BLK-OBJS)
 	$(CC) $(CFLAGS) -o $* $(BLK-OBJS) $*.c $(AIOLIBS) $(LIBS)
 
 
