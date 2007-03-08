@@ -153,7 +153,7 @@ static int backend_remove(struct xs_handle *h, struct backend_info *be)
 static void ueblktap_setup(struct xs_handle *h, char *bepath)
 {
 	struct backend_info *be;
-	char *path = NULL, *fe_path = NULL, *vm_path = NULL, *p,*dev;
+	char *path = NULL, *p, *dev;
 	int len, er, deverr;
 	long int pdev = 0, handle;
 	blkif_info_t *blk;
@@ -204,15 +204,10 @@ static void ueblktap_setup(struct xs_handle *h, char *bepath)
 		er = xs_gather(h, bepath, "params", NULL, &blk->params, NULL);
 		if (er)
 			goto fail;
-		asprintf(&fe_path, "/local/domain/%ld", be->frontend_id);
-		if (!fe_path)
+		
+		if (asprintf(&blk->vm_uuid, "%ld", be->frontend_id) == -1)
 			goto fail;
-		er = xs_gather(h, fe_path, "vm", NULL, &vm_path, NULL);
-		if (er) 
-			goto fail;
-		er = xs_gather(h, vm_path, "uuid", NULL, &blk->vm_uuid, NULL);
-		if (er)
-			goto fail;
+
 		be->blkif->info = blk;
 		
 		if (deverr) {
@@ -265,10 +260,6 @@ fail:
 close:
 	if (path)
 		free(path);
-	if (fe_path)
-		free(fe_path);
-	if (vm_path)
-		free(vm_path);
 	return;
 }
 
