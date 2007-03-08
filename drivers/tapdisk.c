@@ -314,6 +314,7 @@ static int open_disk(struct td_state *s,
 	td_flag_t pflags;
 	struct disk_id id;
 	struct disk_driver *d;
+        int lval;
 
 	dup = strdup(path);
 	if (!dup)
@@ -326,12 +327,12 @@ static int open_disk(struct td_state *s,
 
 #if defined(USE_NFS_LOCKS)
 #if defined(EXCLUSIVE_LOCK)
-        if (lock(d->name, s->vm_uuid, 0) == -1)
+        if ((lval = lock(d->name, s->vm_uuid, 0)) < 0)
 #else
-        if (lock(d->name, s->vm_uuid, 0, (d->flags & TD_RDONLY) ? 1 : 0) == -1)
+        if ((lval = lock(d->name, s->vm_uuid, 0, (d->flags & TD_RDONLY) ? 1 : 0)) < 0)
 #endif
         {
-                DPRINTF("failed to get lock for %s\n", d->name);
+                DPRINTF("failed to get lock for %s, err=%d\n", d->name, lval);
                 goto fail;
         }
 #endif
@@ -801,6 +802,7 @@ static void get_io_request(struct td_state *s)
 static int req_locks(void)
 {
         fd_list_entry_t *ptr;
+        int lval;
 
         /* reassert locks for all disks */
         ptr = fd_start;
@@ -808,12 +810,12 @@ static int req_locks(void)
                 struct disk_driver *dd;
                 td_for_each_disk(ptr->s, dd) {
 #if defined(EXCLUSIVE_LOCK)
-                        if (lock(dd->name, ptr->s->vm_uuid, 0) == -1)
+                        if ((lval = lock(dd->name, ptr->s->vm_uuid, 0)) < 0)
 #else
-                        if (lock(dd->name, ptr->s->vm_uuid, 0, (dd->flags & TD_RDONLY) ? 1 : 0) == -1)
+                        if ((lval = lock(dd->name, ptr->s->vm_uuid, 0, (dd->flags & TD_RDONLY) ? 1 : 0)) < 0)
 #endif
                         {
-                                DPRINTF("failed to get lock for %s\n", dd->name);
+                                DPRINTF("failed to get lock for %s, err=%d\n", dd->name, lval);
                                 return -1;
                         }
                 }

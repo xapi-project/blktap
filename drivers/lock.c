@@ -42,6 +42,7 @@
 #define LOG(format, args...)
 #endif
 
+/* random wait - up to .5 seconds */
 #define XSLEEP usleep(random() & 0x7ffff)
 
 typedef int (*eval_func)(char *name, int readonly);
@@ -53,7 +54,6 @@ static char *create_lockfn(char *fn_to_lock)
         /* allocate string to hold constructed lock file */
         lockfn = malloc(strlen(fn_to_lock) + strlen(LF_POSTFIX) + 1);
         if (unlikely(!lockfn)) {
-                errno = ENOMEM; 
                 return 0;
         }
 
@@ -79,7 +79,6 @@ static char *create_lockfn_link(char *fn_to_lock, char *format, char *uuid, int 
         lockfn_link = malloc(strlen(fn_to_lock) + strlen(LF_POSTFIX) +
                              strlen(hostname) + strlen(uuid) + 8);
         if (unlikely(!lockfn_link)) {
-                errno = ENOMEM; 
                 return 0;
         }
 
@@ -128,9 +127,13 @@ static int lock_holder(char *fn, char *lockfn, char *lockfn_link,
         pd = opendir(dirname); 
         if (!pd) goto finish;
 
-        /* scan through directory entries and look for any writer */
-        /* note that if we are forcing, we will remove any and    */
-        /* all locks that appear                                  */
+        /* 
+         * scan through directory entries and use eval function 
+         * if we have a match (i.e. reader or writer lock) but
+         * note that if we are forcing, we will remove any and
+         * all locks that appear for target of our lock, regardless
+         * if it a reader/writer owns the lock.
+         */
         dptr = readdir(pd);
         while (dptr) {
                 char *p1 = strrchr(fn, '/');
@@ -178,8 +181,8 @@ int lock(char *fn_to_lock, char *uuid, int force, int readonly)
         char *lockfn_xlink = 0;
         char *lockfn_flink = 0;
         char *buf = 0;
-        int fd = -1;
-        int status = -1;
+        int fd;
+        int status;
         struct stat stat1, stat2;
         int retry_attempts = 0;
         int clstat;
@@ -189,33 +192,41 @@ int lock(char *fn_to_lock, char *uuid, int force, int readonly)
         int stealr = 0;
     
         if (!fn_to_lock || !uuid)
-                return status;
+                return LOCK_EBADPARM;
+
+        /* seed random with time/pid combo */
+        srandom((int)time(0) ^ getpid());
 
         /* build lock file strings */
         lockfn = create_lockfn(fn_to_lock);
-        if (unlikely(!lockfn)) goto finish;
+        if (unlikely(!lockfn)) { status = LOCK_ENOMEM; goto finish; }
 
         lockfn_xlink = create_lockfn_link(fn_to_lock, LFXL_FORMAT, uuid, readonly);
-        if (unlikely(!lockfn_xlink)) goto finish;
+        if (unlikely(!lockfn_xlink)) { status = LOCK_ENOMEM; goto finish; }
 
         lockfn_flink = create_lockfn_link(fn_to_lock, LFFL_FORMAT, uuid, readonly);
-        if (unlikely(!lockfn_flink)) goto finish;
+        if (unlikely(!lockfn_flink)) { status = LOCK_ENOMEM; goto finish; }
 
 try_again:
         if (retry_attempts++ > RETRY_MAX) goto finish;
 
-        /* try to open lockfile */
+        /* try to open exlusive lockfile */
         fd = open(lockfn, O_WRONLY | O_CREAT | O_EXCL, 0644); 
         if (fd == -1) {
-                LOG("Initial lockfile creation failed %s force=%d\n",
-                     lockfn, force);
+
+                LOG("Initial lockfile creation failed %s force=%d, errno=%d\n",
+                     lockfn, force, errno);
                 /* already owned? (hostname & uuid match, skip time bits) */
                 fd = open(lockfn, O_RDWR, 0644);
                 if (fd != -1) {
                         buf = malloc(strlen(lockfn_xlink)+1);
                         if (!buf) {
-                            close(fd);
-                            goto finish;
+                                clstat = close(fd);
+                                if (unlikely(clstat == -1)) {
+                                        LOG("fail on close\n");
+                                }
+                                status = LOCK_ENOMEM;
+                                goto finish;
                         }
                         if (read(fd, buf, strlen(lockfn_xlink)) !=
                            (strlen(lockfn_xlink))) {
@@ -255,6 +266,8 @@ force_lock:
                         }
                         stealx = 1;
                 }
+                XSLEEP;
+                status = LOCK_EXLOCK_OPEN;
                 goto try_again;
         }
 
@@ -262,8 +275,7 @@ force_lock:
 
 skip:
         /* 
-         * write the name of the temporary xlock -- it contains 
-         * uuid and hostname, useful for reasserting lock.
+         * write into the temporary xlock
          */
         if (write(fd, lockfn_xlink, strlen(lockfn_xlink)) != 
                 strlen(lockfn_xlink)) {
@@ -271,7 +283,12 @@ skip:
                 if (unlikely(clstat == -1)) {
                         LOG("fail on close\n");
                 }
-                retry_attempts = 0;
+                XSLEEP;
+                status = LOCK_EXLOCK_WRITE;
+                if (unlink(lockfn) == -1)  {
+                        LOG("removal of %s lockfile failed, "
+                            "errno=%d, trying again\n", lockfn, errno);
+                }
                 goto try_again;
         }
         clstat = close(fd);
@@ -280,19 +297,26 @@ skip:
         }
 
         while (retry_attempts++ < RETRY_MAX) {
-                int st = link(lockfn, lockfn_xlink);
+                tmpstat = link(lockfn, lockfn_xlink);
                 LOG("linking %s and %s\n", lockfn, lockfn_xlink);
-                if ((st == -1) && (errno != EEXIST)) { 
-                        LOG("link status is %d, errno=%d\n", st, errno); 
+                if ((tmpstat == -1) && (errno != EEXIST)) { 
+                        LOG("link status is %d, errno=%d\n", tmpstat, errno); 
                 }
 
-                if (lstat(lockfn, &stat1) == -1) {
-                        status = -1;
-                        goto finish;
-                }
-
-                if (lstat(lockfn_xlink, &stat2) == -1) {
-                        status = -1;
+                if ((lstat(lockfn, &stat1) == -1) || 
+                    (lstat(lockfn_xlink, &stat2) == -1)) {
+                        /* try again, cleanup first */
+                        tmpstat = unlink(lockfn);
+                        if (unlikely(tmpstat == -1)) {
+                                LOG("error removing lock file %s", lockfn);
+                        }
+                        tmpstat = unlink(lockfn_xlink);
+                        if (unlikely(tmpstat == -1)) {
+                                LOG("error removing linked lock file %s", 
+                                    lockfn_xlink);
+                        }
+                        XSLEEP;
+                        status = LOCK_ESTAT;
                         goto finish;
                 }
 
@@ -300,7 +324,7 @@ skip:
                 if (stat1.st_ino == stat2.st_ino) {
                         /* success, inodes are the same */
                         /* should we check that st_nlink's are also 2?? */
-                        status = 0;
+                        status = LOCK_OK;
                         tmpstat = unlink(lockfn_xlink);
                         if (unlikely(tmpstat == -1)) {
                                 LOG("error removing linked lock file %s", 
@@ -308,18 +332,18 @@ skip:
                         }
                         goto finish;
                 } else {
-                        /* try again */
+                        /* try again, cleanup first */
                         tmpstat = unlink(lockfn);
                         if (unlikely(tmpstat == -1)) {
-                                LOG("error removing lock file %s", 
-                                    lockfn_xlink);
+                                LOG("error removing lock file %s", lockfn);
                         }
                         tmpstat = unlink(lockfn_xlink);
                         if (unlikely(tmpstat == -1)) {
                                 LOG("error removing linked lock file %s", 
                                     lockfn_xlink);
                         }
-                        retry_attempts = 0;
+                        XSLEEP;
+                        status = LOCK_EINODE;
                         goto try_again;
                 }
         }
@@ -327,21 +351,19 @@ skip:
 finish:
         if (!status) {
 
-                /* fast check, see if we own a lock and are reasserting */
+                /* we have exclusive lock */
+
+                /* fast check, see if we own a final lock and are reasserting */
                 if (!lstat(lockfn_flink, &stat1)) 
                         goto skip_scan;
 
-                /* 
-                 * got exclusive lock, we allow exclusive writer, or 
-                 * multiple readers
-                 */
-
+                /* we allow exclusive writer, or multiple readers */
                 if (lock_holder(fn_to_lock, lockfn, lockfn_flink, force,
                                      readonly, &stealw, writer_eval)) {
-                        status = -1;
+                        status = LOCK_EHELD_WR;
                 } else if (lock_holder(fn_to_lock, lockfn, lockfn_flink, force,
                                      readonly, &stealr, reader_eval)) {
-                        status = -1;
+                        status = LOCK_EHELD_RD;
                 } 
         }
 
@@ -349,12 +371,17 @@ skip_scan:
         if (!status) {
                 /* update file, changes last modify time */
                 fd = open(lockfn_flink, O_WRONLY | O_CREAT, 0644); 
-                if (!fd) {
-                        status = -1;
+                if (fd == -1) {
+                        status = LOCK_EOPEN;
                 } else {
                         if (write(fd, lockfn_flink, strlen(lockfn_flink)) != 
                                   strlen(lockfn_flink)) {
-                                retry_attempts = 0;
+                                clstat = close(fd);
+                                if (unlikely(clstat == -1)) {
+                                        LOG("fail on close\n");
+                                }
+                                XSLEEP;
+                                status = LOCK_EUPDATE;
                                 goto try_again;
                         }
                 }
@@ -392,19 +419,20 @@ skip_scan:
 int unlock(char *fn_to_unlock, char *uuid, int readonly)
 {
         char *lockfn_link = 0;
-        int status = -1;
+        int status;
 
         if (!fn_to_unlock || !uuid)
-                return status;
+                return LOCK_EBADPARM;
 
         lockfn_link = create_lockfn_link(fn_to_unlock, LFFL_FORMAT, uuid, readonly);
-        if (unlikely(!lockfn_link)) goto finish;
+        if (unlikely(!lockfn_link)) { status = LOCK_ENOMEM; goto finish; }
 
         if (unlikely(unlink(lockfn_link) == -1)) {
+                /* if no lock file than fold into success case */
                 LOG("error removing linked lock file %s", lockfn_link);
         }
 
-        status = 0;
+        status = LOCK_OK;
 
 finish:
         free(lockfn_link);
@@ -426,27 +454,27 @@ int lock_delta(char *fn)
         int pid = (int)getpid();
         int uniq;
 
-        if (!fn) goto finish;
-        if (!dirname) goto finish;
-        if (!uname) goto finish;
+        if (!fn || !dirname || !uname)
+                return LOCK_EBADPARM;
         
         /* create file to normalize time */
         srandom((int)time(0) ^ pid);
         uniq = random() % 0xffffff; 
         buf = malloc(strlen(fn) + 24);
-        if (unlikely(!buf)) goto finish;
+        if (unlikely(!buf)) { result = LOCK_ENOMEM; goto finish; }
 
         strcpy(buf, fn);
         sprintf(buf + strlen(buf), ".xen%08d.tmp", uniq);
 
         fd = open(buf, O_WRONLY | O_CREAT, 0644);
-        if (fd == -1) goto finish;
+        if (fd == -1) { result = LOCK_EOPEN; goto finish; }
         clstat = close(fd);
         if (unlikely(clstat == -1)) {
                 LOG("fail on close\n");
         }
         if (lstat(buf, &statnow) == -1) {
                 unlink(buf);
+                result = LOCK_ESTAT;
                 goto finish;
         }
         unlink(buf);
@@ -469,9 +497,10 @@ int lock_delta(char *fn)
                 if (strcmp(dptr->d_name, ptr) &&
                     !strncmp(dptr->d_name, ptr,  strlen(ptr))) {
                         char *fpath = malloc(strlen(dptr->d_name) + 
-                                             strlen(dirname) + 1);
+                                             strlen(dirname) + 2);
                         if (!fpath) {
                             closedir(pd);
+                            result = LOCK_ENOMEM;
                             goto finish;
                         }
                         strcpy(fpath, dirname);
@@ -499,7 +528,7 @@ finish:
         free(uname);
 
         /* returns smallest lock time, or error */
-        if (result == INT_MAX) result = -1;
+        if (result == INT_MAX) result = LOCK_ENOLOCK;
         return result;
 }
 
@@ -567,13 +596,14 @@ static void random_locks(char *fn)
                 XSLEEP;
                 readonly = random()  & 1;
                 status = lock(fn, uuid, 0, readonly);
-                if (status == 0) {
+                if (status == LOCK_OK) {
                         /* got lock, open, read, modify write close file */
                         int fd = open(fn, O_RDWR, 0644);
                         if (fd == -1) {
                                 LOG("pid: %d ERROR on file %s open, errno=%d\n", 
                                     pid, fn, errno);
-                        } else if (!readonly) {
+                        } else {
+                            if (!readonly) {
                                 /* ugly code to read data in test format */
                                 /* format is "%d %d %d" 'count pid time' */
                                 struct stat statbuf;
@@ -603,11 +633,11 @@ static void random_locks(char *fn)
                                         LOG("pid: %d ERROR on file %s stat, "
                                             "errno=%d\n", pid, fn, errno);
                                 }
-
-                                clstat = close(fd);
-                                if (unlikely(clstat == -1)) {
-                                        LOG("fail on close\n");
-                                }
+                            }
+                            clstat = close(fd);
+                            if (unlikely(clstat == -1)) {
+                                    LOG("fail on close\n");
+                            }
                         }
                         XSLEEP;
                         status = unlock(fn, uuid, readonly);
@@ -626,7 +656,7 @@ static void perf_lock(char *fn, int loops)
 
     while (loops--) {
         status = lock(fn, buf, 0, 0);
-        if (status == -1) {
+        if (status < 0) {
             printf("failed to get lock at iteration %d errno=%d\n", start - loops, errno);
             return;
         }
