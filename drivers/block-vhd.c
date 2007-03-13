@@ -48,14 +48,16 @@ do {                                                                   \
 	if (s->wnext)                                                  \
 		ASSERT(s->vreq_md_free_count < VHD_REQS_DATA);         \
 	DDPRINTF("%s: %s: QUEUED: %llu, SUBMITTED: %llu, "             \
-		 "RETURNED: %llu, WWRITES: %llu, WREADS: %llu, "       \
-		 "WNEXT: %llu, DATA_ALLOCATED: %lu, "                  \
-		 "METADATA_ALLOCATED: %d, IN_CACHE: %u\n",             \
+		"RETURNED: %llu, WWRITES: %llu, WREADS: %llu, "        \
+		"WNEXT: %llu, DATA_ALLOCATED: %lu, "                   \
+		"METADATA_ALLOCATED: %d, BBLK: %u, "                   \
+		"BSTARTED: %d, BFINISHED: %d, BSTATUS: %u\n",          \
 		__func__, s->name, s->queued, s->submitted,            \
 		 s->returned, s->wwrites, s->wreads, s->wnext,         \
                 VHD_REQS_DATA - s->vreq_free_count,                    \
 		VHD_REQS_META - s->vreq_md_free_count,                 \
-		VHD_CACHE_SIZE - s->bm_free_count);                    \
+		s->bat.pbw_blk, s->bat.writes_started,                 \
+		s->bat.writes_finished, s->bat.status);                \
 } while(0)
 
 /******AIO DEFINES******/
@@ -80,6 +82,7 @@ do {                                                                   \
 
 #define VHD_FLAG_BAT_LOCKED          1
 #define VHD_FLAG_BAT_WRITE_STARTED   2
+#define VHD_FLAG_BAT_RETRY           4
 
 #define VHD_BM_BAT_LOCKED            0
 #define VHD_BM_BAT_CLEAR             1
@@ -125,6 +128,11 @@ struct vhd_bat {
 	uint32_t   pbw_blk;                    /* blk num of pending write */
 	uint64_t   pbw_offset;                 /* file offset of same */
 	struct vhd_request req;
+	int writes_started, writes_finished;   /* number of pending write
+						* requests requiring bat
+						* update */
+	struct vhd_req_list queued;            /* write requests to be included
+						* in the next bat write */
 };
 
 struct vhd_bitmap {
@@ -1078,6 +1086,8 @@ vhd_get_parent_id(struct disk_driver *child_dd, struct disk_id *id)
 		return TD_NO_PARENT;
 
 	for (i = 0; i < 8 && !id->name; i++) {
+		raw = out = NULL;
+
 		loc = &child->hdr.loc[i];
 		if (loc->code != PLAT_CODE_MACX && 
 		    loc->code != PLAT_CODE_W2KU)
@@ -1133,10 +1143,8 @@ vhd_get_parent_id(struct disk_driver *child_dd, struct disk_id *id)
 			err            = -EINVAL;
 
 	next:
-		if (raw)
-			free(raw);
-		if (out)
-			free(out);
+		free(raw);
+		free(out);
 	}
 
 	DPRINTF("%s: done: %s\n", __func__, id->name);
@@ -1735,14 +1743,13 @@ aio_write(struct vhd_state *s, struct vhd_request *req, uint64_t offset)
 static inline uint64_t
 reserve_new_block(struct vhd_state *s, uint32_t blk)
 {
-	u32 *buf;
-	int i, err, ret;
-
 	ASSERT(!test_vhd_flag(s->bat.status, VHD_FLAG_BAT_LOCKED) &&
 	       !test_vhd_flag(s->bat.status, VHD_FLAG_BAT_WRITE_STARTED));
 
-	s->bat.pbw_blk    = blk;
-	s->bat.pbw_offset = s->next_db;
+	s->bat.pbw_blk         = blk;
+	s->bat.pbw_offset      = s->next_db;
+	s->bat.writes_started  = 0;
+	s->bat.writes_finished = 0;
 	set_vhd_flag(s->bat.status, VHD_FLAG_BAT_LOCKED);
 
 	return s->next_db;
@@ -1880,6 +1887,8 @@ schedule_data_write(struct vhd_state *s, uint64_t sector,
 			++bm->writes_started;
 		}
 	}
+	if (test_vhd_flag(flags, VHD_FLAG_REQ_UPDATE_BAT))
+		++s->bat.writes_started;
 
 	aio_write(s, req, offset);
 
@@ -2000,12 +2009,13 @@ schedule_bat_write(struct vhd_state *s,
 
 	req = &s->bat.req;
 
-	memcpy(req->buf, &bat_entry(s, blk - (blk % 128)), 512);
+	if (!test_vhd_flag(s->bat.status, VHD_FLAG_BAT_RETRY)) {
+		memcpy(req->buf, &bat_entry(s, blk - (blk % 128)), 512);
+		((u32 *)req->buf)[blk % 128] = s->bat.pbw_offset;
 
-	((u32 *)req->buf)[blk % 128] = s->bat.pbw_offset;
-
-	for (i = 0; i < 128; i++)
-		BE32_OUT(&((u32 *)req->buf)[i]);
+		for (i = 0; i < 128; i++)
+			BE32_OUT(&((u32 *)req->buf)[i]);
+	}
 
 	offset       = s->hdr.table_offset + (blk - (blk % 128)) * 4;
 	req->nr_secs = 1;
@@ -2283,6 +2293,9 @@ finish_data_write(struct disk_driver *dd, struct vhd_request *req, int err)
 	if (s->ftr.type == HD_TYPE_FIXED)
 		goto out;
 
+	if (err && test_vhd_flag(req->flags, VHD_FLAG_REQ_UPDATE_BAT))
+		++s->bat.writes_finished;
+
 	if (test_vhd_flag(req->flags, VHD_FLAG_REQ_UPDATE_BITMAP)) {
 		u32 blk, sec;
 		struct vhd_bitmap *bm;
@@ -2494,11 +2507,22 @@ finish_bitmap_write(struct disk_driver *dd, struct vhd_request *req, int err)
 		next = r->next;
 		r->next = NULL;
 
+		if (test_vhd_flag(r->flags, VHD_FLAG_REQ_UPDATE_BAT))
+			++s->bat.writes_finished;
+
 		/* must update BAT before signalling completion */
-		if (!err && test_vhd_flag(r->flags, VHD_FLAG_REQ_UPDATE_BAT))
-			add_to_tail(&bat_list, r);
-		else {
-			/* we're done.  signal completion */
+		if (!err && bat_entry(s, blk) == DD_BLK_UNUSED) {
+			if (s->bat.pbw_blk != blk)
+				err = -EIO;
+			else if (test_vhd_flag(s->bat.status,
+					       VHD_FLAG_BAT_WRITE_STARTED))
+				add_to_tail(&s->bat.queued, r);
+			else 
+				add_to_tail(&bat_list, r);
+		}
+
+		/* we're done.  signal completion */
+		if (err || bat_entry(s, blk) != DD_BLK_UNUSED) {
 			rsp += r->cb(dd, err, r->lsec, 
 				     r->nr_secs, r->id, r->private);
 			free_vhd_request(s, r);
@@ -2539,6 +2563,15 @@ finish_bitmap_write(struct disk_driver *dd, struct vhd_request *req, int err)
 	if (bm_list.head) 
 		schedule_bitmap_write(s, blk, 0, bm_list.head);
 
+	/* data writes failed, and no pending
+	 * writes need to update bat, so unlock it. */
+	if (s->bat.writes_started == s->bat.writes_finished &&
+	    !test_vhd_flag(s->bat.status, VHD_FLAG_BAT_WRITE_STARTED)) {
+		s->bat.writes_started  = 0;
+		s->bat.writes_finished = 0;
+		clear_vhd_flag(s->bat.status, VHD_FLAG_BAT_LOCKED);
+	}
+
 	tp_log(&s->tp, req->lsec, TAPPROF_OUT);
 	s->returned++;
 	TRACE(s);
@@ -2551,14 +2584,20 @@ finish_bitmap_write(struct disk_driver *dd, struct vhd_request *req, int err)
 static int
 finish_bat_write(struct disk_driver *dd, struct vhd_request *req, int err)
 {
-	int rsp = 0;
-	struct vhd_request *r, *next;
+	int rsp = 0, retry = 0;
+	struct vhd_request *r, *next, *tail = NULL;
 	struct vhd_state   *s = (struct vhd_state *)dd->private;
 
 	ASSERT(test_vhd_flag(s->bat.status, VHD_FLAG_BAT_LOCKED) &&
 	       test_vhd_flag(s->bat.status, VHD_FLAG_BAT_WRITE_STARTED));
 
 	tp_log(&s->tp, req->lsec, TAPPROF_IN);
+
+	if (req->next) {
+		tail = req->next;
+		while (tail->next)
+			tail = tail->next;
+	}
 
 	if (!err) {
 		/* success: update in-memory bat */
@@ -2569,6 +2608,19 @@ finish_bat_write(struct disk_driver *dd, struct vhd_request *req, int err)
 		if ((s->next_db + s->bm_secs) % s->spp)
 			s->next_db += (s->spp - 
 				       ((s->next_db + s->bm_secs) % s->spp));
+	} else if (s->bat.queued.head) {
+		/* error and more requests waiting: retry */
+		if (tail) {
+			/* splice current requests and queued requests */
+			r = req->next;
+			tail->next = s->bat.queued.head;
+		} else
+			r = s->bat.queued.head;
+		
+		retry = 1;
+		req->next = NULL;
+		clear_req_list(&s->bat.queued);
+		schedule_bat_write(s, r->lsec / s->spb, r);
 	}
 
 	r = req->next;
@@ -2577,15 +2629,27 @@ finish_bat_write(struct disk_driver *dd, struct vhd_request *req, int err)
 		rsp += r->cb(dd, err, r->lsec, r->nr_secs, r->id, r->private);
 		free_vhd_request(s, r);
 		r = next;
-		
+
+		if (!r && !err) {
+			r = s->bat.queued.head;
+			clear_req_list(&s->bat.queued);
+		}
+
 		s->returned++;
 		s->wwrites--;
 		TRACE(s);
 	}
 
-	s->bat.pbw_blk    = 0;
-	s->bat.pbw_offset = 0;
-	clear_vhd_flag(s->bat.status, VHD_FLAG_BAT_LOCKED);
+	if (retry) 
+		set_vhd_flag(s->bat.status, VHD_FLAG_BAT_RETRY);
+	else {
+		s->bat.pbw_blk         = 0;
+		s->bat.pbw_offset      = 0;
+		s->bat.writes_started  = 0;
+		s->bat.writes_finished = 0;
+		clear_vhd_flag(s->bat.status, VHD_FLAG_BAT_RETRY);
+		clear_vhd_flag(s->bat.status, VHD_FLAG_BAT_LOCKED);
+	}
 	clear_vhd_flag(s->bat.status, VHD_FLAG_BAT_WRITE_STARTED);
 
 	tp_log(&s->tp, req->lsec, TAPPROF_OUT);
