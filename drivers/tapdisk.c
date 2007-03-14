@@ -43,6 +43,27 @@
 #define INPUT 0
 #define OUTPUT 1
 
+#if defined(USE_NFS_LOCKS)
+#if defined(EXCLUSIVE_LOCK)
+#define UNLOCK_VDI(d,s) unlock(d->name, s->vm_uuid);
+#define LOCK_VDI(d,s,lval,clause)                                               \
+        if ((lval = lock(d->name, s->vm_uuid, 0)) < 0) {                        \
+                DPRINTF("failed to get lock for %s, err=%d\n", d->name, lval);  \
+                clause;                                                         \
+        }
+#else
+#define UNLOCK_VDI(d,s) unlock(d->name, s->vm_uuid, (d->flags & TD_RDONLY) ? 1 : 0);
+#define LOCK_VDI(d,s,lval,clause)                                                        \
+        if ((lval = lock(d->name, s->vm_uuid, 0, (d->flags & TD_RDONLY) ? 1 : 0)) < 0) { \
+                DPRINTF("failed to get lock for %s, err=%d\n", d->name, lval);           \
+                clause;                                                                  \
+        }
+#endif
+#else
+#define UNLOCK_VDI(d,s)
+#define LOCK_VDI(d,s,lval) lval;
+#endif
+
 static int maxfds, fds[2], run = 1;
 
 static pid_t process;
@@ -279,14 +300,7 @@ static void unmap_disk(struct td_state *s)
 	dd = s->disks;
 	while (dd) {
 		tmp = dd->next;
-#if defined(USE_NFS_LOCKS)
-#if defined(EXCLUSIVE_LOCK)
-                unlock(dd->name, s->vm_uuid);
-#else
-                unlock(dd->name, s->vm_uuid, (dd->flags & TD_RDONLY) ? 1 : 0);
-#endif
-#endif
-
+                UNLOCK_VDI(dd,s);
 		dd->drv->td_close(dd);
 		free_driver(dd);
 		dd = tmp;
@@ -325,23 +339,14 @@ static int open_disk(struct td_state *s,
 	if (!d)
 		return -ENOMEM;
 
-#if defined(USE_NFS_LOCKS)
-#if defined(EXCLUSIVE_LOCK)
-        if ((lval = lock(d->name, s->vm_uuid, 0)) < 0)
-#else
-        if ((lval = lock(d->name, s->vm_uuid, 0, (d->flags & TD_RDONLY) ? 1 : 0)) < 0)
-#endif
-        {
-                DPRINTF("failed to get lock for %s, err=%d\n", d->name, lval);
-                goto fail;
-        }
-#endif
+        LOCK_VDI(d,s,lval, goto fail);
 
 	err = drv->td_open(d, path, flags);
 	if (err) {
+                UNLOCK_VDI(d,s);
 		free_driver(d);
 		s->disks = NULL;
-		return -ENOMEM;
+		return err;
 	}
 	pflags = flags | TD_RDONLY;
 
@@ -360,6 +365,8 @@ static int open_disk(struct td_state *s,
 		new = disk_init(s, get_driver(id.drivertype), dup, pflags);
 		if (!new)
 			goto fail;
+
+                LOCK_VDI(new, s, lval, goto fail);
 
 		err = new->drv->td_open(new, new->name, pflags);
 		if (err)
@@ -387,6 +394,8 @@ static int open_disk(struct td_state *s,
 	d = s->disks;
 	while (d) {
 		struct disk_driver *tmp = d->next;
+                /* remove lock from backing files if necessary */
+                UNLOCK_VDI(d, s);
 		d->drv->td_close(d);
 		free_driver(d);
 		d = tmp;
@@ -809,15 +818,7 @@ static int req_locks(void)
         while (ptr != NULL) {
                 struct disk_driver *dd;
                 td_for_each_disk(ptr->s, dd) {
-#if defined(EXCLUSIVE_LOCK)
-                        if ((lval = lock(dd->name, ptr->s->vm_uuid, 0)) < 0)
-#else
-                        if ((lval = lock(dd->name, ptr->s->vm_uuid, 0, (dd->flags & TD_RDONLY) ? 1 : 0)) < 0)
-#endif
-                        {
-                                DPRINTF("failed to get lock for %s, err=%d\n", dd->name, lval);
-                                return -1;
-                        }
+                        LOCK_VDI(dd,ptr->s, lval, return -1);
                 }
                 ptr = ptr->next;
         }
