@@ -369,8 +369,11 @@ static int open_disk(struct td_state *s,
                 LOCK_VDI(new, s, lval, goto fail);
 
 		err = new->drv->td_open(new, new->name, pflags);
-		if (err)
+		if (err) {
+			UNLOCK_VDI(new, s);
+			free_driver(new);
 			goto fail;
+		}
 
 		err = d->drv->td_validate_parent(d, new, 0);
 		if (err) {
