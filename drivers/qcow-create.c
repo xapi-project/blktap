@@ -41,8 +41,8 @@
 #include <string.h>
 #include "tapdisk.h"
 
-#if 1
-#define DFPRINTF(_f, _a...) fprintf ( stderr, _f , ## _a )
+#if 0
+#define DFPRINTF(_f, _a...) fprintf ( stdout, _f , ## _a )
 #else
 #define DFPRINTF(_f, _a...) ((void)0)
 #endif

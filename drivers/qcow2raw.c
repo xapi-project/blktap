@@ -42,7 +42,7 @@
 #include "tapdisk.h"
 
 #if 1
-#define DFPRINTF(_f, _a...) fprintf ( stderr, _f , ## _a )
+#define DFPRINTF(_f, _a...) fprintf ( stdout, _f , ## _a )
 #else
 #define DFPRINTF(_f, _a...) ((void)0)
 #endif
@@ -214,7 +214,7 @@ int main(int argc, char *argv[])
 			exit(-1);
 		}
 	} else {		
-		fprintf(stderr, "WARNING: All existing data in "
+		fprintf(stdout, "WARNING: All existing data in "
 			"%s will be overwritten.\nDo you wish to continue? "
 			"(y or n)  ",
 			argv[1]);

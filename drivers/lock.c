@@ -182,7 +182,7 @@ int lock(char *fn_to_lock, char *uuid, int force, int readonly)
         char *lockfn_flink = 0;
         char *buf = 0;
         int fd;
-        int status;
+        int status = 0;
         struct stat stat1, stat2;
         int retry_attempts = 0;
         int clstat;

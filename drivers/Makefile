@@ -4,7 +4,7 @@ include $(XEN_ROOT)/tools/Rules.mk
 INCLUDES += -I.. -I../lib
 
 IBIN         = blktapctrl tapdisk
-QCOW_UTIL    = img2qcow qcow2raw qcow-create
+QCOW_UTIL    = img2qcow qcow2raw qcow-create qcow-query
 VHD_UTIL     = vhd-create
 INST_DIR     = /usr/sbin
 LIBAIO_DIR   = $(XEN_ROOT)/tools/libaio/src
@@ -57,15 +57,15 @@ tapdisk: $(BLK-OBJS) tapdisk.c
 		$(AIOLIBS) $(LIBS)
 
 .PHONY: qcow-util
-qcow-util: img2qcow qcow2raw qcow-create
+qcow-util: $(QCOW_UTIL)
 
-img2qcow qcow2raw qcow-create: %: $(BLK-OBJS)
+$(QCOW_UTIL): %: $(BLK-OBJS)
 	$(CC) $(CFLAGS) -o $* $(BLK-OBJS) $*.c $(AIOLIBS) $(LIBS)
 
 .PHONY: vhd-util
-vhd-util: vhd-create
+vhd-util: $(VHD_UTIL)
 
-vhd-create: %: $(BLK-OBJS)
+$(VHD_UTIL): %: $(BLK-OBJS)
 	$(CC) $(CFLAGS) -o $* $(BLK-OBJS) $*.c $(AIOLIBS) $(LIBS)
 
 
