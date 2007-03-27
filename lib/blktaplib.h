@@ -126,6 +126,7 @@ typedef struct blkif {
 	pid_t tappid;
 	int drivertype;
 	uint16_t cookie;
+	int err;
 } blkif_t;
 
 typedef struct blkif_info {
@@ -136,10 +137,12 @@ typedef struct blkif_info {
 void register_new_devmap_hook(int (*fn)(blkif_t *blkif));
 void register_new_unmap_hook(int (*fn)(blkif_t *blkif));
 void register_new_blkif_hook(int (*fn)(blkif_t *blkif));
+void register_new_checkpoint_hook(int (*fn)(blkif_t *blkif, char *cp_uuid));
 blkif_t *blkif_find_by_handle(domid_t domid, unsigned int handle);
 blkif_t *alloc_blkif(domid_t domid);
 int blkif_init(blkif_t *blkif, long int handle, long int pdev, 
                long int readonly);
+int blkif_checkpoint(blkif_t *blkif, char *cp_uuid);
 void free_blkif(blkif_t *blkif);
 void __init_blkif(void);
 
@@ -193,20 +196,33 @@ typedef struct msg_pid {
 	pid_t     pid;
 } msg_pid_t;
 
+typedef struct msg_cp {
+	int       cp_uuid_off;
+	int       cp_uuid_len;
+	int       cp_drivertype;
+} msg_cp_t;
+
+struct cp_request {
+	char     *cp_uuid;
+	int       cp_drivertype;
+};
+
 #define READ 0
 #define WRITE 1
 
 /*Control Messages between manager and tapdev*/
-#define CTLMSG_PARAMS      1
-#define CTLMSG_IMG         2
-#define CTLMSG_IMG_FAIL    3
-#define CTLMSG_NEWDEV      4
-#define CTLMSG_NEWDEV_RSP  5
-#define CTLMSG_NEWDEV_FAIL 6
-#define CTLMSG_CLOSE       7
-#define CTLMSG_CLOSE_RSP   8
-#define CTLMSG_PID         9
-#define CTLMSG_PID_RSP     10
+#define CTLMSG_PARAMS          1
+#define CTLMSG_IMG             2
+#define CTLMSG_IMG_FAIL        3
+#define CTLMSG_NEWDEV          4
+#define CTLMSG_NEWDEV_RSP      5
+#define CTLMSG_NEWDEV_FAIL     6
+#define CTLMSG_CLOSE           7
+#define CTLMSG_CLOSE_RSP       8
+#define CTLMSG_PID             9
+#define CTLMSG_PID_RSP         10
+#define CTLMSG_CHECKPOINT      11
+#define CTLMSG_CHECKPOINT_RSP  12
 
 /* xenstore/xenbus: */
 #define DOMNAME "Domain-0"

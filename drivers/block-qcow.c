@@ -1327,6 +1327,14 @@ int qcow_create(const char *filename, uint64_t total_size,
 	return 0;
 }
 
+int tdqcow_snapshot(struct disk_id *pid, char *name, 
+		    uint64_t size, td_flag_t flags)
+{
+	if (pid->drivertype != DISK_TYPE_QCOW)
+		return -EINVAL;
+	return qcow_create(name, size, pid->name, 1);
+}
+
 int qcow_make_empty(struct tdqcow_state *s)
 {
 	uint32_t l1_length = s->l1_size * sizeof(uint64_t);
@@ -1477,5 +1485,6 @@ struct tap_disk tapdisk_qcow = {
 	.td_close            = tdqcow_close,
 	.td_do_callbacks     = tdqcow_do_callbacks,
 	.td_get_parent_id    = tdqcow_get_parent_id,
-	.td_validate_parent  = tdqcow_validate_parent
+	.td_validate_parent  = tdqcow_validate_parent,
+	.td_snapshot         = tdqcow_snapshot
 };

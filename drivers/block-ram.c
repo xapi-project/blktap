@@ -299,5 +299,6 @@ struct tap_disk tapdisk_ram = {
 	.td_close           = tdram_close,
 	.td_do_callbacks    = tdram_do_callbacks,
 	.td_get_parent_id   = tdram_get_parent_id,
-	.td_validate_parent = tdram_validate_parent
+	.td_validate_parent = tdram_validate_parent,
+	.td_snapshot        = NULL
 };

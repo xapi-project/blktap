@@ -39,7 +39,9 @@
 #include "blktaplib.h"
 
 #if 0
-#define DPRINTF(_f, _a...) printf ( _f , ## _a )
+//#define DPRINTF(_f, _a...) printf ( _f , ## _a )
+#include <syslog.h>
+#define DPRINTF(_f, _a...) syslog(LOG_DEBUG, _f, ##_a)
 #else
 #define DPRINTF(_f, _a...) ((void)0)
 #endif
@@ -88,6 +90,12 @@ static int (*new_blkif_hook)(blkif_t *blkif) = NULL;
 void register_new_blkif_hook(int (*fn)(blkif_t *blkif))
 {
 	new_blkif_hook = fn;
+}
+
+static int (*new_checkpoint_hook)(blkif_t *blkif, char *cp_uuid) = NULL;
+void register_new_checkpoint_hook(int (*fn)(blkif_t *blkif, char *cp_uuid))
+{
+	new_checkpoint_hook = fn;
 }
 
 int blkif_init(blkif_t *blkif, long int handle, long int pdev, 
@@ -174,9 +182,17 @@ void free_blkif(blkif_t *blkif)
 		if (blkif->info!=NULL) {
 			free(blkif->info);
 		}
-		if (new_unmap_hook != NULL) new_unmap_hook(blkif);
+		if (new_unmap_hook != NULL && blkif->devnum != -1) 
+			new_unmap_hook(blkif);
 		free(blkif);
 	}
+}
+
+int blkif_checkpoint(blkif_t *blkif, char *cp_uuid)
+{
+	if (!new_checkpoint_hook)
+		return -1;
+	return new_checkpoint_hook(blkif, cp_uuid);
 }
 
 void __init_blkif(void)
