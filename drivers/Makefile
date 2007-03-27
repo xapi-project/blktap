@@ -1,4 +1,4 @@
-XEN_ROOT ?= ../../..
+XEN_ROOT = ../../..
 include $(XEN_ROOT)/tools/Rules.mk
 
 INCLUDES += -I.. -I../lib
@@ -43,6 +43,7 @@ BLK-OBJS  += block-qcow.o
 BLK-OBJS  += aes.o
 BLK-OBJS  += lockex.o
 BLK-OBJS  += lock.o
+BLK-OBJS  += atomicio.o
 
 all: $(IBIN) vhd-util qcow-util
 

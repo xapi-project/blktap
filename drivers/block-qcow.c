@@ -38,6 +38,7 @@
 #include "bswap.h"
 #include "aes.h"
 #include "tapdisk.h"
+#include "atomicio.h"
 
 #if 1
 #define ASSERT(_p) \
@@ -143,6 +144,7 @@ struct tdqcow_state {
 	uint32_t crypt_method;         /*current crypt method, 0 if no 
 					*key yet */
 	uint32_t crypt_method_header;  /**/
+	int synch;                     /*Use Synchronous read/write syscalls*/
 	AES_KEY aes_encrypt_key;       /*AES key*/
 	AES_KEY aes_decrypt_key;       /*AES key*/
         /* libaio state */
@@ -193,7 +195,10 @@ static int init_aio_state(struct disk_driver *dd)
                 } else {
                         DPRINTF("Couldn't get fd for AIO poll support.  This "
                                 "is probably because your kernel does not "
-                                "have the aio-poll patch applied.\n");
+                                "have the aio-poll patch applied. Reverting "
+				"to synchronous path.\n");
+			s->synch = 1;
+			goto finish;
                 }
 		goto fail;
 	}
@@ -203,6 +208,7 @@ static int init_aio_state(struct disk_driver *dd)
 
         DPRINTF("AIO state initialised\n");
 
+ finish:
         return 0;
 
  fail:
@@ -804,7 +810,8 @@ static inline void init_fds(struct disk_driver *dd)
 	for(i = 0; i < MAX_IOFD; i++) 
 		dd->io_fd[i] = 0;
 
-	dd->io_fd[0] = s->poll_fd;
+	if (!s->synch)
+		dd->io_fd[0] = s->poll_fd;
 }
 
 /* Open the disk file and initialize qcow state. */
@@ -1013,6 +1020,12 @@ int tdqcow_queue_read(struct disk_driver *dd, uint64_t sector,
 			memcpy(buf, s->cluster_cache + index_in_cluster * 512, 
 			       512 * n);
 			rsp += cb(dd, 0, sector, n, id, private);
+		} else if (s->synch) {
+			lseek(s->fd, cluster_offset + index_in_cluster
+                                      * 512, SEEK_SET);
+			ret = atomicio(read, s->fd, buf, n * 512);
+			rsp += cb(dd, 0, sector, n, id, private);
+			aio_unlock(s, sector);
 		} else {
 			async_read(s, n * 512, 
 				   (cluster_offset + index_in_cluster * 512),
@@ -1031,7 +1044,7 @@ int tdqcow_queue_write(struct disk_driver *dd, uint64_t sector,
 		       int id, void *private)
 {
 	struct tdqcow_state *s = (struct tdqcow_state *)dd->private;
-	int ret = 0, index_in_cluster, n, i;
+	int ret = 0, rsp = 0, index_in_cluster, n, i;
 	uint64_t cluster_offset, sec, nr_secs;
 
 	sec     = sector;
@@ -1069,6 +1082,12 @@ int tdqcow_queue_write(struct disk_driver *dd, uint64_t sector,
 				    (cluster_offset + index_in_cluster*512),
 				    (char *)s->cluster_data, cb, id, sector, 
 				    private);
+		} else if (s->synch) {
+			lseek(s->fd, cluster_offset + index_in_cluster
+                                      * 512, SEEK_SET);
+			ret = atomicio(vwrite, s->fd, buf, n * 512);
+			rsp += cb(dd, 0, sector, n, id, private);
+			aio_unlock(s, sector);
 		} else {
 			async_write(s, n * 512, 
 				    (cluster_offset + index_in_cluster*512),
@@ -1081,7 +1100,7 @@ int tdqcow_queue_write(struct disk_driver *dd, uint64_t sector,
 	}
 	s->cluster_cache_offset = -1; /* disable compressed cache */
 
-	return 0;
+	return rsp;
 }
  		
 int tdqcow_submit(struct disk_driver *dd)

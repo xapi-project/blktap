@@ -273,11 +273,13 @@ int main(int argc, char *argv[])
 		
 
 		/*Check AIO FD*/
-		LOCAL_FD_SET(&readfds);
-                ret = select(maxfds + 1, &readfds, (fd_set *) 0,
-                             (fd_set *) 0, &timeout);
+		if (io_fd[0] > 0) {
+			LOCAL_FD_SET(&readfds);
+			ret = select(maxfds + 1, &readfds, (fd_set *) 0,
+				     (fd_set *) 0, &timeout);
 			     
-		if (ret > 0) dd.drv->td_do_callbacks(&dd, 0);
+			if (ret > 0) dd.drv->td_do_callbacks(&dd, 0);
+		}
 		if (complete && (returned_events == submit_events)) 
 			running = 0;
 	}

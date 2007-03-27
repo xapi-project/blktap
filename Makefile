@@ -1,6 +1,6 @@
 ## export XEN_ROOT = /path/to/xen/tree
 ## if XEN_ROOT is not otherwise set, assume standard xen tree structure
-XEN_ROOT ?= ../..
+XEN_ROOT = ../..
 include $(XEN_ROOT)/tools/Rules.mk
 
 SUBDIRS-y :=
