@@ -40,22 +40,9 @@
 #include <linux/fs.h>
 #include <string.h>
 #include "bswap.h"
+#include "tapdisk.h"
 
 #define MAX_NAME_LEN 1000
-
-typedef struct QCowHeader {
-        uint32_t magic;
-        uint32_t version;
-        uint64_t backing_file_offset;
-        uint32_t backing_file_size;
-        uint32_t mtime;
-        uint64_t size; /* in bytes */
-        uint8_t cluster_bits;
-        uint8_t l2_bits;
-        uint32_t crypt_method;
-        uint64_t l1_table_offset;
-} QCowHeader;
-
 
 void help(void)
 {
@@ -65,36 +52,37 @@ void help(void)
 	exit(-1);
 }
 
-int query_size(char *filename)
+int query_size(struct disk_driver *dd)
+{	
+	struct td_state *bs = dd->td_state;
+
+	return bs->size << 9;
+}
+
+char *query_parent(struct disk_driver *dd)
 {
-  int fd,len;
-  QCowHeader header;
+	struct disk_id *id = malloc(sizeof(struct disk_id));
+	int ret;
 
-  fd = open(filename, O_RDWR | O_LARGEFILE);
-  if (fd < 0) {
-    fprintf(stderr,"Unable to open %s (%d)\n",filename,0 - errno);
-    exit(-1);
-  }
-
-  if ((len = read(fd, &header, sizeof(QCowHeader))) != sizeof(QCowHeader)) {
-    fprintf(stderr,"Failed to read %d bytes (%d)\n",sizeof(QCowHeader),len);
-    exit(-1);
-  }
-
-  close(fd);
-
-  be64_to_cpus(&header.size);
-  return header.size/(1024 * 1024);
+	ret = dd->drv->td_get_parent_id(dd, id);
+	if (ret == TD_NO_PARENT || ret != 0) {
+		return NULL;
+	}
+	return id->name;
 }
 
 int main(int argc, char *argv[])
 {
 	int ret = -1, c;
-	int size = 0;
-	char filename[MAX_NAME_LEN];
+	int size = 0, parent = 0;
+	char filename[MAX_NAME_LEN], *ptr = NULL;
+	struct disk_driver ddqcow;
+
+
+	ddqcow.td_state = malloc(sizeof(struct td_state));
 
         for(;;) {
-                c = getopt(argc, argv, "hv");
+                c = getopt(argc, argv, "hvp");
                 if (c == -1)
                         break;
                 switch(c) {
@@ -104,6 +92,9 @@ int main(int argc, char *argv[])
                         break;
                 case 'v':
 		  size = 1;
+			break;
+                case 'p':
+		  parent = 1;
 			break;
 		default:
 			fprintf(stderr, "Unknown option\n");
@@ -116,8 +107,26 @@ int main(int argc, char *argv[])
 	  fprintf(stderr,"Device name too long\n");
 	  exit(-1);
         }
+
+	ddqcow.drv = &tapdisk_qcow;
+	ddqcow.private = malloc(ddqcow.drv->private_data_size);
+
+        if (ddqcow.drv->td_open(&ddqcow, filename, TD_RDONLY)!=0) {
+		fprintf(stderr, "Unable to open Qcow file [%s]\n",filename);
+		exit(-1);
+	} 
+
 	if (size) 
-	  printf("%d\n",query_size(filename));
+		printf("%d\n",query_size(&ddqcow));
+
+	if (parent) {
+		ptr = query_parent(&ddqcow);
+		if (!ptr) {
+			printf("Query failed\n");
+			return EINVAL;
+		}
+		printf("%s\n",ptr);
+	}
 
 	return 0;
 }
