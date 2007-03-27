@@ -4,16 +4,10 @@
  *
  */
 
-#include <errno.h>
 #include <fcntl.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
-#include <sys/statvfs.h>
-#include <sys/stat.h>
-#include <sys/ioctl.h>
-#include <linux/fs.h>
-#include <string.h>
 
 #define TAPDISK
 #include "tapdisk.h"
@@ -31,8 +25,8 @@ help(void)
 {
 	fprintf(stderr, "vhd-utils: v1.0.0\n");
 	fprintf(stderr, 
-		"usage: vhd-create [-h help] [-r reserve] <SIZE(MB)> <FILENAME> "
-		"[<BACKING_FILENAME>]\n"); 
+		"usage: vhd-create [-h help] [-r reserve] <SIZE(MB)> "
+		"<FILENAME> [<BACKING_FILENAME>]\n"); 
 	exit(-1);
 }
 
@@ -42,8 +36,6 @@ main(int argc, char **argv)
 	uint64_t size;
 	int ret = -1, c, sparse = 1;
 	char filename[MAX_NAME_LEN], bfilename[MAX_NAME_LEN], *backing = NULL;
-	struct td_state tds;
-	struct disk_driver dd;
 
         for(;;) {
                 c = getopt(argc, argv, "hr");
@@ -91,16 +83,8 @@ main(int argc, char **argv)
 
 	DFPRINTF("Creating file size %llu, name %s\n",
 		 (long long unsigned)size, filename);
-	
-	dd.drv      = dtypes[DISK_TYPE_VHD]->drv;
-	dd.td_state = &tds;
-	dd.private  = malloc(dd.drv->private_data_size);
-	if (!dd.private) {
-		fprintf(stderr, "Error: no memory\n");
-		exit(-1);
-	}
 
-	ret = vhd_create(&dd, filename, size, backing, sparse);
+	ret = vhd_create(filename, size, backing, sparse);
 	if (ret < 0) 
 		fprintf(stderr, "Unable to create VHD file\n");
 

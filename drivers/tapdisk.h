@@ -81,6 +81,9 @@
 typedef uint32_t td_flag_t;
 
 #define TD_RDONLY                1
+#define TD_DRAIN_QUEUE           2
+#define TD_CHECKPOINT            4
+#define TD_MULTITYPE_CP          8
 
 struct td_state;
 struct tap_disk;
@@ -109,6 +112,9 @@ struct td_state {
 	void *ring_info;
 	void *fd_entry;
 	char *vm_uuid;
+	char *cp_uuid;
+	int   cp_drivertype;
+	td_flag_t flags;
 	unsigned long      sector_size;
 	unsigned long long size;
 	unsigned int       info;
@@ -137,6 +143,8 @@ struct tap_disk {
 	int (*td_get_parent_id)  (struct disk_driver *dd, struct disk_id *id);
 	int (*td_validate_parent)(struct disk_driver *dd, 
 				  struct disk_driver *p, td_flag_t flags);
+	int (*td_snapshot)       (struct disk_id *parent_id, char *child_name,
+				  uint64_t size, td_flag_t td_flags);
 };
 
 typedef struct disk_info {
@@ -267,6 +275,6 @@ typedef struct fd_list_entry {
 
 int qcow_create(const char *filename, uint64_t total_size,
 		const char *backing_file, int flags);
-int vhd_create(struct disk_driver *dd, const char *filename, 
-	       uint64_t total_size, const char *backing_file, int flags);
+int vhd_create(const char *filename, uint64_t total_size, 
+	       const char *backing_file, int flags);
 #endif /*TAPDISK_H_*/

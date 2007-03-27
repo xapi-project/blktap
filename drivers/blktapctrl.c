@@ -277,12 +277,14 @@ static int write_msg(int fd, int msgtype, void *ptr, void *ptr2)
 	msg_hdr_t *msg;
 	msg_params_t *msg_p;
 	msg_newdev_t *msg_dev;
+	msg_cp_t *msg_cp;
 	char *buf, *path;
 	int msglen, len, ret;
 	fd_set writefds;
 	struct timeval timeout;
 	image_t *image, *img;
 	uint32_t seed;
+	struct cp_request *req;
 
 	blkif = (blkif_t *)ptr;
 	blk = blkif->info;
@@ -294,7 +296,7 @@ static int write_msg(int fd, int msgtype, void *ptr, void *ptr2)
 	case CTLMSG_PARAMS:
 		path = (char *)ptr2;
 		DPRINTF("Write_msg called: CTLMSG_PARAMS, sending [%s, %s]\n",
-			blk->params, path);
+			path, blk->vm_uuid);
 
 		msglen = sizeof(msg_hdr_t) + sizeof(msg_params_t) +
 			strlen(path) + strlen(blk->vm_uuid) + 2;
@@ -370,6 +372,28 @@ static int write_msg(int fd, int msgtype, void *ptr, void *ptr2)
 		msg->len = msglen;
 		msg->drivertype = blkif->drivertype;
 		msg->cookie = blkif->cookie;
+		
+		break;
+
+	case CTLMSG_CHECKPOINT:
+		DPRINTF("Write_msg called: CTLMSG_CHECKPOINT\n");
+		req = (struct cp_request *)ptr2;
+		msglen = sizeof(msg_hdr_t) + sizeof(msg_cp_t) + 
+			strlen(req->cp_uuid) + 1;
+		buf = malloc(msglen);
+
+		msg = (msg_hdr_t *)buf;
+		msg->type = CTLMSG_CHECKPOINT;
+		msg->len = msglen;
+		msg->drivertype = blkif->drivertype;
+		msg->cookie = blkif->cookie;
+
+		msg_cp = (msg_cp_t *)(buf + sizeof(msg_hdr_t));
+		msg_cp->cp_drivertype = req->cp_drivertype;
+		msg_cp->cp_uuid_off = sizeof(msg_hdr_t) + sizeof(msg_cp_t);
+		msg_cp->cp_uuid_len = strlen(req->cp_uuid) + 1;
+		memcpy(&buf[msg_cp->cp_uuid_off], 
+		       req->cp_uuid, msg_cp->cp_uuid_len);
 		
 		break;
 		
@@ -467,6 +491,16 @@ static int read_msg(int fd, int msgtype, void *ptr)
 				DPRINTF("\tPID: [%d]\n",blkif->tappid);
 			}
 			break;
+
+		case CTLMSG_CHECKPOINT_RSP:
+			DPRINTF("Received CTLMSG_CHECKPOINT_RSP\n");
+			if (msgtype != CTLMSG_CHECKPOINT_RSP) 
+				ret = 0;
+			else
+				blkif->err = 
+					*((int *)(buf + sizeof(msg_hdr_t)));
+			break;
+			
 		default:
 			DPRINTF("UNKNOWN MESSAGE TYPE RECEIVED\n");
 			ret = 0;
@@ -599,6 +633,36 @@ int unmap_blktapctrl(blkif_t *blkif)
 	return 0;
 }
 
+int blktapctrl_checkpoint(blkif_t *blkif, char *cp_request)
+{
+	char    *path;
+	int      drivertype;
+	blkif_t *tmp = NULL;
+	struct cp_request req;
+
+	DPRINTF("Creating checkpoint %s\n", cp_request);
+	if (test_path(cp_request, &path, &drivertype, tmp) == -1) {
+		DPRINTF("invalid checkpoint request\n");
+		return -EINVAL;
+	}
+
+	req.cp_uuid = path;
+	req.cp_drivertype = drivertype;
+
+	if (write_msg(blkif->fds[WRITE], 
+		      CTLMSG_CHECKPOINT, blkif, &req) <= 0) {
+		DPRINTF("Write_msg failed - CLTMSG_CHECKPOINT\n");
+		return -EIO;
+	}
+
+	if (read_msg(blkif->fds[READ], CTLMSG_CHECKPOINT_RSP, blkif) <= 0) {
+		DPRINTF("Read_msg failed - CTLMSG_CHECKPOINT_RSP\n");
+		return -EIO;
+	}
+
+	return blkif->err;
+}
+
 int open_ctrl_socket(char *devname)
 {
 	int ret;
@@ -691,6 +755,7 @@ int main(int argc, char *argv[])
 	register_new_blkif_hook(blktapctrl_new_blkif);
 	register_new_devmap_hook(map_new_blktapctrl);
 	register_new_unmap_hook(unmap_blktapctrl);
+	register_new_checkpoint_hook(blktapctrl_checkpoint);
 
 	/* Attach to blktap0 */
 	asprintf(&devname,"%s/%s0", BLKTAP_DEV_DIR, BLKTAP_DEV_NAME);

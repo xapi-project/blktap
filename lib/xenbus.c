@@ -235,7 +235,7 @@ static void ueblktap_setup(struct xs_handle *h, char *bepath)
 	}
 
 	er = xs_printf(h, be->backpath, "sector-size", "%lu",
-			be->blkif->ops->get_secsize(be->blkif));
+		       be->blkif->ops->get_secsize(be->blkif));
 
 	if (er == 0) {
 		DPRINTF("ERROR: Failed writing sector-size");
@@ -327,10 +327,32 @@ static void ueblktap_probe(struct xs_handle *h, struct xenbus_watch *w,
 			free(bepath);
 		return;
 	}
-	
+
 	/* Are we already tracking this device? */
-	if (be_exists_be(bepath))
+	if (be_exists_be(bepath)) {
+		/* check for snapshot request */
+		char *cp_uuid, *cpp, *rsp;
+		if (asprintf(&cpp, "%s/checkpoint", bepath) == -1)
+			goto free_be;
+		er = xs_gather(h, cpp, "rsp", NULL, &rsp, NULL);
+		if (!er) {
+			/* request already serviced */
+			free(rsp);
+			free(cpp);
+			goto free_be;
+		}
+		er = xs_gather(h, cpp, "cp_uuid", NULL, &cp_uuid, NULL);
+		if (!er) {
+			struct backend_info *binfo = be_lookup_be(bepath);
+			if (binfo) {
+				er = blkif_checkpoint(binfo->blkif, cp_uuid);
+				xs_printf(h, cpp, "rsp", "%d", er);
+			}
+			free(cp_uuid);
+		}
+		free(cpp);
 		goto free_be;
+	}
 	
 	be->backpath = bepath;
 	be->frontpath = frontend;
@@ -364,8 +386,7 @@ int add_blockdevice_probe_watch(struct xs_handle *h, const char *domid)
 	char *path;
 	struct xenbus_watch *vbd_watch;
 	
-	asprintf(&path, "/local/domain/%s/backend/tap", domid);
-	if (path == NULL) 
+	if (asprintf(&path, "/local/domain/%s/backend/tap", domid) == -1)
 		return -ENOMEM;
 	
 	vbd_watch = (struct xenbus_watch *)malloc(sizeof(struct xenbus_watch));
@@ -403,8 +424,7 @@ int watch_for_domid(struct xs_handle *h)
 	struct xenbus_watch *domid_watch;
 	char *path = NULL;
 
-	asprintf(&path, "/local/domain");
-	if (path == NULL) 
+	if (asprintf(&path, "/local/domain") == -1)
 		return -ENOMEM;
 
 	domid_watch = malloc(sizeof(struct xenbus_watch));

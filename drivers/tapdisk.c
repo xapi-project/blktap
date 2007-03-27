@@ -118,14 +118,17 @@ static inline int LOCAL_FD_SET(fd_set *readfds)
 	ptr = fd_start;
 	while (ptr != NULL) {
 		if (ptr->tap_fd) {
-			FD_SET(ptr->tap_fd, readfds);
+			if (!(ptr->s->flags & TD_DRAIN_QUEUE)) {
+				FD_SET(ptr->tap_fd, readfds);
+				maxfds = (ptr->tap_fd > maxfds ? 
+					  ptr->tap_fd : maxfds);
+			}
 			td_for_each_disk(ptr->s, dd) {
 				if (dd->io_fd[READ]) 
 					FD_SET(dd->io_fd[READ], readfds);
 				maxfds = (dd->io_fd[READ] > maxfds ? 
 					  dd->io_fd[READ] : maxfds);
 			}
-			maxfds = (ptr->tap_fd > maxfds ? ptr->tap_fd : maxfds);
 		}
 		ptr = ptr->next;
 	}
@@ -181,7 +184,7 @@ static struct td_state *state_init(char *vm_uuid)
 	struct td_state *s;
 	blkif_t *blkif;
 
-	s = malloc(sizeof(struct td_state));
+	s = calloc(1, sizeof(struct td_state));
 	blkif = s->blkif = malloc(sizeof(blkif_t));
 	s->vm_uuid = vm_uuid;
 	s->ring_info = calloc(1, sizeof(tapdev_info_t));
@@ -196,6 +199,8 @@ static struct td_state *state_init(char *vm_uuid)
 
 static void free_state(struct td_state *s)
 {
+	if (!s)
+		return;
 	free(s->fd_entry);
 	free(s->blkif);
 	free(s->vm_uuid);
@@ -229,10 +234,10 @@ static struct disk_driver *disk_init(struct td_state *s,
 
 static void free_driver(struct disk_driver *d)
 {
-	if (d->name)
-		free(d->name);
-	if (d->private)
-		free(d->private);
+	if (!d)
+		return;
+	free(d->name);
+	free(d->private);
 	free(d);
 }
 
@@ -328,7 +333,7 @@ static int open_disk(struct td_state *s,
 	td_flag_t pflags;
 	struct disk_id id;
 	struct disk_driver *d;
-        int lval;
+	int lval;
 
 	dup = strdup(path);
 	if (!dup)
@@ -341,9 +346,9 @@ static int open_disk(struct td_state *s,
 
         LOCK_VDI(d,s,lval, goto fail);
 
-	err = drv->td_open(d, path, flags);
+	err = d->drv->td_open(d, path, flags);
 	if (err) {
-                UNLOCK_VDI(d,s);
+		UNLOCK_VDI(d, s);
 		free_driver(d);
 		s->disks = NULL;
 		return err;
@@ -407,15 +412,159 @@ static int open_disk(struct td_state *s,
 	return -1;
 }
 
+static int write_checkpoint_rsp(int err)
+{
+	char buf[50];
+	msg_hdr_t *msg;
+	int msglen, len;
+
+	memset(buf, 0, sizeof(buf));
+	msg = (msg_hdr_t *)buf;
+	msglen = sizeof(msg_hdr_t) + sizeof(int);
+	msg->type = CTLMSG_CHECKPOINT_RSP;
+	msg->len = msglen;
+	*((int *)(buf + sizeof(msg_hdr_t))) = err;
+
+	len = write(fds[WRITE], buf, msglen);
+	return ((len == msglen) ? 0 : -errno);
+}
+
+static inline int drain_queue(struct td_state *s)
+{
+	int i;
+	blkif_t *blkif = s->blkif;
+
+	for (i = 0; i < MAX_REQUESTS; i++)
+		if (blkif->pending_list[i].secs_pending) {
+			s->flags |= TD_DRAIN_QUEUE;
+			return -EBUSY;
+		}
+
+	return 0;
+}
+
+static inline void start_queue(struct td_state *s)
+{
+	s->flags &= ~TD_DRAIN_QUEUE;
+}
+
+/*
+ * order of operations:
+ *  1: drain request queue
+ *  2: close orig_vdi
+ *  3: rename orig_vdi to cp_uuid
+ *  4: chmod(cp_uuid, 444) -- make snapshot immutable
+ *  5: snapshot(cp_uuid, orig_vdi) -- create new overlay named orig_vdi
+ *  6: open cp_uuid (parent) and orig_vdi (child)
+ *  7: add orig_vdi to head of disk list
+ *
+ * for crash recovery:
+ *  if cp_uuid exists but no orig_vdi: rename cp_uuid to orig_vdi
+ */
+static int checkpoint(struct td_state *s)
+{
+	int i, err, size;
+	uint64_t cp_size;
+	mode_t orig_mode;
+	char *orig, *snap;
+	struct stat stats;
+	struct disk_id pid;
+	td_flag_t flags = 0;
+	struct tap_disk *drv;
+	struct disk_driver *child, *parent;
+
+	parent   = s->disks;
+	orig     = parent->name;
+	snap     = s->cp_uuid;
+	pid.name = s->cp_uuid;
+	size     = sizeof(dtypes)/sizeof(disk_info_t *);
+
+	for (i = 0; i < size; i++)
+		if (dtypes[i]->drv == parent->drv) {
+			pid.drivertype = i;
+			break;
+		}
+
+	if (stat(snap, &stats) == 0) {
+		err = -EEXIST;
+		goto out;
+	}
+
+	stat(orig, &stats);
+	orig_mode = stats.st_mode;
+
+	drv = get_driver(s->cp_drivertype);
+	if (drv != parent->drv)
+		flags |= TD_MULTITYPE_CP;
+
+	err     = -ENOMEM;
+	cp_size = s->size << SECTOR_SHIFT;
+	child   = disk_init(s, drv, NULL, 0);
+	if (!child)
+		goto out;
+
+	parent->drv->td_close(parent);
+
+	if (rename(orig, snap)) {
+		err = -errno;
+		goto fail_close;
+	}
+
+	if (chmod(snap, S_IRUSR | S_IRGRP | S_IROTH)) {
+		err = -errno;
+		goto fail_rename;
+	}
+
+	err = drv->td_snapshot(&pid, orig, cp_size, flags);
+	if (err) 
+		goto fail_chmod;
+
+	child->name  = orig;
+	parent->name = snap;
+	s->cp_uuid   = NULL;
+
+	err = child->drv->td_open(child, child->name, 0);
+	if (err)
+		goto fail_chmod;
+
+	parent->flags |= TD_RDONLY;
+	err = parent->drv->td_open(parent, parent->name, TD_RDONLY);
+	if (err)
+		goto fail_parent;
+
+	child->next = parent;
+	s->disks    = child;
+	goto out;
+
+ fail_parent:
+	child->drv->td_close(child);
+ fail_chmod:
+	chmod(snap, orig_mode);
+ fail_rename:
+	if (rename(snap, orig))
+		DPRINTF("ERROR taking checkpoint, unable to revert!\n");
+ fail_close:
+	free_driver(child);
+	if (parent->drv->td_open(parent, orig, 0))
+		DPRINTF("ERROR taking checkpoint, unable to revert!\n");
+ out:
+	free(s->cp_uuid);
+	s->cp_uuid = NULL;
+	write_checkpoint_rsp(err);
+	s->flags &= ~TD_CHECKPOINT;
+	return 0;
+}
+
 static int read_msg(char *buf)
 {
 	int length, len, msglen, tap_fd, *io_fd;
-	char *path = NULL, *vm_uuid = NULL;
+	char *path = NULL, *vm_uuid = NULL, *cp_uuid = NULL;
 	image_t *img;
 	msg_hdr_t *msg;
 	msg_params_t *msg_p;
 	msg_newdev_t *msg_dev;
 	msg_pid_t *msg_pid;
+	msg_cp_t *msg_cp;
 	struct tap_disk *drv;
 	int ret = -1;
 	struct td_state *s = NULL;
@@ -480,9 +629,10 @@ static int read_msg(char *buf)
 				msglen = sizeof(msg_hdr_t);
 				msg->type = CTLMSG_IMG_FAIL;
 				msg->len = msglen;
-				if (s) free_state(s);
-				if (vm_uuid) free(vm_uuid);
+				free_state(s);
+				free(vm_uuid);
 			}
+
 			len = write(fds[WRITE], buf, msglen);
 			if (path) free(path);
 			return 1;
@@ -528,6 +678,46 @@ static int read_msg(char *buf)
 			msg_pid->pid = process;
 
 			len = write(fds[WRITE], buf, msglen);
+			return 1;
+
+		case CTLMSG_CHECKPOINT:
+			msg_cp = (msg_cp_t *)(buf + sizeof(msg_hdr_t));
+
+			ret = -EINVAL;
+			s = get_state(msg->cookie);
+			if (!s)
+				goto cp_fail;
+			if (s->cp_uuid) {
+				DPRINTF("concurrent checkpoints requested\n");
+				goto cp_fail;
+			}
+
+			ret = -EINVAL;
+			s->cp_drivertype = msg_cp->cp_drivertype;
+			drv = get_driver(s->cp_drivertype);
+			if (!drv || !drv->td_snapshot)
+				goto cp_fail;
+
+			ret = -ENOMEM;
+			s->cp_uuid = calloc(1, msg_cp->cp_uuid_len);
+			if (!s->cp_uuid)
+				goto cp_fail;
+			memcpy(s->cp_uuid, 
+			       &buf[msg_cp->cp_uuid_off], msg_cp->cp_uuid_len);
+
+			DPRINTF("%s: request to create checkpoint %s for %s\n",
+				__func__, s->cp_uuid, s->disks->name);
+
+			s->flags |= TD_CHECKPOINT;
+			if (drain_queue(s) == 0) {
+				checkpoint(s);
+				start_queue(s);
+			}
+
+			return 1;
+
+		cp_fail:
+			write_checkpoint_rsp(ret);
 			return 1;
 
 		default:
@@ -616,9 +806,9 @@ int send_responses(struct disk_driver *dd, int res,
 
 	if (res == -EBUSY && preq->submitting) 
 		return -EBUSY;  /* propagate -EBUSY back to higher layers */
-	if (res) 
+	if (res)
 		preq->status = BLKIF_RSP_ERROR;
-	
+
 	if (!preq->submitting && preq->secs_pending == 0) 
 	{
 		blkif_request_t tmp;
@@ -933,6 +1123,12 @@ int main(int argc, char *argv[])
 				if (FD_ISSET(ptr->tap_fd, &readfds) ||
 				    (info->busy.req && progress_made))
 					get_io_request(ptr->s);
+
+				if (ptr->s->flags & TD_CHECKPOINT)
+					if (drain_queue(ptr->s) == 0) {
+						checkpoint(ptr->s);
+						start_queue(ptr->s);
+					}
 
 				ptr = ptr->next;
 			}

@@ -103,6 +103,9 @@ do {                                                                   \
 #define VHD_FLAG_REQ_UPDATE_BITMAP   2
 #define VHD_FLAG_REQ_ENQUEUE         4
 
+#define VHD_FLAG_CR_SPARSE           1
+#define VHD_FLAG_CR_IGNORE_PARENT    2
+
 typedef uint8_t vhd_flag_t;
 
 struct vhd_request {
@@ -1156,8 +1159,8 @@ vhd_get_parent_id(struct disk_driver *child_dd, struct disk_id *id)
  * call set_parent before writing the bat.
  */
 int
-set_parent(struct vhd_state *child, 
-	   struct vhd_state *parent, char *parent_path)
+set_parent(struct vhd_state *child, struct vhd_state *parent, 
+	   struct disk_id *parent_id, vhd_flag_t flags)
 {
 	off64_t offset;
 	int err = 0, len;
@@ -1165,33 +1168,37 @@ set_parent(struct vhd_state *child,
 	struct prt_loc *loc;
 	iconv_t cd = (iconv_t)-1;
 	size_t inbytesleft, outbytesleft;
-	char *file, *absolute_path, *tmp;
+	char *file, *parent_path, *absolute_path = NULL, *tmp;
 	char *uri = NULL, *urip, *uri_utf8 = NULL, *uri_utf8p;
 
-	/* (using GNU, not POSIX, basename) */
-	file = basename(parent_path);
+	parent_path = parent_id->name;
+	file = basename(parent_path); /* (using GNU, not POSIX, basename) */
 	absolute_path = realpath(parent_path, NULL);
 
 	if (!absolute_path || strcmp(file, "") == 0) {
 		DPRINTF("ERROR: invalid path %s\n", parent_path);
 		err = -1;
-		goto fail;
+		goto out;
 	}
 
 	if (stat(absolute_path, &stats)) {
 		DPRINTF("ERROR stating %s\n", absolute_path);
 		err = -errno;
-		goto fail;
+		goto out;
 	}
 
 	child->hdr.prt_ts = vhd_time(stats.st_mtime);
-	uuid_copy(child->hdr.prt_uuid, parent->ftr.uuid);
+	if (parent)
+		uuid_copy(child->hdr.prt_uuid, parent->ftr.uuid);
+	else {
+		/* TODO: hack vhd metadata to store parent driver type */
+	}
 
 	cd = iconv_open("UTF-16", "ASCII");
 	if (cd == (iconv_t)-1) {
 		DPRINTF("ERROR creating character encoder context\n");
 		err = -errno;
-		goto fail;
+		goto out;
 	}
 	inbytesleft  = strlen(file);
 	outbytesleft = sizeof(child->hdr.prt_name);
@@ -1200,7 +1207,7 @@ set_parent(struct vhd_state *child,
 		  &outbytesleft) == (size_t)-1 || inbytesleft) {
 		DPRINTF("ERROR encoding parent file name %s\n", file);
 		err = -errno;
-		goto fail;
+		goto out;
 	}
 	iconv_close(cd);
 
@@ -1211,7 +1218,7 @@ set_parent(struct vhd_state *child,
 	if (!uri || !uri_utf8) {
 		DPRINTF("ERROR allocating uri\n");
 		err = -ENOMEM;
-		goto fail;
+		goto out;
 	}
 	sprintf(uri, "file://%s", absolute_path);
 
@@ -1219,7 +1226,7 @@ set_parent(struct vhd_state *child,
 	if (cd == (iconv_t)-1) {
 		DPRINTF("ERROR creating character encoder context\n");
 		err = -errno;
-		goto fail;
+		goto out;
 	}
 	inbytesleft  = len;
 	outbytesleft = len * 2;
@@ -1227,7 +1234,7 @@ set_parent(struct vhd_state *child,
 		  &outbytesleft) == (size_t)-1 || inbytesleft) {
 		DPRINTF("ERROR encoding uri %s\n", uri);
 		err = -errno;
-		goto fail;
+		goto out;
 	}
 
 	len             = (2 * len) - outbytesleft;
@@ -1244,48 +1251,44 @@ set_parent(struct vhd_state *child,
 	if (lseek64(child->fd, offset, SEEK_SET) == (off64_t)-1) {
 		DPRINTF("ERROR seeking to file locator\n");
 		err = -errno;
-		goto fail;
+		goto out;
 	}
 	if (write(child->fd, uri_utf8, len) != len) {
 		DPRINTF("ERROR writing file locator\n");
 		err = -errno;
-		goto fail;
+		goto out;
 	}
 
 	/* TODO: relative locator */
 
-	iconv_close(cd);
+	err = 0;
+
+ out:
+	if (cd != (iconv_t)-1)
+		iconv_close(cd);
 	free(uri);
 	free(uri_utf8);
 	free(absolute_path);
 
-	return 0;
-
- fail:
-	if (absolute_path)
-		free(absolute_path);
-	if (cd != (iconv_t)-1)
-		iconv_close(cd);
-	if (uri)
-		free(uri);
-	if (uri_utf8)
-		free(uri_utf8);
 	return err;
 }
 
 int
-vhd_create(struct disk_driver *dd, const char *name, 
-	   uint64_t total_size, const char *backing_file, int sparse)
+__vhd_create(const char *name, uint64_t total_size, 
+	     struct disk_id *backing_file, vhd_flag_t flags)
 {
-	u32 *bat, type;
-	struct vhd_state *s = (struct vhd_state *)dd->private;
-	struct hd_ftr  *ftr = &s->ftr;
-	struct dd_hdr  *hdr = &s->hdr;
+	struct hd_ftr *ftr;
+	struct dd_hdr *hdr;
+	struct vhd_state s;
 	uint64_t size, blks;
-	int fd, spb, err, i, BLK_SHIFT, ret;
+	u32 type, *bat = NULL;
+	int fd, spb, err, i, BLK_SHIFT, ret, sparse;
 
+	sparse = test_vhd_flag(flags, VHD_FLAG_CR_SPARSE);
 	BLK_SHIFT = 21;   /* 2MB blocks */
 
+	hdr  = &s.hdr;
+	ftr  = &s.ftr;
 	err  = -1;
 	bat  = NULL;
 
@@ -1299,8 +1302,8 @@ vhd_create(struct disk_driver *dd, const char *name,
 		"blks: %llu\n",	__func__, total_size, size, 
 		(uint64_t)1 << BLK_SHIFT, blks);
 
-	s->fd = fd = open(name, 
-			  O_WRONLY | O_CREAT | O_TRUNC | O_LARGEFILE, 0644);
+	s.fd = fd = open(name, 
+			 O_WRONLY | O_CREAT | O_TRUNC | O_LARGEFILE, 0644);
 	if (fd < 0)
 		return err;
 
@@ -1335,10 +1338,13 @@ vhd_create(struct disk_driver *dd, const char *name,
 		hdr->res1          = 0;
 
 		if (backing_file) {
-			vhd_flag_t flags;
+			struct vhd_state  *p = NULL;
+			vhd_flag_t         oflags;
 			struct td_state    tds;
-			struct vhd_state  *p;
 			struct disk_driver parent;
+
+			if (test_vhd_flag(flags, VHD_FLAG_CR_IGNORE_PARENT))
+				goto set_parent;
 
 			parent.td_state = &tds;
 			parent.private  = malloc(sizeof(struct vhd_state));
@@ -1346,12 +1352,11 @@ vhd_create(struct disk_driver *dd, const char *name,
 				DPRINTF("ERROR allocating parent state\n");
 				return -ENOMEM;
 			}
-			flags = VHD_FLAG_OPEN_RDONLY | VHD_FLAG_OPEN_NO_CACHE;
-			if ((ret = __vhd_open(&parent, 
-					      backing_file, flags)) != 0) {
-				DPRINTF("WARNING: %s is not a valid VHD file. "
-					"Attempting to snapshot unknown image "
-					"type.\n", backing_file);
+			oflags = VHD_FLAG_OPEN_RDONLY | VHD_FLAG_OPEN_NO_CACHE;
+			if ((ret = __vhd_open(&parent, backing_file->name, 
+					      oflags)) != 0) {
+				DPRINTF("ERROR: %s is not a valid VHD file.",
+					backing_file->name);
 				return ret;
 			}
 			p = (struct vhd_state *)parent.private;
@@ -1361,14 +1366,18 @@ vhd_create(struct disk_driver *dd, const char *name,
 					ftr->curr_size, p->ftr.curr_size);
 				return -EINVAL;
 			}
-			if ((ret = set_parent(s, p, 
-					      (char *)backing_file)) != 0) {
+
+		set_parent:
+			if ((ret = set_parent(&s, p, 
+					      backing_file, flags)) != 0) {
 				DPRINTF("ERROR attaching to parent %s (%d)\n",
-					backing_file, ret);
-				vhd_close(&parent);
+					backing_file->name, ret);
+				if (p)
+					vhd_close(&parent);
 				return ret;
 			}
-			vhd_close(&parent);
+			if (p)
+				vhd_close(&parent);
 		}
 
 		hdr->checksum = h_checksum(hdr);
@@ -1426,10 +1435,42 @@ vhd_create(struct disk_driver *dd, const char *name,
 	err = 0;
 
 out:
-	if (bat)
-		free(bat);
+	free(bat);
 	close(fd);
 	return err;
+}
+
+/*
+ * for now, vhd_create will only snapshot vhd images
+ */
+int
+vhd_create(const char *name, uint64_t total_size, 
+	   const char *backing_file, int sparse)
+{
+	struct disk_id id, *idp = NULL;
+	vhd_flag_t flags = ((sparse) ? VHD_FLAG_CR_SPARSE : 0);
+
+	if (backing_file) {
+		id.name = (char *)backing_file;
+		idp     = &id;
+	}
+
+	return __vhd_create(name, total_size, idp, flags);
+}
+
+/*
+ * vhd_snapshot supports snapshotting arbitrary image types
+ */
+int
+vhd_snapshot(struct disk_id *parent_id, 
+	     char *child_name, uint64_t size, td_flag_t td_flags)
+{
+	vhd_flag_t vhd_flags = VHD_FLAG_CR_SPARSE;
+
+	if (td_flags & TD_MULTITYPE_CP)
+		vhd_flags |= VHD_FLAG_CR_IGNORE_PARENT;
+
+	return __vhd_create(child_name, size, parent_id, vhd_flags);
 }
 
 static inline void
@@ -2585,19 +2626,13 @@ static int
 finish_bat_write(struct disk_driver *dd, struct vhd_request *req, int err)
 {
 	int rsp = 0, retry = 0;
-	struct vhd_request *r, *next, *tail = NULL;
+	struct vhd_request *r, *next, *tail;
 	struct vhd_state   *s = (struct vhd_state *)dd->private;
 
 	ASSERT(test_vhd_flag(s->bat.status, VHD_FLAG_BAT_LOCKED) &&
 	       test_vhd_flag(s->bat.status, VHD_FLAG_BAT_WRITE_STARTED));
 
 	tp_log(&s->tp, req->lsec, TAPPROF_IN);
-
-	if (req->next) {
-		tail = req->next;
-		while (tail->next)
-			tail = tail->next;
-	}
 
 	if (!err) {
 		/* success: update in-memory bat */
@@ -2610,8 +2645,12 @@ finish_bat_write(struct disk_driver *dd, struct vhd_request *req, int err)
 				       ((s->next_db + s->bm_secs) % s->spp));
 	} else if (s->bat.queued.head) {
 		/* error and more requests waiting: retry */
-		if (tail) {
+		if (req->next) {
 			/* splice current requests and queued requests */
+			tail = req->next;
+			while (tail->next)
+				tail = tail->next;
+
 			r = req->next;
 			tail->next = s->bat.queued.head;
 		} else
@@ -2771,9 +2810,9 @@ vhd_do_callbacks(struct disk_driver *dd, int sid)
 		err = (ep->res == io->u.c.nbytes) ? 0 : -EIO;
 
 		if (err)
-			DPRINTF("%s: %s: op: %u, lsec: %llu, nr_secs: %u, "
-				"err: %d\n", __func__, s->name, req->op, 
-				req->lsec, req->nr_secs, err);
+			DDPRINTF("%s: %s: op: %u, lsec: %llu, nr_secs: %u, "
+				 "err: %d\n", __func__, s->name, req->op, 
+				 req->lsec, req->nr_secs, err);
 
 		switch (req->op) {
 		case VHD_OP_DATA_READ:
@@ -2824,5 +2863,6 @@ struct tap_disk tapdisk_vhd = {
 	.td_close           = vhd_close,
 	.td_do_callbacks    = vhd_do_callbacks,
 	.td_get_parent_id   = vhd_get_parent_id,
-	.td_validate_parent = vhd_validate_parent
+	.td_validate_parent = vhd_validate_parent,
+	.td_snapshot        = vhd_snapshot
 };
