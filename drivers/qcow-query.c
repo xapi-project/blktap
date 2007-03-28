@@ -56,7 +56,7 @@ int query_size(struct disk_driver *dd)
 {	
 	struct td_state *bs = dd->td_state;
 
-	return bs->size << 9;
+	return bs->size >> 11;
 }
 
 char *query_parent(struct disk_driver *dd)
