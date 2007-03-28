@@ -1,0 +1,16 @@
+.*\.a$
+.*\.d$
+.*\.o$
+.*~$
+.*\.orig$
+.*\.rej$
+.*\.so$
+.*\.so\..*$
+^drivers/blktapctrl$
+^drivers/img2qcow$
+^drivers/qcow-create$
+^drivers/qcow-query$
+^drivers/qcow2raw$
+^drivers/tapdisk$
+^drivers/vhd-create$
+
