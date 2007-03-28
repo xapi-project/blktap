@@ -301,6 +301,8 @@ static int write_msg(int fd, int msgtype, void *ptr, void *ptr2)
 		msglen = sizeof(msg_hdr_t) + sizeof(msg_params_t) +
 			strlen(path) + strlen(blk->vm_uuid) + 2;
 		buf = malloc(msglen);
+		if (!buf)
+			return -1;
 
 		/*Assign header fields*/
 		msg = (msg_hdr_t *)buf;
@@ -331,6 +333,8 @@ static int write_msg(int fd, int msgtype, void *ptr, void *ptr2)
 
 		msglen = sizeof(msg_hdr_t) + sizeof(msg_newdev_t);
 		buf = malloc(msglen);
+		if (!buf)
+			return -1;
 		
 		/*Assign header fields*/
 		msg = (msg_hdr_t *)buf;
@@ -350,6 +354,8 @@ static int write_msg(int fd, int msgtype, void *ptr, void *ptr2)
 
 		msglen = sizeof(msg_hdr_t);
 		buf = malloc(msglen);
+		if (!buf)
+			return -1;
 		
 		/*Assign header fields*/
 		msg = (msg_hdr_t *)buf;
@@ -365,6 +371,8 @@ static int write_msg(int fd, int msgtype, void *ptr, void *ptr2)
 
 		msglen = sizeof(msg_hdr_t);
 		buf = malloc(msglen);
+		if (!buf)
+			return -1;
 		
 		/*Assign header fields*/
 		msg = (msg_hdr_t *)buf;
@@ -381,6 +389,8 @@ static int write_msg(int fd, int msgtype, void *ptr, void *ptr2)
 		msglen = sizeof(msg_hdr_t) + sizeof(msg_cp_t) + 
 			strlen(req->cp_uuid) + 1;
 		buf = malloc(msglen);
+		if (!buf)
+			return -1;
 
 		msg = (msg_hdr_t *)buf;
 		msg->type = CTLMSG_CHECKPOINT;
