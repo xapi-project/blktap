@@ -73,6 +73,7 @@ $(VHD_UTIL): %: $(BLK-OBJS)
 
 
 install: all
+	$(INSTALL_DIR) -p $(DESTDIR)$(INST_DIR)
 	$(INSTALL_PROG) $(IBIN) $(QCOW_UTIL) $(VHD_UTIL) $(DESTDIR)$(INST_DIR)
 
 clean:
