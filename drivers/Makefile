@@ -1,19 +1,15 @@
 XEN_ROOT = ../../..
 include $(XEN_ROOT)/tools/Rules.mk
 
-INCLUDES += -I.. -I../lib
-
 IBIN         = blktapctrl tapdisk
 QCOW_UTIL    = img2qcow qcow2raw qcow-create qcow-query
 VHD_UTIL     = vhd-create
 INST_DIR     = /usr/sbin
-LIBAIO_DIR   = $(XEN_ROOT)/tools/libaio/src
 
 CFLAGS   += -Werror
 CFLAGS   += -Wno-unused
 CFLAGS   += -fno-strict-aliasing
-CFLAGS   += -I $(XEN_LIBXC) -I $(LIBAIO_DIR)
-CFLAGS   += $(INCLUDES) -I. -I$(XEN_ROOT)/tools/xenstore 
+CFLAGS   += -I../lib
 CFLAGS   += -D_GNU_SOURCE
 CFLAGS   += -DUSE_NFS_LOCKS
 #CFLAGS   += -DEXCLUSIVE_LOCK
@@ -23,15 +19,21 @@ CFLAGS   += -Wp,-MD,.$(@F).d
 DEPS      = .*.d
 
 THREADLIB := -lpthread -lz
-LIBS      := -L. -L.. -L../lib
-LIBS      += -L$(XEN_LIBXC)
+LIBS      := -L../lib
 LIBS      += -lblktap -lxenctrl
 LIBS      += -lcrypto
 LIBS      += -lz
 LIBS      += -luuid
-LIBS      += -L$(XEN_XENSTORE) -lxenstore
+LIBS      += -lxenstore
 
+ifneq ($(USE_SYSTEM_LIBRARIES),y)
+LIBAIO_DIR = $(XEN_ROOT)/tools/libaio/src
 AIOLIBS   := $(LIBAIO_DIR)/libaio.a
+CFLAGS    += -I$(LIBAIO_DIR) -I$(XEN_LIBXC) -I$(XEN_ROOT)/tools/xenstore
+LIBS      += -L$(XEN_LIBXC) -L$(XEN_XENSTORE)
+else
+AIOLIBS   := -laio
+endif
 
 BLK-OBJS  := block-aio.o
 BLK-OBJS  += block-sync.o

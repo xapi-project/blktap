@@ -7,9 +7,12 @@ SONAME   = libblktap.so.$(MAJOR)
 
 BLKTAP_INSTALL_DIR = /usr/sbin
 
-INCLUDES += -I. -I.. -I $(XEN_LIBXC) -I $(XEN_XENSTORE)
+LIBS     := -lxenstore -lz
 
-LIBS     := -lz
+ifneq ($(USE_SYSTEM_LIBRARIES),y)
+INCLUDES += -I $(XEN_LIBXC) -I $(XEN_XENSTORE)
+LIBS     += -L$(XEN_XENSTORE)
+endif
 
 SRCS     :=
 SRCS     += xenbus.c blkif.c xs_api.c
@@ -21,8 +24,7 @@ CFLAGS   += -fno-strict-aliasing -fPIC
 CFLAGS   += -D _GNU_SOURCE
 
 # Get gcc to generate the dependencies for us.
-CFLAGS   += -Wp,-MD,.$(@F).d
-CFLAGS   += $(INCLUDES) 
+CFLAGS  += -Wp,-MD,.$(@F).d
 DEPS     = .*.d
 
 OBJS     = $(patsubst %.c,%.o,$(SRCS))
@@ -52,7 +54,6 @@ clean:
 
 libblktap.a: $(OBJS) 
 	$(CC) $(CFLAGS) -Wl,$(SONAME_LDFLAG) -Wl,$(SONAME) $(SHLIB_CFLAGS) \
-	      -L$(XEN_XENSTORE) -l xenstore                                \
 	      -o libblktap.so.$(MAJOR).$(MINOR) $^ $(LIBS)
 	ln -sf libblktap.so.$(MAJOR).$(MINOR) libblktap.so.$(MAJOR)
 	ln -sf libblktap.so.$(MAJOR) libblktap.so
