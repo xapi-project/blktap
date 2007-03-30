@@ -51,6 +51,7 @@
 #include <xs.h>
 #include <printf.h>
 #include <sys/time.h>
+#include <sys/resource.h>
 #include <syslog.h>
                                                                      
 #include "blktaplib.h"

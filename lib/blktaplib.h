@@ -56,7 +56,9 @@
 #define BLKTAP_IOCTL_MAJOR	     7
 #define BLKTAP_QUERY_ALLOC_REQS      8
 #define BLKTAP_IOCTL_FREEINTF	     9
-#define BLKTAP_IOCTL_PRINT_IDXS      100   
+#define BLKTAP_IOCTL_PRINT_IDXS      100 
+
+#define PRIO_SPECIAL_IO             -9999 
 
 /* blktap switching modes: (Set with BLKTAP_IOCTL_SETMODE)             */
 #define BLKTAP_MODE_PASSTHROUGH      0x00000000  /* default            */
