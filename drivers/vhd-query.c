@@ -1,6 +1,6 @@
-/* qcow-query.c
+/* vhd-query.c
  *
- * Queries a qcow format disk.
+ * Queries a vhd format disk.
  *
  * (c) 2006 Andrew Warfield and Julian Chesterfield
  *
@@ -48,7 +48,7 @@ void help(void)
 {
 	fprintf(stderr, "Qcow-utils: v1.0.0\n");
 	fprintf(stderr, 
-		"usage: qcow-query [-h help] [-v virtsize] <FILENAME>\n"); 
+		"usage: vhd-query [-h help] [-v virtsize] <FILENAME>\n"); 
 	exit(-1);
 }
 
@@ -76,10 +76,10 @@ int main(int argc, char *argv[])
 	int ret = -1, c;
 	int size = 0, parent = 0;
 	char filename[MAX_NAME_LEN], *ptr = NULL;
-	struct disk_driver ddqcow;
+	struct disk_driver ddvhd;
 
 
-	ddqcow.td_state = malloc(sizeof(struct td_state));
+	ddvhd.td_state = malloc(sizeof(struct td_state));
 
         for(;;) {
                 c = getopt(argc, argv, "hvp");
@@ -108,19 +108,19 @@ int main(int argc, char *argv[])
 	  exit(-1);
         }
 
-	ddqcow.drv = &tapdisk_qcow;
-	ddqcow.private = malloc(ddqcow.drv->private_data_size);
+	ddvhd.drv = &tapdisk_vhd;
+	ddvhd.private = malloc(ddvhd.drv->private_data_size);
 
-        if (ddqcow.drv->td_open(&ddqcow, filename, TD_RDONLY)!=0) {
+        if (ddvhd.drv->td_open(&ddvhd, filename, TD_RDONLY)!=0) {
 		fprintf(stderr, "Unable to open Qcow file [%s]\n",filename);
 		exit(-1);
 	} 
 
 	if (size) 
-		printf("%d\n",query_size(&ddqcow));
+		printf("%d\n",query_size(&ddvhd));
 
 	if (parent) {
-		ptr = query_parent(&ddqcow);
+		ptr = query_parent(&ddvhd);
 		if (!ptr) {
 			printf("Query failed\n");
 			return EINVAL;

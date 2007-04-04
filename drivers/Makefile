@@ -3,7 +3,7 @@ include $(XEN_ROOT)/tools/Rules.mk
 
 IBIN         = blktapctrl tapdisk
 QCOW_UTIL    = img2qcow qcow2raw qcow-create qcow-query
-VHD_UTIL     = vhd-create
+VHD_UTIL     = vhd-create vhd-query
 INST_DIR     = /usr/sbin
 
 CFLAGS   += -Werror
