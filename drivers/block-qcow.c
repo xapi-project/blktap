@@ -40,6 +40,8 @@
 #include "tapdisk.h"
 #include "atomicio.h"
 
+#define ALLOCATE_CONTIGUOUS 1
+
 #if 1
 #define ASSERT(_p) \
     if ( !(_p) ) { DPRINTF("Assertion '%s' failed, line %d, file %s", #_p , \
@@ -438,9 +440,10 @@ static int qtruncate(int fd, off_t length, int sparse)
 	 * contiguous on disk.
 	 */
 	if(st.st_size < sectors * DEFAULT_SECTOR_SIZE) {
+#ifdef ALLOCATE_CONTIGUOUS
 		/*We are extending the file*/
 		if ((ret = posix_memalign((void **)&buf, 
-					  512, DEFAULT_SECTOR_SIZE))) {
+					  DEFAULT_SECTOR_SIZE, (sectors - current) * DEFAULT_SECTOR_SIZE))) {
 			DPRINTF("posix_memalign failed: %d\n", ret);
 			return -1;
 		}
@@ -452,7 +455,7 @@ static int qtruncate(int fd, off_t length, int sparse)
 			return -1;
 		}
 		if (rem) {
-			ret = write(fd, buf, rem);
+			ret = atomicio(vwrite, fd, buf, rem);
 			if (ret != rem) {
 				DPRINTF("write failed: ret = %d, err = %s\n",
 					ret, strerror(errno));
@@ -460,16 +463,20 @@ static int qtruncate(int fd, off_t length, int sparse)
 				return -1;
 			}
 		}
-		for (i = current; i < sectors; i++ ) {
-			ret = write(fd, buf, DEFAULT_SECTOR_SIZE);
-			if (ret != DEFAULT_SECTOR_SIZE) {
-				DPRINTF("write failed: ret = %d, err = %s\n",
-					ret, strerror(errno));
-				free(buf);
-				return -1;
-			}
+		ret = atomicio(vwrite, fd, buf, (sectors - current) * DEFAULT_SECTOR_SIZE);
+		if (ret != (sectors - current) * DEFAULT_SECTOR_SIZE) {
+			DPRINTF("write failed: ret = %d, err = %s\n",
+				ret, strerror(errno));
+			free(buf);
+			return -1;
 		}
 		free(buf);
+#else
+		if (ftruncate(fd, length)==-1) {
+			DPRINTF("Ftruncate failed (%s)\n", strerror(errno));
+			return -1;
+		}
+#endif
 	} else if(sparse && (st.st_size > sectors * DEFAULT_SECTOR_SIZE))
 		if (ftruncate(fd, (off_t)sectors * DEFAULT_SECTOR_SIZE)==-1) {
 			DPRINTF("Ftruncate failed (%s)\n", strerror(errno));
