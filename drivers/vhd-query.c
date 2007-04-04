@@ -46,7 +46,7 @@
 
 void help(void)
 {
-	fprintf(stderr, "Qcow-utils: v1.0.0\n");
+	fprintf(stderr, "Vhd-utils: v1.0.0\n");
 	fprintf(stderr, 
 		"usage: vhd-query [-h help] [-v virtsize] <FILENAME>\n"); 
 	exit(-1);
@@ -112,7 +112,7 @@ int main(int argc, char *argv[])
 	ddvhd.private = malloc(ddvhd.drv->private_data_size);
 
         if (ddvhd.drv->td_open(&ddvhd, filename, TD_RDONLY)!=0) {
-		fprintf(stderr, "Unable to open Qcow file [%s]\n",filename);
+		fprintf(stderr, "Unable to open Vhd file [%s]\n",filename);
 		exit(-1);
 	} 
 
