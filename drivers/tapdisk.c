@@ -61,7 +61,7 @@
 #endif
 #else
 #define UNLOCK_VDI(d,s)
-#define LOCK_VDI(d,s,lval) lval;
+#define LOCK_VDI(d,s,lval,clause) lval;
 #endif
 
 static int maxfds, fds[2], run = 1;

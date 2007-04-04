@@ -11,7 +11,7 @@ CFLAGS   += -Wno-unused
 CFLAGS   += -fno-strict-aliasing
 CFLAGS   += -I../lib
 CFLAGS   += -D_GNU_SOURCE
-CFLAGS   += -DUSE_NFS_LOCKS
+#CFLAGS   += -DUSE_NFS_LOCKS
 #CFLAGS   += -DEXCLUSIVE_LOCK
 
 # Get gcc to generate the dependencies for us.
