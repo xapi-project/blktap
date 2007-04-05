@@ -46,6 +46,7 @@ rm -rf $RPM_BUILD_ROOT
 %{_sbindir}/qcow2raw
 %{_sbindir}/tapdisk
 %{_sbindir}/vhd-create
+%{_sbindir}/vhd-query
 
 %files devel
 %defattr(-,root,root,-)
