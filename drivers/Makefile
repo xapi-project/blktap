@@ -1,7 +1,7 @@
 XEN_ROOT = ../../..
 include $(XEN_ROOT)/tools/Rules.mk
 
-IBIN         = blktapctrl tapdisk td
+IBIN         = blktapctrl tapdisk td-util
 QCOW_UTIL    = img2qcow qcow2raw qcow-create qcow-query
 VHD_UTIL     = vhd-create vhd-query
 LOCK_UTIL    = lock-util
@@ -60,8 +60,8 @@ tapdisk: $(BLK-OBJS) tapdisk.c
 	$(CC) $(CFLAGS) -o tapdisk $(BLK-OBJS) tapdisk.c \
 		$(AIOLIBS) $(LIBS)
 
-td: $(BLK-OBJS) td.c
-	$(CC) $(CFLAGS) -o td $(BLK-OBJS) td.c $(AIOLIBS) $(LIBS)
+td-util: $(BLK-OBJS) td.c
+	$(CC) $(CFLAGS) -o td-util $(BLK-OBJS) td.c $(AIOLIBS) $(LIBS)
 
 lock-util: lock.c
 	$(CC) $(CFLAGS) -DUTIL -o lock-util lock.c $(LIBS)
