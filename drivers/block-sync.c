@@ -248,5 +248,6 @@ struct tap_disk tapdisk_sync = {
 	.td_do_callbacks     = tdsync_do_callbacks,
 	.td_get_parent_id    = tdsync_get_parent_id,
 	.td_validate_parent  = tdsync_validate_parent,
-	.td_snapshot         = NULL
+	.td_snapshot         = NULL,
+	.td_create           = NULL
 };

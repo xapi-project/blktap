@@ -420,5 +420,6 @@ struct tap_disk tapdisk_vmdk = {
 	.td_do_callbacks     = tdvmdk_do_callbacks,
 	.td_get_parent_id    = tdvmdk_get_parent_id,
 	.td_validate_parent  = tdvmdk_validate_parent,
-	.td_snapshot         = NULL
+	.td_snapshot         = NULL,
+	.td_create           = NULL
 };

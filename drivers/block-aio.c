@@ -352,5 +352,6 @@ struct tap_disk tapdisk_aio = {
 	.td_do_callbacks    = tdaio_do_callbacks,
 	.td_get_parent_id   = tdaio_get_parent_id,
 	.td_validate_parent = tdaio_validate_parent,
-	.td_snapshot        = NULL
+	.td_snapshot        = NULL,
+	.td_create          = NULL
 };

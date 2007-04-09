@@ -78,12 +78,15 @@
 #define BLK_NOT_ALLOCATED       99
 #define TD_NO_PARENT             1
 
+#define MAX_RAMDISK_SIZE   1024000 /*500MB disk limit*/
+
 typedef uint32_t td_flag_t;
 
 #define TD_RDONLY                1
 #define TD_DRAIN_QUEUE           2
 #define TD_CHECKPOINT            4
 #define TD_MULTITYPE_CP          8
+#define TD_SPARSE               16
 
 struct td_state;
 struct tap_disk;
@@ -143,8 +146,10 @@ struct tap_disk {
 	int (*td_get_parent_id)  (struct disk_driver *dd, struct disk_id *id);
 	int (*td_validate_parent)(struct disk_driver *dd, 
 				  struct disk_driver *p, td_flag_t flags);
-	int (*td_snapshot)       (struct disk_id *parent_id, char *child_name,
-				  uint64_t size, td_flag_t td_flags);
+	int (*td_snapshot)       (struct disk_id *parent_id, 
+				  char *child_name, td_flag_t flags);
+	int (*td_create)         (const char *name, 
+				  uint64_t size, td_flag_t flags);
 };
 
 typedef struct disk_info {
@@ -275,6 +280,26 @@ typedef struct fd_list_entry {
 
 int qcow_create(const char *filename, uint64_t total_size,
 		const char *backing_file, int flags);
-int vhd_create(const char *filename, uint64_t total_size, 
-	       const char *backing_file, int flags);
+int vhd_create(const char *filename, uint64_t total_size,
+		const char *backing_file, int flags);
+
+struct qcow_info {
+        int       l1_size;
+        int       l2_size;
+        uint64_t *l1;
+        uint64_t  secs;
+};
+int qcow_get_info(struct disk_driver *dd, struct qcow_info *info);
+int qcow_coalesce(char *name);
+
+struct vhd_info {
+        int       spb;
+        int       bat_entries;
+        uint32_t *bat;
+        uint64_t  secs;
+};
+int vhd_get_info(struct disk_driver *dd, struct vhd_info *info);
+int vhd_coalesce(char *name);
+
+
 #endif /*TAPDISK_H_*/

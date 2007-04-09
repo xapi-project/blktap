@@ -722,5 +722,6 @@ struct tap_disk tapdisk_vhdsync = {
 	.td_do_callbacks        = vhdsync_do_callbacks,
 	.td_get_parent_id       = vhdsync_get_parent_id,
 	.td_validate_parent     = vhdsync_validate_parent,
-	.td_snapshot            = NULL
+	.td_snapshot            = NULL,
+	.td_create              = NULL
 };

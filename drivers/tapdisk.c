@@ -464,7 +464,6 @@ static inline void start_queue(struct td_state *s)
 static int checkpoint(struct td_state *s)
 {
 	int i, err, size;
-	uint64_t cp_size;
 	mode_t orig_mode;
 	char *orig, *snap;
 	struct stat stats;
@@ -498,7 +497,6 @@ static int checkpoint(struct td_state *s)
 		flags |= TD_MULTITYPE_CP;
 
 	err     = -ENOMEM;
-	cp_size = s->size << SECTOR_SHIFT;
 	child   = disk_init(s, drv, NULL, 0);
 	if (!child)
 		goto out;
@@ -515,7 +513,7 @@ static int checkpoint(struct td_state *s)
 		goto fail_rename;
 	}
 
-	err = drv->td_snapshot(&pid, orig, cp_size, flags);
+	err = drv->td_snapshot(&pid, orig, flags);
 	if (err) 
 		goto fail_chmod;
 

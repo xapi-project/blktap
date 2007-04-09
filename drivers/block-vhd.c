@@ -1176,6 +1176,22 @@ vhd_get_parent_id(struct disk_driver *child_dd, struct disk_id *id)
 	return err;
 }
 
+int
+vhd_get_info(struct disk_driver *dd, struct vhd_info *info)
+{
+        struct vhd_state *s = (struct vhd_state *)dd->private;
+
+        info->spb         = s->spb;
+        info->secs        = dd->td_state->size;
+        info->bat_entries = s->hdr.max_bat_size;
+        info->bat         = malloc(sizeof(uint32_t) * info->bat_entries);
+        if (!info->bat)
+                return -1;
+        memcpy(info->bat, s->bat.bat, sizeof(uint32_t) * info->bat_entries);
+
+        return 0;
+}
+
 /*
  * set_parent may adjust hdr.table_offset.
  * call set_parent before writing the bat.
@@ -1381,13 +1397,11 @@ __vhd_create(const char *name, uint64_t total_size,
 					backing_file->name);
 				return ret;
 			}
+
 			p = (struct vhd_state *)parent.private;
-			if (ftr->curr_size != p->ftr.curr_size) {
-				DPRINTF("ERROR: child and parent image sizes "
-					"do not match (c: %llu, p: %llu).\n",
-					ftr->curr_size, p->ftr.curr_size);
-				return -EINVAL;
-			}
+			ftr->orig_size = p->ftr.curr_size;
+			ftr->curr_size = p->ftr.curr_size;
+			ftr->checksum  = f_checksum(ftr);
 
 		set_parent:
 			if ((ret = set_parent(&s, p, 
@@ -1462,37 +1476,41 @@ out:
 	return err;
 }
 
-/*
- * for now, vhd_create will only snapshot vhd images
- */
 int
-vhd_create(const char *name, uint64_t total_size, 
-	   const char *backing_file, int sparse)
+vhd_create(const char *name, uint64_t total_size,
+           const char *backing_file, int sparse)
 {
-	struct disk_id id, *idp = NULL;
-	vhd_flag_t flags = ((sparse) ? VHD_FLAG_CR_SPARSE : 0);
+        struct disk_id id, *idp = NULL;
+        vhd_flag_t flags = ((sparse) ? VHD_FLAG_CR_SPARSE : 0);
 
-	if (backing_file) {
-		id.name = (char *)backing_file;
-		idp     = &id;
-	}
+        if (backing_file) {
+                id.name = (char *)backing_file;
+                idp     = &id;
+        }
 
-	return __vhd_create(name, total_size, idp, flags);
+        return __vhd_create(name, total_size, idp, flags);
 }
 
-/*
- * vhd_snapshot supports snapshotting arbitrary image types
- */
 int
-vhd_snapshot(struct disk_id *parent_id, 
-	     char *child_name, uint64_t size, td_flag_t td_flags)
+_vhd_create(const char *name, uint64_t total_size, td_flag_t td_flags)
+{
+	vhd_flag_t vhd_flags = 0;
+
+	if (td_flags & TD_SPARSE)
+		vhd_flags |= VHD_FLAG_CR_SPARSE;
+
+	return __vhd_create(name, total_size, NULL, vhd_flags);
+}
+
+int
+vhd_snapshot(struct disk_id *parent_id, char *child_name, td_flag_t td_flags)
 {
 	vhd_flag_t vhd_flags = VHD_FLAG_CR_SPARSE;
 
 	if (td_flags & TD_MULTITYPE_CP)
-		vhd_flags |= VHD_FLAG_CR_IGNORE_PARENT;
+		return -EINVAL; /* multitype snapshots not yet supported */
 
-	return __vhd_create(child_name, size, parent_id, vhd_flags);
+	return __vhd_create(child_name, 0, parent_id, vhd_flags);
 }
 
 static inline void
@@ -2964,5 +2982,6 @@ struct tap_disk tapdisk_vhd = {
 	.td_do_callbacks    = vhd_do_callbacks,
 	.td_get_parent_id   = vhd_get_parent_id,
 	.td_validate_parent = vhd_validate_parent,
-	.td_snapshot        = vhd_snapshot
+	.td_snapshot        = vhd_snapshot,
+	.td_create          = _vhd_create
 };

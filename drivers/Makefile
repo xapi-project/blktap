@@ -1,7 +1,7 @@
 XEN_ROOT = ../../..
 include $(XEN_ROOT)/tools/Rules.mk
 
-IBIN         = blktapctrl tapdisk
+IBIN         = blktapctrl tapdisk td
 QCOW_UTIL    = img2qcow qcow2raw qcow-create qcow-query
 VHD_UTIL     = vhd-create vhd-query
 INST_DIR     = /usr/sbin
@@ -46,8 +46,10 @@ BLK-OBJS  += aes.o
 BLK-OBJS  += lockex.o
 BLK-OBJS  += lock.o
 BLK-OBJS  += atomicio.o
+BLK-OBJS  += vhd-coalesce.o
+BLK-OBJS  += qcow-coalesce.o
 
-all: $(IBIN) vhd-util qcow-util
+all: $(IBIN) qcow-util vhd-util
 
 LINUX_ROOT := $(wildcard $(XEN_ROOT)/linux-2.6.*-xen-sparse)
 
@@ -58,6 +60,9 @@ blktapctrl: blktapctrl.c
 tapdisk: $(BLK-OBJS) tapdisk.c
 	$(CC) $(CFLAGS) -o tapdisk $(BLK-OBJS) tapdisk.c \
 		$(AIOLIBS) $(LIBS)
+
+td: $(BLK-OBJS) td.c
+	$(CC) $(CFLAGS) -o td $(BLK-OBJS) td.c $(AIOLIBS) $(LIBS)
 
 .PHONY: qcow-util
 qcow-util: $(QCOW_UTIL)

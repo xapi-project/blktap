@@ -984,10 +984,7 @@ int tdqcow_queue_read(struct disk_driver *dd, uint64_t sector,
 {
 	struct tdqcow_state *s = (struct tdqcow_state *)dd->private;
 	int ret = 0, index_in_cluster, n, i, rsp = 0;
-	uint64_t cluster_offset, sec, nr_secs;
-
-	sec     = sector;
-	nr_secs = nb_sectors;
+	uint64_t cluster_offset;
 
 	/*Check we can get a lock*/
 	for (i = 0; i < nb_sectors; i++) 
@@ -1052,10 +1049,7 @@ int tdqcow_queue_write(struct disk_driver *dd, uint64_t sector,
 {
 	struct tdqcow_state *s = (struct tdqcow_state *)dd->private;
 	int ret = 0, rsp = 0, index_in_cluster, n, i;
-	uint64_t cluster_offset, sec, nr_secs;
-
-	sec     = sector;
-	nr_secs = nb_sectors;
+	uint64_t cluster_offset;
 
 	/*Check we can get a lock*/
 	for (i = 0; i < nb_sectors; i++)
@@ -1137,7 +1131,6 @@ int tdqcow_close(struct disk_driver *dd)
 	/*Update the hdr cksum*/
 	if(s->min_cluster_alloc == s->l2_size) {
 		cksum = gen_cksum((char *)s->l1_table, s->l1_size * sizeof(uint64_t));
-		printf("Writing cksum: %d",cksum);
 		fd = open(s->name, O_WRONLY | O_LARGEFILE); /*Open without O_DIRECT*/
 		offset = sizeof(QCowHeader) + sizeof(uint32_t);
 		lseek(fd, offset, SEEK_SET);
@@ -1292,7 +1285,7 @@ int qcow_create(const char *filename, uint64_t total_size,
 
 	ptr = calloc(1, l1_size * sizeof(uint64_t));
 	exthdr.cksum = cpu_to_be32(gen_cksum(ptr, l1_size * sizeof(uint64_t)));
-	printf("Created cksum: %d\n",exthdr.cksum);
+	//printf("Created cksum: %d\n",exthdr.cksum);
 	free(ptr);
 
 	/*adjust file length to system page size boundary*/
@@ -1334,12 +1327,32 @@ int qcow_create(const char *filename, uint64_t total_size,
 	return 0;
 }
 
-int tdqcow_snapshot(struct disk_id *pid, char *name, 
-		    uint64_t size, td_flag_t flags)
+int tdqcow_snapshot(struct disk_id *pid, char *name, td_flag_t flags)
 {
-	if (pid->drivertype != DISK_TYPE_QCOW)
+	if (pid->drivertype != DISK_TYPE_QCOW || !pid->name)
 		return -EINVAL;
-	return qcow_create(name, size, pid->name, 1);
+	return qcow_create(name, 0, pid->name, 1);
+}
+
+int tdqcow_create(const char *name, uint64_t size, td_flag_t flags)
+{
+	return qcow_create(name, size, NULL, (flags & TD_SPARSE));
+}
+
+int
+qcow_get_info(struct disk_driver *dd, struct qcow_info *info)
+{
+        struct tdqcow_state *s = (struct tdqcow_state *)dd->private;
+
+        info->l1_size = s->l1_size;
+        info->l2_size = s->l2_size;
+        info->secs    = dd->td_state->size;
+        info->l1      = malloc(sizeof(uint64_t) * info->l1_size);
+        if (!info->l1)
+                return -1;
+        memcpy(info->l1, s->l1_table, sizeof(uint64_t) * info->l1_size);
+
+        return 0;
 }
 
 int qcow_make_empty(struct tdqcow_state *s)
@@ -1493,5 +1506,6 @@ struct tap_disk tapdisk_qcow = {
 	.td_do_callbacks     = tdqcow_do_callbacks,
 	.td_get_parent_id    = tdqcow_get_parent_id,
 	.td_validate_parent  = tdqcow_validate_parent,
-	.td_snapshot         = tdqcow_snapshot
+	.td_snapshot         = tdqcow_snapshot,
+	.td_create           = tdqcow_create
 };

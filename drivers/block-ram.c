@@ -41,8 +41,6 @@
 #include <string.h>
 #include "tapdisk.h"
 
-#define MAX_DISK_SIZE 1024000 /*500MB disk limit*/
-
 char *img;
 long int   disksector_size;
 long int   disksize;
@@ -108,7 +106,7 @@ static int get_image_info(struct td_state *s, int fd)
 	}
 
 	if (s->size == 0) {		
-		s->size =((uint64_t) MAX_DISK_SIZE);
+		s->size =((uint64_t) MAX_RAMDISK_SIZE);
 		s->sector_size = DEFAULT_SECTOR_SIZE;
 	}
 	s->info = 0;
@@ -190,25 +188,27 @@ int tdram_open (struct disk_driver *dd, const char *name, td_flag_t flags)
         prv->fd = fd;
 
 	ret = get_image_info(s, fd);
-	size = MAX_DISK_SIZE;
+	size = MAX_RAMDISK_SIZE;
 
 	if (s->size > size) {
 		DPRINTF("Disk exceeds limit, must be less than [%d]MB",
-			(MAX_DISK_SIZE<<SECTOR_SHIFT)>>20);
+			(MAX_RAMDISK_SIZE<<SECTOR_SHIFT)>>20);
 		return -ENOMEM;
 	}
 
 	/*Read the image into memory*/
-	p = img = malloc(s->size << SECTOR_SHIFT);
-	if (img == NULL) {
+	if (posix_memalign((void **)&img, 
+			   DEFAULT_SECTOR_SIZE, s->size << SECTOR_SHIFT)) {
 		DPRINTF("Mem malloc failed\n");
-		return -1;
+		return -errno;
 	}
+	p = img;
 	DPRINTF("Reading %llu bytes.......",(long long unsigned)s->size << SECTOR_SHIFT);
 
 	for (i = 0; i < s->size; i++) {
 		ret = read(prv->fd, p, s->sector_size);
 		if (ret != s->sector_size) {
+			DPRINTF("ret = %d, errno = %d\n", ret, errno);
 			ret = 0 - errno;
 			break;
 		} else {
@@ -300,5 +300,6 @@ struct tap_disk tapdisk_ram = {
 	.td_do_callbacks    = tdram_do_callbacks,
 	.td_get_parent_id   = tdram_get_parent_id,
 	.td_validate_parent = tdram_validate_parent,
-	.td_snapshot        = NULL
+	.td_snapshot        = NULL,
+	.td_create          = NULL
 };
