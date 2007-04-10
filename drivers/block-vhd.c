@@ -720,16 +720,12 @@ vhd_read_bat(int fd, struct vhd_state *s)
 	s->next_db  = location >> VHD_SECTOR_SHIFT; /* BAT is sector aligned. */
 	s->next_db += secs_round_up(sizeof(u32) * entries);
 
-	/* ensure that data region of segment begins on page boundary */
-	if ((s->next_db + s->bm_secs) % s->spp)
-		s->next_db += (s->spp - ((s->next_db + s->bm_secs) % s->spp));
-
 	DPRINTF("FirstDB: %llu\n", s->next_db);
 
 	for (i = 0; i < entries; i++) {
 		BE32_IN(&bat_entry(s, i));
 		if ((bat_entry(s, i) != DD_BLK_UNUSED) && 
-		    (bat_entry(s, i) > s->next_db)) {
+		    (bat_entry(s, i) >= s->next_db)) {
 			s->next_db = bat_entry(s, i) + s->spb + s->bm_secs;
 			DBG("i: %d, bat[i]: %u, spb: %d, next: %llu\n",
 			    i, bat_entry(s, i), s->spb,  s->next_db);
@@ -737,6 +733,10 @@ vhd_read_bat(int fd, struct vhd_state *s)
 
 		if (bat_entry(s, i) != DD_BLK_UNUSED) count++;
 	}
+
+	/* ensure that data region of segment begins on page boundary */
+	if ((s->next_db + s->bm_secs) % s->spp)
+		s->next_db += (s->spp - ((s->next_db + s->bm_secs) % s->spp));
     
 	DPRINTF("NextDB: %llu\n", s->next_db);
 	DPRINTF("Read BAT.  This vhd has %d full and %d unfilled data "
