@@ -26,6 +26,7 @@ struct qcow_context {
 
 	uint64_t     *l2;
 	int           l2_idx;
+	int           l2_dirty;
 	uint64_t      l2_offset;
 
 	int           error;
@@ -253,11 +254,14 @@ write_current_l2_table(struct qcow_context *ctx)
 	uint64_t offset = ctx->l2_offset;
 	int size = ctx->info.l2_size * sizeof(uint64_t);
 
-	if (!offset)
+	if (!ctx->l2_dirty)
 		return 0;
 
 	if (ctx->preqs)
 		return -EAGAIN;
+
+	if (ctx->error)
+		return ctx->error;
 
 	if (lseek64(ctx->child_fd, offset, SEEK_SET) == (off64_t)-1)
 		goto error;
@@ -293,6 +297,7 @@ read_next_l2_table(struct qcow_context *ctx)
 
 	ctx->l2_idx    = 0;
 	ctx->cur_sec   = ctx->l1_idx * ctx->info.l2_size;
+	ctx->l2_dirty  = 0;
 	ctx->l2_offset = offset;
 
 	if (lseek64(ctx->child_fd, offset, SEEK_SET) == (off64_t)-1)
@@ -350,6 +355,7 @@ process(struct qcow_context *ctx)
 				ctx->error = ret;
 				return ret;
 			}
+			ctx->l2_dirty = 1;
 			++ctx->preqs;
 		}
 

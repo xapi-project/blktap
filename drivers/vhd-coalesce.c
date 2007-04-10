@@ -27,6 +27,7 @@ struct vhd_context {
 
 	char         *bm;
 	int           bm_idx;
+	int           bm_dirty;
 	uint64_t      bm_offset;
 
 	int           error;
@@ -258,11 +259,14 @@ write_current_bitmap(struct vhd_context *ctx)
 	uint64_t offset = ctx->bm_offset;
 	int bm_size = ctx->info.spb >> 3;
 
-	if (!offset)
+	if (!ctx->bm_dirty)
 		return 0;
 
 	if (ctx->preqs)
 		return -EAGAIN;
+
+	if (ctx->error)
+		return ctx->error;
 
 	if (lseek64(ctx->child_fd, offset << 9, SEEK_SET) == (off64_t)-1)
 		goto error;
@@ -297,6 +301,7 @@ read_next_bitmap(struct vhd_context *ctx)
 
 	ctx->bm_idx    = 0;
 	ctx->cur_sec   = ctx->bat_idx * ctx->info.spb;
+	ctx->bm_dirty  = 0;
 	ctx->bm_offset = offset;
 
 	if (lseek64(ctx->child_fd, offset << 9, SEEK_SET) == (off64_t)-1)
@@ -355,6 +360,7 @@ process(struct vhd_context *ctx)
 				ctx->error = ret;
 				return ret;
 			}
+			ctx->bm_dirty = 1;
 			++ctx->preqs;
 		}
 
