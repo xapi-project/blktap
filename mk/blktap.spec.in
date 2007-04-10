@@ -48,6 +48,7 @@ rm -rf $RPM_BUILD_ROOT
 %{_sbindir}/vhd-create
 %{_sbindir}/vhd-query
 %{_sbindir}/td-util
+%{_sbindir}/lock-util
 
 %files devel
 %defattr(-,root,root,-)

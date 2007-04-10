@@ -759,15 +759,15 @@ int main(int argc, char *argv[])
 static void usage(char *prg)
 {
         printf("usage %s\n"
-               "    delta <filename>]\n"
+               "    delta <filename>\n"
                "    unlock <filename> <r|w> <uniqid>\n"
                "    lock <filename> <r|w> <0|1> <uniqid> <leasetime>\n", prg);
         printf("        delta : get time since lock last refreshed\n");
-        printf("                returns time and max lease time in seconds\n");
+        printf("                returns delta time and max lease time in seconds\n");
         printf("        unlock: unlock request filename, r|w,  uniqID\n");
-        printf("                returns status (success is 0) and max lease time in seconds\n");
+        printf("                returns status (success is 0)\n");
         printf("        lock  : lock request filename,  r|w, force?, uniqID, lease time request\n");
-        printf("                returns status (success is 0) and established lease time\n");
+        printf("                returns status (success is 0) and established lease time in seconds\n");
 }
 
 int main(int argc, char *argv[])
