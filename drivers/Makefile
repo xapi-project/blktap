@@ -4,6 +4,7 @@ include $(XEN_ROOT)/tools/Rules.mk
 IBIN         = blktapctrl tapdisk td
 QCOW_UTIL    = img2qcow qcow2raw qcow-create qcow-query
 VHD_UTIL     = vhd-create vhd-query
+LOCK_UTIL    = lock-util
 INST_DIR     = /usr/sbin
 
 CFLAGS   += -Werror
@@ -12,7 +13,6 @@ CFLAGS   += -fno-strict-aliasing
 CFLAGS   += -I../lib
 CFLAGS   += -D_GNU_SOURCE
 #CFLAGS   += -DUSE_NFS_LOCKS
-#CFLAGS   += -DEXCLUSIVE_LOCK
 
 # Get gcc to generate the dependencies for us.
 CFLAGS   += -Wp,-MD,.$(@F).d
@@ -43,13 +43,12 @@ BLK-OBJS  += block-vhd.o
 BLK-OBJS  += block-ram.o
 BLK-OBJS  += block-qcow.o
 BLK-OBJS  += aes.o
-BLK-OBJS  += lockex.o
 BLK-OBJS  += lock.o
 BLK-OBJS  += atomicio.o
 BLK-OBJS  += vhd-coalesce.o
 BLK-OBJS  += qcow-coalesce.o
 
-all: $(IBIN) qcow-util vhd-util
+all: $(IBIN) qcow-util vhd-util lock-util
 
 LINUX_ROOT := $(wildcard $(XEN_ROOT)/linux-2.6.*-xen-sparse)
 
@@ -63,6 +62,9 @@ tapdisk: $(BLK-OBJS) tapdisk.c
 
 td: $(BLK-OBJS) td.c
 	$(CC) $(CFLAGS) -o td $(BLK-OBJS) td.c $(AIOLIBS) $(LIBS)
+
+lock-util: lock.c
+	$(CC) $(CFLAGS) -DUTIL -o lock-util lock.c $(LIBS)
 
 .PHONY: qcow-util
 qcow-util: $(QCOW_UTIL)
@@ -79,10 +81,10 @@ $(VHD_UTIL): %: $(BLK-OBJS)
 
 install: all
 	$(INSTALL_DIR) -p $(DESTDIR)$(INST_DIR)
-	$(INSTALL_PROG) $(IBIN) $(QCOW_UTIL) $(VHD_UTIL) $(DESTDIR)$(INST_DIR)
+	$(INSTALL_PROG) $(IBIN) $(LOCK_UTIL) $(QCOW_UTIL) $(VHD_UTIL) $(DESTDIR)$(INST_DIR)
 
 clean:
-	rm -rf *.o *~ $(DEPS) xen TAGS $(IBIN) $(LIB) $(QCOW_UTIL) $(VHD_UTIL)
+	rm -rf *.o *~ $(DEPS) xen TAGS $(IBIN) $(LIB) $(LOCK_UTIL) $(QCOW_UTIL) $(VHD_UTIL)
 
 .PHONY: clean install
 

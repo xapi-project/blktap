@@ -44,24 +44,15 @@
 #define OUTPUT 1
 
 #if defined(USE_NFS_LOCKS)
-#if defined(EXCLUSIVE_LOCK)
-#define UNLOCK_VDI(d,s) unlock(d->name, s->vm_uuid);
-#define LOCK_VDI(d,s,lval,clause)                                               \
-        if ((lval = lock(d->name, s->vm_uuid, 0)) < 0) {                        \
-                DPRINTF("failed to get lock for %s, err=%d\n", d->name, lval);  \
-                clause;                                                         \
-        }
-#else
 #define UNLOCK_VDI(d,s) unlock(d->name, s->vm_uuid, (d->flags & TD_RDONLY) ? 1 : 0);
-#define LOCK_VDI(d,s,lval,clause)                                                        \
-        if ((lval = lock(d->name, s->vm_uuid, 0, (d->flags & TD_RDONLY) ? 1 : 0)) < 0) { \
-                DPRINTF("failed to get lock for %s, err=%d\n", d->name, lval);           \
-                clause;                                                                  \
+#define LOCK_VDI(d,s,lval,lease,clause)                                                          \
+        if ((lval = lock(d->name, s->vm_uuid, 0, (d->flags & TD_RDONLY) ? 1 : 0, &lease)) < 0) { \
+                DPRINTF("failed to get lock for %s, err=%d\n", d->name, lval);                   \
+                clause;                                                                          \
         }
-#endif
 #else
 #define UNLOCK_VDI(d,s)
-#define LOCK_VDI(d,s,lval,clause) lval;
+#define LOCK_VDI(d,s,lval,lease,clause) lval;
 #endif
 
 static int maxfds, fds[2], run = 1;
@@ -69,6 +60,7 @@ static int maxfds, fds[2], run = 1;
 static pid_t process;
 int connected_disks = 0;
 fd_list_entry_t *fd_start = NULL;
+int min_lease_time = DEFAULT_LEASE_TIME_SECS;
 
 int do_cow_read(struct disk_driver *dd, blkif_request_t *req, 
 		int sidx, uint64_t sector, int nr_secs);
@@ -334,6 +326,7 @@ static int open_disk(struct td_state *s,
 	struct disk_id id;
 	struct disk_driver *d;
 	int lval;
+        int lease = min_lease_time;
 
 	dup = strdup(path);
 	if (!dup)
@@ -344,7 +337,8 @@ static int open_disk(struct td_state *s,
 	if (!d)
 		return -ENOMEM;
 
-        LOCK_VDI(d,s,lval, goto fail);
+        LOCK_VDI(d,s,lval,lease,goto fail);
+        min_lease_time = (lease < min_lease_time) ? lease : min_lease_time;
 
 	err = d->drv->td_open(d, path, flags);
 	if (err) {
@@ -371,7 +365,8 @@ static int open_disk(struct td_state *s,
 		if (!new)
 			goto fail;
 
-                LOCK_VDI(new, s, lval, goto fail);
+                LOCK_VDI(new,s,lval,lease,goto fail);
+                min_lease_time = (lease < min_lease_time) ? lease : min_lease_time;
 
 		err = new->drv->td_open(new, new->name, pflags);
 		if (err) {
@@ -1003,13 +998,16 @@ static int req_locks(void)
 {
         fd_list_entry_t *ptr;
         int lval;
+        int lease;
 
         /* reassert locks for all disks */
         ptr = fd_start;
         while (ptr != NULL) {
                 struct disk_driver *dd;
                 td_for_each_disk(ptr->s, dd) {
-                        LOCK_VDI(dd,ptr->s, lval, return -1);
+                        LOCK_VDI(dd,ptr->s,lval,lease,return -1);
+                        min_lease_time = (lease < min_lease_time) 
+                                        ? lease : min_lease_time;
                 }
                 ptr = ptr->next;
         }
@@ -1056,7 +1054,7 @@ int main(int argc, char *argv[])
 		exit(-1);
 	}
 
-        timeout.tv_sec = LEASE_TIME_SECS;
+        timeout.tv_sec = min_lease_time;
         timeout.tv_usec = 0;
 
 	while (run) 
@@ -1075,11 +1073,11 @@ int main(int argc, char *argv[])
                         if (req_locks() == -1) {
                                 /* cleanup and bail? */
                         }
-                        timeout.tv_sec = LEASE_TIME_SECS;
+                        timeout.tv_sec = min_lease_time;
                         timeout.tv_usec = 0;
                 } 
 #else
-                timeout.tv_sec = LEASE_TIME_SECS;
+                timeout.tv_sec = min_lease_time;
                 timeout.tv_usec = 0;
 #endif
 

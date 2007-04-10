@@ -4,17 +4,11 @@
  *
  */
 
-#define LEASE_TIME_SECS 5
+#define DEFAULT_LEASE_TIME_SECS 5
 
-#if defined(EXCLUSIVE_LOCK)
-int lock(char *fn_to_lock, char *uuid, int force);
-int unlock(char *fn_to_unlock, char *uuid);
-int lock_delta(char *fn_to_check);
-#else
-int lock(char *fn_to_lock, char *uuid, int force, int readonly);
+int lock(char *fn_to_lock, char *uuid, int force, int readonly, int *lease_time);
 int unlock(char *fn_to_unlock, char *uuid, int readonly);
-int lock_delta(char *fn_to_check);
-#endif
+int lock_delta(char *fn_to_check, int *lease_time);
 
 typedef enum {
     LOCK_OK          =  0,
@@ -31,4 +25,5 @@ typedef enum {
     LOCK_EREAD       = -11,
     LOCK_EREMOVE     = -12,
     LOCK_ENOLOCK     = -13,
+    LOCK_EUSAGE      = -14,
 } lock_error;
