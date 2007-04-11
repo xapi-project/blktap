@@ -1399,9 +1399,13 @@ __vhd_create(const char *name, uint64_t total_size,
 			}
 
 			p = (struct vhd_state *)parent.private;
-			ftr->orig_size = p->ftr.curr_size;
-			ftr->curr_size = p->ftr.curr_size;
-			ftr->checksum  = f_checksum(ftr);
+			blks = (p->ftr.curr_size + ((u64)1 << BLK_SHIFT) - 1)
+							   >> BLK_SHIFT;
+			ftr->orig_size    = p->ftr.curr_size;
+			ftr->curr_size    = p->ftr.curr_size;
+			ftr->geometry     = chs(ftr->orig_size);
+			ftr->checksum     = f_checksum(ftr);
+			hdr->max_bat_size = blks;
 
 		set_parent:
 			if ((ret = set_parent(&s, p, 
