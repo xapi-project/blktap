@@ -2699,8 +2699,10 @@ finish_bitmap_read(struct disk_driver *dd, struct vhd_request *req)
 			r = next;
 		}
 	} else {
-		rsp += signal_completion(dd, r, r->error);
+		int err = req->error;
+		unlock_bitmap(bm);
 		free_vhd_bitmap(s, bm);
+		return signal_completion(dd, r, err);
 	}
 
 	if (!bitmap_in_use(bm))
