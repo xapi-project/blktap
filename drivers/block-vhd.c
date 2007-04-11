@@ -1370,7 +1370,6 @@ __vhd_create(const char *name, uint64_t total_size,
 		hdr->data_offset   = (u64)-1;
 		hdr->table_offset  = VHD_SECTOR_SIZE * 3; /* 1 ftr + 2 hdr */
 		hdr->hdr_ver       = DD_VERSION;
-		hdr->max_bat_size  = blks;
 		hdr->block_size    = 0x00200000;
 		hdr->prt_ts        = 0;
 		hdr->res1          = 0;
@@ -1785,7 +1784,7 @@ read_bitmap_cache(struct vhd_state *s, uint64_t sector, uint8_t op)
 	sec = sector % s->spb;
 
 	if (blk > s->hdr.max_bat_size) {
-		DPRINTF("ERROR: read out of range.\n");
+		DPRINTF("ERROR: sec %llu out of range, op = %d\n", sector, op);
 		return -EINVAL;
 	}
 
@@ -1796,10 +1795,6 @@ read_bitmap_cache(struct vhd_state *s, uint64_t sector, uint8_t op)
 
 		return VHD_BM_BAT_CLEAR;
 	}
-
-	/* no need to check bitmap for dynamic disks */
-	if (s->ftr.type == HD_TYPE_DYNAMIC)
-		return VHD_BM_BIT_SET;
 
 	bm = get_bitmap(s, blk);
 	if (!bm)
@@ -1828,11 +1823,6 @@ read_bitmap_cache_span(struct vhd_state *s,
 		return nr_secs;
 
 	sec = sector % s->spb;
-
-	/* no need to check bitmap for dynamic disks */
-	if (s->ftr.type == HD_TYPE_DYNAMIC)
-		return MIN(nr_secs, s->spb - sec);
-
 	blk = sector / s->spb;
 	bm  = get_bitmap(s, blk);
 	
@@ -2019,10 +2009,8 @@ schedule_data_read(struct vhd_state *s, uint64_t sector,
 	bm     = get_bitmap(s, blk);
 	offset = bat_entry(s, blk);
 	
-	if (s->ftr.type == HD_TYPE_DIFF) {
-		ASSERT(s, offset != DD_BLK_UNUSED);
-		ASSERT(s, bm && bitmap_valid(bm));
-	}
+	ASSERT(s, offset != DD_BLK_UNUSED);
+	ASSERT(s, bm && bitmap_valid(bm));
 	
 	offset  += s->bm_secs + sec;
 	offset <<= VHD_SECTOR_SHIFT;
@@ -2499,12 +2487,9 @@ start_new_bitmap_transaction(struct disk_driver *dd, struct vhd_bitmap *bm)
 		else {
 			add_to_transaction(tx, r);
 			if (test_vhd_flag(r->flags, VHD_FLAG_REQ_FINISHED)) {
-				if (s->ftr.type == HD_TYPE_DIFF) {
-					u32 sec = r->lsec % s->spb;
-					for (i = 0; i < r->nr_secs; i++)
-						set_bit(sec + i, 
-							(void *)bm->shadow);
-				}
+				u32 sec = r->lsec % s->spb;
+				for (i = 0; i < r->nr_secs; i++)
+					set_bit(sec + i, (void *)bm->shadow);
 				tx->finished++;
 			}
 		}
@@ -2561,7 +2546,7 @@ finish_data_transaction(struct disk_driver *dd, struct vhd_bitmap *bm)
 
 	tx->closed = 1;
 
-	if (!tx->error && s->ftr.type == HD_TYPE_DIFF) {
+	if (!tx->error) {
 		schedule_bitmap_write(s, bm->blk);
 		return 0;
 	}
@@ -2797,7 +2782,7 @@ finish_data_write(struct disk_driver *dd, struct vhd_request *req)
 		DBG("%s: blk: %llu, tx->started: %d, tx->finished: %d\n",
 		    __func__, req->lsec / s->spb, tx->started, tx->finished);
 
-		if (!req->error && s->ftr.type == HD_TYPE_DIFF)
+		if (!req->error)
 			for (i = 0; i < req->nr_secs; i++)
 				set_bit(sec + i, (void *)bm->shadow);
 
