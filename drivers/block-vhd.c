@@ -1373,6 +1373,7 @@ __vhd_create(const char *name, uint64_t total_size,
 		hdr->block_size    = 0x00200000;
 		hdr->prt_ts        = 0;
 		hdr->res1          = 0;
+		hdr->max_bat_size  = blks;
 
 		if (backing_file) {
 			struct vhd_state  *p = NULL;
