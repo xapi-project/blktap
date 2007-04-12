@@ -42,10 +42,15 @@
 #include "vhd.h"
 #include "bswap.h"
 #include "profile.h"
+#include "atomicio.h"
 
-#define TRACING    0
-#define DEBUGGING  0
-#define ASSERTING  1
+#define TRACING     0
+#define DEBUGGING   0
+#define ASSERTING   1
+
+/* SYCHRONOUS can be set to 1 to force the synchronous IO path.
+ * The synchronous path will also be used by default if io_setup fails. */
+#define SYNCHRONOUS 0
 
 #define __TRACE(s)                                                             \
 do {                                                                           \
@@ -194,6 +199,10 @@ struct vhd_bitmap {
 
 struct vhd_state {
 	int fd;
+
+	/* synchronous state */
+	int                   sync;
+	int                   dummy_pipe[2];
 
         /* VHD stuff */
         struct hd_ftr         ftr;
@@ -751,11 +760,15 @@ vhd_read_bat(int fd, struct vhd_state *s)
 static int
 init_aio_state(struct vhd_state *s)
 {
-	int i;
+	int i, ret;
 
 	/* initialize aio */
+#if (SYNCHRONOUS == 1)
+	s->poll_fd = -1;
+#else
 	s->aio_ctx = (io_context_t)REQUEST_ASYNC_FD;
 	s->poll_fd = io_setup(VHD_REQS_TOTAL, &s->aio_ctx);
+#endif
 
 	if (s->poll_fd < 0) {
                 if (s->poll_fd == -EAGAIN) {
@@ -765,12 +778,17 @@ init_aio_state(struct vhd_state *s)
 				"increase the system-wide aio request limit. "
 				"(e.g. 'echo 1048576 > /proc/sys/fs/"
 				"aio-max-nr')\n");
+			return s->poll_fd;
                 } else {
                         DPRINTF("Couldn't get fd for AIO poll support.  This "
 				"is probably because your kernel does not "
 				"have the aio-poll patch applied.\n");
+			ret = pipe(s->dummy_pipe);
+			if (ret)
+				return -errno;
+			s->poll_fd = s->dummy_pipe[0];
+			s->sync    = 1;
                 }
-		return s->poll_fd;
 	}
 
 	s->vreq_free_count     = VHD_REQS_DATA;
@@ -998,8 +1016,13 @@ vhd_close(struct disk_driver *dd)
 		free(bm->shadow);
 	}
 	free_bat(s);
-	io_destroy(s->aio_ctx);
 	close(s->fd);
+
+	if (s->sync) {
+		close(s->dummy_pipe[0]);
+		close(s->dummy_pipe[1]);
+	} else
+		io_destroy(s->aio_ctx);
 
 	tp_close(&s->tp);
 	
@@ -1771,6 +1794,255 @@ free_vhd_bitmap(struct vhd_state *s, struct vhd_bitmap *bm)
 	s->bitmap_free[s->bm_free_count++] = bm;
 }
 
+/*---------------------------------------------------------------------------
+ *  SYNCHRONOUS FUNCTIONS
+ *---------------------------------------------------------------------------*/
+/* get_sector_offset returns:
+ *         1 on success
+ *         BLK_NOT_ALLOCATED if the sector doesn't exist in this file, 
+ *         -errno on error
+ *
+ * The number of contiguous sectors for which the return value holds is 
+ * stored in nr_secs.
+ * On success, put the offset in offset.
+ * allocate indicates whether a sector should be created if it doesn't exist.
+ */
+static int get_sector_offset(struct vhd_state *s, uint64_t sector,
+			     uint64_t *offset, int *nr_secs, int allocate)
+{
+	u64 db_start;
+	int i, ret, bm_size, num;
+	u32 blk, sec, *bitmap;
+	struct vhd_bitmap *bm;
+
+	blk = sector / s->spb;
+	sec = sector % s->spb;
+
+	*offset = 0;
+	bm_size = s->bm_secs << VHD_SECTOR_SHIFT;
+
+	if (blk > s->hdr.max_bat_size) {
+		DPRINTF("ERROR: read out of range.\n");
+		return -EINVAL;
+	}
+
+	/* Lookup data block in the BAT. */
+	if ((db_start = bat_entry(s, blk)) == DD_BLK_UNUSED) {
+		char *buf       = s->bat.req.buf;
+		int bat_idx     = blk - (blk % 128);
+		u64 bm_off      = s->next_db << VHD_SECTOR_SHIFT;
+		u64 new_ftr_pos = s->next_db + s->spb + 1;
+
+		if (!allocate) {
+			*nr_secs = MIN(*nr_secs, s->spb - sec);
+			return BLK_NOT_ALLOCATED;
+		}
+
+		/* data region of segment should begin on page boundary */
+		if ((new_ftr_pos + s->bm_secs) % s->spp)
+			new_ftr_pos += (s->spp -
+					((new_ftr_pos + s->bm_secs) % s->spp));
+
+		/* push footer forward */
+		ret = lseek(s->fd, new_ftr_pos << VHD_SECTOR_SHIFT, SEEK_SET);
+		if (ret == (off_t)-1) {
+			DPRINTF("ERROR: seeking footer extension\n");
+			return -errno;
+		}
+                        
+		ret = vhd_write_hd_ftr(s->fd, &s->ftr);
+		if (ret) {
+			DPRINTF("ERROR: writing footer\n");
+			return -errno;
+		}
+
+		/* write empty bitmap */
+		ret = lseek(s->fd, bm_off, SEEK_SET);
+		if (ret == (off_t)-1) {
+			DPRINTF("ERROR: seeking bitmap extension\n");
+			return -errno;
+		}
+
+		alloc_vhd_bitmap(s, &bm, blk);
+		install_bitmap(s, bm);
+
+		ret = atomicio(vwrite, s->fd, bm->map, bm_size);
+		if (ret != bm_size) {
+			DPRINTF("ERROR: writing bitmap: %d\n", errno);
+			return -errno;
+		}
+
+		/* update bat */
+		bat_entry(s, blk) = s->next_db;
+		memcpy(buf, &s->bat.bat[bat_idx], VHD_SECTOR_SIZE);
+		for (i = 0; i < 128; i++)
+			BE32_OUT(&((u32 *)buf)[i]);
+
+		ret = lseek(s->fd, s->hdr.table_offset + bat_idx * 4, SEEK_SET);
+		if (ret == (off_t)-1) {
+			DPRINTF("ERROR: seeking bat update\n");
+			return -errno;
+		}
+
+		ret = atomicio(vwrite, s->fd, buf, VHD_SECTOR_SIZE);
+		if (ret !=  VHD_SECTOR_SIZE) {
+			DPRINTF("ERROR: updating bat: %d\n", errno);
+			return -errno;
+		}
+
+		s->next_db = new_ftr_pos;
+		db_start   = bat_entry(s, blk);
+	}
+
+	db_start <<= SECTOR_SHIFT;
+
+	bm = get_bitmap(s, blk);
+	if (!bm) {
+		alloc_vhd_bitmap(s, &bm, blk);
+
+		/* Read the DB bitmap. */
+		ret = lseek(s->fd, db_start, SEEK_SET);
+		if (ret == (off_t)-1) {
+			DPRINTF("ERROR: seeking data block\n");
+			return -errno;
+		}
+
+		ret = atomicio(read, s->fd, bm->map, bm_size);
+		if (ret !=  bm_size) {
+			DPRINTF("ERROR: reading block bitmap: %d\n", errno);
+			return -errno;
+		}
+
+		install_bitmap(s, bm);
+	}
+
+	if (!test_bit(sec, (void *)bm->map) && !allocate) {
+		/* not allocating: return number of contiguous zeros */
+		for (num = 0; sec + num < s->spb && num < *nr_secs; num++)
+			if (test_bit(sec + num, (void *)bm->map))
+				break;
+
+		*nr_secs = num;
+		return BLK_NOT_ALLOCATED;
+	}
+
+	if (!test_bit(sec, (void *)bm->map) && allocate) {
+		/* allocate sectors and write bitmap */
+		memcpy(bm->shadow, bm->map, bm_size);
+		for (num = 0; sec + num < s->spb && num < *nr_secs; num++)
+			set_bit(sec + num, (void *)bm->shadow);
+
+		ret = lseek(s->fd, db_start, SEEK_SET);
+		if (ret == (off_t)-1) {
+			DPRINTF("ERROR: seeking data block\n");
+			return -errno;
+		}
+
+		ret = atomicio(vwrite, s->fd, bm->shadow, bm_size);
+		if (ret !=  bm_size) {
+			DPRINTF("ERROR: writing bitmap: %d\n", errno);
+			return -errno;
+		}
+
+		memcpy(bm->map, bm->shadow, bm_size);
+		*nr_secs = num;
+	} else {
+		/* count number of contiguously allocated sectors */
+		for (num = 0; sec + num < s->spb && num < *nr_secs; num++)
+			if (!test_bit(sec + num, (void *)bm->map))
+				break;
+
+		*nr_secs = num;
+	}
+
+	*offset = db_start + ((s->bm_secs + sec) << VHD_SECTOR_SHIFT);
+	return 1;
+}
+
+int vhd_sync_read(struct disk_driver *dd, uint64_t sector,
+		  int nb_sectors, char *buf, td_callback_t cb,
+		  int id, void *private)
+{
+	uint64_t off;
+	int i, err, secs, bytes, ret, rsp = 0;
+	struct vhd_state *s = (struct vhd_state *)dd->private;
+
+	DBG("%s: %s: sector: %llu, nb_sectors: %d (seg: %d), buf: %p\n",
+	    __func__, s->name, sector, nb_sectors, (int)private, buf);
+
+	for (i = 0; i < nb_sectors; i += secs) {
+		err  = -EIO;
+		secs = nb_sectors - i;
+		ret  = get_sector_offset(s, sector + i, &off, &secs, 0);
+
+		DBG("get_sector_offset returned: %d, off: %llu, secs: %d\n",
+		    ret, off, secs);
+
+		if (ret < 0)
+			goto cb;
+
+		if (ret == BLK_NOT_ALLOCATED) {
+			err = BLK_NOT_ALLOCATED;
+			goto cb;
+		}
+
+		if (lseek(s->fd, off, SEEK_SET) == (off_t)-1)
+			goto cb;
+
+		bytes = secs << VHD_SECTOR_SHIFT;
+		if (atomicio(read, s->fd, 
+			     buf + (i << VHD_SECTOR_SHIFT), bytes) != bytes)
+			goto cb;
+
+		err = 0;
+	cb:
+		rsp += cb(dd, err, sector + i, secs, id, private);
+	}
+
+	return rsp;
+}
+
+int vhd_sync_write(struct disk_driver *dd, uint64_t sector,
+		   int nb_sectors, char *buf, td_callback_t cb,
+		   int id, void *private)
+{
+	uint64_t off;
+	int i, err, secs, bytes, ret;
+	struct vhd_state *s = (struct vhd_state *)dd->private;
+
+	DBG("%s: %s: sector: %llu, nb_sectors: %d (seg: %d), buf: %p\n",
+	    __func__, s->name, sector, nb_sectors, (int)private, buf);
+
+	err = -EIO;
+
+	for (i = 0; i < nb_sectors; i += secs) {
+		secs = nb_sectors - i;
+		ret = get_sector_offset(s, sector + i, &off, &secs, 1);
+
+		DBG("get_sector_offset returned: %d, off: %llu, secs: %d\n",
+		    ret, off, secs);
+
+		if (ret != 1)
+			goto done;
+
+		if (lseek(s->fd, off, SEEK_SET) == (off_t)-1)
+			goto done;
+
+		bytes = secs << VHD_SECTOR_SHIFT;
+		if (atomicio(vwrite, s->fd, 
+			     buf + (i << VHD_SECTOR_SHIFT), bytes) != bytes)
+			goto done;
+	}
+
+	err = 0;
+
+ done:
+	return cb(dd, err, sector, nb_sectors, id, private);
+}
+/*---------------------------------------------------------------------------
+ * END SYNCHRONOUS FUNCTIONS
+ *---------------------------------------------------------------------------*/
+
 static int
 read_bitmap_cache(struct vhd_state *s, uint64_t sector, uint8_t op)
 {
@@ -2252,6 +2524,10 @@ vhd_queue_read(struct disk_driver *dd, uint64_t sector,
 	uint64_t sec, end;
 	struct vhd_state *s = (struct vhd_state *)dd->private;
 
+	if (s->sync)
+		return vhd_sync_read(dd, sector, nr_sectors, 
+				     buf, cb, id, private);
+
 	tp_log(&s->tp, sector, TAPPROF_IN);
 
 	DBG("%s: %s: sector: %llu, nb_sectors: %d (seg: %d), buf: %p\n",
@@ -2341,6 +2617,10 @@ vhd_queue_write(struct disk_driver *dd, uint64_t sector,
 {
 	uint64_t sec, end;
 	struct vhd_state *s = (struct vhd_state *)dd->private;
+
+	if (s->sync)
+		return vhd_sync_write(dd, sector, nr_sectors,
+				      buf, cb, id, private);
 
 	tp_log(&s->tp, sector, TAPPROF_IN);
 
