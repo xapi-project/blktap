@@ -2119,7 +2119,6 @@ alloc_vhd_request(struct vhd_state *s)
 		return req;
 	}
 
-	DPRINTF("ERROR: %s: -ENOMEM\n", __func__);
 	return NULL;
 }
 
@@ -2291,7 +2290,7 @@ schedule_data_read(struct vhd_state *s, uint64_t sector,
  make_request:
 	req = alloc_vhd_request(s);
 	if (!req) 
-		return -ENOMEM;
+		return -EBUSY;
 
 	req->lsec    = sector;
 	req->nr_secs = nr_secs;
@@ -2349,7 +2348,7 @@ schedule_data_write(struct vhd_state *s, uint64_t sector,
  make_request:
 	req = alloc_vhd_request(s);
 	if (!req)
-		return -ENOMEM;
+		return -EBUSY;
 
 	req->lsec    = sector;
 	req->nr_secs = nr_secs;
@@ -2493,7 +2492,7 @@ __vhd_queue_request(struct vhd_state *s, uint8_t op,
 
 	req = alloc_vhd_request(s);
 	if (!req)
-		return -ENOMEM;
+		return -EBUSY;
 
 	req->lsec    = sector;
 	req->nr_secs = nr_secs;
