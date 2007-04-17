@@ -1821,6 +1821,12 @@ static int get_sector_offset(struct vhd_state *s, uint64_t sector,
 	u32 blk, sec, *bitmap;
 	struct vhd_bitmap *bm;
 
+	/* in fixed disks, every block is present */
+	if (s->ftr.type == HD_TYPE_FIXED) {
+		*offset = sector << VHD_SECTOR_SHIFT;
+		return 1;
+	}
+
 	blk = sector / s->spb;
 	sec = sector % s->spb;
 
