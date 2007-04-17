@@ -882,7 +882,9 @@ __vhd_open (struct disk_driver *dd, const char *name, vhd_flag_t flags)
                 DPRINTF("Error reading VHD footer.\n");
                 return -EINVAL;
         }
+#if (DEBUGGING == 1)
         debug_print_footer(&s->ftr);
+#endif
 
         /* If this is a dynamic or differencing disk, read the dd header. */
         if ((s->ftr.type == HD_TYPE_DYNAMIC) ||
@@ -899,7 +901,9 @@ __vhd_open (struct disk_driver *dd, const char *name, vhd_flag_t flags)
 				 s->hdr.hdr_ver);
                         return -EINVAL;
                 }
+#if (DEBUGGING == 1)
                 debug_print_header(&s->hdr);
+#endif
 
 		s->spp     = getpagesize() >> VHD_SECTOR_SHIFT;
                 s->spb     = s->hdr.block_size >> VHD_SECTOR_SHIFT;
@@ -1444,8 +1448,10 @@ __vhd_create(const char *name, uint64_t total_size,
 		}
 
 		hdr->checksum = h_checksum(hdr);
+#if (DEBUGGING == 1)
 		debug_print_footer(ftr);
 		debug_print_header(hdr);
+#endif
 
 		/* copy of footer */
 		if (lseek64(fd, 0, SEEK_SET) == (off64_t)-1) {
