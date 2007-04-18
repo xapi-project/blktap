@@ -31,11 +31,15 @@ clean:
 	rm -f $(MY_OBJ_DIR)/version.inc
 
 SOURCES = $(RPM_SOURCESDIR)/blktap-$(BLKTAP_VERSION).tar.bz2 \
+          $(RPM_SOURCESDIR)/blktap-development.patch \
           $(RPM_SPECSDIR)/blktap.spec
 
 
 $(RPM_SOURCESDIR)/blktap-$(BLKTAP_VERSION).tar.bz2: $(RPM_SOURCESDIR)/.dirstamp $(call hg_loc,blktap)
 	hg -R $(call hg_loc,blktap) archive -t tbz2 $@
+
+$(RPM_SOURCESDIR)/blktap-development.patch: $(RPM_SOURCESDIR)/.dirstamp $(call hg_loc,blktap)
+	hg -R $(call hg_loc,blktap) diff > $@
 
 $(RPM_SPECSDIR)/blktap.spec: blktap.spec.in $(RPM_SPECSDIR)/.dirstamp
 # Use a temporary file because sed in rhel3 doesn't understand "\n"
