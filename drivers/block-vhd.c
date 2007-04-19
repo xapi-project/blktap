@@ -47,6 +47,7 @@
 #define TRACING     0
 #define DEBUGGING   0
 #define ASSERTING   1
+#define PREALLOCATE_BLOCKS 0
 
 /* SYCHRONOUS can be set to 1 to force the synchronous IO path.
  * The synchronous path will also be used by default if io_setup fails. */
@@ -233,6 +234,11 @@ struct vhd_state {
 	int                   poll_fd;         /* requires aio_poll support */
 
 	char                 *name;
+
+#ifdef PREALLOCATE_BLOCKS
+	char                 *zeros;
+	int                   zsize;
+#endif
 
 	/* debug info */
 	struct profile_info   tp;
@@ -818,12 +824,21 @@ alloc_bat(struct vhd_state *s)
 	if (!s->bat.bat)
 		return -ENOMEM;
 
+#ifdef PREALLOCATE_BLOCKS
+	s->zsize = (s->bm_secs + s->spb) << VHD_SECTOR_SHIFT;
+	if (posix_memalign((void **)&s->zeros, VHD_SECTOR_SIZE, s->zsize)) {
+		free_bat(s);
+		return -ENOMEM;
+	}
+	memset(s->zeros, 0, s->zsize);
+#else
 	if (posix_memalign((void **)&s->bat.zero_req.buf,
 			   VHD_SECTOR_SIZE, s->bm_secs << VHD_SECTOR_SHIFT)) {
 		free_bat(s);
 		return -ENOMEM;
 	}
 	memset(s->bat.zero_req.buf, 0, s->bm_secs << VHD_SECTOR_SHIFT);
+#endif
 
 	if (posix_memalign((void **)&s->bat.req.buf, 
 			   VHD_SECTOR_SIZE, VHD_SECTOR_SIZE)) {
@@ -2212,8 +2227,8 @@ schedule_bat_write(struct vhd_state *s)
 	aio_write(s, req, offset);
 	set_vhd_flag(s->bat.status, VHD_FLAG_BAT_WRITE_STARTED);
 
-	DBG("bat write scheduled: %s, blk: %u, offset: %llu\n",
-	    s->name, blk, offset);
+	DBG("bat write scheduled: blk: %u, pbwo: %llu, table_offset: %llu\n",
+		blk, s->bat.pbw_offset, offset);
 
 	tp_log(&s->tp, blk, TAPPROF_OUT);
 
@@ -2267,6 +2282,51 @@ update_bat(struct vhd_state *s, uint32_t blk)
 	reserve_new_block(s, blk);
 	schedule_zero_bm_write(s, bm);
 	set_vhd_flag(bm->tx.status, VHD_FLAG_TX_UPDATE_BAT);
+
+	return 0;
+}
+
+static int
+allocate_block(struct vhd_state *s, uint32_t blk)
+{
+	int err;
+	uint64_t offset;
+	struct vhd_bitmap *bm;
+
+	ASSERT(s, bat_entry(s, blk) == DD_BLK_UNUSED);
+
+	if (bat_locked(s)) {
+		ASSERT(s, s->bat.pbw_blk == blk);
+		return 0;
+	}
+
+	s->bat.pbw_blk    = blk;
+	s->bat.pbw_offset = s->next_db;
+	offset            = s->bat.pbw_offset << VHD_SECTOR_SHIFT;
+
+	DBG("%s: blk: %u, pbwo: %llu\n",
+		__func__, blk, s->bat.pbw_offset);
+
+	if (lseek(s->fd, offset, SEEK_SET) == (off_t)-1) {
+		DPRINTF("%s: lseek failed: %d\n", __func__, errno);
+		return -errno;
+	}
+
+	if ((err = write(s->fd, s->zeros, s->zsize)) != s->zsize) {
+		DPRINTF("%s: write failed: %d\n", __func__, errno);
+		return (err == -1 ? -errno : -EIO);
+	}
+	
+	/* install empty bitmap in cache */
+	err = alloc_vhd_bitmap(s, &bm, blk);
+	if (err)
+		return err;
+
+	lock_bat(s);
+	lock_bitmap(bm);
+	install_bitmap(s, bm);
+	schedule_bat_write(s);
+	add_to_transaction(&bm->tx, &s->bat.req);
 
 	return 0;
 }
@@ -2347,7 +2407,11 @@ schedule_data_write(struct vhd_state *s, uint64_t sector,
 	offset = bat_entry(s, blk);
 
 	if (test_vhd_flag(flags, VHD_FLAG_REQ_UPDATE_BAT)) {
+#ifdef PREALLOCATE_BLOCKS
+		err = allocate_block(s, blk);
+#else
 		err = update_bat(s, blk);
+#endif
 		if (err)
 			return err;
 
@@ -2808,6 +2872,7 @@ finish_bitmap_transaction(struct disk_driver *dd,
 	DBG("%s: blk: %u, err: %d\n", __func__, bm->blk, error);
 	tx->error = (tx->error ? tx->error : error);
 
+#ifndef PREALLOCATE_BLOCKS
 	if (test_vhd_flag(tx->status, VHD_FLAG_TX_UPDATE_BAT)) {
 		/* still waiting for bat write */
 		ASSERT(s, bm->blk == s->bat.pbw_blk);
@@ -2816,6 +2881,7 @@ finish_bitmap_transaction(struct disk_driver *dd,
 		s->bat.req.tx = tx;
 		return 0;
 	}
+#endif
 
 	/* transaction done; signal completions */
 	rsp += signal_completion(dd, tx->requests.head, tx->error);
@@ -2860,7 +2926,8 @@ finish_bat_write(struct disk_driver *dd, struct vhd_request *req)
 
 	bm = get_bitmap(s, s->bat.pbw_blk);
 	
-	DBG("%s: blk %u, err %d\n", __func__, s->bat.pbw_blk, req->error);
+	DBG("%s: blk %u, pbwo: %llu, err %d\n", 
+		__func__, s->bat.pbw_blk, s->bat.pbw_offset, req->error);
 	ASSERT(s, bm && bitmap_valid(bm));
 	ASSERT(s, bat_locked(s) &&
 	       test_vhd_flag(s->bat.status, VHD_FLAG_BAT_WRITE_STARTED));
@@ -2879,9 +2946,16 @@ finish_bat_write(struct disk_driver *dd, struct vhd_request *req)
 	} else
 		tx->error = req->error;
 
+#ifdef PREALLOCATE_BLOCKS
+	tx->finished++;
+	remove_from_req_list(&tx->requests, req);
+	if (transaction_completed(tx))
+		finish_data_transaction(dd, bm);
+#else
 	clear_vhd_flag(tx->status, VHD_FLAG_TX_UPDATE_BAT);
 	if (s->bat.req.tx)
 		rsp += finish_bitmap_transaction(dd, bm, req->error);
+#endif
 
 	unlock_bat(s);
 	init_bat(s);
