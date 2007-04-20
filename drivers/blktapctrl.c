@@ -279,6 +279,7 @@ static int write_msg(int fd, int msgtype, void *ptr, void *ptr2)
 	msg_params_t *msg_p;
 	msg_newdev_t *msg_dev;
 	msg_cp_t *msg_cp;
+	msg_lock_t *msg_lock;
 	char *buf, *path;
 	int msglen, len, ret;
 	fd_set writefds;
@@ -286,6 +287,7 @@ static int write_msg(int fd, int msgtype, void *ptr, void *ptr2)
 	image_t *image, *img;
 	uint32_t seed;
 	struct cp_request *req;
+	struct lock_request *lock_req;
 
 	blkif = (blkif_t *)ptr;
 	blk = blkif->info;
@@ -296,11 +298,11 @@ static int write_msg(int fd, int msgtype, void *ptr, void *ptr2)
 	{
 	case CTLMSG_PARAMS:
 		path = (char *)ptr2;
-		DPRINTF("Write_msg called: CTLMSG_PARAMS, sending [%s, %s]\n",
-			path, blk->vm_uuid);
+		DPRINTF("Write_msg called: CTLMSG_PARAMS, sending [%s]\n",
+			path);
 
 		msglen = sizeof(msg_hdr_t) + sizeof(msg_params_t) +
-			strlen(path) + strlen(blk->vm_uuid) + 2;
+			strlen(path) + 1;
 		buf = malloc(msglen);
 		if (!buf)
 			return -1;
@@ -322,10 +324,6 @@ static int write_msg(int fd, int msgtype, void *ptr, void *ptr2)
 		msg_p->path_off = sizeof(msg_hdr_t) + sizeof(msg_params_t);
 		msg_p->path_len = strlen(path) + 1;
 		memcpy(&buf[msg_p->path_off], path, msg_p->path_len);
-
-		msg_p->uuid_off = msg_p->path_off + msg_p->path_len;
-		msg_p->uuid_len = strlen(blk->vm_uuid) + 1;
-		memcpy(&buf[msg_p->uuid_off], blk->vm_uuid, msg_p->uuid_len);
 
 		break;
 
@@ -406,6 +404,35 @@ static int write_msg(int fd, int msgtype, void *ptr, void *ptr2)
 		memcpy(&buf[msg_cp->cp_uuid_off], 
 		       req->cp_uuid, msg_cp->cp_uuid_len);
 		
+		break;
+
+	case CTLMSG_LOCK:
+		DPRINTF("Write_msg called: CTLMSG_LOCK\n");
+		lock_req = (struct lock_request *)ptr2;
+		msglen = sizeof(msg_hdr_t) + sizeof(msg_lock_t);
+		if (lock_req->locking)
+			msglen += strlen(lock_req->lock_uuid) + 1;
+		buf = calloc(1, msglen);
+		if (!buf)
+			return -1;
+
+		msg = (msg_hdr_t *)buf;
+		msg->type = CTLMSG_LOCK;
+		msg->len = msglen;
+		msg->drivertype = blkif->drivertype;
+		msg->cookie = blkif->cookie;
+
+		msg_lock = (msg_lock_t *)(buf + sizeof(msg_hdr_t));
+		msg_lock->locking = lock_req->locking;
+		if (msg_lock->locking) {
+			msg_lock->ro = lock_req->ro;
+			msg_lock->uuid_off = sizeof(msg_hdr_t) + 
+				sizeof(msg_lock_t);
+			msg_lock->uuid_len = strlen(lock_req->lock_uuid) + 1;
+			memcpy(&buf[msg_lock->uuid_off], 
+			       lock_req->lock_uuid, msg_lock->uuid_len);
+		}
+
 		break;
 		
 	default:
@@ -670,7 +697,7 @@ int blktapctrl_checkpoint(blkif_t *blkif, char *cp_request)
 
 	if (write_msg(blkif->fds[WRITE], 
 		      CTLMSG_CHECKPOINT, blkif, &req) <= 0) {
-		DPRINTF("Write_msg failed - CLTMSG_CHECKPOINT\n");
+		DPRINTF("Write_msg failed - CTLMSG_CHECKPOINT\n");
 		return -EIO;
 	}
 
@@ -680,6 +707,50 @@ int blktapctrl_checkpoint(blkif_t *blkif, char *cp_request)
 	}
 
 	return blkif->err;
+}
+
+int blktapctrl_lock(blkif_t *blkif)
+{
+	int len, err = 0;
+	char *tmp, *lock, rw;
+	struct lock_request req;
+
+	lock = blkif->lock_info;
+
+	if (!lock)
+		return -EINVAL;
+
+	memset(&req, 0, sizeof(struct lock_request));
+
+	if (!strcmp(lock, "nil"))
+		req.locking = 0;
+	else {
+		req.locking = 1;
+		tmp = strchr(lock, ':');
+		if (!tmp)
+			return -EINVAL;
+
+		rw = *(tmp + 1);
+		if (rw == 'r')
+			req.ro = 1;
+		else if (rw != 'w')
+			return -EINVAL;
+
+		req.lock_uuid = malloc(tmp - lock + 1);
+		if (!req.lock_uuid)
+			return -ENOMEM;
+
+		memcpy(req.lock_uuid, lock, tmp - lock);
+		req.lock_uuid[tmp - lock] = '\0';
+	}
+
+	if (write_msg(blkif->fds[WRITE], CTLMSG_LOCK, blkif, &req) <= 0) {
+		DPRINTF("Write_msg failed - CTLMSG_LOCK\n");
+		err = -EIO;
+	}
+	
+	free(req.lock_uuid);
+	return err;
 }
 
 int open_ctrl_socket(char *devname)
@@ -775,6 +846,7 @@ int main(int argc, char *argv[])
 	register_new_devmap_hook(map_new_blktapctrl);
 	register_new_unmap_hook(unmap_blktapctrl);
 	register_new_checkpoint_hook(blktapctrl_checkpoint);
+	register_new_lock_hook(blktapctrl_lock);
 
 	/* Attach to blktap0 */
 	asprintf(&devname,"%s/%s0", BLKTAP_DEV_DIR, BLKTAP_DEV_NAME);

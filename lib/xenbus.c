@@ -49,12 +49,13 @@
 #include <poll.h>
 #include <time.h>
 #include <sys/time.h>
+#include <syslog.h>
 #include "blktaplib.h"
 #include "list.h"
 #include "xs_api.h"
 
-#if 0
-#define DPRINTF(_f, _a...) printf ( _f , ## _a )
+#if 1
+#define DPRINTF(_f, _a...) syslog(LOG_DEBUG, _f, ## _a )
 #else
 #define DPRINTF(_f, _a...) ((void)0)
 #endif
@@ -150,6 +151,59 @@ static int backend_remove(struct xs_handle *h, struct backend_info *be)
 	return 0;
 }
 
+static void handle_checkpoint_request(struct xs_handle *h, char *bepath)
+{
+	int err;
+	char *cp_uuid, *cpp, *rsp;
+	struct backend_info *binfo;
+
+	if (asprintf(&cpp, "%s/checkpoint", bepath) == -1)
+		return;
+
+	err = xs_gather(h, cpp, "rsp", NULL, &rsp, NULL);
+	if (!err) {
+		free(rsp);
+		goto out;   /* request already serviced */
+	}
+
+	err = xs_gather(h, cpp, "cp_uuid", NULL, &cp_uuid, NULL);
+	if (!err) {
+		binfo = be_lookup_be(bepath);
+		if (binfo) {
+			err = blkif_checkpoint(binfo->blkif, cp_uuid);
+			xs_printf(h, cpp, "rsp", "%d", err);
+		}
+		free(cp_uuid);
+	}
+
+ out:
+	free(cpp);
+}
+
+static void handle_lock_request(struct xs_handle *h, char *bepath)
+{
+	int err;
+	char *lock;
+	struct backend_info *binfo;
+
+	err = xs_gather(h, bepath, "lock", NULL, &lock, NULL);
+	if (err)
+		return;
+
+	binfo = be_lookup_be(bepath);
+	if (binfo) {
+		if (!binfo->blkif->lock_info || 
+		    strcmp(binfo->blkif->lock_info, lock)) {
+			free(binfo->blkif->lock_info);
+			binfo->blkif->lock_info = lock;
+			blkif_lock(binfo->blkif);
+			return;
+		}
+	}
+
+	free(lock);
+}
+
 static void ueblktap_setup(struct xs_handle *h, char *bepath)
 {
 	struct backend_info *be;
@@ -205,9 +259,6 @@ static void ueblktap_setup(struct xs_handle *h, char *bepath)
 		if (er)
 			goto fail;
 		
-		if (asprintf(&blk->vm_uuid, "%ld", be->frontend_id) == -1)
-			goto fail;
-
 		be->blkif->info = blk;
 		
 		if (deverr) {
@@ -221,6 +272,9 @@ static void ueblktap_setup(struct xs_handle *h, char *bepath)
 			DPRINTF("Unable to open device %s\n",blk->params);
 			goto fail;
 		}
+
+		/* start locking if needed */
+		handle_lock_request(h, bepath);
 
 		DPRINTF("[BECHG]: ADDED A NEW BLKIF (%s)\n", bepath);
 	}
@@ -331,26 +385,11 @@ static void ueblktap_probe(struct xs_handle *h, struct xenbus_watch *w,
 	/* Are we already tracking this device? */
 	if (be_exists_be(bepath)) {
 		/* check for snapshot request */
-		char *cp_uuid, *cpp, *rsp;
-		if (asprintf(&cpp, "%s/checkpoint", bepath) == -1)
-			goto free_be;
-		er = xs_gather(h, cpp, "rsp", NULL, &rsp, NULL);
-		if (!er) {
-			/* request already serviced */
-			free(rsp);
-			free(cpp);
-			goto free_be;
-		}
-		er = xs_gather(h, cpp, "cp_uuid", NULL, &cp_uuid, NULL);
-		if (!er) {
-			struct backend_info *binfo = be_lookup_be(bepath);
-			if (binfo) {
-				er = blkif_checkpoint(binfo->blkif, cp_uuid);
-				xs_printf(h, cpp, "rsp", "%d", er);
-			}
-			free(cp_uuid);
-		}
-		free(cpp);
+		handle_checkpoint_request(h, bepath);
+
+		/* check for lock request */
+		handle_lock_request(h, bepath);
+
 		goto free_be;
 	}
 	

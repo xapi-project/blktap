@@ -98,6 +98,12 @@ void register_new_checkpoint_hook(int (*fn)(blkif_t *blkif, char *cp_uuid))
 	new_checkpoint_hook = fn;
 }
 
+static int (*new_lock_hook)(blkif_t *blkif) = NULL;
+void register_new_lock_hook(int (*fn)(blkif_t *blkif))
+{
+	new_lock_hook = fn;
+}
+
 int blkif_init(blkif_t *blkif, long int handle, long int pdev, 
                long int readonly)
 {
@@ -184,6 +190,7 @@ void free_blkif(blkif_t *blkif)
 		}
 		if (new_unmap_hook != NULL && blkif->devnum != -1) 
 			new_unmap_hook(blkif);
+		free(blkif->lock_info);
 		free(blkif);
 	}
 }
@@ -193,6 +200,13 @@ int blkif_checkpoint(blkif_t *blkif, char *cp_uuid)
 	if (!new_checkpoint_hook)
 		return -1;
 	return new_checkpoint_hook(blkif, cp_uuid);
+}
+
+int blkif_lock(blkif_t *blkif)
+{
+	if (!new_lock_hook)
+		return -1;
+	return new_lock_hook(blkif);
 }
 
 void __init_blkif(void)

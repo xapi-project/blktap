@@ -43,22 +43,14 @@
 #define INPUT 0
 #define OUTPUT 1
 
-#if defined(USE_NFS_LOCKS)
-#define LOCK_VDI(d,s,lval,lease,clause)                                                           \
-        if ((lval = lock(d->name, s->vm_uuid, 0, (d->flags & TD_RDONLY) ? 1 : 0, &lease)) <= 0) { \
-                DPRINTF("failed to get lock for %s, err=%d\n", d->name, lval);                    \
-                clause;                                                                           \
-        }
-#else
-#define LOCK_VDI(d,s,lval,lease,clause) lval;
-#endif
-
 static int maxfds, fds[2], run = 1;
 
 static pid_t process;
 int connected_disks = 0;
 fd_list_entry_t *fd_start = NULL;
-int min_lease_time = DEFAULT_LEASE_TIME_SECS;
+
+#define ONE_DAY (24 * 60 * 60)
+int force_lock_check = 0;
 
 int do_cow_read(struct disk_driver *dd, blkif_request_t *req, 
 		int sidx, uint64_t sector, int nr_secs);
@@ -168,7 +160,7 @@ static struct tap_disk *get_driver(int drivertype)
 	return dtypes[drivertype]->drv;
 }
 
-static struct td_state *state_init(char *vm_uuid)
+static struct td_state *state_init(void)
 {
 	int i;
 	struct td_state *s;
@@ -176,7 +168,6 @@ static struct td_state *state_init(char *vm_uuid)
 
 	s = calloc(1, sizeof(struct td_state));
 	blkif = s->blkif = malloc(sizeof(blkif_t));
-	s->vm_uuid = vm_uuid;
 	s->ring_info = calloc(1, sizeof(tapdev_info_t));
 
 	for (i = 0; i < MAX_REQUESTS; i++) {
@@ -193,7 +184,7 @@ static void free_state(struct td_state *s)
 		return;
 	free(s->fd_entry);
 	free(s->blkif);
-	free(s->vm_uuid);
+	free(s->lock_uuid);
 	free(s->ring_info);
 	free(s);
 }
@@ -322,8 +313,6 @@ static int open_disk(struct td_state *s,
 	td_flag_t pflags;
 	struct disk_id id;
 	struct disk_driver *d;
-	int lval;
-        int lease = min_lease_time;
 
 	dup = strdup(path);
 	if (!dup)
@@ -333,9 +322,6 @@ static int open_disk(struct td_state *s,
 	s->disks = d = disk_init(s, drv, dup, flags);
 	if (!d)
 		return -ENOMEM;
-
-        LOCK_VDI(d,s,lval,lease,goto fail);
-        min_lease_time = (lease < min_lease_time) ? lease : min_lease_time;
 
 	err = d->drv->td_open(d, path, flags);
 	if (err) {
@@ -360,9 +346,6 @@ static int open_disk(struct td_state *s,
 		new = disk_init(s, get_driver(id.drivertype), dup, pflags);
 		if (!new)
 			goto fail;
-
-                LOCK_VDI(new,s,lval,lease,goto fail);
-                min_lease_time = (lease < min_lease_time) ? lease : min_lease_time;
 
 		err = new->drv->td_open(new, new->name, pflags);
 		if (err) {
@@ -392,7 +375,6 @@ static int open_disk(struct td_state *s,
 	d = s->disks;
 	while (d) {
 		struct disk_driver *tmp = d->next;
-                /* remove lock from backing files if necessary */
 		d->drv->td_close(d);
 		free_driver(d);
 		d = tmp;
@@ -435,6 +417,11 @@ static inline int drain_queue(struct td_state *s)
 static inline void start_queue(struct td_state *s)
 {
 	s->flags &= ~TD_DRAIN_QUEUE;
+}
+
+static inline int queue_closed(struct td_state *s)
+{
+	return (s->flags & TD_CLOSED || s->flags & TD_DEAD);
 }
 
 /*
@@ -545,13 +532,14 @@ static int checkpoint(struct td_state *s)
 static int read_msg(char *buf)
 {
 	int length, len, msglen, tap_fd, *io_fd;
-	char *path = NULL, *vm_uuid = NULL, *cp_uuid = NULL;
+	char *path = NULL, *cp_uuid = NULL;
 	image_t *img;
 	msg_hdr_t *msg;
 	msg_params_t *msg_p;
 	msg_newdev_t *msg_dev;
 	msg_pid_t *msg_pid;
 	msg_cp_t *msg_cp;
+	msg_lock_t *msg_lock;
 	struct tap_disk *drv;
 	int ret = -1;
 	struct td_state *s = NULL;
@@ -569,15 +557,12 @@ static int read_msg(char *buf)
 		case CTLMSG_PARAMS:
 			msg_p   = (msg_params_t *)(buf + sizeof(msg_hdr_t));
 			path    = calloc(1, msg_p->path_len);
-			vm_uuid = calloc(1, msg_p->uuid_len);
-			if (!path || !vm_uuid)
+			if (!path)
 				goto params_done;
 
 			memcpy(path, &buf[msg_p->path_off], msg_p->path_len);
-			memcpy(vm_uuid, &buf[msg_p->uuid_off], msg_p->uuid_len);
 
-			DPRINTF("Received CTLMSG_PARAMS: [%s, %s]\n", 
-				path, vm_uuid);
+			DPRINTF("Received CTLMSG_PARAMS: [%s]\n", path);
 
 			/*Assign driver*/
 			drv = get_driver(msg->drivertype);
@@ -588,7 +573,7 @@ static int read_msg(char *buf)
 				drv->disk_type, msg->drivertype);
 
 			/* Allocate the disk structs */
-			s = state_init(vm_uuid);
+			s = state_init();
 			if (s == NULL)
 				goto params_done;
 
@@ -617,7 +602,6 @@ static int read_msg(char *buf)
 				msg->type = CTLMSG_IMG_FAIL;
 				msg->len = msglen;
 				free_state(s);
-				free(vm_uuid);
 			}
 
 			len = write(fds[WRITE], buf, msglen);
@@ -678,8 +662,11 @@ static int read_msg(char *buf)
 				DPRINTF("concurrent checkpoints requested\n");
 				goto cp_fail;
 			}
+			if (queue_closed(s)) {
+				DPRINTF("checkpoint fail: queue closed\n");
+				goto cp_fail;
+			}
 
-			ret = -EINVAL;
 			s->cp_drivertype = msg_cp->cp_drivertype;
 			drv = get_driver(s->cp_drivertype);
 			if (!drv || !drv->td_snapshot)
@@ -705,6 +692,42 @@ static int read_msg(char *buf)
 
 		cp_fail:
 			write_checkpoint_rsp(ret);
+			return 1;
+
+		case CTLMSG_LOCK:
+			msg_lock = (msg_lock_t *)(buf + sizeof(msg_hdr_t));
+			
+#ifdef USE_NFS_LOCKS
+			DPRINTF("locking: %d\n", msg_lock->locking);
+#else
+			DPRINTF("locking support not enabled!\n");
+			return 1;
+#endif
+
+			s = get_state(msg->cookie);
+			if (!s)
+				return 1;
+
+			if (!msg_lock->locking) {
+				s->flags &= ~TD_LOCKING;
+				s->flags &= ~TD_CLOSED;
+				return 1;
+			}
+
+			free(s->lock_uuid);
+			s->lock_uuid = malloc(msg_lock->uuid_len);
+			if (!s->lock_uuid)
+				return 1;
+			
+			memcpy(s->lock_uuid, 
+			       &buf[msg_lock->uuid_off], msg_lock->uuid_len);
+			s->lock_ro = msg_lock->ro;
+			s->flags  |= TD_LOCKING;
+			force_lock_check = 1;
+			
+			DPRINTF("%s: lock_uuid: %s, ro: %d\n",
+				__func__, s->lock_uuid, s->lock_ro);
+
 			return 1;
 
 		default:
@@ -895,6 +918,11 @@ static void get_io_request(struct td_state *s)
 			sector_nr = req->sector_number;
 		}
 
+		if (queue_closed(s)) {
+			blkif->pending_list[idx].status = BLKIF_RSP_ERROR;
+			goto send_response;
+		}
+
 		if ((dd->flags & TD_RDONLY) && 
 		    (req->operation == BLKIF_OP_WRITE)) {
 			blkif->pending_list[idx].status = BLKIF_RSP_ERROR;
@@ -988,32 +1016,59 @@ static void get_io_request(struct td_state *s)
 }
 
 #if defined(USE_NFS_LOCKS)
-static int assert_locks(void)
+static inline int check_locks(struct timeval *tv)
 {
-        fd_list_entry_t *ptr;
-        int lval;
-        int lease;
-        struct disk_driver *dd;
+	int ret = (!tv->tv_sec || force_lock_check);
+	force_lock_check = 0;
+	return ret;
+}
 
-        /* reassert locks for all disks */
-        ptr = fd_start;
-        while (ptr != NULL) {
-                td_for_each_disk(ptr->s, dd) {
-                        LOCK_VDI(dd,ptr->s,lval,lease,goto fail);
-                        min_lease_time = (lease < min_lease_time) 
-                                        ? lease : min_lease_time;
-                }
-                ptr = ptr->next;
-        }
+static long lock_disk(struct disk_driver *dd)
+{
+	int ret, lease;
+	struct td_state *s = dd->td_state;
 
-        return 0;
+	ret = lock(dd->name, s->lock_uuid, 0, s->lock_ro, &lease);
+	if (!ret) {
+		DPRINTF("ERROR: VDI has been tampered with, closing queue!\n");
+		unlock(dd->name, s->lock_uuid, s->lock_ro);
+		s->flags |= TD_DEAD;
+		lease = ONE_DAY;
+	} else if (ret < 0) {
+		DPRINTF("Failed to get lock for %s, err: %d\n", dd->name, ret);
+		s->flags |= TD_CLOSED;
+		lease = 1;  /* retry in one second */
+	}
+	else 
+		s->flags &= ~TD_CLOSED;
 
-fail:
-        if (!lval) {
-                /* we got a lock but was not expecting to */
-                unlock(dd->name, ptr->s->vm_uuid, (dd->flags & TD_RDONLY) ? 1 : 0);
-        }
-        return 1;
+	return lease;
+}
+
+static void assert_locks(struct timeval *tv)
+{
+	struct td_state *s;
+	fd_list_entry_t *ptr;
+	struct disk_driver *dd;
+	long lease, min_lease_time = ONE_DAY;
+
+	ptr = fd_start;
+	while (ptr) {
+		s = ptr->s;
+		if ((s->flags & TD_LOCKING) && !(s->flags & TD_DEAD)) {
+			td_for_each_disk(s, dd) {
+				lease = lock_disk(dd);
+				min_lease_time = (lease < min_lease_time ?
+						  lease : min_lease_time);
+				if (queue_closed(s))
+					break;
+			}
+		}
+		ptr = ptr->next;
+	}
+
+	tv->tv_sec  = min_lease_time;
+	tv->tv_usec = 0;
 }
 #endif
 
@@ -1025,7 +1080,12 @@ int main(int argc, char *argv[])
 	fd_list_entry_t *ptr;
 	struct td_state *s;
 	char openlogbuf[128];
-        struct timeval timeout;
+	struct timeval *timeout = NULL;
+
+#if defined(USE_NFS_LOCKS)
+	struct timeval lock_timeout = { .tv_sec = ONE_DAY, .tv_usec = 0 };
+	timeout = &lock_timeout;
+#endif
 
 	if (argc != 3) usage();
 
@@ -1055,9 +1115,6 @@ int main(int argc, char *argv[])
 		exit(-1);
 	}
 
-        timeout.tv_sec = min_lease_time;
-        timeout.tv_usec = 0;
-
 	while (run) 
         {
 		ret = 0;
@@ -1069,22 +1126,13 @@ int main(int argc, char *argv[])
 		LOCAL_FD_SET(&readfds);
 
 #if defined(USE_NFS_LOCKS)
-                if (timeout.tv_sec == 0) {
-                        /* only reassert locks when timeout less than a second */
-                        if (assert_locks()) {
-                                /* lock get was not a reassert */
-                        }
-                        timeout.tv_sec = min_lease_time;
-                        timeout.tv_usec = 0;
-                } 
-#else
-                timeout.tv_sec = min_lease_time;
-                timeout.tv_usec = 0;
+		if (check_locks(timeout))
+			assert_locks(timeout);
 #endif
 
 		/*Wait for incoming messages*/
 		ret = select(maxfds + 1, &readfds, (fd_set *) 0, 
-                             (fd_set *) 0, &timeout);
+                             (fd_set *) 0, timeout);
 
 		if (ret > 0) 
 		{

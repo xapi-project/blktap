@@ -128,23 +128,25 @@ typedef struct blkif {
 	pid_t tappid;
 	int drivertype;
 	uint16_t cookie;
+	char *lock_info;
 	int err;
 } blkif_t;
 
 typedef struct blkif_info {
 	char *params;
-	char *vm_uuid;
 } blkif_info_t;
 
 void register_new_devmap_hook(int (*fn)(blkif_t *blkif));
 void register_new_unmap_hook(int (*fn)(blkif_t *blkif));
 void register_new_blkif_hook(int (*fn)(blkif_t *blkif));
 void register_new_checkpoint_hook(int (*fn)(blkif_t *blkif, char *cp_uuid));
+void register_new_lock_hook(int (*fn)(blkif_t *blkif));
 blkif_t *blkif_find_by_handle(domid_t domid, unsigned int handle);
 blkif_t *alloc_blkif(domid_t domid);
 int blkif_init(blkif_t *blkif, long int handle, long int pdev, 
                long int readonly);
 int blkif_checkpoint(blkif_t *blkif, char *cp_uuid);
+int blkif_lock(blkif_t *blkif);
 void free_blkif(blkif_t *blkif);
 void __init_blkif(void);
 
@@ -185,8 +187,6 @@ typedef struct msg_params {
 	uint8_t    readonly;
 	int        path_off;
 	int        path_len;
-	int        uuid_off;
-	int        uuid_len;
 } msg_params_t;
 
 typedef struct msg_newdev {
@@ -209,6 +209,19 @@ struct cp_request {
 	int       cp_drivertype;
 };
 
+typedef struct msg_lock {
+	int       ro;
+	int       locking;
+	int       uuid_off;
+	int       uuid_len;
+} msg_lock_t;
+
+struct lock_request {
+	int       ro;
+	int       locking;
+	char     *lock_uuid;
+};
+
 #define READ 0
 #define WRITE 1
 
@@ -225,6 +238,7 @@ struct cp_request {
 #define CTLMSG_PID_RSP         10
 #define CTLMSG_CHECKPOINT      11
 #define CTLMSG_CHECKPOINT_RSP  12
+#define CTLMSG_LOCK            13
 
 /* xenstore/xenbus: */
 #define DOMNAME "Domain-0"

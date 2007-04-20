@@ -87,6 +87,9 @@ typedef uint32_t td_flag_t;
 #define TD_CHECKPOINT            4
 #define TD_MULTITYPE_CP          8
 #define TD_SPARSE               16
+#define TD_LOCKING              32
+#define TD_CLOSED               64
+#define TD_DEAD                128
 
 struct td_state;
 struct tap_disk;
@@ -114,9 +117,10 @@ struct td_state {
 	void *image;
 	void *ring_info;
 	void *fd_entry;
-	char *vm_uuid;
 	char *cp_uuid;
 	int   cp_drivertype;
+	char *lock_uuid;
+	int   lock_ro;
 	td_flag_t flags;
 	unsigned long      sector_size;
 	unsigned long long size;
