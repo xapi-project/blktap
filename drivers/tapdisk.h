@@ -233,7 +233,7 @@ static disk_info_t vhd_disk = {
 	DISK_TYPE_VHD,
 	"virtual server image (vhd)",
 	"vhd",
-	1,
+	0,
 #ifdef TAPDISK
 	&tapdisk_vhd,
 #endif
