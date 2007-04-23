@@ -559,6 +559,7 @@ int blktapctrl_new_blkif(blkif_t *blkif)
 	char *rdctldev, *wrctldev, *cmd, *ptr;
 	image_t *image;
 	blkif_t *exist = NULL;
+	static uint16_t next_cookie = 0;
 
 	DPRINTF("Received a poll for a new vbd\n");
 	if ( ((blk=blkif->info) != NULL) && (blk->params != NULL) ) {
@@ -571,7 +572,7 @@ int blktapctrl_new_blkif(blkif_t *blkif)
                         return -1;
                 }
 		blkif->drivertype = type;
-		blkif->cookie = lrand48() % MAX_RAND_VAL;
+		blkif->cookie = next_cookie++;
 
 		if (!exist) {
 			DPRINTF("Process does not exist:\n");
