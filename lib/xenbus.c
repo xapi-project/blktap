@@ -133,22 +133,45 @@ static struct backend_info *be_lookup_fe(const char *fepath)
 	return (struct backend_info *)NULL;
 }
 
-static int backend_remove(struct xs_handle *h, struct backend_info *be)
+static int backend_remove(struct backend_info *be)
 {
 	/* Unhook from be list. */
 	list_del(&be->list);
 
 	/* Free everything else. */
 	if (be->blkif) {
-		DPRINTF("Freeing blkif dev [%d]\n",be->blkif->devnum);
+		DPRINTF("Freeing blkif dev [%d]\n", be->blkif->devnum);
 		free_blkif(be->blkif);
 	}
-	if (be->frontpath)
-		free(be->frontpath);
-	if (be->backpath)
-		free(be->backpath);
+
+	free(be->frontpath);
+	free(be->backpath);
 	free(be);
+
 	return 0;
+}
+
+static void audit_backend_devices(struct xs_handle *h)
+{
+	unsigned int len;
+	char *data, *path;
+	struct backend_info *be, *tmp;
+
+	list_for_each_entry_safe(be, tmp, &belist, list) {
+		if (asprintf(&path, "%s/%s", be->backpath, "frontend-id") == -1)
+			continue;
+
+		data = xs_read(h, XBT_NULL, path, &len);
+		free(path);
+
+		if (data) {
+			free(data);
+			continue;
+		}
+
+		/* frontend-id removed, kill backend */
+		backend_remove(be);
+	}
 }
 
 static void handle_checkpoint_request(struct xs_handle *h, char *bepath)
@@ -310,7 +333,7 @@ static void ueblktap_setup(struct xs_handle *h, char *bepath)
 	
 fail:
 	if ( (be != NULL) && (be->blkif != NULL) ) 
-		backend_remove(h, be);
+		backend_remove(be);
 close:
 	if (path)
 		free(path);
@@ -343,8 +366,10 @@ static void ueblktap_probe(struct xs_handle *h, struct xenbus_watch *w,
 	 *e.g. /local/domain/0/backend/vbd/1/2049
 	 */
 	len = strsep_len(bepath, '/', 7);
-	if (len < 0) 
+	if (len < 0) {
+		audit_backend_devices(h);
 		goto free_be;
+	}
 	bepath[len] = '\0';
 	
 	be = malloc(sizeof(*be));
@@ -375,7 +400,7 @@ static void ueblktap_probe(struct xs_handle *h, struct xenbus_watch *w,
 		free(be);
 		be = be_lookup_be(bepath);
 		if ( (be != NULL) && (be->blkif != NULL) ) 
-			backend_remove(h, be);
+			backend_remove(be);
 		else goto free_be;
 		if (bepath)
 			free(bepath);
