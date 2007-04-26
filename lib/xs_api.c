@@ -48,8 +48,9 @@
 #include "list.h"
 #include "xs_api.h"
 
-#if 0
-#define DPRINTF(_f, _a...) printf ( _f , ## _a )
+#if 1
+#include <syslog.h>
+#define DPRINTF(_f, _a...) syslog(LOG_INFO, _f, ##_a)
 #else
 #define DPRINTF(_f, _a...) ((void)0)
 #endif

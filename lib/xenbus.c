@@ -49,13 +49,13 @@
 #include <poll.h>
 #include <time.h>
 #include <sys/time.h>
-#include <syslog.h>
 #include "blktaplib.h"
 #include "list.h"
 #include "xs_api.h"
 
 #if 1
-#define DPRINTF(_f, _a...) syslog(LOG_DEBUG, _f, ## _a )
+#include <syslog.h>
+#define DPRINTF(_f, _a...) syslog(LOG_INFO, _f, ##_a)
 #else
 #define DPRINTF(_f, _a...) ((void)0)
 #endif

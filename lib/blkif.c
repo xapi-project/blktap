@@ -38,10 +38,9 @@
 
 #include "blktaplib.h"
 
-#if 0
-//#define DPRINTF(_f, _a...) printf ( _f , ## _a )
+#if 1
 #include <syslog.h>
-#define DPRINTF(_f, _a...) syslog(LOG_DEBUG, _f, ##_a)
+#define DPRINTF(_f, _a...) syslog(LOG_INFO, _f, ##_a)
 #else
 #define DPRINTF(_f, _a...) ((void)0)
 #endif

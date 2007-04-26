@@ -57,12 +57,12 @@
 #define TAPDISK_H_
 
 #include <stdint.h>
-#include <syslog.h>
 #include "blktaplib.h"
 
 /*If enabled, log all debug messages to syslog*/
 #if 1
-#define DPRINTF(_f, _a...) syslog( LOG_DEBUG, _f , ## _a )
+#include <syslog.h>
+#define DPRINTF(_f, _a...) syslog(LOG_INFO, _f , ##_a)
 #else
 #define DPRINTF(_f, _a...) ((void)0)
 #endif
