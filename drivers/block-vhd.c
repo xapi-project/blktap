@@ -1078,6 +1078,61 @@ vhd_validate_parent(struct disk_driver *child_dd,
 	return 0;
 }
 
+static int 
+macx_encode_location(char *name, char **out, int *outlen)
+{
+	iconv_t cd;
+	int len, err;
+	size_t ibl, obl;
+	char *uri, *urip, *uri_utf8, *uri_utf8p, *ret;
+
+	err     = 0;
+	ret     = NULL;
+	*out    = NULL;
+	*outlen = 0;
+	len     = strlen(name) + strlen("file://") + 1;
+
+	uri = urip = malloc(len);
+	uri_utf8 = uri_utf8p = malloc(len * 2);
+
+	if (!uri || !uri_utf8)
+		return -ENOMEM;
+
+	cd = iconv_open("UTF-8", "ASCII");
+	if (cd == (iconv_t)-1) {
+		err = -errno;
+		goto out;
+	}
+
+	ibl = len;
+	obl = len * 2;
+	sprintf(uri, "file://%s", name);
+
+	if (iconv(cd, &urip, &ibl, &uri_utf8p, &obl) == (size_t)-1 || ibl) {
+		err = (errno ? -errno : -EIO);
+		goto out;
+	}
+
+	len = (len * 2) - obl;
+	ret = malloc(len);
+	if (!ret) {
+		err = -ENOMEM;
+		goto out;
+	}
+
+	memcpy(ret, uri_utf8, len);
+	*outlen = len;
+	*out    = ret;
+
+ out:
+	free(uri);
+	free(uri_utf8);
+	if (cd != (iconv_t)-1)
+		iconv_close(cd);
+
+	return err;
+}
+
 static char *
 macx_decode_location(char *in, char *out, int len)
 {
@@ -1141,8 +1196,9 @@ w2u_decode_location(char *in, char *out, int len)
 int
 vhd_get_parent_id(struct disk_driver *child_dd, struct disk_id *id)
 {
+	struct stat stats;
 	struct prt_loc *loc;
-	int i, size, err = -EINVAL;
+	int i, n, size, err = -EINVAL;
 	char *raw, *out, *name = NULL;
 	struct vhd_state *child = (struct vhd_state *)child_dd->private;
 
@@ -1152,7 +1208,8 @@ vhd_get_parent_id(struct disk_driver *child_dd, struct disk_id *id)
 	if (child->ftr.type != HD_TYPE_DIFF)
 		return TD_NO_PARENT;
 
-	for (i = 0; i < 8 && !id->name; i++) {
+	n = sizeof(child->hdr.loc) / sizeof(struct prt_loc);
+	for (i = 0; i < n && !id->name; i++) {
 		raw = out = NULL;
 
 		loc = &child->hdr.loc[i];
@@ -1203,6 +1260,11 @@ vhd_get_parent_id(struct disk_driver *child_dd, struct disk_id *id)
 		}
 
 		if (name) {
+			if (stat(name, &stats) == -1) {
+				err    = -EINVAL;
+				goto next;
+			}
+
 			id->name       = name;
 			id->drivertype = DISK_TYPE_VHD;
 			err            = 0;
@@ -1234,22 +1296,69 @@ vhd_get_info(struct disk_driver *dd, struct vhd_info *info)
         return 0;
 }
 
+/* 
+ * inserts file locator between header and bat,
+ * and adjusts hdr.table_offset as necessary.
+ */
+static int
+write_locator_entry(struct vhd_state *s, int idx,
+		    char *entry, int len, int type)
+{
+	struct prt_loc *loc;
+
+	if (idx < 0 || idx > sizeof(s->hdr.loc) / sizeof(struct prt_loc))
+		return -EINVAL;
+	
+	loc                  = &s->hdr.loc[idx];
+	loc->code            = type;
+	loc->data_len        = len;
+	loc->data_space      = secs_round_up(len);
+	loc->data_offset     = s->hdr.table_offset;
+	s->hdr.table_offset += (loc->data_space << VHD_SECTOR_SHIFT);
+
+	if (lseek64(s->fd, loc->data_offset, SEEK_SET) == (off64_t)-1)
+		return -errno;
+
+	if (write(s->fd, entry, len) != len)
+		return (errno ? -errno : -EIO);
+
+	return 0;
+}
+
+static int
+set_parent_name(struct vhd_state *child, char *pname)
+{
+	char *tmp;
+	iconv_t cd;
+	int ret = 0;
+	size_t ibl, obl;
+
+	cd = iconv_open("UTF-16", "ASCII");
+	if (cd == (iconv_t)-1)
+		return -errno;
+
+	ibl = strlen(pname);
+	obl = sizeof(child->hdr.prt_name);
+	tmp = child->hdr.prt_name;
+
+	if (iconv(cd, &pname, &ibl, &tmp, &obl) == (size_t)-1 || ibl)
+		ret = -errno;
+
+	iconv_close(cd);
+	return ret;
+}
+
 /*
  * set_parent may adjust hdr.table_offset.
  * call set_parent before writing the bat.
  */
-int
+static int
 set_parent(struct vhd_state *child, struct vhd_state *parent, 
 	   struct disk_id *parent_id, vhd_flag_t flags)
 {
-	off64_t offset;
-	int err = 0, len;
 	struct stat stats;
-	struct prt_loc *loc;
-	iconv_t cd = (iconv_t)-1;
-	size_t inbytesleft, outbytesleft;
-	char *file, *parent_path, *absolute_path = NULL, *tmp;
-	char *uri = NULL, *urip, *uri_utf8 = NULL, *uri_utf8p;
+	int len, err = 0, lidx = 0;
+	char *loc, *file, *parent_path, *absolute_path = NULL;
 
 	parent_path = parent_id->name;
 	file = basename(parent_path); /* (using GNU, not POSIX, basename) */
@@ -1257,7 +1366,7 @@ set_parent(struct vhd_state *child, struct vhd_state *parent,
 
 	if (!absolute_path || strcmp(file, "") == 0) {
 		DPRINTF("ERROR: invalid path %s\n", parent_path);
-		err = -1;
+		err = (errno ? -errno : -EINVAL);
 		goto out;
 	}
 
@@ -1274,82 +1383,31 @@ set_parent(struct vhd_state *child, struct vhd_state *parent,
 		/* TODO: hack vhd metadata to store parent driver type */
 	}
 
-	cd = iconv_open("UTF-16", "ASCII");
-	if (cd == (iconv_t)-1) {
-		DPRINTF("ERROR creating character encoder context\n");
-		err = -errno;
+	if ((err = set_parent_name(child, file)) != 0)
 		goto out;
-	}
-	inbytesleft  = strlen(file);
-	outbytesleft = sizeof(child->hdr.prt_name);
-	tmp          = child->hdr.prt_name;
-	if (iconv(cd, &file, &inbytesleft, &tmp,
-		  &outbytesleft) == (size_t)-1 || inbytesleft) {
-		DPRINTF("ERROR encoding parent file name %s\n", file);
-		err = -errno;
-		goto out;
-	}
-	iconv_close(cd);
 
-	/* absolute locator */
-	len = strlen(absolute_path) + strlen("file://") + 1;
-	uri = urip = malloc(len);
-	uri_utf8 = uri_utf8p = malloc(len * 2);
-	if (!uri || !uri_utf8) {
-		DPRINTF("ERROR allocating uri\n");
-		err = -ENOMEM;
-		goto out;
-	}
-	sprintf(uri, "file://%s", absolute_path);
+	if (parent_path[0] != '/') {
+		/* relative path */
+		if ((err = macx_encode_location(parent_path, &loc, &len)) != 0)
+			goto out;
 
-	cd = iconv_open("UTF-8", "ASCII");
-	if (cd == (iconv_t)-1) {
-		DPRINTF("ERROR creating character encoder context\n");
-		err = -errno;
-		goto out;
-	}
-	inbytesleft  = len;
-	outbytesleft = len * 2;
-	if (iconv(cd, &urip, &inbytesleft, &uri_utf8p, 
-		  &outbytesleft) == (size_t)-1 || inbytesleft) {
-		DPRINTF("ERROR encoding uri %s\n", uri);
-		err = -errno;
-		goto out;
+		err = write_locator_entry(child, lidx++, 
+					  loc, len, PLAT_CODE_MACX);
+		free(loc);
+
+		if (err)
+			goto out;
 	}
 
-	len             = (2 * len) - outbytesleft;
-	loc             = &child->hdr.loc[0];
-	loc->code       = PLAT_CODE_MACX;
-	loc->data_space = secs_round_up(len);
-	loc->data_len   = len;
-
-	/* insert file locator between header and bat */
-	offset = child->hdr.table_offset;
-	child->hdr.table_offset += (loc->data_space << VHD_SECTOR_SHIFT);
-	loc->data_offset = offset;
-
-	if (lseek64(child->fd, offset, SEEK_SET) == (off64_t)-1) {
-		DPRINTF("ERROR seeking to file locator\n");
-		err = -errno;
+	/* absolute path */
+	if ((err = macx_encode_location(absolute_path, &loc, &len)) != 0)
 		goto out;
-	}
-	if (write(child->fd, uri_utf8, len) != len) {
-		DPRINTF("ERROR writing file locator\n");
-		err = -errno;
-		goto out;
-	}
 
-	/* TODO: relative locator */
-
-	err = 0;
+	err = write_locator_entry(child, lidx++, loc, len, PLAT_CODE_MACX);
+	free(loc);
 
  out:
-	if (cd != (iconv_t)-1)
-		iconv_close(cd);
-	free(uri);
-	free(uri_utf8);
 	free(absolute_path);
-
 	return err;
 }
 
