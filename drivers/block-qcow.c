@@ -109,6 +109,7 @@ typedef struct QCowHeader_ext {
         uint32_t cksum;
         uint32_t min_cluster_alloc;
         uint32_t flags;
+	char hidden;
 } QCowHeader_ext;
 
 #define L2_CACHE_SIZE 16  /*Fixed allocation in Qemu*/
@@ -149,6 +150,8 @@ struct tdqcow_state {
 	int synch;                     /*Use Synchronous read/write syscalls*/
 	AES_KEY aes_encrypt_key;       /*AES key*/
 	AES_KEY aes_decrypt_key;       /*AES key*/
+	QCowHeader_ext ext_hdr;
+
         /* libaio state */
         io_context_t       aio_ctx;
         struct iocb        iocb_list  [MAX_AIO_REQS];
@@ -821,6 +824,42 @@ static inline void init_fds(struct disk_driver *dd)
 		dd->io_fd[0] = s->poll_fd;
 }
 
+static inline void init_ext_header(struct tdqcow_state *s)
+{
+	QCowHeader_ext *exthdr = &s->ext_hdr;
+	be32_to_cpus(&exthdr->xmagic);
+	be32_to_cpus(&exthdr->cksum);
+	be32_to_cpus(&exthdr->min_cluster_alloc);
+	be32_to_cpus(&exthdr->flags);
+}
+
+static int write_ext_header(struct tdqcow_state *s)
+{
+	uint32_t cksum;
+	int fd, offset, err = 0;
+	QCowHeader_ext exthdr;
+	
+	memcpy(&exthdr, &s->ext_hdr, sizeof(QCowHeader_ext));
+
+	exthdr.cksum = gen_cksum((char *)s->l1_table, 
+				  s->l1_size * sizeof(uint64_t));
+	exthdr.xmagic            = cpu_to_be32(s->ext_hdr.xmagic);
+	exthdr.cksum             = cpu_to_be32(s->ext_hdr.cksum);
+	exthdr.min_cluster_alloc = cpu_to_be32(s->ext_hdr.min_cluster_alloc);
+	exthdr.flags             = cpu_to_be32(s->ext_hdr.flags);
+
+	fd = open(s->name, O_WRONLY | O_LARGEFILE); /*Open without O_DIRECT*/
+	offset = sizeof(QCowHeader);
+	if (lseek(fd, offset, SEEK_SET) == (off_t)-1)
+		return -errno;
+
+	if (write(fd, &exthdr, sizeof(QCowHeader_ext)) < sizeof(QCowHeader_ext))
+		err = (errno ? -errno : -EIO);
+
+	close(fd);
+	return err;
+}
+
 /* Open the disk file and initialize qcow state. */
 int tdqcow_open (struct disk_driver *dd, const char *name, td_flag_t flags)
 {
@@ -937,24 +976,22 @@ int tdqcow_open (struct disk_driver *dd, const char *name, td_flag_t flags)
 	
 	/*Detect min_cluster_alloc*/
 	s->min_cluster_alloc = 1; /*Default*/
+	memcpy(&s->ext_hdr, buf + sizeof(QCowHeader), sizeof(QCowHeader_ext));
+	init_ext_header(s);
 	if (s->backing_file_offset == 0 && s->l1_table_offset % 4096 == 0) {
 		/*We test to see if the xen magic # exists*/
-		exthdr = (QCowHeader_ext *)(buf + sizeof(QCowHeader));
-		be32_to_cpus(&exthdr->xmagic);
+		exthdr = &s->ext_hdr;
 		if(exthdr->xmagic != XEN_MAGIC) 
 			goto end_xenhdr;
 
 		/*Finally check the L1 table cksum*/
-		be32_to_cpus(&exthdr->cksum);
 		cksum = gen_cksum((char *)s->l1_table, 
 				  s->l1_size * sizeof(uint64_t));
 		if(exthdr->cksum != cksum)
 			goto end_xenhdr;
 			
-		be32_to_cpus(&exthdr->min_cluster_alloc);
-		be32_to_cpus(&exthdr->flags);
 		s->sparse = (exthdr->flags & SPARSE_FILE);
-		s->min_cluster_alloc = exthdr->min_cluster_alloc; 
+		s->min_cluster_alloc = exthdr->min_cluster_alloc;
 	}
 
  end_xenhdr:
@@ -1135,15 +1172,8 @@ int tdqcow_close(struct disk_driver *dd)
 	int fd, offset;
 
 	/*Update the hdr cksum*/
-	if(s->min_cluster_alloc == s->l2_size) {
-		cksum = gen_cksum((char *)s->l1_table, s->l1_size * sizeof(uint64_t));
-		fd = open(s->name, O_WRONLY | O_LARGEFILE); /*Open without O_DIRECT*/
-		offset = sizeof(QCowHeader) + sizeof(uint32_t);
-		lseek(fd, offset, SEEK_SET);
-		out = cpu_to_be32(cksum);
-		write(fd, &out, sizeof(uint32_t));
-		close(fd);
-	}
+	if(s->min_cluster_alloc == s->l2_size)
+		write_ext_header(s);
 
 	io_destroy(s->aio_ctx);
 	free(s->name);
@@ -1215,6 +1245,7 @@ int qcow_create(const char *filename, uint64_t total_size,
 	header.version = cpu_to_be32(QCOW_VERSION);
 
 	/*Create extended header fields*/
+	memset(&exthdr, 0, sizeof(QCowHeader_ext));
 	exthdr.xmagic = cpu_to_be32(XEN_MAGIC);
 
 	header_size = sizeof(header) + sizeof(QCowHeader_ext);
@@ -1291,7 +1322,6 @@ int qcow_create(const char *filename, uint64_t total_size,
 
 	ptr = calloc(1, l1_size * sizeof(uint64_t));
 	exthdr.cksum = cpu_to_be32(gen_cksum(ptr, l1_size * sizeof(uint64_t)));
-	//printf("Created cksum: %d\n",exthdr.cksum);
 	free(ptr);
 
 	/*adjust file length to system page size boundary*/
@@ -1358,7 +1388,36 @@ qcow_get_info(struct disk_driver *dd, struct qcow_info *info)
                 return -1;
         memcpy(info->l1, s->l1_table, sizeof(uint64_t) * info->l1_size);
 
+	if (s->ext_hdr.xmagic != XEN_MAGIC) {
+		info->valid_td_fields = 0;
+		return 0;
+	}
+
+	info->valid_td_fields = 1;
+	info->td_fields[TD_FIELD_HIDDEN] = (long)s->ext_hdr.hidden;
+
         return 0;
+}
+
+int
+qcow_set_field(struct disk_driver *dd, td_field_t field, long value)
+{
+	struct tdqcow_state *s = (struct tdqcow_state *)dd->private;
+	
+	if (s->ext_hdr.xmagic != XEN_MAGIC)
+		return -EINVAL;
+
+	switch(field) {
+	case TD_FIELD_HIDDEN:
+		if (value < 0 || value > 256)
+			return -ERANGE;
+		s->ext_hdr.hidden = value;
+		break;
+	default:
+		return -EINVAL;
+	}
+
+	return write_ext_header(s);
 }
 
 int qcow_make_empty(struct tdqcow_state *s)

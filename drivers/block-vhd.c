@@ -633,7 +633,7 @@ static int
 vhd_write_dd_hdr(int fd, struct dd_hdr *in_use_hdr)
 {
 	char *buf;
-	int ret, secs, i;
+	int ret, secs, i, n;
 	struct dd_hdr hdr = *in_use_hdr;
 
 	secs = secs_round_up(sizeof(struct dd_hdr));
@@ -649,11 +649,12 @@ vhd_write_dd_hdr(int fd, struct dd_hdr *in_use_hdr)
 	BE32_OUT(&hdr.checksum);
 	BE32_OUT(&hdr.prt_ts);
 
-	for (i = 0; i < 8; i++) {
-		BE32_IN(&hdr.loc[i].code);
-		BE32_IN(&hdr.loc[i].data_space);
-		BE32_IN(&hdr.loc[i].data_len);
-		BE64_IN(&hdr.loc[i].data_offset);
+	n = sizeof(hdr.loc) / sizeof(struct prt_loc);
+	for (i = 0; i < n; i++) {
+		BE32_OUT(&hdr.loc[i].code);
+		BE32_OUT(&hdr.loc[i].data_space);
+		BE32_OUT(&hdr.loc[i].data_len);
+		BE64_OUT(&hdr.loc[i].data_offset);
 	}
 
 	memcpy(buf, &hdr, sizeof(struct dd_hdr));
@@ -721,7 +722,7 @@ vhd_read_bat(int fd, struct vhd_state *s)
 	if (posix_memalign((void **)&buf, 512, (secs << VHD_SECTOR_SHIFT)))
 		return err;
 
-	DPRINTF("Reading BAT at %lld, %d entries.\n", location, entries);
+	DBG("Reading BAT at %lld, %d entries.\n", location, entries);
 
 	if (lseek64(fd, location, SEEK_SET) == (off64_t)-1) {
 		goto out;
@@ -735,7 +736,7 @@ vhd_read_bat(int fd, struct vhd_state *s)
 	s->next_db  = location >> VHD_SECTOR_SHIFT; /* BAT is sector aligned. */
 	s->next_db += secs_round_up(sizeof(u32) * entries);
 
-	DPRINTF("FirstDB: %llu\n", s->next_db);
+	DBG("FirstDB: %llu\n", s->next_db);
 
 	for (i = 0; i < entries; i++) {
 		BE32_IN(&bat_entry(s, i));
@@ -753,9 +754,9 @@ vhd_read_bat(int fd, struct vhd_state *s)
 	if ((s->next_db + s->bm_secs) % s->spp)
 		s->next_db += (s->spp - ((s->next_db + s->bm_secs) % s->spp));
     
-	DPRINTF("NextDB: %llu\n", s->next_db);
-	DPRINTF("Read BAT.  This vhd has %d full and %d unfilled data "
-		"blocks.\n", count, entries - count);
+	DBG("NextDB: %llu\n", s->next_db);
+	DBG("Read BAT.  This vhd has %d full and %d unfilled data "
+	    "blocks.\n", count, entries - count);
 	err = 0;
 
  out:
@@ -871,7 +872,7 @@ __vhd_open (struct disk_driver *dd, const char *name, vhd_flag_t flags)
 
 	memset(s, 0, sizeof(struct vhd_state));
 
-        DPRINTF("vhd_open: %s\n", name);
+        DBG("vhd_open: %s\n", name);
 
 	o_flags  = O_LARGEFILE | O_DIRECT;
 	o_flags |= ((test_vhd_flag(flags, VHD_FLAG_OPEN_RDONLY)) ? 
@@ -885,7 +886,7 @@ __vhd_open (struct disk_driver *dd, const char *name, vhd_flag_t flags)
 			DPRINTF("WARNING: Accessing image without"
 				"O_DIRECT! (%s)\n", name);
         } else if (fd != -1) 
-		DPRINTF("open(%s) with O_DIRECT\n", name);
+		DBG("open(%s) with O_DIRECT\n", name);
 
 	if (fd == -1) {
 		DPRINTF("Unable to open [%s] (%d)!\n", name, -errno);
@@ -971,8 +972,8 @@ __vhd_open (struct disk_driver *dd, const char *name, vhd_flag_t flags)
         tds->sector_size = VHD_SECTOR_SIZE;
         tds->info        = 0;
 
-        DPRINTF("vhd_open: done (sz:%llu, sct:%lu, inf:%u)\n",
-		tds->size, tds->sector_size, tds->info);
+        DBG("vhd_open: done (sz:%llu, sct:%lu, inf:%u)\n",
+	    tds->size, tds->sector_size, tds->info);
 
 	tp_open(&s->tp, s->name, "/tmp/vhd_log.txt", 100);
 
@@ -1003,7 +1004,7 @@ vhd_close(struct disk_driver *dd)
 	struct vhd_bitmap *bm;
 	struct vhd_state  *s = (struct vhd_state *)dd->private;
 	
-        DPRINTF("vhd_close\n");
+        DBG("vhd_close\n");
 	DBG("%s: %s: QUEUED: %llu, SUBMITTED: %llu, RETURNED: %llu, "
 	    "WRITES: %llu, READS: %llu, AVG_WRITE_SIZE: %f, "
 	    "AVG_READ_SIZE: %f, AVG_SUBMIT_BATCH: %f, "
@@ -1202,7 +1203,7 @@ vhd_get_parent_id(struct disk_driver *child_dd, struct disk_id *id)
 	char *raw, *out, *name = NULL;
 	struct vhd_state *child = (struct vhd_state *)child_dd->private;
 
-	DPRINTF("%s\n", __func__);
+	DBG("%s\n", __func__);
 
 	out = id->name = NULL;
 	if (child->ftr.type != HD_TYPE_DIFF)
@@ -1293,7 +1294,43 @@ vhd_get_info(struct disk_driver *dd, struct vhd_info *info)
                 return -1;
         memcpy(info->bat, s->bat.bat, sizeof(uint32_t) * info->bat_entries);
 
+	info->td_fields[TD_FIELD_HIDDEN] = (long)s->ftr.hidden;
+
         return 0;
+}
+
+int
+vhd_set_field(struct disk_driver *dd, td_field_t field, long value)
+{
+	int ret;
+	struct vhd_state *s = (struct vhd_state *)dd->private;
+
+	switch(field) {
+	case TD_FIELD_HIDDEN:
+		if (value < 0 || value > 256)
+			return -ERANGE;
+		s->ftr.hidden = (char)value;
+		break;
+	default:
+		return -EINVAL;
+	}
+
+	ret = lseek64(s->fd, s->next_db << VHD_SECTOR_SHIFT, SEEK_SET);
+	if (ret == (off64_t)-1)
+		return -errno;
+
+	ret = vhd_write_hd_ftr(s->fd, &s->ftr);
+	if (ret)
+		return ret;
+
+	if (s->ftr.type != HD_TYPE_FIXED) {
+		if (lseek64(s->fd, 0, SEEK_SET) == (off64_t)-1)
+			return -errno;
+
+		ret = vhd_write_hd_ftr(s->fd, &s->ftr);
+	}
+
+	return ret;
 }
 
 /* 

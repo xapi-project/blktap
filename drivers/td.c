@@ -54,7 +54,8 @@ typedef enum {
 	TD_CMD_SNAPSHOT  = 1,
 	TD_CMD_COALESCE  = 2,
 	TD_CMD_QUERY     = 3,
-	TD_CMD_INVALID   = 4
+	TD_CMD_SET       = 4,
+	TD_CMD_INVALID   = 5
 } td_command_t;
 
 struct command {
@@ -67,17 +68,28 @@ struct command commands[TD_CMD_INVALID] = {
 	{ .id = TD_CMD_CREATE,   .name = "create",   .needs_type = 1 },
 	{ .id = TD_CMD_SNAPSHOT, .name = "snapshot", .needs_type = 1 },
 	{ .id = TD_CMD_COALESCE, .name = "coalesce", .needs_type = 1 },
-	{ .id =	TD_CMD_QUERY,    .name = "query",    .needs_type = 1 }
+	{ .id =	TD_CMD_QUERY,    .name = "query",    .needs_type = 1 },
+	{ .id = TD_CMD_SET,      .name = "set",      .needs_type = 1 },
 };
 
-#define COMMAND_NAMES "{ create | snapshot | coalesce | query }"
+#define COMMAND_NAMES "{ create | snapshot | coalesce | query | set }"
 #define PLUGIN_TYPES  "{ aio | qcow | ram | vhd | vmdk }"
+
+#define print_field_names()                                           \
+do {                                                                  \
+	int i;                                                        \
+	fprintf(stderr, "FIELD := { ");                               \
+	fprintf(stderr, "%s", td_vdi_fields[0].name);                 \
+	for (i = 1; i < TD_FIELD_INVALID; i++)                        \
+		fprintf(stderr, " | %s", td_vdi_fields[i].name);      \
+	fprintf(stderr, " }\n");                                      \
+} while (0)
 
 void 
 help(void)
 {
 	fprintf(stderr, "Tapdisk Utilities: v1.0.0\n");
-	fprintf(stderr, "usage: td COMMAND [TYPE] [OPTIONS]\n");
+	fprintf(stderr, "usage: td-util COMMAND [TYPE] [OPTIONS]\n");
 	fprintf(stderr, "COMMAND := %s\n", COMMAND_NAMES);
 	fprintf(stderr, "TYPE    := %s\n", PLUGIN_TYPES);
 	exit(-1);
@@ -86,11 +98,23 @@ help(void)
 struct command *
 get_command(char *command)
 {
-	int i, len = strlen(command);
+	int i;
 
 	for (i = 0; i < TD_CMD_INVALID; i++)
 		if (!strcmp(command, commands[i].name))
 			return &commands[i];
+
+	return NULL;
+}
+
+struct vdi_field *
+get_field(char *field)
+{
+	int i;
+
+	for (i = 0; i < TD_FIELD_INVALID; i++)
+		if (!strcmp(field, td_vdi_fields[i].name))
+			return &td_vdi_fields[i];
 
 	return NULL;
 }
@@ -228,7 +252,7 @@ td_create(int type, int argc, char *argv[])
 	return 0;
 
  usage:
-	fprintf(stderr, "usage: td create %s [-h help] [-r reserve] "
+	fprintf(stderr, "usage: td-util create %s [-h help] [-r reserve] "
 		"<SIZE(MB)> <FILENAME>\n", dtypes[type]->handle);
 	return EINVAL;
 }
@@ -278,7 +302,7 @@ td_snapshot(int type, int argc, char *argv[])
 	return dtypes[type]->drv->td_snapshot(&pid, name, 0);
 
  usage:
-	fprintf(stderr, "usage: td snapshot %s [-h help] "
+	fprintf(stderr, "usage: td-util snapshot %s [-h help] "
 		"<FILENAME> <BACKING_FILENAME>\n", dtypes[type]->handle);
 	return EINVAL;
 }
@@ -355,7 +379,7 @@ td_coalesce(int type, int argc, char *argv[])
 	return 0;
 
  usage:
-	fprintf(stderr, "usage: td coalesce %s [-h help] "
+	fprintf(stderr, "usage: td-util coalesce %s [-h help] "
 		"<FILENAME>\n", dtypes[type]->handle);
 	return EINVAL;
 }
@@ -364,16 +388,24 @@ int
 td_query(int type, int argc, char *argv[])
 {
 	char *name;
-	int c, size = 0, parent = 0, err = 0;
+	int c, size = 0, parent = 0, fields = 0, err = 0;
 	struct disk_driver dd;
 
-	while ((c = getopt(argc, argv, "hvp")) != -1) {
+	while ((c = getopt(argc, argv, "hvpf")) != -1) {
 		switch(c) {
 		case 'v':
 			size = 1;
 			break;
 		case 'p':
 			parent = 1;
+			break;
+		case 'f':
+			if (type != DISK_TYPE_VHD && type != DISK_TYPE_QCOW) {
+				fprintf(stderr, "Cannot read fields of %s "
+					"images\n", dtypes[type]->handle);
+				return EINVAL;
+			}
+			fields = 1;
 			break;
 		default:
 			fprintf(stderr, "Unknown option %c\n", (char)c);
@@ -412,13 +444,109 @@ td_query(int type, int argc, char *argv[])
 		} else
 			printf("query failed\n");
 	}
+	if (fields) {
+		int i;
+		long *values;
+		struct vhd_info vinfo;
+		struct qcow_info qinfo;
+
+		switch(type) {
+		case DISK_TYPE_VHD:
+			err = vhd_get_info(&dd, &vinfo);
+			values = vinfo.td_fields;
+			free(vinfo.bat);
+			break;
+		case DISK_TYPE_QCOW:
+			err = qcow_get_info(&dd, &qinfo);
+			values = qinfo.td_fields;
+			free(qinfo.l1);
+			if (!err && !qinfo.valid_td_fields)
+				err = EINVAL;
+			break;
+		}
+
+		if (!err)
+			for (i = 0; i < TD_FIELD_INVALID; i++)
+				printf("%s: %ld\n", 
+				       td_vdi_fields[i].name, values[i]);
+		else
+			printf("field query failed\n");
+	}
 
 	free_disk_driver(&dd);
 	return err;
 
  usage:
-	fprintf(stderr, "usage: td query %s [-h help] [-v virtsize] "
-		"[-p parent] <FILENAME>\n", dtypes[type]->handle);
+	fprintf(stderr, "usage: td-util query %s [-h help] [-v virtsize] "
+		"[-p parent] [-f fields] <FILENAME>\n", dtypes[type]->handle);
+	return EINVAL;
+}
+
+int
+td_set_field(int type, int argc, char *argv[])
+{
+	char *name;
+	long value;
+	int ret, i, c;
+	struct disk_driver dd;
+	struct vdi_field *field;
+
+	if (type != DISK_TYPE_VHD && type != DISK_TYPE_QCOW) {
+		fprintf(stderr, "Cannot set fields of %s images\n",
+			dtypes[type]->handle);
+		return EINVAL;
+	}
+
+	while ((c = getopt(argc, argv, "h")) != -1) {
+		switch(c) {
+		default:
+			fprintf(stderr, "Unknown option %c\n", (char)c);
+		case 'h':
+			goto usage;
+		}
+	}
+
+	if (optind != (argc - 3))
+		goto usage;
+
+	name  = argv[optind++];
+
+	field = get_field(argv[optind]);
+	if (!field) {
+		fprintf(stderr, "Invalid field %s\n", argv[optind]);
+		goto usage;
+	}
+
+	errno = 0;
+	value = strtol(argv[++optind], NULL, 10);
+	if (errno) {
+		fprintf(stderr, "Invalid value %s\n", argv[optind]);
+		goto usage;
+	}
+
+	ret = init_disk_driver(&dd, type, name, 0);
+	if (ret) {
+		DPRINTF("Failed opening %s\n", name);
+		return ret;
+	}
+
+	switch(type) {
+	case DISK_TYPE_VHD:
+		ret = vhd_set_field(&dd, field->id, value);
+		break;
+	case DISK_TYPE_QCOW:
+		ret = qcow_set_field(&dd, field->id, value);
+		break;
+	}
+
+	free_disk_driver(&dd);
+
+	return ret;
+
+ usage:
+	fprintf(stderr, "usage: td-util set %s [-h help] "
+		"<FILENAME> <FIELD> <VALUE>\n", dtypes[type]->handle);
+	print_field_names();
 	return EINVAL;
 }
 
@@ -441,7 +569,7 @@ main(int argc, char *argv[])
 
 	if (cmd->needs_type) {
 		if (argc < 3) {
-			fprintf(stderr, "td %s requires a TYPE: %s\n", 
+			fprintf(stderr, "td-util %s requires a TYPE: %s\n", 
 				cmd->name, PLUGIN_TYPES);
 			exit(-1);
 		}
@@ -474,6 +602,9 @@ main(int argc, char *argv[])
 		break;
 	case TD_CMD_QUERY:
 		ret = td_query(type, cargc, cargv);
+		break;
+	case TD_CMD_SET:
+		ret = td_set_field(type, cargc, cargv);
 		break;
 	case TD_CMD_INVALID:
 		ret = EINVAL;

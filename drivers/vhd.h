@@ -33,7 +33,8 @@ struct hd_ftr {
   u32    checksum;        /* 1's comp sum of this struct.                 */
   uuid_t uuid;            /* Unique disk ID, used for naming parents      */
   char   saved;           /* one-bit -- is this disk/VM in a saved state? */
-  char   reserved[427];   /* padding                                      */
+  char   hidden;          /* tapdisk-specific field: is this vdi hidden?  */
+  char   reserved[426];   /* padding                                      */
 };
 
 /* VHD cookie string. */

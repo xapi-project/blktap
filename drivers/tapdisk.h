@@ -91,6 +91,20 @@ typedef uint32_t td_flag_t;
 #define TD_CLOSED               64
 #define TD_DEAD                128
 
+typedef enum {
+	TD_FIELD_HIDDEN  = 0,
+	TD_FIELD_INVALID = 1
+} td_field_t;
+
+struct vdi_field {
+	char       *name;
+	td_field_t  id;
+};
+
+static struct vdi_field td_vdi_fields[TD_FIELD_INVALID] = {
+	{ .id = TD_FIELD_HIDDEN, .name = "hidden" }
+};
+
 struct td_state;
 struct tap_disk;
 
@@ -292,7 +306,10 @@ struct qcow_info {
         int       l2_size;
         uint64_t *l1;
         uint64_t  secs;
+	int       valid_td_fields;
+	long      td_fields[TD_FIELD_INVALID];
 };
+int qcow_set_field(struct disk_driver *dd, td_field_t field, long value);
 int qcow_get_info(struct disk_driver *dd, struct qcow_info *info);
 int qcow_coalesce(char *name);
 
@@ -301,7 +318,9 @@ struct vhd_info {
         int       bat_entries;
         uint32_t *bat;
         uint64_t  secs;
+	long      td_fields[TD_FIELD_INVALID];
 };
+int vhd_set_field(struct disk_driver *dd, td_field_t field, long value);
 int vhd_get_info(struct disk_driver *dd, struct vhd_info *info);
 int vhd_coalesce(char *name);
 
