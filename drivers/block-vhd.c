@@ -235,7 +235,7 @@ struct vhd_state {
 
 	char                 *name;
 
-#ifdef PREALLOCATE_BLOCKS
+#if (PREALLOCATE_BLOCKS == 1)
 	char                 *zeros;
 	int                   zsize;
 #endif
@@ -825,7 +825,7 @@ alloc_bat(struct vhd_state *s)
 	if (!s->bat.bat)
 		return -ENOMEM;
 
-#ifdef PREALLOCATE_BLOCKS
+#if (PREALLOCATE_BLOCKS == 1)
 	s->zsize = (s->bm_secs + s->spb) << VHD_SECTOR_SHIFT;
 	if (posix_memalign((void **)&s->zeros, VHD_SECTOR_SIZE, s->zsize)) {
 		free_bat(s);
@@ -2381,6 +2381,7 @@ update_bat(struct vhd_state *s, uint32_t blk)
 	return 0;
 }
 
+#if (PREALLOCATE_BLOCKS == 1)
 static int
 allocate_block(struct vhd_state *s, uint32_t blk)
 {
@@ -2425,6 +2426,7 @@ allocate_block(struct vhd_state *s, uint32_t blk)
 
 	return 0;
 }
+#endif
 
 static int 
 schedule_data_read(struct vhd_state *s, uint64_t sector,
@@ -2502,7 +2504,7 @@ schedule_data_write(struct vhd_state *s, uint64_t sector,
 	offset = bat_entry(s, blk);
 
 	if (test_vhd_flag(flags, VHD_FLAG_REQ_UPDATE_BAT)) {
-#ifdef PREALLOCATE_BLOCKS
+#if (PREALLOCATE_BLOCKS == 1)
 		err = allocate_block(s, blk);
 #else
 		err = update_bat(s, blk);
@@ -2967,7 +2969,7 @@ finish_bitmap_transaction(struct disk_driver *dd,
 	DBG("%s: blk: %u, err: %d\n", __func__, bm->blk, error);
 	tx->error = (tx->error ? tx->error : error);
 
-#ifndef PREALLOCATE_BLOCKS
+#if (PREALLOCATE_BLOCKS != 1)
 	if (test_vhd_flag(tx->status, VHD_FLAG_TX_UPDATE_BAT)) {
 		/* still waiting for bat write */
 		ASSERT(s, bm->blk == s->bat.pbw_blk);
@@ -3041,7 +3043,7 @@ finish_bat_write(struct disk_driver *dd, struct vhd_request *req)
 	} else
 		tx->error = req->error;
 
-#ifdef PREALLOCATE_BLOCKS
+#if (PREALLOCATE_BLOCKS == 1)
 	tx->finished++;
 	remove_from_req_list(&tx->requests, req);
 	if (transaction_completed(tx))
