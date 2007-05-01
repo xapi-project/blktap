@@ -1000,7 +1000,8 @@ vhd_open (struct disk_driver *dd, const char *name, td_flag_t flags)
 int 
 vhd_close(struct disk_driver *dd)
 {
-	int i, ret, flags;
+	off64_t off;
+	int i, flags;
 	struct vhd_bitmap *bm;
 	struct vhd_state  *s = (struct vhd_state *)dd->private;
 	
@@ -1020,16 +1021,29 @@ vhd_close(struct disk_driver *dd)
 	
 	flags = fcntl(s->fd, F_GETFL);
 	if (flags & O_RDWR && s->writes) {
-		ret = lseek64(s->fd, s->next_db << VHD_SECTOR_SHIFT, SEEK_SET);
-		if (ret == (off64_t)-1) {
-			DPRINTF("ERROR: seeking footer extension.\n");
+		if (s->ftr.type != HD_TYPE_FIXED) {
+			off = s->next_db << VHD_SECTOR_SHIFT;
+			if (lseek64(s->fd, off, SEEK_SET) == (off64_t)-1) {
+				DPRINTF("ERROR: seeking footer extension.\n");
+				goto free;
+			}
 		} else {
-			if (vhd_write_hd_ftr(s->fd, &s->ftr))
-				DPRINTF("ERROR: writing footer. %d\n", errno);
+			off = lseek64(s->fd, 0, SEEK_END);
+			if (off == (off64_t)-1) {
+				DPRINTF("ERROR: seeking footer extension.\n");
+				goto free;
+			}
+			if (lseek64(s->fd, (off64_t)(off - 512), 
+				    SEEK_SET) == (off64_t)-1) {
+				DPRINTF("ERROR: seeking footer extension.\n");
+				goto free;
+			}
 		}
-		/* TODO: trunc file if s->next_db != eof */
+		if (vhd_write_hd_ftr(s->fd, &s->ftr))
+			DPRINTF("ERROR: writing footer. %d\n", errno);
 	}
 
+ free:
 	for (i = 0; i < VHD_CACHE_SIZE; i++) {
 		bm = &s->bitmap_list[i];
 		free(bm->map);
