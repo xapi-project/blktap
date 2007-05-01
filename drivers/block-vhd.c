@@ -1284,6 +1284,8 @@ vhd_get_parent_id(struct disk_driver *child_dd, struct disk_id *id)
 int
 vhd_get_info(struct disk_driver *dd, struct vhd_info *info)
 {
+	char *buf = NULL;
+	struct hd_ftr ftr;
         struct vhd_state *s = (struct vhd_state *)dd->private;
 
         info->spb         = s->spb;
@@ -1294,15 +1296,34 @@ vhd_get_info(struct disk_driver *dd, struct vhd_info *info)
                 return -1;
         memcpy(info->bat, s->bat.bat, sizeof(uint32_t) * info->bat_entries);
 
-	info->td_fields[TD_FIELD_HIDDEN] = (long)s->ftr.hidden;
+	if (s->ftr.type != HD_TYPE_FIXED) {
+		if (posix_memalign((void **)&buf, 512, 512))
+			goto fail;
+		if (lseek64(s->fd, 0, SEEK_SET) == (off64_t)-1)
+			goto fail;
+		if (read(s->fd, buf, 512) != 512)
+			goto fail;
+		memcpy(&ftr, buf, sizeof(struct hd_ftr));
+		
+		info->td_fields[TD_FIELD_HIDDEN] = (long)ftr.hidden;
+
+		free(buf);
+	} else {
+		info->td_fields[TD_FIELD_HIDDEN] = (long)s->ftr.hidden;
+	}
 
         return 0;
+
+ fail:
+	free(buf);
+	free(info->bat);
+	return -1;
 }
 
 int
 vhd_set_field(struct disk_driver *dd, td_field_t field, long value)
 {
-	int ret;
+	off64_t end;
 	struct vhd_state *s = (struct vhd_state *)dd->private;
 
 	switch(field) {
@@ -1315,22 +1336,19 @@ vhd_set_field(struct disk_driver *dd, td_field_t field, long value)
 		return -EINVAL;
 	}
 
-	ret = lseek64(s->fd, s->next_db << VHD_SECTOR_SHIFT, SEEK_SET);
-	if (ret == (off64_t)-1)
-		return -errno;
-
-	ret = vhd_write_hd_ftr(s->fd, &s->ftr);
-	if (ret)
-		return ret;
-
 	if (s->ftr.type != HD_TYPE_FIXED) {
+		/* store special fields in backup footer at start of file */
 		if (lseek64(s->fd, 0, SEEK_SET) == (off64_t)-1)
 			return -errno;
-
-		ret = vhd_write_hd_ftr(s->fd, &s->ftr);
+	} else {
+		if ((end = lseek64(s->fd, 0, SEEK_END)) == (off64_t)-1)
+			return -errno;
+		if (lseek64(s->fd, 
+			    (off64_t)(end - 512), SEEK_SET) == (off64_t)-1)
+			return -errno;
 	}
 
-	return ret;
+	return vhd_write_hd_ftr(s->fd, &s->ftr);
 }
 
 /* 
