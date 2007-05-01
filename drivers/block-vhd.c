@@ -1019,7 +1019,7 @@ vhd_close(struct disk_driver *dd)
 	     ((float)s->callback_sum / s->callbacks) : 0.0));
 	
 	flags = fcntl(s->fd, F_GETFL);
-	if (flags & O_RDWR) {
+	if (flags & O_RDWR && s->writes) {
 		ret = lseek64(s->fd, s->next_db << VHD_SECTOR_SHIFT, SEEK_SET);
 		if (ret == (off64_t)-1) {
 			DPRINTF("ERROR: seeking footer extension.\n");
