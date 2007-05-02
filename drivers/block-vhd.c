@@ -3300,9 +3300,9 @@ fail_vhd_request(struct disk_driver *dd, struct vhd_request *r, int err)
 	struct vhd_state *s = (struct vhd_state *)dd->private;
 
 	ASSERT(s, !r->next);
-	DPRINTF("ERROR: %s to %llu failed: %d\n", 
-		(r->op == VHD_OP_DATA_READ || r->op == VHD_OP_BITMAP_READ) ?
-		"read" : "write", r->lsec, err);
+	DBG("ERROR: %s to %llu failed: %d\n", 
+	    (r->op == VHD_OP_DATA_READ || r->op == VHD_OP_BITMAP_READ) ?
+	    "read" : "write", r->lsec, err);
 
 	r->error = err;
 
@@ -3405,13 +3405,13 @@ vhd_do_callbacks(struct disk_driver *dd, int sid)
 		req->error = (ep->res == io->u.c.nbytes) ? 0 : -EIO;
 
 		if (req->error) {
-			DPRINTF("%s: %s: ERROR: op: %u, lsec: %llu, "
-				"nr_secs: %u, res: %lu, nbytes: %lu, "
-				"blk: %llu, blk_offset: %u\n", __func__, 
-				s->name, req->op, req->lsec, req->nr_secs, 
-				ep->res, io->u.c.nbytes, req->lsec / s->spb,
-				bat_entry(s, req->lsec / s->spb));
-			__TRACE(s);
+			DBG("%s: %s: ERROR: op: %u, lsec: %llu, "
+			    "nr_secs: %u, res: %lu, nbytes: %lu, "
+			    "blk: %llu, blk_offset: %u\n", __func__, 
+			    s->name, req->op, req->lsec, req->nr_secs, 
+			    ep->res, io->u.c.nbytes, req->lsec / s->spb,
+			    bat_entry(s, req->lsec / s->spb));
+			TRACE(s);
 		}
 
 		switch (req->op) {
