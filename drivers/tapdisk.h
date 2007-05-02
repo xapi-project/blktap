@@ -90,6 +90,7 @@ typedef uint32_t td_flag_t;
 #define TD_LOCKING              32
 #define TD_CLOSED               64
 #define TD_DEAD                128
+#define TD_HAS_PHANTOM         256
 
 typedef enum {
 	TD_FIELD_HIDDEN  = 0,
@@ -139,6 +140,7 @@ struct td_state {
 	unsigned long      sector_size;
 	unsigned long long size;
 	unsigned int       info;
+	unsigned long received, returned;
 };
 
 /* Prototype of the callback to activate as requests complete.              */

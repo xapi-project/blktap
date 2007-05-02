@@ -91,6 +91,7 @@ extern int blktap_major;
 #define BLKTAP_MMAP_REGION_SIZE (BLKTAP_RING_PAGES + MMAP_PAGES)
 
 struct blkif;
+struct blkif_info;
 
 typedef struct {
 	blkif_request_t  req;
@@ -119,7 +120,7 @@ typedef struct blkif {
 	struct blkif *hash_next;
 	
 	void *prv;  /* device-specific data */
-	void *info; /*Image parameter passing */
+	struct blkif_info *info; /*Image parameter passing */
 	pending_req_t pending_list[MAX_REQUESTS];
 	int devnum;
 	int fds[2];
@@ -135,6 +136,8 @@ typedef struct blkif {
 
 typedef struct blkif_info {
 	char *params;
+	int   readonly;
+	int   has_phantom;
 } blkif_info_t;
 
 void register_new_devmap_hook(int (*fn)(blkif_t *blkif));
@@ -144,8 +147,7 @@ void register_new_checkpoint_hook(int (*fn)(blkif_t *blkif, char *cp_uuid));
 void register_new_lock_hook(int (*fn)(blkif_t *blkif));
 blkif_t *blkif_find_by_handle(domid_t domid, unsigned int handle);
 blkif_t *alloc_blkif(domid_t domid);
-int blkif_init(blkif_t *blkif, long int handle, long int pdev, 
-               long int readonly);
+int blkif_init(blkif_t *blkif, long int handle, long int pdev);
 int blkif_checkpoint(blkif_t *blkif, char *cp_uuid);
 int blkif_lock(blkif_t *blkif);
 void free_blkif(blkif_t *blkif);
@@ -186,6 +188,7 @@ typedef struct msg_hdr {
 
 typedef struct msg_params {
 	uint8_t    readonly;
+	uint8_t    has_phantom;
 	int        path_off;
 	int        path_len;
 } msg_params_t;

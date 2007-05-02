@@ -103,8 +103,7 @@ void register_new_lock_hook(int (*fn)(blkif_t *blkif))
 	new_lock_hook = fn;
 }
 
-int blkif_init(blkif_t *blkif, long int handle, long int pdev, 
-               long int readonly)
+int blkif_init(blkif_t *blkif, long int handle, long int pdev)
 {
 	domid_t domid;
 	blkif_t **pblkif;
@@ -113,10 +112,9 @@ int blkif_init(blkif_t *blkif, long int handle, long int pdev,
 	if (blkif == NULL)
 		return -EINVAL;
 	
-	domid = blkif->domid;
-	blkif->handle   = handle;
-	blkif->pdev     = pdev;
-	blkif->readonly = readonly;
+	domid         = blkif->domid;
+	blkif->handle = handle;
+	blkif->pdev   = pdev;
 	
 	/*
 	 * Call out to the new_blkif_hook. 

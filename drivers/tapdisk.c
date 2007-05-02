@@ -383,6 +383,41 @@ static int open_disk(struct td_state *s,
 	return -1;
 }
 
+static int reopen_disks(struct td_state *s)
+{
+	struct disk_driver *dd, *next, *p = NULL;
+
+	td_for_each_disk(s, dd) {
+		dd->drv->td_close(dd);
+		if (dd->drv->td_open(dd, dd->name, dd->flags))
+			goto fail;
+		
+		if (p)
+			if (dd->drv->td_validate_parent(p, dd, 0)) {
+				dd->drv->td_close(dd);
+				goto fail;
+			}
+
+		p = dd;
+	}
+
+	return 0;
+
+ fail:
+	p = s->disks;
+	while (p) {
+		next = p->next;
+		if (p != dd)
+			p->drv->td_close(p);
+
+		free_driver(p);
+		p = next;
+	}
+	s->disks = NULL;
+
+	return -1;
+}
+
 static int write_checkpoint_rsp(int err)
 {
 	char buf[50];
@@ -583,6 +618,7 @@ static int read_msg(char *buf)
 			if (ret)
 				goto params_done;
 
+			s->flags |= (msg_p->has_phantom ? TD_HAS_PHANTOM : 0);
 			entry = add_fd_entry(0, s);
 			entry->cookie = msg->cookie;
 			DPRINTF("Entered cookie %d\n", entry->cookie);
@@ -784,7 +820,6 @@ segment_start(blkif_request_t *req, int sidx)
 	return start;
 }
 
-uint64_t sends, responds;
 int send_responses(struct disk_driver *dd, int res, 
 		   uint64_t sector, int nr_secs, int idx, void *private)
 {
@@ -803,7 +838,7 @@ int send_responses(struct disk_driver *dd, int res,
 	preq = &blkif->pending_list[idx];
 	req  = &preq->req;
 
-	if (res == BLK_NOT_ALLOCATED) {
+	if (res == BLK_NOT_ALLOCATED && !queue_closed(s)) {
 		res = do_cow_read(dd, req, sidx, sector, nr_secs);
 		if (res >= 0) {
 			secs_done = res;
@@ -833,6 +868,7 @@ int send_responses(struct disk_driver *dd, int res,
 		
 		write_rsp_to_ring(s, rsp);
 		responses_queued++;
+		s->returned++;
 	}
 	return responses_queued;
 }
@@ -872,6 +908,22 @@ int do_cow_read(struct disk_driver *dd, blkif_request_t *req,
 	return ((ret >= 0) ? 0 : ret);
 }
 
+static inline void submit_requests(struct td_state *s)
+{
+	struct disk_driver *dd;
+
+	if (s->flags & TD_DEAD)
+		return;
+
+	td_for_each_disk(s, dd) {
+		dd->early += dd->drv->td_submit(dd);
+		if (dd->early > 0) {
+			io_done(dd, MAX_IOFD + 1);
+			dd->early = 0;
+		}
+	}
+}
+
 static void get_io_request(struct td_state *s)
 {
 	RING_IDX          rp, rc, j, i;
@@ -887,6 +939,13 @@ static void get_io_request(struct td_state *s)
 	int page_size = getpagesize();
 
 	if (!run) return; /*We have received signal to close*/
+
+	if ((s->flags & TD_HAS_PHANTOM) && !s->received) {
+		if (reopen_disks(s)) {
+			DPRINTF("reopening disks failed\n");
+			s->flags |= TD_DEAD;
+		} else DPRINTF("reopening disks succeeded\n");
+	}
 
 	rp = info->fe_ring.sring->req_prod; 
 	rmb();
@@ -916,6 +975,7 @@ static void get_io_request(struct td_state *s)
 			blkif->pending_list[idx].status = BLKIF_RSP_OKAY;
 			blkif->pending_list[idx].submitting = 1;
 			sector_nr = req->sector_number;
+			s->received++;
 		}
 
 		if (queue_closed(s)) {
@@ -1004,13 +1064,7 @@ static void get_io_request(struct td_state *s)
 
  out:
 	/*Batch done*/
-	td_for_each_disk(s, dd) {
-		dd->early += dd->drv->td_submit(dd);
-		if (dd->early > 0) {
-			io_done(dd, MAX_IOFD + 1);
-			dd->early = 0;
-		}
-	}
+	submit_requests(s);
 
 	return;
 }
@@ -1153,17 +1207,8 @@ int main(int argc, char *argv[])
 
 				/* completed io from above may have 
 				 * queued new requests on chained disks */
-				if (progress_made) {
-					td_for_each_disk(ptr->s, dd) {
-						dd->early += 
-							dd->drv->td_submit(dd);
-						if (dd->early > 0) {
-							io_done(dd, 
-								MAX_IOFD + 1);
-							dd->early = 0;
-						}
-					}
-				}
+				if (progress_made)
+					submit_requests(ptr->s);
 
 				if (FD_ISSET(ptr->tap_fd, &readfds) ||
 				    (info->busy.req && progress_made))

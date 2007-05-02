@@ -67,7 +67,6 @@ struct backend_info
 	
 	long int frontend_id;
 	long int pdev;
-	long int readonly;
 	
 	char *backpath;
 	char *frontpath;
@@ -158,7 +157,7 @@ static void audit_backend_devices(struct xs_handle *h)
 	struct backend_info *be, *tmp;
 
 	list_for_each_entry_safe(be, tmp, &belist, list) {
-		if (asprintf(&path, "%s/%s", be->backpath, "frontend-id") == -1)
+		if (asprintf(&path, "%s/frontend-id", be->backpath) == -1)
 			continue;
 
 		data = xs_read(h, XBT_NULL, path, &len);
@@ -232,7 +231,8 @@ static void ueblktap_setup(struct xs_handle *h, char *bepath)
 {
 	struct backend_info *be;
 	char *path = NULL, *p, *dev;
-	int len, er, deverr;
+	int er, deverr;
+	unsigned len;
 	long int pdev = 0, handle;
 	blkif_info_t *blk;
 	
@@ -254,15 +254,9 @@ static void ueblktap_setup(struct xs_handle *h, char *bepath)
 		be->pdev = pdev;
 	}
 
-	/* Check to see if device is to be opened read-only. */
-	deverr = xs_gather(h, bepath, "mode", NULL, &path, NULL);
-	if (deverr) {
-		DPRINTF("ERROR: could not find read/write mode\n");
-		goto fail;
-	} else if (path[0] == 'r')
-		be->readonly = 1;
-
 	if (be->blkif == NULL) {
+		char mode, *phantom;
+
 		/* Front end dir is a number, which is used as the handle. */
 		p = strrchr(be->frontpath, '/') + 1;
 		handle = strtoul(p, NULL, 0);
@@ -274,13 +268,29 @@ static void ueblktap_setup(struct xs_handle *h, char *bepath)
 		be->blkif->be_id = get_be_id(bepath);
 		
 		/* Insert device specific info, */
-		blk = malloc(sizeof(blkif_info_t));
+		blk = calloc(1, sizeof(blkif_info_t));
 		if (!blk) {
 			DPRINTF("Out of memory - blkif_info_t\n");
 			goto fail;
 		}
 		er = xs_gather(h, bepath, "params", NULL, &blk->params, NULL);
 		if (er)
+			goto fail;
+
+		/* Check to see if device is to be opened read-only. */
+		if (xs_gather(h, bepath, "mode", "%c", &mode, NULL))
+			goto fail;
+		if (mode == 'r')
+			blk->readonly = 1;
+
+		/* does this device have a phantom? */
+		if (asprintf(&path, "%s/phantom_vbd", be->frontpath) == -1)
+			goto fail;
+		phantom = xs_read(h, XBT_NULL, path, &len);
+		if (phantom) {
+			blk->has_phantom = 1;
+			free(phantom);
+		} else if (errno != ENOENT)
 			goto fail;
 		
 		be->blkif->info = blk;
@@ -291,7 +301,7 @@ static void ueblktap_setup(struct xs_handle *h, char *bepath)
 			be->pdev = pdev;
 		}
 
-		er = blkif_init(be->blkif, handle, be->pdev, be->readonly);
+		er = blkif_init(be->blkif, handle, be->pdev);
 		if (er != 0) {
 			DPRINTF("Unable to open device %s\n",blk->params);
 			goto fail;
@@ -361,7 +371,7 @@ static void ueblktap_probe(struct xs_handle *h, struct xenbus_watch *w,
 		DPRINTF("No path\n");
 		return;
 	}
-	
+
 	/*
 	 *asserts that xenstore structure is always 7 levels deep
 	 *e.g. /local/domain/0/backend/vbd/1/2049
