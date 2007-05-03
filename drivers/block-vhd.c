@@ -3457,6 +3457,60 @@ vhd_do_callbacks(struct disk_driver *dd, int sid)
 	return rsp;
 }
 
+void 
+vhd_debug(struct disk_driver *dd)
+{
+	int i;
+	struct vhd_state *s = (struct vhd_state *)dd->private;
+
+	DPRINTF("--------%s--------\n", __func__);
+	__TRACE(s);
+
+	DPRINTF("BITMAP CACHE:\n");
+	for (i = 0; i < VHD_CACHE_SIZE; i++) {
+		int qnum = 0, wnum = 0, rnum = 0;
+		struct vhd_bitmap *bm = s->bitmap[i];
+		struct vhd_transaction *tx;
+		struct vhd_request *r;
+
+		if (!bm)
+			continue;
+
+		tx = &bm->tx;
+		r = bm->queue.head;
+		while (r) {
+			qnum++;
+			r = r->next;
+		}
+
+		r = bm->waiting.head;
+		while (r) {
+			wnum++;
+			r = r->next;
+		}
+
+		r = tx->requests.head;
+		while (r) {
+			rnum++;
+			r = r->next;
+		}
+
+		DPRINTF("%d: blk: %u, status: %u, q: %p, qnum: %d, w: %p, "
+			"wnum: %d, locked: %d, in use: %d, tx_error: %d, "
+			"started: %d, finished: %d, status: %u, reqs: %p, nreqs: %d\n",
+			i, bm->blk, bm->status, bm->queue.head, qnum, bm->waiting.head,
+			wnum, bitmap_locked(bm), bitmap_in_use(bm), tx->error,
+			tx->started, tx->finished, tx->status, tx->requests.head, rnum);
+	}
+
+	DPRINTF("BAT: status: %u, pbw_blk: %u, pbw_off: %llu, tx: %p\n",
+		s->bat.status, s->bat.pbw_blk, s->bat.pbw_offset, s->bat.req.tx);
+/*
+	for (i = 0; i < s->hdr.max_bat_size; i++)
+		DPRINTF("%d: %u\n", i, s->bat.bat[i]);
+*/
+}
+
 struct tap_disk tapdisk_vhd = {
 	.disk_type          = "tapdisk_vhd",
 	.private_data_size  = sizeof(struct vhd_state),

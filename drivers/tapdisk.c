@@ -92,6 +92,23 @@ void sig_handler(int sig)
 	if (connected_disks < 1) run = 0;	
 }
 
+void debug(int sig)
+{
+	fd_list_entry_t *ptr;
+	struct disk_driver *dd;
+
+	DPRINTF("%s\n", __func__);
+
+	ptr = fd_start;
+	while (ptr != NULL) {
+		if (ptr->s)
+			td_for_each_disk(ptr->s, dd)
+				if (dd->drv == dtypes[DISK_TYPE_VHD]->drv)
+					vhd_debug(dd);
+		ptr = ptr->next;
+	}
+}
+
 static inline int LOCAL_FD_SET(fd_set *readfds)
 {
 	fd_list_entry_t *ptr;
@@ -1150,6 +1167,7 @@ int main(int argc, char *argv[])
 	/*Setup signal handlers*/
 	signal (SIGBUS, sig_handler);
 	signal (SIGINT, sig_handler);
+	signal (SIGUSR1, debug);
 
 	/*Open the control channel*/
 	fds[READ]  = open(argv[1],O_RDWR|O_NONBLOCK);
