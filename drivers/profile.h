@@ -150,4 +150,57 @@ __tp_log(struct profile_info *prof, u64 id, const char *func, int direction)
 #define tp_log(prof, sec, direction)       ((void)0)
 #endif
 
+#define BUF_SIZE        (2 << 20)
+#define MAX_ENTRY_LEN   256
+#define MAX_BUF_ENTRIES (BUF_SIZE / MAX_ENTRY_LEN)
+
+struct bentry {
+	uint64_t       id;
+	char          *entry;
+};
+
+struct bhandle {
+	int            cur;
+	uint64_t       cnt;
+	char           buf[BUF_SIZE];
+	struct bentry  entries[MAX_BUF_ENTRIES];
+};
+
+#define BLOG(h, _f, _a...)                                                     \
+do {                                                                           \
+	char *_tmp;                                                            \
+                                                                               \
+	_tmp = &h.buf[h.cur * MAX_ENTRY_LEN];                                  \
+	snprintf(_tmp, MAX_ENTRY_LEN - 2, _f, ##_a);                           \
+	_tmp[MAX_ENTRY_LEN - 1] = '\0';                                        \
+                                                                               \
+	h.entries[h.cur].entry  = _tmp;                                        \
+	h.entries[h.cur].id     = h.cnt;                                       \
+                                                                               \
+	h.cnt++;                                                               \
+	h.cur++;                                                               \
+                                                                               \
+	if (h.cur == MAX_BUF_ENTRIES)                                          \
+		h.cur = 0;                                                     \
+} while (0)
+
+#define BPRINTF(print_fn, h)                                                   \
+do {                                                                           \
+	int _i, _min;                                                          \
+	                                                                       \
+	if (h.entries[h.cur].entry)                                            \
+		_min = h.cur;                                                  \
+	else                                                                   \
+		_min = 0;                                                      \
+                                                                               \
+	_i = _min;                                                             \
+	do {                                                                   \
+		if (!h.entries[_i].entry)                                      \
+			break;                                                 \
+		print_fn("(%llu): %s", h.entries[_i].id, h.entries[_i].entry); \
+		if (++_i == MAX_BUF_ENTRIES)                                   \
+			_i = 0;                                                \
+	} while (_i != _min);                                                  \
+} while(0)
+
 #endif

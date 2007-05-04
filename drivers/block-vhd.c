@@ -44,8 +44,8 @@
 #include "profile.h"
 #include "atomicio.h"
 
-#define TRACING     0
-#define DEBUGGING   0
+#define TRACING     1
+#define DEBUGGING   2
 #define ASSERTING   1
 #define PREALLOCATE_BLOCKS 0
 
@@ -55,7 +55,7 @@
 
 #define __TRACE(s)                                                             \
 do {                                                                           \
-	DPRINTF("%s: %s: QUEUED: %llu, SUBMITTED: %llu, "                      \
+	BLOG(bhandle, "%s: %s: QUEUED: %llu, SUBMITTED: %llu, "                \
 		"RETURNED: %llu DATA_ALLOCATED: %lu, BBLK: %u\n",              \
 		__func__, s->name, s->queued, s->submitted,                    \
 		 s->returned, VHD_REQS_DATA - s->vreq_free_count,              \
@@ -72,6 +72,10 @@ if ( !(_p) ) {                                                                 \
 
 #if (DEBUGGING == 1)
   #define DBG(_f, _a...)             DPRINTF(_f, ##_a)
+#elif (DEBUGGING == 2)
+  struct bhandle bhandle;
+  #define DBG(_f, _a...)             BLOG(bhandle, _f, ##_a)
+  #define BDUMP()                    BPRINTF(DPRINTF, bhandle)
 #else
   #define DBG(_f, _a...)             ((void)0)
 #endif
@@ -2927,6 +2931,8 @@ signal_completion(struct disk_driver *dd, struct vhd_request *list, int error)
 		err  = (error ? error : r->error);
 		next = r->next;
 		rsp += r->cb(dd, err, r->lsec, r->nr_secs, r->id, r->private);
+		DBG("%s: lsec: %llu, blk: %llu, err: %d\n", 
+		    __func__, r->lsec, r->lsec / s->spb, err);
 		free_vhd_request(s, r);
 		r    = next;
 
@@ -2949,7 +2955,7 @@ start_new_bitmap_transaction(struct disk_driver *dd, struct vhd_bitmap *bm)
 	if (!bm->queue.head)
 		return 0;
 
-	DBG("%s\n", __func__);
+	DBG("%s, blk: %u\n", __func__, bm->blk);
 
 	r  = bm->queue.head;
 	tx = &bm->tx;
@@ -3056,7 +3062,7 @@ finish_bat_write(struct disk_driver *dd, struct vhd_request *req)
 	bm = get_bitmap(s, s->bat.pbw_blk);
 	
 	DBG("%s: blk %u, pbwo: %llu, err %d\n", 
-		__func__, s->bat.pbw_blk, s->bat.pbw_offset, req->error);
+	    __func__, s->bat.pbw_blk, s->bat.pbw_offset, req->error);
 	ASSERT(s, bm && bitmap_valid(bm));
 	ASSERT(s, bat_locked(s) &&
 	       test_vhd_flag(s->bat.status, VHD_FLAG_BAT_WRITE_STARTED));
@@ -3109,6 +3115,7 @@ finish_zero_bm_write(struct disk_driver *dd, struct vhd_request *req)
 	blk = req->lsec / s->spb;
 	bm  = get_bitmap(s, blk);
 
+	DBG("%s: blk %u\n", __func__, blk);
 	ASSERT(s, bat_locked(s));
 	ASSERT(s, s->bat.pbw_blk == blk);
 	ASSERT(s, bm && bitmap_valid(bm) && bitmap_locked(bm));
@@ -3126,7 +3133,7 @@ finish_zero_bm_write(struct disk_driver *dd, struct vhd_request *req)
 
 	if (transaction_completed(tx))
 		rsp += finish_data_transaction(dd, bm);
-	
+
 	return rsp;
 }
 
@@ -3242,8 +3249,8 @@ finish_data_read(struct disk_driver *dd, struct vhd_request *req)
 
 	tp_log(&s->tp, req->lsec, TAPPROF_IN);
 
-	DBG("%s: blk %llu, sec %llu\n", 
-	    __func__, req->lsec / s->spb, req->lsec);
+	DBG("%s: lsec %llu, blk %llu\n", 
+	    __func__, req->lsec, req->lsec / s->spb);
 	rsp = signal_completion(dd, req, 0);
 
 	tp_log(&s->tp, req->lsec, TAPPROF_OUT);
@@ -3261,7 +3268,8 @@ finish_data_write(struct disk_driver *dd, struct vhd_request *req)
 	tp_log(&s->tp, req->lsec, TAPPROF_IN);
 
 	set_vhd_flag(req->flags, VHD_FLAG_REQ_FINISHED);
-	DBG("%s\n", __func__);
+	DBG("%s: lsec: %llu, blk: %llu\n", 
+	    __func__, req->lsec, req->lsec / s->spb);
 
 	if (tx) {
 		u32 blk, sec;
@@ -3467,6 +3475,20 @@ vhd_debug(struct disk_driver *dd)
 	DPRINTF("--------%s--------\n", __func__);
 	__TRACE(s);
 
+#if (DEBUGGING == 2)
+	BDUMP();
+#endif
+
+	DPRINTF("ALLOCATED REQUESTS: (%lu total)\n", VHD_REQS_DATA);
+	for (i = 0; i < VHD_REQS_DATA; i++) {
+		struct vhd_request *r = &s->vreq_list[i];
+		if (r->lsec)
+			DPRINTF("%d: id: %d, err: %d, op: %d, lsec: %llu, "
+				"flags: %d, this: %p, next: %p, tx: %p\n", 
+				i, r->id, r->error, r->op, r->lsec, r->flags, 
+				r, r->next, r->tx);
+	}
+
 	DPRINTF("BITMAP CACHE:\n");
 	for (i = 0; i < VHD_CACHE_SIZE; i++) {
 		int qnum = 0, wnum = 0, rnum = 0;
@@ -3497,10 +3519,10 @@ vhd_debug(struct disk_driver *dd)
 		}
 
 		DPRINTF("%d: blk: %u, status: %u, q: %p, qnum: %d, w: %p, "
-			"wnum: %d, locked: %d, in use: %d, tx_error: %d, "
+			"wnum: %d, locked: %d, in use: %d, tx: %p, tx_error: %d, "
 			"started: %d, finished: %d, status: %u, reqs: %p, nreqs: %d\n",
 			i, bm->blk, bm->status, bm->queue.head, qnum, bm->waiting.head,
-			wnum, bitmap_locked(bm), bitmap_in_use(bm), tx->error,
+			wnum, bitmap_locked(bm), bitmap_in_use(bm), tx, tx->error,
 			tx->started, tx->finished, tx->status, tx->requests.head, rnum);
 	}
 
