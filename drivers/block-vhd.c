@@ -3121,11 +3121,12 @@ finish_zero_bm_write(struct disk_driver *dd, struct vhd_request *req)
 		init_bat(s);
 		tx->error = req->error;
 		clear_vhd_flag(tx->status, VHD_FLAG_TX_UPDATE_BAT);
-		if (transaction_completed(tx))
-			rsp += finish_data_transaction(dd, bm);
 	} else
 		schedule_bat_write(s);
 
+	if (transaction_completed(tx))
+		rsp += finish_data_transaction(dd, bm);
+	
 	return rsp;
 }
 
