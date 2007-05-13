@@ -91,6 +91,12 @@ void register_new_blkif_hook(int (*fn)(blkif_t *blkif))
 	new_blkif_hook = fn;
 }
 
+static int (*connected_blkif_hook)(blkif_t *blkif) = NULL;
+void register_connected_blkif_hook(int (*fn)(blkif_t *blkif))
+{
+	connected_blkif_hook = fn;
+}
+
 static int (*new_checkpoint_hook)(blkif_t *blkif, char *cp_uuid) = NULL;
 void register_new_checkpoint_hook(int (*fn)(blkif_t *blkif, char *cp_uuid))
 {
@@ -101,6 +107,14 @@ static int (*new_lock_hook)(blkif_t *blkif) = NULL;
 void register_new_lock_hook(int (*fn)(blkif_t *blkif))
 {
 	new_lock_hook = fn;
+}
+
+int blkif_connected(blkif_t *blkif)
+{
+	if (connected_blkif_hook)
+		connected_blkif_hook(blkif);
+	blkif->state = CONNECTED;
+	return 0;
 }
 
 int blkif_init(blkif_t *blkif, long int handle, long int pdev)

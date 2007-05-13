@@ -72,6 +72,8 @@ int ctlfd = 0;
 
 int blktap_major;
 
+struct xs_handle *xsh;
+
 static int open_ctrl_socket(char *devname);
 static int write_msg(int fd, int msgtype, void *ptr, void *ptr2);
 static int read_msg(int fd, int msgtype, void *ptr);
@@ -97,7 +99,7 @@ static void init_rng(void)
 	return;
 }
 
-static void make_blktap_dev(char *devname, int major, int minor)
+static void make_blktap_dev(char *devname, int major, int minor, int perm)
 {
 	struct stat st;
 	
@@ -105,7 +107,7 @@ static void make_blktap_dev(char *devname, int major, int minor)
 		/*Need to create device*/
 		if (mkdir(BLKTAP_DEV_DIR, 0755) == 0)
 			DPRINTF("Created %s directory\n",BLKTAP_DEV_DIR);
-		if (mknod(devname, S_IFCHR|0600,
+		if (mknod(devname, perm,
                 	makedev(major, minor)) == 0)
 			DPRINTF("Created %s device\n",devname);
 	} else {
@@ -117,9 +119,53 @@ static void make_blktap_dev(char *devname, int major, int minor)
 				(unsigned int)((st.st_rdev >> 8) & 0xff));
 			/* only try again if we succed in deleting it */
 			if (!unlink(devname))
-				make_blktap_dev(devname, major, minor);
+				make_blktap_dev(devname, major, minor, perm);
 		}
 	}
+}
+
+int blktapctrl_connected_blkif(blkif_t *blkif)
+{
+	int ret;
+	char *path = NULL, *s = NULL, *devname = NULL;
+	int major, minor;
+
+	ret = ioctl(ctlfd, BLKTAP_IOCTL_BACKDEV_SETUP, blkif->minor);
+	if (ret < 0)
+		goto fail;
+
+	ret = asprintf(&path, "%s/%s", blkif->backend_path, "backend-dev");
+	if (ret < 0)
+		goto fail;
+
+	s = xs_read(xsh, XBT_NULL, path, NULL);
+	if (s == NULL) {
+		ret = -1;
+		goto fail;
+	}
+
+	ret = sscanf(s, "%d:%d", &major, &minor);
+	if (ret != 2) {
+		ret = -1;
+		goto fail;
+	}
+
+	ret = asprintf(&devname,"%s/%s%d", BLKTAP_DEV_DIR, BACKDEV_NAME,
+		       minor);
+	if (ret < 0)
+		goto fail;
+
+	make_blktap_dev(devname, major, minor, S_IFBLK | 0600);	
+
+	ret = 0;
+ out:
+	free(path);
+	free(s);
+	return ret;
+
+ fail:
+	DPRINTF("backdev setup failed [%d]\n", ret);
+	goto out;
 }
 
 static int get_new_dev(int *major, int *minor, blkif_t *blkif)
@@ -145,7 +191,7 @@ static int get_new_dev(int *major, int *minor, blkif_t *blkif)
 	}
 
 	asprintf(&devname,"%s/%s%d",BLKTAP_DEV_DIR, BLKTAP_DEV_NAME, *minor);
-	make_blktap_dev(devname,*major,*minor);	
+	make_blktap_dev(devname,*major,*minor, S_IFCHR | 0600);
 	DPRINTF("Received device id %d and major %d, "
 		"sent domid %d and be_id %d\n",
 		*minor, *major, tr.domid, tr.busid);
@@ -834,7 +880,6 @@ int main(int argc, char *argv[])
 	char *devname;
 	tapdev_info_t *ctlinfo;
 	int tap_pfd, store_pfd, xs_fd, ret, timeout, pfd_count, count=0;
-	struct xs_handle *h;
 	struct pollfd  pfd[NUM_POLL_FDS];
 	pid_t process;
 	char buf[128];
@@ -849,6 +894,7 @@ int main(int argc, char *argv[])
 	init_rng();
 
 	register_new_blkif_hook(blktapctrl_new_blkif);
+	register_connected_blkif_hook(blktapctrl_connected_blkif);
 	register_new_devmap_hook(map_new_blktapctrl);
 	register_new_unmap_hook(unmap_blktapctrl);
 	register_new_checkpoint_hook(blktapctrl_checkpoint);
@@ -859,7 +905,7 @@ int main(int argc, char *argv[])
 	if ((ret = xc_find_device_number("blktap0")) < 0)
 		goto open_failed;
 	blktap_major = major(ret);
-	make_blktap_dev(devname,blktap_major,0);
+	make_blktap_dev(devname,blktap_major,0, S_IFCHR | 0600);
 	ctlfd = open(devname, O_RDWR);
 	if (ctlfd == -1) {
 		DPRINTF("blktap0 open failed\n");
@@ -869,8 +915,8 @@ int main(int argc, char *argv[])
 
  retry:
 	/* Set up store connection and watch. */
-	h = xs_daemon_open();
-	if (h == NULL) {
+	xsh = xs_daemon_open();
+	if (xsh == NULL) {
 		DPRINTF("xs_daemon_open failed -- "
 			"is xenstore running?\n");
                 if (count < MAX_ATTEMPTS) {
@@ -880,10 +926,10 @@ int main(int argc, char *argv[])
                 } else goto open_failed;
 	}
 	
-	ret = setup_probe_watch(h);
+	ret = setup_probe_watch(xsh);
 	if (ret != 0) {
 		DPRINTF("Failed adding device probewatch\n");
-		xs_daemon_close(h);
+		xs_daemon_close(xsh);
 		goto open_failed;
 	}
 
@@ -900,7 +946,7 @@ int main(int argc, char *argv[])
 	pfd[tap_pfd].events = POLLIN;
 	
 	store_pfd = pfd_count++;
-	pfd[store_pfd].fd = xs_fileno(h);
+	pfd[store_pfd].fd = xs_fileno(xsh);
 	pfd[store_pfd].events = POLLIN;
 
 	while (run) {
@@ -909,12 +955,12 @@ int main(int argc, char *argv[])
 
 		if (ret > 0) {
 			if (pfd[store_pfd].revents) {
-				ret = xs_fire_next_watch(h);
+				ret = xs_fire_next_watch(xsh);
 			}
 		}
 	}
 
-	xs_daemon_close(h);
+	xs_daemon_close(xsh);
 	ioctl(ctlfd, BLKTAP_IOCTL_SETMODE, BLKTAP_MODE_PASSTHROUGH );
 	close(ctlfd);
 	closelog();

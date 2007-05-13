@@ -301,6 +301,8 @@ static void ueblktap_setup(struct xs_handle *h, char *bepath)
 			be->pdev = pdev;
 		}
 
+		be->blkif->backend_path = be->backpath;
+
 		er = blkif_init(be->blkif, handle, be->pdev);
 		if (er != 0) {
 			DPRINTF("Unable to open device %s\n",blk->params);
@@ -338,7 +340,8 @@ static void ueblktap_setup(struct xs_handle *h, char *bepath)
 		goto fail;
 	}
 
-	be->blkif->state = CONNECTED;
+	blkif_connected(be->blkif);
+
 	DPRINTF("[SETUP] Complete\n\n");
 	goto close;
 	

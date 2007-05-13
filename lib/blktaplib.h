@@ -57,6 +57,7 @@
 #define BLKTAP_QUERY_ALLOC_REQS      8
 #define BLKTAP_IOCTL_FREEINTF	     9
 #define BLKTAP_IOCTL_PRINT_IDXS      100 
+#define BLKTAP_IOCTL_BACKDEV_SETUP   200
 
 #define PRIO_SPECIAL_IO             -9999 
 
@@ -82,6 +83,7 @@ static inline int BLKTAP_MODE_VALID(unsigned long arg)
 #define MAX_PENDING_REQS	BLK_RING_SIZE
 #define BLKTAP_DEV_DIR   "/dev/xen"
 #define BLKTAP_DEV_NAME  "blktap"
+#define BACKDEV_NAME     "backdev"
 #define BLKTAP_DEV_MINOR 0
 #define BLKTAP_CTRL_DIR   "/var/run/tap"
 
@@ -125,6 +127,7 @@ typedef struct blkif {
 	int devnum;
 	int fds[2];
 	int be_id;
+	char *backend_path;
 	int major;
 	int minor;
 	pid_t tappid;
@@ -143,11 +146,13 @@ typedef struct blkif_info {
 void register_new_devmap_hook(int (*fn)(blkif_t *blkif));
 void register_new_unmap_hook(int (*fn)(blkif_t *blkif));
 void register_new_blkif_hook(int (*fn)(blkif_t *blkif));
+void register_connected_blkif_hook(int (*fn)(blkif_t *blkif));
 void register_new_checkpoint_hook(int (*fn)(blkif_t *blkif, char *cp_uuid));
 void register_new_lock_hook(int (*fn)(blkif_t *blkif));
 blkif_t *blkif_find_by_handle(domid_t domid, unsigned int handle);
 blkif_t *alloc_blkif(domid_t domid);
 int blkif_init(blkif_t *blkif, long int handle, long int pdev);
+int blkif_connected(blkif_t *blkif);
 int blkif_checkpoint(blkif_t *blkif, char *cp_uuid);
 int blkif_lock(blkif_t *blkif);
 void free_blkif(blkif_t *blkif);
