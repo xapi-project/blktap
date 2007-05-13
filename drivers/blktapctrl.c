@@ -79,6 +79,8 @@ static int write_msg(int fd, int msgtype, void *ptr, void *ptr2);
 static int read_msg(int fd, int msgtype, void *ptr);
 static driver_list_entry_t *active_disks[MAX_DISK_TYPES];
 
+#define EPRINTF(_f, _a...) syslog(LOG_ERR, _f , ##_a)
+
 static void init_driver_list(void)
 {
 	int i;
@@ -103,25 +105,26 @@ static void make_blktap_dev(char *devname, int major, int minor, int perm)
 {
 	struct stat st;
 	
-	if (lstat(devname, &st) != 0) {
-		/*Need to create device*/
-		if (mkdir(BLKTAP_DEV_DIR, 0755) == 0)
-			DPRINTF("Created %s directory\n",BLKTAP_DEV_DIR);
-		if (mknod(devname, perm,
-                	makedev(major, minor)) == 0)
-			DPRINTF("Created %s device\n",devname);
-	} else {
+	if (lstat(devname, &st) == 0) {
 		DPRINTF("%s device already exists\n",devname);
 		/* it already exists, but is it the same major number */
-		if (((st.st_rdev>>8) & 0xff) != major) {
-			DPRINTF("%s has old major %d\n",
-				devname,
-				(unsigned int)((st.st_rdev >> 8) & 0xff));
+		if (((st.st_rdev>>8) & 0xff) == major)
+			return;
+		DPRINTF("%s has old major %d\n", devname,
+			(unsigned int)((st.st_rdev >> 8) & 0xff));
+		if (unlink(devname)) {
+			EPRINTF("unlink %s failed: %d\n", devname, errno);
 			/* only try again if we succed in deleting it */
-			if (!unlink(devname))
-				make_blktap_dev(devname, major, minor, perm);
+			return;
 		}
 	}
+	/* Need to create device */
+	if (mkdir(BLKTAP_DEV_DIR, 0755) == 0)
+		DPRINTF("Created %s directory\n",BLKTAP_DEV_DIR);
+	if (mknod(devname, perm, makedev(major, minor)) == 0)
+		DPRINTF("Created %s device\n",devname);
+	else
+		EPRINTF("mknod %s failed: %d\n", devname, errno);
 }
 
 int blktapctrl_connected_blkif(blkif_t *blkif)
