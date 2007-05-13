@@ -158,7 +158,9 @@ int blktapctrl_connected_blkif(blkif_t *blkif)
 	if (ret < 0)
 		goto fail;
 
-	make_blktap_dev(devname, major, minor, S_IFBLK | 0600);	
+	make_blktap_dev(devname, major, minor, S_IFBLK | 0600);
+
+	free(devname);
 
 	ret = 0;
  out:
@@ -193,11 +195,18 @@ static int get_new_dev(int *major, int *minor, blkif_t *blkif)
 		return -1;
 	}
 
-	asprintf(&devname,"%s/%s%d",BLKTAP_DEV_DIR, BLKTAP_DEV_NAME, *minor);
+	ret = asprintf(&devname, "%s/%s%d", BLKTAP_DEV_DIR, BLKTAP_DEV_NAME,
+		       *minor);
+	if (ret < 0) {
+		EPRINTF("get_new_dev: malloc failed\n");
+		return -1;
+	}
+
 	make_blktap_dev(devname,*major,*minor, S_IFCHR | 0600);
 	DPRINTF("Received device id %d and major %d, "
 		"sent domid %d and be_id %d\n",
 		*minor, *major, tr.domid, tr.busid);
+	free(devname);
 	return 0;
 }
 
@@ -610,6 +619,7 @@ int blktapctrl_new_blkif(blkif_t *blkif)
 	image_t *image;
 	blkif_t *exist = NULL;
 	static uint16_t next_cookie = 0;
+	int ret;
 
 	DPRINTF("Received a poll for a new vbd\n");
 	if ( ((blk=blkif->info) != NULL) && (blk->params != NULL) ) {
@@ -626,28 +636,41 @@ int blktapctrl_new_blkif(blkif_t *blkif)
 
 		if (!exist) {
 			DPRINTF("Process does not exist:\n");
-			asprintf(&rdctldev, 
-				 "%s/tapctrlread%d", BLKTAP_CTRL_DIR, minor);
+			ret = asprintf(&rdctldev, "%s/tapctrlread%d",
+				       BLKTAP_CTRL_DIR, minor);
+			if (ret < 0)
+				rdctldev = NULL;
 			blkif->fds[READ] = open_ctrl_socket(rdctldev);
 
-
-			asprintf(&wrctldev, 
-				 "%s/tapctrlwrite%d", BLKTAP_CTRL_DIR, minor);
+			ret = asprintf(&wrctldev, "%s/tapctrlwrite%d",
+				       BLKTAP_CTRL_DIR, minor);
+			if (ret < 0)
+				wrctldev = NULL;
 			blkif->fds[WRITE] = open_ctrl_socket(wrctldev);
 			
-			if (blkif->fds[READ] == -1 || blkif->fds[WRITE] == -1) 
+			if (blkif->fds[READ] == -1 ||
+			    blkif->fds[WRITE] == -1) {
+				EPRINTF("new blkif: socket failed %d %d\n",
+					blkif->fds[READ], blkif->fds[WRITE]);
+				free(rdctldev);
+				free(wrctldev);
 				goto fail;
-
-			/*launch the new process*/
-			asprintf(&cmd, "tapdisk %s %s", wrctldev, rdctldev);
-			DPRINTF("Launching process, CMDLINE [%s]\n",cmd);
-			if (system(cmd) == -1) {
-				DPRINTF("Unable to fork, cmdline: [%s]\n",cmd);
-				return -1;
 			}
 
+			/*launch the new process*/
+			ret = asprintf(&cmd, "tapdisk %s %s", wrctldev,
+				       rdctldev);
 			free(rdctldev);
 			free(wrctldev);
+			if (ret < 0)				
+				goto fail;
+			DPRINTF("Launching process, CMDLINE [%s]\n",cmd);
+			if (system(cmd) == -1) {
+				EPRINTF("Unable to fork, cmdline: [%s]\n",
+					cmd);
+				free(cmd);
+				return -1;
+			}
 			free(cmd);
 		} else {
 			DPRINTF("Process exists!\n");
@@ -665,7 +688,7 @@ int blktapctrl_new_blkif(blkif_t *blkif)
 
 		/*Retrieve the PID of the new process*/
 		if (get_tapdisk_pid(blkif) <= 0) {
-			DPRINTF("Unable to contact disk process\n");
+			EPRINTF("Unable to contact disk process\n");
 			goto fail;
 		}
 
@@ -673,7 +696,7 @@ int blktapctrl_new_blkif(blkif_t *blkif)
 		if (blkif->domid == 0)
 			if (setpriority(PRIO_PROCESS,
 					blkif->tappid, PRIO_SPECIAL_IO)) {
-				DPRINTF("Unable to prioritize tapdisk proc\n");
+				EPRINTF("Unable to prioritize tapdisk proc\n");
 				goto fail;
 			} 
 
@@ -681,12 +704,12 @@ int blktapctrl_new_blkif(blkif_t *blkif)
 		 * max_timeout val*/
 		if (write_msg(blkif->fds[WRITE], CTLMSG_PARAMS, blkif, ptr) 
 		    <= 0) {
-			DPRINTF("Write_msg failed - CTLMSG_PARAMS\n");
+			EPRINTF("Write_msg failed - CTLMSG_PARAMS\n");
 			goto fail;
 		}
 
 		if (read_msg(blkif->fds[READ], CTLMSG_IMG, blkif) <= 0) {
-			DPRINTF("Read_msg failure - CTLMSG_IMG\n");
+			EPRINTF("Read_msg failure - CTLMSG_IMG\n");
 			goto fail;
 		}
 
@@ -814,6 +837,9 @@ int open_ctrl_socket(char *devname)
 	fd_set socks;
 	struct timeval timeout;
 
+	if (devname == NULL)
+		return -1;
+
 	if (mkdir(BLKTAP_CTRL_DIR, 0755) == 0)
 		DPRINTF("Created %s directory\n", BLKTAP_CTRL_DIR);
 	ret = mkfifo(devname,S_IRWXU|S_IRWXG|S_IRWXO);
@@ -904,8 +930,11 @@ int main(int argc, char *argv[])
 	register_new_lock_hook(blktapctrl_lock);
 
 	/* Attach to blktap0 */
-	asprintf(&devname,"%s/%s0", BLKTAP_DEV_DIR, BLKTAP_DEV_NAME);
-	if ((ret = xc_find_device_number("blktap0")) < 0)
+	ret = asprintf(&devname,"%s/%s0", BLKTAP_DEV_DIR, BLKTAP_DEV_NAME);
+	if (ret < 0)
+		goto open_failed;
+	ret = xc_find_device_number("blktap0");
+	if (ret < 0)
 		goto open_failed;
 	blktap_major = major(ret);
 	make_blktap_dev(devname,blktap_major,0, S_IFCHR | 0600);
@@ -914,7 +943,6 @@ int main(int argc, char *argv[])
 		DPRINTF("blktap0 open failed\n");
 		goto open_failed;
 	}
-
 
  retry:
 	/* Set up store connection and watch. */
