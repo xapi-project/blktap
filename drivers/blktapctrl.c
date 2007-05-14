@@ -137,9 +137,11 @@ int blktapctrl_connected_blkif(blkif_t *blkif)
 	if (ret < 0)
 		goto fail;
 
-	ret = asprintf(&path, "%s/%s", blkif->backend_path, "backend-dev");
-	if (ret < 0)
+	ret = asprintf(&path, "%s/backdev-node", blkif->backend_path);
+	if (ret < 0) {
+		path = NULL;
 		goto fail;
+	}
 
 	s = xs_read(xsh, XBT_NULL, path, NULL);
 	if (s == NULL) {
@@ -155,15 +157,27 @@ int blktapctrl_connected_blkif(blkif_t *blkif)
 
 	ret = asprintf(&devname,"%s/%s%d", BLKTAP_DEV_DIR, BACKDEV_NAME,
 		       minor);
-	if (ret < 0)
+	if (ret < 0) {
+		devname = NULL;
 		goto fail;
+	}
 
 	make_blktap_dev(devname, major, minor, S_IFBLK | 0600);
 
-	free(devname);
+	free(path);
+	ret = asprintf(&path, "%s/backdev-path", blkif->backend_path);
+	if (ret < 0) {
+		path = NULL;
+		goto fail;
+	}
+
+	ret = xs_write(xsh, XBT_NULL, path, devname, strlen(devname));
+	if (!ret)
+		goto fail;
 
 	ret = 0;
  out:
+	free(devname);
 	free(path);
 	free(s);
 	return ret;
