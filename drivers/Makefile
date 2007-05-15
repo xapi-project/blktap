@@ -7,7 +7,7 @@ VHD_UTIL     = vhd-create vhd-query
 LOCK_UTIL    = lock-util
 INST_DIR     = /usr/sbin
 
-CFLAGS   += -Werror
+CFLAGS   += -Werror -g
 CFLAGS   += -Wno-unused
 CFLAGS   += -fno-strict-aliasing
 CFLAGS   += -I../lib

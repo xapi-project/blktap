@@ -56,6 +56,7 @@
 #ifndef TAPDISK_H_
 #define TAPDISK_H_
 
+#include <time.h>
 #include <stdint.h>
 #include "blktaplib.h"
 
@@ -73,24 +74,28 @@
 #define SECTOR_SHIFT             9
 #define DEFAULT_SECTOR_SIZE    512
 
+#define TD_MAX_RETRIES         100
+#define TD_RETRY_INTERVAL        1
+
 #define MAX_IOFD                 2
 
-#define BLK_NOT_ALLOCATED       99
+#define BLK_NOT_ALLOCATED    (-99)
 #define TD_NO_PARENT             1
 
 #define MAX_RAMDISK_SIZE   1024000 /*500MB disk limit*/
 
 typedef uint32_t td_flag_t;
 
-#define TD_RDONLY                1
-#define TD_DRAIN_QUEUE           2
-#define TD_CHECKPOINT            4
-#define TD_MULTITYPE_CP          8
-#define TD_SPARSE               16
-#define TD_LOCKING              32
-#define TD_CLOSED               64
-#define TD_DEAD                128
-#define TD_HAS_PHANTOM         256
+#define TD_RDONLY          0x00001
+#define TD_DRAIN_QUEUE     0x00002
+#define TD_CHECKPOINT      0x00004
+#define TD_MULTITYPE_CP    0x00008
+#define TD_SPARSE          0x00010
+#define TD_LOCKING         0x00020
+#define TD_CLOSED          0x00040
+#define TD_DEAD            0x00080
+#define TD_HAS_PHANTOM     0x00100
+#define TD_RETRY_NEEDED    0x00200
 
 typedef enum {
 	TD_FIELD_HIDDEN  = 0,
@@ -140,7 +145,9 @@ struct td_state {
 	unsigned long      sector_size;
 	unsigned long long size;
 	unsigned int       info;
-	unsigned long received, returned;
+	unsigned long received, returned, kicked;
+	struct timeval ts;
+	int dumped_log;
 };
 
 /* Prototype of the callback to activate as requests complete.              */
@@ -160,6 +167,7 @@ struct tap_disk {
 	int (*td_queue_write)    (struct disk_driver *dd, uint64_t sector,
 				  int nb_sectors, char *buf, td_callback_t cb, 
 				  int id, void *prv);
+	int (*td_cancel_requests)(struct disk_driver *dd);
 	int (*td_submit)         (struct disk_driver *dd);
 	int (*td_close)          (struct disk_driver *dd);
 	int (*td_do_callbacks)   (struct disk_driver *dd, int sid);

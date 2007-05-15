@@ -44,10 +44,11 @@
 #include "profile.h"
 #include "atomicio.h"
 
-#define TRACING     1
+unsigned int SPB;
+
 #define DEBUGGING   2
 #define ASSERTING   1
-#define PREALLOCATE_BLOCKS 0
+#define PREALLOCATE_BLOCKS 1
 
 /* SYCHRONOUS can be set to 1 to force the synchronous IO path.
  * The synchronous path will also be used by default if io_setup fails. */
@@ -62,34 +63,33 @@ do {                                                                           \
 		s->bat.pbw_blk);                                               \
 } while(0)
 
-#define __ASSERT(_s, _p)                                                       \
+#define __ASSERT(_p)                                                           \
 if ( !(_p) ) {                                                                 \
 	DPRINTF("%s:%d: FAILED ASSERTION: '%s'\n", __FILE__, __LINE__, #_p);   \
-	if (_s != NULL)                                                        \
-		__TRACE(_s);                                                   \
+	DBG("%s:%d: FAILED ASSERTION: '%s'\n", __FILE__, __LINE__, #_p);       \
+	DBGDUMP();                                                             \
 	*(int*)0 = 0;                                                          \
 }
 
 #if (DEBUGGING == 1)
   #define DBG(_f, _a...)             DPRINTF(_f, ##_a)
+  #define DBGDUMP()                  ((void)0)
+  #define TRACE(s)                   ((void)0)
 #elif (DEBUGGING == 2)
-  struct bhandle bhandle;
+  static struct bhandle bhandle;
   #define DBG(_f, _a...)             BLOG(bhandle, _f, ##_a)
-  #define BDUMP()                    BPRINTF(DPRINTF, bhandle)
-#else
-  #define DBG(_f, _a...)             ((void)0)
-#endif
-
-#if (TRACING == 1)
+  #define DBGDUMP()                  BDUMP("/tmp/vhd.log", bhandle)
   #define TRACE(s)                   __TRACE(s)
 #else
+  #define DBG(_f, _a...)             ((void)0)
+  #define DBGDUMP()                  ((void)0)
   #define TRACE(s)                   ((void)0)
 #endif
 
 #if (ASSERTING == 1)
-  #define ASSERT(s, _p)              __ASSERT(s, _p)
+  #define ASSERT(_p)                 __ASSERT(_p)
 #else
-  #define ASSERT(s, _p)              ((void)0)
+  #define ASSERT(_p)                 ((void)0)
 #endif
 
 /******AIO DEFINES******/
@@ -819,7 +819,12 @@ free_bat(struct vhd_state *s)
 {
 	free(s->bat.bat);
 	free(s->bat.req.buf);
+#if (PREALLOCATE_BLOCKS == 1)
+	free(s->zeros);
+#else
 	free(s->bat.zero_req.buf);
+#endif
+
 }
 
 static int
@@ -830,7 +835,8 @@ alloc_bat(struct vhd_state *s)
 		return -ENOMEM;
 
 #if (PREALLOCATE_BLOCKS == 1)
-	s->zsize = (s->bm_secs + s->spb) << VHD_SECTOR_SHIFT;
+	s->zsize = ((getpagesize() >> VHD_SECTOR_SHIFT) + s->spb) 
+				   << VHD_SECTOR_SHIFT;
 	if (posix_memalign((void **)&s->zeros, VHD_SECTOR_SIZE, s->zsize)) {
 		free_bat(s);
 		return -ENOMEM;
@@ -929,6 +935,8 @@ __vhd_open (struct disk_driver *dd, const char *name, vhd_flag_t flags)
                 s->spb     = s->hdr.block_size >> VHD_SECTOR_SHIFT;
 		s->bm_secs = secs_round_up(s->spb >> 3);
 
+		SPB = s->spb;
+
                 /* Allocate and read the Block Allocation Table. */
 		if (alloc_bat(s)) {
                         DPRINTF("Error allocating BAT.\n");
@@ -1004,8 +1012,8 @@ vhd_open (struct disk_driver *dd, const char *name, td_flag_t flags)
 int 
 vhd_close(struct disk_driver *dd)
 {
+	int i;
 	off64_t off;
-	int i, flags;
 	struct vhd_bitmap *bm;
 	struct vhd_state  *s = (struct vhd_state *)dd->private;
 	
@@ -1023,8 +1031,7 @@ vhd_close(struct disk_driver *dd)
 	    ((s->callbacks) ? 
 	     ((float)s->callback_sum / s->callbacks) : 0.0));
 	
-	flags = fcntl(s->fd, F_GETFL);
-	if (flags & O_RDWR && s->writes) {
+	if (!(dd->flags & TD_RDONLY) && s->writes) {
 		if (s->ftr.type != HD_TYPE_FIXED) {
 			off = s->next_db << VHD_SECTOR_SHIFT;
 			if (lseek64(s->fd, off, SEEK_SET) == (off64_t)-1) {
@@ -1737,8 +1744,11 @@ init_tx(struct vhd_transaction *tx)
 static inline void
 add_to_transaction(struct vhd_transaction *tx, struct vhd_request *r)
 {
-	struct vhd_state *s = NULL;
-	ASSERT(s, !tx->closed);
+	ASSERT(!tx->closed);
+
+	DBG("%s: blk: %llu, lsec: %llu, tx: %p, started: %d, finished: %d, "
+	    "status: %u\n", __func__, r->lsec / SPB, r->lsec, tx, 
+	    tx->started, tx->finished, tx->status);
 
 	r->tx = tx;
 	tx->started++;
@@ -1859,7 +1869,7 @@ remove_lru_bitmap(struct vhd_state *s)
 
 	if (lru) {
 		s->bitmap[idx] = NULL;
-		ASSERT(s, !bitmap_in_use(lru));
+		ASSERT(!bitmap_in_use(lru));
 	}
 
 	return  lru;
@@ -1926,7 +1936,7 @@ install_bitmap(struct vhd_state *s, struct vhd_bitmap *bm)
 		}
 	}
 
-	ASSERT(s, 0);
+	ASSERT(0);
 }
 
 static inline void
@@ -1938,9 +1948,9 @@ free_vhd_bitmap(struct vhd_state *s, struct vhd_bitmap *bm)
 		if (s->bitmap[i] == bm)
 			break;
 
-	ASSERT(s, !bitmap_locked(bm));
-	ASSERT(s, !bitmap_in_use(bm));
-	ASSERT(s, i < VHD_CACHE_SIZE);
+	ASSERT(!bitmap_locked(bm));
+	ASSERT(!bitmap_in_use(bm));
+	ASSERT(i < VHD_CACHE_SIZE);
 
 	s->bitmap[i] = NULL;
 	s->bitmap_free[s->bm_free_count++] = bm;
@@ -2257,7 +2267,7 @@ read_bitmap_cache_span(struct vhd_state *s,
 	blk = sector / s->spb;
 	bm  = get_bitmap(s, blk);
 	
-	ASSERT(s, bm && bitmap_valid(bm));
+	ASSERT(bm && bitmap_valid(bm));
 
 	for (ret = 0; sec < s->spb && ret < nr_secs; sec++, ret++)
 		if (test_bit(sec, (void *)bm->map) != value)
@@ -2273,7 +2283,7 @@ alloc_vhd_request(struct vhd_state *s)
 	
 	if (s->vreq_free_count > 0) {
 		req = s->vreq_free[--s->vreq_free_count];
-		ASSERT(s, req->nr_secs == 0);
+		ASSERT(req->nr_secs == 0);
 		return req;
 	}
 
@@ -2320,7 +2330,7 @@ aio_write(struct vhd_state *s, struct vhd_request *req, uint64_t offset)
 static inline uint64_t
 reserve_new_block(struct vhd_state *s, uint32_t blk)
 {
-	ASSERT(s, !bat_locked(s) &&
+	ASSERT(!bat_locked(s) &&
 	       !test_vhd_flag(s->bat.status, VHD_FLAG_BAT_WRITE_STARTED));
 
 	s->bat.pbw_blk    = blk;
@@ -2340,7 +2350,7 @@ schedule_bat_write(struct vhd_state *s)
 
 	tp_log(&s->tp, blk, TAPPROF_IN);
 
-	ASSERT(s, bat_locked(s));
+	ASSERT(bat_locked(s));
 
 	req = &s->bat.req;
 	blk = s->bat.pbw_blk;
@@ -2391,10 +2401,10 @@ update_bat(struct vhd_state *s, uint32_t blk)
 	int err;
 	struct vhd_bitmap *bm;
 
-	ASSERT(s, bat_entry(s, blk) == DD_BLK_UNUSED);
+	ASSERT(bat_entry(s, blk) == DD_BLK_UNUSED);
 	
 	if (bat_locked(s)) {
-		ASSERT(s, s->bat.pbw_blk == blk);
+		ASSERT(s->bat.pbw_blk == blk);
 		return 0;
 	}
 
@@ -2425,38 +2435,49 @@ allocate_block(struct vhd_state *s, uint32_t blk)
 	uint64_t offset;
 	struct vhd_bitmap *bm;
 
-	ASSERT(s, bat_entry(s, blk) == DD_BLK_UNUSED);
+	ASSERT(bat_entry(s, blk) == DD_BLK_UNUSED);
 
 	if (bat_locked(s)) {
-		ASSERT(s, s->bat.pbw_blk == blk);
+		ASSERT(s->bat.pbw_blk == blk);
 		return 0;
 	}
 
 	s->bat.pbw_blk    = blk;
+	offset            = s->next_db << VHD_SECTOR_SHIFT;
+
+	/* data region of segment should begin on page boundary */
+	if ((s->next_db + s->bm_secs) % s->spp)
+		s->next_db += (s->spp - ((s->next_db + s->bm_secs) % s->spp));
+
 	s->bat.pbw_offset = s->next_db;
-	offset            = s->bat.pbw_offset << VHD_SECTOR_SHIFT;
 
 	DBG("%s: blk: %u, pbwo: %llu\n",
 		__func__, blk, s->bat.pbw_offset);
 
 	if (lseek(s->fd, offset, SEEK_SET) == (off_t)-1) {
-		DPRINTF("%s: lseek failed: %d\n", __func__, errno);
+		DBG("%s: lseek failed: %d\n", __func__, errno);
 		return -errno;
 	}
 
 	if ((err = write(s->fd, s->zeros, s->zsize)) != s->zsize) {
-		DPRINTF("%s: write failed: %d\n", __func__, errno);
+		DBG("%s: write failed: %d\n", __func__, errno);
 		return (err == -1 ? -errno : -EIO);
 	}
-	
-	/* install empty bitmap in cache */
-	err = alloc_vhd_bitmap(s, &bm, blk);
-	if (err)
-		return err;
+
+	/* empty bitmap could already be in
+	 * cache if earlier bat update failed */
+	bm = get_bitmap(s, blk);
+	if (!bm) {
+		/* install empty bitmap in cache */
+		err = alloc_vhd_bitmap(s, &bm, blk);
+		if (err) 
+			return err;
+
+		install_bitmap(s, bm);
+	}
 
 	lock_bat(s);
 	lock_bitmap(bm);
-	install_bitmap(s, bm);
 	schedule_bat_write(s);
 	add_to_transaction(&bm->tx, &s->bat.req);
 
@@ -2486,8 +2507,8 @@ schedule_data_read(struct vhd_state *s, uint64_t sector,
 	bm     = get_bitmap(s, blk);
 	offset = bat_entry(s, blk);
 	
-	ASSERT(s, offset != DD_BLK_UNUSED);
-	ASSERT(s, bm && bitmap_valid(bm));
+	ASSERT(offset != DD_BLK_UNUSED);
+	ASSERT(bm && bitmap_valid(bm));
 	
 	offset  += s->bm_secs + sec;
 	offset <<= VHD_SECTOR_SHIFT;
@@ -2570,7 +2591,7 @@ schedule_data_write(struct vhd_state *s, uint64_t sector,
 
 	if (test_vhd_flag(flags, VHD_FLAG_REQ_UPDATE_BITMAP)) {
 		bm = get_bitmap(s, blk);
-		ASSERT(s, bm && bitmap_valid(bm));
+		ASSERT(bm && bitmap_valid(bm));
 		lock_bitmap(bm);
 
 		if (bm->tx.closed) {
@@ -2583,7 +2604,7 @@ schedule_data_write(struct vhd_state *s, uint64_t sector,
 	aio_write(s, req, offset);
 
 	DBG("data write scheduled: %s: lsec: %llu, blk: %u, sec: %u, "
-	    "nr_secs: %u, offset: %llu, flags: %u\n", s->name,
+	    "nr_secs: %u, offset: %llu, flags: %u\n", s->name, 
 	    req->lsec, blk, sec, req->nr_secs, offset, req->flags);
 
 	tp_log(&s->tp, sector, TAPPROF_OUT);
@@ -2601,12 +2622,12 @@ schedule_bitmap_read(struct vhd_state *s, uint32_t blk)
 
 	tp_log(&s->tp, blk, TAPPROF_IN);
 
-	ASSERT(s, s->ftr.type != HD_TYPE_FIXED);
+	ASSERT(s->ftr.type != HD_TYPE_FIXED);
 
 	offset = bat_entry(s, blk);
 
-	ASSERT(s, offset != DD_BLK_UNUSED);
-	ASSERT(s, !get_bitmap(s, blk));
+	ASSERT(offset != DD_BLK_UNUSED);
+	ASSERT(!get_bitmap(s, blk));
 
 	offset <<= VHD_SECTOR_SHIFT;
 
@@ -2646,12 +2667,12 @@ schedule_bitmap_write(struct vhd_state *s, uint32_t blk)
 	bm     = get_bitmap(s, blk);
 	offset = bat_entry(s, blk);
 
-	ASSERT(s, s->ftr.type != HD_TYPE_FIXED);
-	ASSERT(s, bm && bitmap_valid(bm) &&
+	ASSERT(s->ftr.type != HD_TYPE_FIXED);
+	ASSERT(bm && bitmap_valid(bm) &&
 	       !test_vhd_flag(bm->status, VHD_FLAG_BM_WRITE_PENDING));
 
 	if (offset == DD_BLK_UNUSED) {
-		ASSERT(s, s->bat.pbw_blk == blk);
+		ASSERT(s->bat.pbw_blk == blk);
 		offset = s->bat.pbw_offset;
 	}
 	
@@ -2692,12 +2713,12 @@ __vhd_queue_request(struct vhd_state *s, uint8_t op,
 
 	tp_log(&s->tp, sector, TAPPROF_IN);
 
-	ASSERT(s, s->ftr.type != HD_TYPE_FIXED);
+	ASSERT(s->ftr.type != HD_TYPE_FIXED);
 
 	blk = sector / s->spb;
 	bm  = get_bitmap(s, blk);
 
-	ASSERT(s, bm && test_vhd_flag(bm->status, VHD_FLAG_BM_READ_PENDING));
+	ASSERT(bm && test_vhd_flag(bm->status, VHD_FLAG_BM_READ_PENDING));
 
 	req = alloc_vhd_request(s);
 	if (!req)
@@ -2754,8 +2775,8 @@ vhd_queue_read(struct disk_driver *dd, uint64_t sector,
 		case VHD_BM_BAT_CLEAR:
 			n   = MIN(remaining, s->spb - (sec % s->spb));
 			ret = cb(dd, BLK_NOT_ALLOCATED, sec, n, id, private);
-			if (ret == -EBUSY)
-				return cb(dd, -EBUSY, sec + n, 
+			if (ret < 0)
+				return cb(dd, ret, sec + n, 
 					  remaining - n, id, private);
 			else 
 				rsp += ret;
@@ -2764,8 +2785,8 @@ vhd_queue_read(struct disk_driver *dd, uint64_t sector,
 		case VHD_BM_BIT_CLEAR:
 			n   = read_bitmap_cache_span(s, sec, remaining, 0);
 			ret = cb(dd, BLK_NOT_ALLOCATED, sec, n, id, private);
-			if (ret == -EBUSY)
-				return cb(dd, -EBUSY, sec + n, 
+			if (ret < 0)
+				return cb(dd, ret, sec + n,
 					  remaining - n, id, private);
 			else 
 				rsp += ret;
@@ -2805,7 +2826,7 @@ vhd_queue_read(struct disk_driver *dd, uint64_t sector,
 
 		case VHD_BM_BAT_LOCKED:
 		default:
-			ASSERT(s, 0);
+			ASSERT(0);
 			break;
 		}
 
@@ -2841,7 +2862,7 @@ vhd_queue_write(struct disk_driver *dd, uint64_t sector,
 	while (sec < end) {
 		uint8_t flags = 0;
 		int n = 1, err = 0, remaining = end - sec;
-		
+
 		switch (read_bitmap_cache(s, sec, VHD_OP_DATA_WRITE)) {
 		case -EINVAL:
 			return cb(dd, -EINVAL, sec, remaining, id, private);
@@ -2904,7 +2925,7 @@ vhd_queue_write(struct disk_driver *dd, uint64_t sector,
 			break;
 
 		default:
-			ASSERT(s, 0);
+			ASSERT(0);
 			break;
 		}
 
@@ -3000,23 +3021,32 @@ static int
 finish_bitmap_transaction(struct disk_driver *dd, 
 			  struct vhd_bitmap *bm, int error)
 {
-	int rsp = 0;
+	int map_size, rsp = 0;
 	struct vhd_transaction *tx = &bm->tx;
 	struct vhd_state *s = (struct vhd_state *)dd->private;
 
 	DBG("%s: blk: %u, err: %d\n", __func__, bm->blk, error);
 	tx->error = (tx->error ? tx->error : error);
+	map_size  = s->bm_secs << VHD_SECTOR_SHIFT;
 
 #if (PREALLOCATE_BLOCKS != 1)
 	if (test_vhd_flag(tx->status, VHD_FLAG_TX_UPDATE_BAT)) {
 		/* still waiting for bat write */
-		ASSERT(s, bm->blk == s->bat.pbw_blk);
-		ASSERT(s, test_vhd_flag(s->bat.status, 
-					VHD_FLAG_BAT_WRITE_STARTED));
+		ASSERT(bm->blk == s->bat.pbw_blk);
+		ASSERT(test_vhd_flag(s->bat.status, 
+				     VHD_FLAG_BAT_WRITE_STARTED));
 		s->bat.req.tx = tx;
 		return 0;
 	}
 #endif
+
+	if (tx->error) {
+		/* undo changes to shadow */
+		memcpy(bm->shadow, bm->map, map_size);
+	} else {
+		/* complete atomic write */
+		memcpy(bm->map, bm->shadow, map_size);
+	}
 
 	/* transaction done; signal completions */
 	rsp += signal_completion(dd, tx->requests.head, tx->error);
@@ -3063,21 +3093,22 @@ finish_bat_write(struct disk_driver *dd, struct vhd_request *req)
 	
 	DBG("%s: blk %u, pbwo: %llu, err %d\n", 
 	    __func__, s->bat.pbw_blk, s->bat.pbw_offset, req->error);
-	ASSERT(s, bm && bitmap_valid(bm));
-	ASSERT(s, bat_locked(s) &&
+	ASSERT(bm && bitmap_valid(bm));
+	ASSERT(bat_locked(s) &&
 	       test_vhd_flag(s->bat.status, VHD_FLAG_BAT_WRITE_STARTED));
 	
 	tx = &bm->tx;
-	ASSERT(s, test_vhd_flag(tx->status, VHD_FLAG_TX_LIVE));
+	ASSERT(test_vhd_flag(tx->status, VHD_FLAG_TX_LIVE));
 
 	if (!req->error) {
 		bat_entry(s, s->bat.pbw_blk) = s->bat.pbw_offset;
 		s->next_db += s->spb + s->bm_secs;
-
+#if (PREALLOCATE_BLOCKS != 1)
 		/* data region of segment should begin on page boundary */
 		if ((s->next_db + s->bm_secs) % s->spp)
 			s->next_db += (s->spp - 
 				       ((s->next_db + s->bm_secs) % s->spp));
+#endif
 	} else
 		tx->error = req->error;
 
@@ -3116,9 +3147,9 @@ finish_zero_bm_write(struct disk_driver *dd, struct vhd_request *req)
 	bm  = get_bitmap(s, blk);
 
 	DBG("%s: blk %u\n", __func__, blk);
-	ASSERT(s, bat_locked(s));
-	ASSERT(s, s->bat.pbw_blk == blk);
-	ASSERT(s, bm && bitmap_valid(bm) && bitmap_locked(bm));
+	ASSERT(bat_locked(s));
+	ASSERT(s->bat.pbw_blk == blk);
+	ASSERT(bm && bitmap_valid(bm) && bitmap_locked(bm));
 
 	tx->finished++;
 	remove_from_req_list(&tx->requests, req);
@@ -3154,7 +3185,7 @@ finish_bitmap_read(struct disk_driver *dd, struct vhd_request *req)
 	bm  = get_bitmap(s, blk);
 
 	DBG("%s: blk %u\n", __func__, blk);
-	ASSERT(s, bm && test_vhd_flag(bm->status, VHD_FLAG_BM_READ_PENDING));
+	ASSERT(bm && test_vhd_flag(bm->status, VHD_FLAG_BM_READ_PENDING));
 
 	r = bm->waiting.head;
 	clear_req_list(&bm->waiting);
@@ -3170,7 +3201,7 @@ finish_bitmap_read(struct disk_driver *dd, struct vhd_request *req)
 			next =  r->next;
 			free_vhd_request(s, r);
 
-			ASSERT(s, tmp.op == VHD_OP_DATA_READ || 
+			ASSERT(tmp.op == VHD_OP_DATA_READ || 
 			       tmp.op == VHD_OP_DATA_WRITE);
 
 			if (tmp.op == VHD_OP_DATA_READ)
@@ -3205,7 +3236,7 @@ static int
 finish_bitmap_write(struct disk_driver *dd, struct vhd_request *req)
 {
 	u32 blk;
-	int rsp = 0, map_size;
+	int rsp = 0;
 	struct vhd_bitmap  *bm;
 	struct vhd_state *s = (struct vhd_state *)dd->private;
 	struct vhd_transaction *tx;
@@ -3214,25 +3245,17 @@ finish_bitmap_write(struct disk_driver *dd, struct vhd_request *req)
 	s->returned++;
 	TRACE(s);
 
-	blk      = req->lsec / s->spb;
-	bm       = get_bitmap(s, blk);
-	tx       = &bm->tx;
-	map_size = s->bm_secs << VHD_SECTOR_SHIFT;
+	blk = req->lsec / s->spb;
+	bm  = get_bitmap(s, blk);
+	tx  = &bm->tx;
 
-	DBG("%s: blk %u\n", __func__, blk);
-	ASSERT(s, tx->closed);
-	ASSERT(s, bm && bitmap_valid(bm));
-	ASSERT(s, test_vhd_flag(bm->status, VHD_FLAG_BM_WRITE_PENDING));
+	DBG("%s: blk %u, started: %d, finished: %d\n", 
+	    __func__, blk, tx->started, tx->finished);
+	ASSERT(tx->closed);
+	ASSERT(bm && bitmap_valid(bm));
+	ASSERT(test_vhd_flag(bm->status, VHD_FLAG_BM_WRITE_PENDING));
 
 	clear_vhd_flag(bm->status, VHD_FLAG_BM_WRITE_PENDING);
-
-	if (req->error) {
-		/* undo changes to shadow */
-		memcpy(bm->shadow, bm->map, map_size);
-	} else {
-		/* complete atomic write */
-		memcpy(bm->map, bm->shadow, map_size);
-	}
 
 	rsp += finish_bitmap_transaction(dd, bm, req->error);
 
@@ -3268,8 +3291,6 @@ finish_data_write(struct disk_driver *dd, struct vhd_request *req)
 	tp_log(&s->tp, req->lsec, TAPPROF_IN);
 
 	set_vhd_flag(req->flags, VHD_FLAG_REQ_FINISHED);
-	DBG("%s: lsec: %llu, blk: %llu\n", 
-	    __func__, req->lsec, req->lsec / s->spb);
 
 	if (tx) {
 		u32 blk, sec;
@@ -3279,12 +3300,13 @@ finish_data_write(struct disk_driver *dd, struct vhd_request *req)
 		sec = req->lsec % s->spb;
 		bm  = get_bitmap(s, blk);
 
-		ASSERT(s, bm && bitmap_valid(bm) && bitmap_locked(bm));
+		ASSERT(bm && bitmap_valid(bm) && bitmap_locked(bm));
 
 		tx->finished++;
 
-		DBG("%s: blk: %llu, tx->started: %d, tx->finished: %d\n",
-		    __func__, req->lsec / s->spb, tx->started, tx->finished);
+		DBG("%s: lsec: %llu, blk: %llu, tx->started: %d, "
+		    "tx->finished: %d\n", __func__, req->lsec, 
+		    req->lsec / s->spb, tx->started, tx->finished);
 
 		if (!req->error)
 			for (i = 0; i < req->nr_secs; i++)
@@ -3294,7 +3316,9 @@ finish_data_write(struct disk_driver *dd, struct vhd_request *req)
 			rsp += finish_data_transaction(dd, bm);
 
 	} else if (!test_vhd_flag(req->flags, VHD_FLAG_REQ_QUEUED)) {
-		ASSERT(s, !req->next);
+		ASSERT(!req->next);
+		DBG("%s: lsec: %llu, blk: %llu\n", 
+		    __func__, req->lsec, req->lsec / s->spb);
 		rsp += signal_completion(dd, req, 0);
 	}
 
@@ -3308,7 +3332,6 @@ fail_vhd_request(struct disk_driver *dd, struct vhd_request *r, int err)
 {
 	struct vhd_state *s = (struct vhd_state *)dd->private;
 
-	ASSERT(s, !r->next);
 	DBG("ERROR: %s to %llu failed: %d\n", 
 	    (r->op == VHD_OP_DATA_READ || r->op == VHD_OP_BITMAP_READ) ?
 	    "read" : "write", r->lsec, err);
@@ -3335,9 +3358,27 @@ fail_vhd_request(struct disk_driver *dd, struct vhd_request *r, int err)
 		return finish_bat_write(dd, r);
 
 	default:
-		ASSERT(s, 0);
+		ASSERT(0);
 		return 0;
 	}
+}
+
+int
+vhd_cancel_requests(struct disk_driver *dd)
+{
+	int i, ret, rsp = 0;
+	struct vhd_state *s = (struct vhd_state *)dd->private;
+	
+	for (i = 0; i < s->iocb_queued; i++) {
+		struct iocb *io = s->iocb_queue[i];
+		struct vhd_request *req = (struct vhd_request *)io->data;
+		ret = fail_vhd_request(dd, req, -EIO);
+		if (ret > 0)
+			rsp += ret;
+	}
+
+	s->iocb_queued = 0;
+	return rsp;
 }
 
 int
@@ -3360,20 +3401,23 @@ vhd_submit(struct disk_driver *dd)
 
 	/* io_submit returns an error, or the number of iocbs submitted. */
 	if (ret < 0) {
+		DBG("%s: io_submit returned %d", __func__, ret);
 		err = ret;
 		ret = 0;
 	} else if (ret < s->iocb_queued)
 		err = -EIO;
 
 	if (err) {
-		int i;
+		int i, rval;
 		struct iocb *io;
 		struct vhd_request *req;
 		
 		for (i = ret; i < s->iocb_queued; i++) {
 			io   = s->iocb_queue[i];
 			req  = (struct vhd_request *)io->data;
-			rsp += fail_vhd_request(dd, req, err);
+			rval = fail_vhd_request(dd, req, err);
+			if (rval > 0)
+				rsp += rval;
 		}
 	}
 
@@ -3449,7 +3493,7 @@ vhd_do_callbacks(struct disk_driver *dd, int sid)
 			break;
 			
 		default:
-			ASSERT(s, 0);
+			ASSERT(0);
 			break;
 		}
 	}
@@ -3472,24 +3516,17 @@ vhd_debug(struct disk_driver *dd)
 	int i;
 	struct vhd_state *s = (struct vhd_state *)dd->private;
 
-	DPRINTF("--------%s--------\n", __func__);
-	__TRACE(s);
-
-#if (DEBUGGING == 2)
-	BDUMP();
-#endif
-
-	DPRINTF("ALLOCATED REQUESTS: (%lu total)\n", VHD_REQS_DATA);
+	DBG("ALLOCATED REQUESTS: (%lu total)\n", VHD_REQS_DATA);
 	for (i = 0; i < VHD_REQS_DATA; i++) {
 		struct vhd_request *r = &s->vreq_list[i];
 		if (r->lsec)
-			DPRINTF("%d: id: %d, err: %d, op: %d, lsec: %llu, "
-				"flags: %d, this: %p, next: %p, tx: %p\n", 
-				i, r->id, r->error, r->op, r->lsec, r->flags, 
-				r, r->next, r->tx);
+			DBG("%d: id: %d, err: %d, op: %d, lsec: %llu, "
+			    "flags: %d, this: %p, next: %p, tx: %p\n", 
+			    i, r->id, r->error, r->op, r->lsec, r->flags, 
+			    r, r->next, r->tx);
 	}
 
-	DPRINTF("BITMAP CACHE:\n");
+	DBG("BITMAP CACHE:\n");
 	for (i = 0; i < VHD_CACHE_SIZE; i++) {
 		int qnum = 0, wnum = 0, rnum = 0;
 		struct vhd_bitmap *bm = s->bitmap[i];
@@ -3518,16 +3555,19 @@ vhd_debug(struct disk_driver *dd)
 			r = r->next;
 		}
 
-		DPRINTF("%d: blk: %u, status: %u, q: %p, qnum: %d, w: %p, "
-			"wnum: %d, locked: %d, in use: %d, tx: %p, tx_error: %d, "
-			"started: %d, finished: %d, status: %u, reqs: %p, nreqs: %d\n",
-			i, bm->blk, bm->status, bm->queue.head, qnum, bm->waiting.head,
-			wnum, bitmap_locked(bm), bitmap_in_use(bm), tx, tx->error,
-			tx->started, tx->finished, tx->status, tx->requests.head, rnum);
+		DBG("%d: blk: %u, status: %u, q: %p, qnum: %d, w: %p, "
+		    "wnum: %d, locked: %d, in use: %d, tx: %p, tx_error: %d, "
+		    "started: %d, finished: %d, status: %u, reqs: %p, nreqs: %d\n",
+		    i, bm->blk, bm->status, bm->queue.head, qnum, bm->waiting.head,
+		    wnum, bitmap_locked(bm), bitmap_in_use(bm), tx, tx->error,
+		    tx->started, tx->finished, tx->status, tx->requests.head, rnum);
 	}
 
-	DPRINTF("BAT: status: %u, pbw_blk: %u, pbw_off: %llu, tx: %p\n",
-		s->bat.status, s->bat.pbw_blk, s->bat.pbw_offset, s->bat.req.tx);
+	DBG("BAT: status: %u, pbw_blk: %u, pbw_off: %llu, tx: %p\n",
+	    s->bat.status, s->bat.pbw_blk, s->bat.pbw_offset, s->bat.req.tx);
+
+	DBGDUMP();
+
 /*
 	for (i = 0; i < s->hdr.max_bat_size; i++)
 		DPRINTF("%d: %u\n", i, s->bat.bat[i]);
@@ -3540,6 +3580,7 @@ struct tap_disk tapdisk_vhd = {
 	.td_open            = vhd_open,
 	.td_queue_read      = vhd_queue_read,
 	.td_queue_write     = vhd_queue_write,
+	.td_cancel_requests = vhd_cancel_requests,
 	.td_submit          = vhd_submit,
 	.td_close           = vhd_close,
 	.td_do_callbacks    = vhd_do_callbacks,

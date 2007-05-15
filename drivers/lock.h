@@ -6,9 +6,9 @@
 
 #define DEFAULT_LEASE_TIME_SECS 5
 
-int lock(char *fn_to_lock, char *uuid, int force, int readonly, int *lease_time);
-int unlock(char *fn_to_unlock, char *uuid, int readonly);
-int lock_delta(char *fn_to_check, int *lease_time);
+int lock(char *fn_to_lock, char *uuid, int force, int readonly, int *lease_time, int *retstat);
+int unlock(char *fn_to_unlock, char *uuid, int readonly, int *retstat);
+int lock_delta(char *fn_to_check, int *cur_lease_time, int *max_lease_time);
 
 typedef enum {
     LOCK_OK          =  0,

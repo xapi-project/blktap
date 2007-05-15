@@ -1,9 +1,14 @@
 #ifndef __TAP_PROFILE_H__
 #define __TAP_PROFILE_H__
 
+#ifndef _GNU_SOURCE
+  #define _GNU_SOURCE
+#endif
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <syslog.h>
+#include <time.h>
 
 //#define PROFILING
 //#define LOGGING
@@ -150,35 +155,44 @@ __tp_log(struct profile_info *prof, u64 id, const char *func, int direction)
 #define tp_log(prof, sec, direction)       ((void)0)
 #endif
 
+#define BSHIFT          9
+#define BALIGN          (1 << BSHIFT)
+#define BUF_PAD         (BALIGN << 1)
 #define BUF_SIZE        (2 << 20)
 #define MAX_ENTRY_LEN   256
 #define MAX_BUF_ENTRIES (BUF_SIZE / MAX_ENTRY_LEN)
 
-struct bentry {
-	uint64_t       id;
-	char          *entry;
-};
-
 struct bhandle {
+	char          *p;
 	int            cur;
 	uint64_t       cnt;
-	char           buf[BUF_SIZE];
-	struct bentry  entries[MAX_BUF_ENTRIES];
+	char           buf[BUF_SIZE + BUF_PAD];
+	char          *entries[MAX_BUF_ENTRIES];
 };
+
+static char tmp_buf[BUF_SIZE + BUF_PAD];
+
+#define ALIGN(buf) (char *)((((long)buf + (BALIGN - 1)) >> BSHIFT) << BSHIFT)
 
 #define BLOG(h, _f, _a...)                                                     \
 do {                                                                           \
-	char *_tmp;                                                            \
+	int _len;                                                              \
+	struct timeval t;                                                      \
                                                                                \
-	_tmp = &h.buf[h.cur * MAX_ENTRY_LEN];                                  \
-	snprintf(_tmp, MAX_ENTRY_LEN - 2, _f, ##_a);                           \
-	_tmp[MAX_ENTRY_LEN - 1] = '\0';                                        \
+	if (h.cur == 0)                                                        \
+		h.p = ALIGN(h.buf);                                            \
                                                                                \
-	h.entries[h.cur].entry  = _tmp;                                        \
-	h.entries[h.cur].id     = h.cnt;                                       \
+	gettimeofday(&t, NULL);                                                \
+	_len = snprintf(h.p, MAX_ENTRY_LEN - 2, "%llu:%ld.%ld: "               \
+			_f, h.cnt, t.tv_sec, t.tv_usec, ##_a);                 \
+	_len = (_len < MAX_ENTRY_LEN ? _len : MAX_ENTRY_LEN - 1);              \
+	h.p[_len] = '\0';                                                      \
+                                                                               \
+	h.entries[h.cur] = h.p;                                                \
                                                                                \
 	h.cnt++;                                                               \
 	h.cur++;                                                               \
+	h.p += _len;                                                           \
                                                                                \
 	if (h.cur == MAX_BUF_ENTRIES)                                          \
 		h.cur = 0;                                                     \
@@ -188,19 +202,40 @@ do {                                                                           \
 do {                                                                           \
 	int _i, _min;                                                          \
 	                                                                       \
-	if (h.entries[h.cur].entry)                                            \
+	if (h.entries[h.cur])                                                  \
 		_min = h.cur;                                                  \
 	else                                                                   \
 		_min = 0;                                                      \
                                                                                \
 	_i = _min;                                                             \
 	do {                                                                   \
-		if (!h.entries[_i].entry)                                      \
+		if (!h.entries[_i])                                            \
 			break;                                                 \
-		print_fn("(%llu): %s", h.entries[_i].id, h.entries[_i].entry); \
+		print_fn("%s", h.entries[_i]);                                 \
 		if (++_i == MAX_BUF_ENTRIES)                                   \
 			_i = 0;                                                \
 	} while (_i != _min);                                                  \
-} while(0)
+} while (0)
+
+#define BDUMP(file, h)                                                         \
+do {                                                                           \
+	int fd;                                                                \
+	char *name;                                                            \
+	struct timeval tv;                                                     \
+                                                                               \
+	gettimeofday(&tv, NULL);                                               \
+	if (asprintf(&name, "%s.%d.%ld", file, getpid(), tv.tv_sec) == -1)     \
+		break;                                                         \
+                                                                               \
+	fd = open(name, O_CREAT | O_TRUNC |                                    \
+		  O_WRONLY | O_DIRECT | O_NONBLOCK, 0644);                     \
+                                                                               \
+	free(name);                                                            \
+	if (fd == -1)                                                          \
+		break;                                                         \
+                                                                               \
+	write(fd, ALIGN(h.buf), BUF_SIZE - BUF_PAD);                           \
+	close(fd);                                                             \
+} while (0)
 
 #endif

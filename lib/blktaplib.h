@@ -97,10 +97,11 @@ struct blkif_info;
 
 typedef struct {
 	blkif_request_t  req;
-	struct blkif    *blkif;
 	int              submitting;
 	int              secs_pending;
         int16_t          status;
+	int              num_retries;
+	struct timeval   last_try;
 } pending_req_t;
 
 struct blkif_ops {
@@ -158,11 +159,6 @@ int blkif_lock(blkif_t *blkif);
 void free_blkif(blkif_t *blkif);
 void __init_blkif(void);
 
-typedef struct busy_state {
-	int seg_idx;
-	blkif_request_t *req;
-} busy_state_t;
-
 typedef struct tapdev_info {
 	int fd;
 	char *mem;
@@ -170,7 +166,6 @@ typedef struct tapdev_info {
 	blkif_back_ring_t  fe_ring;
 	unsigned long vstart;
 	blkif_t *blkif;
-	busy_state_t busy;
 } tapdev_info_t;
 
 typedef struct domid_translate {

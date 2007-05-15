@@ -31,6 +31,7 @@
 #include "blktaplib.h"
 #include "tapdisk.h"
 #include "lock.h"
+#include "profile.h"
 
 #if 1                                                                        
 #define ASSERT(_p) \
@@ -39,6 +40,10 @@
 #else
 #define ASSERT(_p) ((void)0)
 #endif 
+
+static struct bhandle bhandle;
+#define DBG(_f, _a...) BLOG(bhandle, _f, ##_a)
+
 
 #define INPUT 0
 #define OUTPUT 1
@@ -92,19 +97,25 @@ void sig_handler(int sig)
 	if (connected_disks < 1) run = 0;	
 }
 
+void inline debug_disks(struct td_state *s)
+{
+	struct disk_driver *dd;
+
+	td_for_each_disk(s, dd)
+		if (dd->drv == dtypes[DISK_TYPE_VHD]->drv)
+			vhd_debug(dd);
+}
+
 void debug(int sig)
 {
 	fd_list_entry_t *ptr;
-	struct disk_driver *dd;
 
-	DPRINTF("%s\n", __func__);
+	BDUMP("/tmp/tapdisk.log", bhandle);
 
 	ptr = fd_start;
 	while (ptr != NULL) {
 		if (ptr->s)
-			td_for_each_disk(ptr->s, dd)
-				if (dd->drv == dtypes[DISK_TYPE_VHD]->drv)
-					vhd_debug(dd);
+			debug_disks(ptr->s);
 		ptr = ptr->next;
 	}
 }
@@ -177,6 +188,10 @@ static struct tap_disk *get_driver(int drivertype)
 	return dtypes[drivertype]->drv;
 }
 
+static inline void init_preq(pending_req_t *preq)
+{
+	memset(preq, 0, sizeof(pending_req_t));
+}
 static struct td_state *state_init(void)
 {
 	int i;
@@ -187,10 +202,8 @@ static struct td_state *state_init(void)
 	blkif = s->blkif = malloc(sizeof(blkif_t));
 	s->ring_info = calloc(1, sizeof(tapdev_info_t));
 
-	for (i = 0; i < MAX_REQUESTS; i++) {
-		blkif->pending_list[i].secs_pending = 0;
-		blkif->pending_list[i].submitting = 0;
-	}
+	for (i = 0; i < MAX_REQUESTS; i++)
+		init_preq(&blkif->pending_list[i]);
 
 	return s;
 }
@@ -469,6 +482,15 @@ static inline int drain_queue(struct td_state *s)
 static inline void start_queue(struct td_state *s)
 {
 	s->flags &= ~TD_DRAIN_QUEUE;
+}
+
+static inline void kill_queue(struct td_state *s)
+{
+	struct disk_driver *dd;
+
+	s->flags |= TD_DEAD;
+	td_for_each_disk(s, dd)
+		dd->flags |= TD_RDONLY;
 }
 
 static inline int queue_closed(struct td_state *s)
@@ -804,10 +826,15 @@ static inline int write_rsp_to_ring(struct td_state *s, blkif_response_t *rsp)
 
 static inline void kick_responses(struct td_state *s)
 {
+	int n;
 	tapdev_info_t *info = s->ring_info;
 
-	if (info->fe_ring.rsp_prod_pvt != info->fe_ring.sring->rsp_prod) 
-	{
+	n = info->fe_ring.rsp_prod_pvt - info->fe_ring.sring->rsp_prod;
+	s->kicked += n;
+	DBG("%s: kicking %d, rec: %lu, ret: %lu, kicked: %lu\n", 
+	    __func__, n, s->received, s->returned, s->kicked);
+
+	if (info->fe_ring.rsp_prod_pvt != info->fe_ring.sring->rsp_prod) {
 		RING_PUSH_RESPONSES(&info->fe_ring);
 		ioctl(info->fd, BLKTAP_IOCTL_KICK_FE);
 	}
@@ -847,32 +874,43 @@ int send_responses(struct disk_driver *dd, int res,
 	blkif_t *blkif = s->blkif;
 	int sidx = (int)(long)private, secs_done = nr_secs;
 
-	if ( (idx > MAX_REQUESTS-1) )
-	{
+	if (idx > MAX_REQUESTS - 1) {
 		DPRINTF("invalid index returned(%u)!\n", idx);
 		return 0;
 	}
 	preq = &blkif->pending_list[idx];
 	req  = &preq->req;
+	gettimeofday(&s->ts, NULL);
 
-	if (res == BLK_NOT_ALLOCATED && !queue_closed(s)) {
-		res = do_cow_read(dd, req, sidx, sector, nr_secs);
-		if (res >= 0) {
-			secs_done = res;
-			res = 0;
-		} else
-			secs_done = 0;
+	DBG("%s: req %d, sec %llu (%d secs) returned %d, pending: %d\n",
+	    __func__, idx, sector, nr_secs, res, preq->secs_pending);
+
+	if (res == BLK_NOT_ALLOCATED) {
+		if (queue_closed(s))
+			res = -EIO;
+		else {
+			res = do_cow_read(dd, req, sidx, sector, nr_secs);
+			if (res >= 0) {
+				secs_done = res;
+				res = 0;
+			} else
+				secs_done = 0;
+		}
 	}
 
-	preq->secs_pending -= secs_done;
-
-	if (res == -EBUSY && preq->submitting) 
-		return -EBUSY;  /* propagate -EBUSY back to higher layers */
+	preq->secs_pending  -= secs_done;
 	if (res)
 		preq->status = BLKIF_RSP_ERROR;
 
-	if (!preq->submitting && preq->secs_pending == 0) 
-	{
+	if (preq->status == BLKIF_RSP_ERROR &&
+	    preq->num_retries < TD_MAX_RETRIES) {
+		gettimeofday(&preq->last_try, NULL);
+		s->flags |= TD_RETRY_NEEDED;
+		DBG("%s: retry needed: %d, %llu\n", __func__, idx, sector);
+		return res;
+	}
+
+	if (!preq->submitting && !preq->secs_pending) {
 		blkif_request_t tmp;
 		blkif_response_t *rsp;
 
@@ -883,9 +921,13 @@ int send_responses(struct disk_driver *dd, int res,
 		rsp->operation = tmp.operation;
 		rsp->status = preq->status;
 		
+		DBG("%s: writing req %d, sec %llu, res %d to ring\n",
+		    __func__, idx, sector, preq->status);
+
 		write_rsp_to_ring(s, rsp);
 		responses_queued++;
 		s->returned++;
+		init_preq(preq);
 	}
 	return responses_queued;
 }
@@ -893,8 +935,8 @@ int send_responses(struct disk_driver *dd, int res,
 int do_cow_read(struct disk_driver *dd, blkif_request_t *req, 
 		int sidx, uint64_t sector, int nr_secs)
 {
+	int ret;
 	char *page;
-	int ret, early;
 	uint64_t seg_start, seg_end;
 	struct td_state  *s = dd->td_state;
 	tapdev_info_t *info = s->ring_info;
@@ -912,10 +954,14 @@ int do_cow_read(struct disk_driver *dd, blkif_request_t *req,
 
 	if (!parent) {
 		memset(page, 0, nr_secs << SECTOR_SHIFT);
+		DBG("%s: memset for %d, sec %llu, nr_secs: %d\n",
+		    __func__, sidx, sector, nr_secs);
 		return nr_secs;
 	}
 
 	/* reissue request to backing file */
+	DBG("%s: submitting %d, %llu (%d secs) to parent\n",
+	    __func__, sidx, sector, nr_secs);
 	ret = parent->drv->td_queue_read(parent, sector, nr_secs,
 					 page, send_responses, 
 					 req->id, (void *)(long)sidx);
@@ -925,165 +971,233 @@ int do_cow_read(struct disk_driver *dd, blkif_request_t *req,
 	return ((ret >= 0) ? 0 : ret);
 }
 
-static inline void submit_requests(struct td_state *s)
+static int queue_request(struct td_state *s, blkif_request_t *req)
 {
+	char *page;
+	blkif_t *blkif;
+	uint64_t sector_nr;
+	tapdev_info_t *info;
+	pending_req_t *preq;
+	struct disk_driver *dd;
+	int i, err, idx, ret, nsects, page_size;
+
+	err       = 0;
+	idx       = req->id;
+	blkif     = s->blkif;
+	sector_nr = req->sector_number;
+	page_size = getpagesize();
+	dd        = s->disks;
+	preq      = &blkif->pending_list[idx];
+	info      = s->ring_info;
+
+	if (queue_closed(s)) {
+		err = -EIO;
+		goto send_responses;
+	}
+	
+	if ((dd->flags & TD_RDONLY) && (req->operation == BLKIF_OP_WRITE)) {
+		err = -EINVAL;
+		goto send_responses;
+	}
+	
+	preq->submitting = 1;
+	gettimeofday(&s->ts, NULL);
+
+	for (i = 0; i < req->nr_segments; i++) {
+		nsects = req->seg[i].last_sect - req->seg[i].first_sect + 1;
+		
+		if ((req->seg[i].last_sect >= page_size >> 9) || (nsects <= 0))
+			continue;
+		
+		page  = (char *)MMAP_VADDR(info->vstart, 
+					   (unsigned long)req->id, i);
+		page += (req->seg[i].first_sect << SECTOR_SHIFT);
+		
+		if (sector_nr >= s->size) {
+			DPRINTF("Sector request failed:\n");
+			DPRINTF("%s request, idx [%d,%d] size [%llu], "
+				"sector [%llu,%llu]\n",
+				(req->operation == BLKIF_OP_WRITE ? 
+				 "WRITE" : "READ"), idx, i,
+				(long long unsigned)nsects << SECTOR_SHIFT,
+				(long long unsigned)sector_nr << SECTOR_SHIFT,
+				(long long unsigned)sector_nr);
+			continue;
+		}
+		
+		preq->secs_pending += nsects;
+		
+		switch (req->operation)	{
+		case BLKIF_OP_WRITE:
+			ret = dd->drv->td_queue_write(dd, sector_nr, 
+						      nsects, page, 
+						      send_responses,
+						      idx, (void *)(long)i);
+
+			if (ret > 0) 
+				dd->early += ret;
+			else if (ret < 0) {
+				preq->submitting = 0;
+				return ret;
+			}
+
+			break;
+		case BLKIF_OP_READ:
+			ret = dd->drv->td_queue_read(dd, sector_nr,
+						     nsects, page, 
+						     send_responses,
+						     idx, (void *)(long)i);
+
+			if (ret > 0)
+				dd->early += ret;
+			else if (ret < 0) {
+				preq->submitting = 0;
+				return ret;
+			}
+
+			break;
+		default:
+			DPRINTF("Unknown block operation\n");
+			break;
+		}
+		sector_nr += nsects;
+	}
+
+ send_responses:
+	preq->submitting = 0;
+	/* force write_rsp_to_ring for synchronous case */
+	if (preq->secs_pending == 0) {
+		ret = send_responses(dd, err, 0, 0, idx, (void *)(long)0);
+		if (ret > 0)
+			dd->early += ret;
+	}
+
+	return 0;
+}
+
+static void invalidate_requests(struct td_state *s)
+{
+	int ret;
 	struct disk_driver *dd;
 
-	if (s->flags & TD_DEAD)
-		return;
-
 	td_for_each_disk(s, dd) {
-		dd->early += dd->drv->td_submit(dd);
-		if (dd->early > 0) {
+		ret = dd->drv->td_cancel_requests(dd);
+		if (ret > 0) {
 			io_done(dd, MAX_IOFD + 1);
 			dd->early = 0;
 		}
 	}
 }
 
+static inline void submit_requests(struct td_state *s)
+{
+	int ret;
+	struct disk_driver *dd;
+
+	DBG("%s: dead? %d\n", __func__, s->flags & TD_DEAD);
+
+	if (s->flags & TD_DEAD) {
+		invalidate_requests(s);
+		return;
+	}
+
+	td_for_each_disk(s, dd) {
+		ret = dd->drv->td_submit(dd);
+		DBG("%s: dd: %p, ret: %d, early: %d\n", 
+		    __func__, dd, ret, dd->early);
+		if (ret != 0 || dd->early > 0) {
+			io_done(dd, MAX_IOFD + 1);
+			dd->early = 0;
+		}
+	}
+}
+
+static void retry_requests(struct td_state *s)
+{
+	int i, cnt;
+	blkif_t *blkif;
+	pending_req_t *preq;
+	struct timeval time;
+
+	cnt   = 0;
+	blkif = s->blkif;
+	gettimeofday(&time, NULL);
+
+	for (i = 0; i < MAX_REQUESTS; i++) {
+		preq = &blkif->pending_list[i];
+		if (preq->status != BLKIF_RSP_ERROR || preq->secs_pending)
+			continue;
+
+		if (time.tv_sec - preq->last_try.tv_sec < TD_RETRY_INTERVAL) {
+			cnt++;
+			continue;
+		}
+
+		preq->num_retries++;
+		preq->status = BLKIF_RSP_OKAY;
+		DBG("%s: retry #%d of req %llu, sec %llu, nr_segs: %d\n", 
+		    __func__, preq->num_retries, preq->req.id, 
+		    preq->req.sector_number, preq->req.nr_segments);
+
+		if (queue_request(s, &preq->req))
+			cnt++;
+	}
+	
+	if (!cnt)
+		s->flags &= ~TD_RETRY_NEEDED;
+
+	submit_requests(s);
+}
+
 static void get_io_request(struct td_state *s)
 {
-	RING_IDX          rp, rc, j, i;
-	blkif_request_t  *req;
-	int idx, nsects, ret;
-	uint64_t sector_nr;
-	char *page;
-	int early = 0; /* count early completions */
-	struct disk_driver *dd = s->disks;
-	struct tap_disk *drv   = dd->drv;
-	blkif_t *blkif = s->blkif;
-	tapdev_info_t *info = s->ring_info;
-	int page_size = getpagesize();
+	int idx;
+	blkif_t *blkif;
+	RING_IDX rp, j;
+	tapdev_info_t *info;
+	pending_req_t *preq;
+	blkif_request_t *req;
 
-	if (!run) return; /*We have received signal to close*/
+	blkif = s->blkif;
+	info  = s->ring_info;
+
+	DBG("%s: req_prod: %u, req_cons: %u\n",
+	    __func__, info->fe_ring.sring->req_prod,
+	    info->fe_ring.req_cons);
+
+	if (!run)
+		return; /* We have received signal to close */
 
 	if ((s->flags & TD_HAS_PHANTOM) && !s->received) {
 		if (reopen_disks(s)) {
 			DPRINTF("reopening disks failed\n");
-			s->flags |= TD_DEAD;
-		} else DPRINTF("reopening disks succeeded\n");
+			kill_queue(s);
+		} else 
+			DPRINTF("reopening disks succeeded\n");
 	}
 
 	rp = info->fe_ring.sring->req_prod; 
 	rmb();
-	for (j = info->fe_ring.req_cons; j != rp; j++)
-	{
-		int done = 0, start_seg = 0; 
-
-		req = NULL;
+	for (j = info->fe_ring.req_cons; j != rp; j++) {
 		req = RING_GET_REQUEST(&info->fe_ring, j);
 		++info->fe_ring.req_cons;
 		
-		if (req == NULL) continue;
-
+		if (req == NULL)
+			continue;
+		
 		idx = req->id;
+		ASSERT(blkif->pending_list[idx].secs_pending == 0);
+		memcpy(&blkif->pending_list[idx].req, req, sizeof(*req));
+		blkif->pending_list[idx].status = BLKIF_RSP_OKAY;
+		s->received++;
 
-		if (info->busy.req) {
-			/* continue where we left off last time */
-			ASSERT(info->busy.req == req);
-			start_seg = info->busy.seg_idx;
-			sector_nr = segment_start(req, start_seg);
-			info->busy.seg_idx = 0;
-			info->busy.req     = NULL;
-		} else {
-			ASSERT(blkif->pending_list[idx].secs_pending == 0);
-			memcpy(&blkif->pending_list[idx].req, 
-			       req, sizeof(*req));
-			blkif->pending_list[idx].status = BLKIF_RSP_OKAY;
-			blkif->pending_list[idx].submitting = 1;
-			sector_nr = req->sector_number;
-			s->received++;
-		}
+		DBG("%s: queueing request %d, sec %llu, nr_segs: %d\n", 
+		    __func__, idx, req->sector_number, req->nr_segments);
 
-		if (queue_closed(s)) {
-			blkif->pending_list[idx].status = BLKIF_RSP_ERROR;
-			goto send_response;
-		}
-
-		if ((dd->flags & TD_RDONLY) && 
-		    (req->operation == BLKIF_OP_WRITE)) {
-			blkif->pending_list[idx].status = BLKIF_RSP_ERROR;
-			goto send_response;
-		}
-
-		for (i = start_seg; i < req->nr_segments; i++) {
-			nsects = req->seg[i].last_sect - 
-				 req->seg[i].first_sect + 1;
-	
-			if ((req->seg[i].last_sect >= page_size >> 9) ||
-			    (nsects <= 0))
-				continue;
-
-			page  = (char *)MMAP_VADDR(info->vstart, 
-						   (unsigned long)req->id, i);
-			page += (req->seg[i].first_sect << SECTOR_SHIFT);
-
-			if (sector_nr >= s->size) {
-				DPRINTF("Sector request failed:\n");
-				DPRINTF("%s request, idx [%d,%d] size [%llu], "
-					"sector [%llu,%llu]\n",
-					(req->operation == BLKIF_OP_WRITE ? 
-					 "WRITE" : "READ"),
-					idx,i,
-					(long long unsigned) 
-						nsects<<SECTOR_SHIFT,
-					(long long unsigned) 
-						sector_nr<<SECTOR_SHIFT,
-					(long long unsigned) sector_nr);
-				continue;
-			}
-
-			blkif->pending_list[idx].secs_pending += nsects;
-
-			switch (req->operation) 
-			{
-			case BLKIF_OP_WRITE:
-				ret = drv->td_queue_write(dd, sector_nr,
-							  nsects, page, 
-							  send_responses,
-							  idx, (void *)(long)i);
-				if (ret > 0) dd->early += ret;
-				else if (ret == -EBUSY) {
-					/* put req back on queue */
-					--info->fe_ring.req_cons;
-					info->busy.req     = req;
-					info->busy.seg_idx = i;
-					goto out;
-				}
-				break;
-			case BLKIF_OP_READ:
-				ret = drv->td_queue_read(dd, sector_nr,
-							 nsects, page, 
-							 send_responses,
-							 idx, (void *)(long)i);
-				if (ret > 0) dd->early += ret;
-				else if (ret == -EBUSY) {
-					/* put req back on queue */
-					--info->fe_ring.req_cons;
-					info->busy.req     = req;
-					info->busy.seg_idx = i;
-					goto out;
-				}
-				break;
-			default:
-				DPRINTF("Unknown block operation\n");
-				break;
-			}
-			sector_nr += nsects;
-		}
-	send_response:
-		blkif->pending_list[idx].submitting = 0;
-		/* force write_rsp_to_ring for synchronous case */
-		if (blkif->pending_list[idx].secs_pending == 0)
-			dd->early += send_responses(dd, 0, 0, 0, idx, 
-						    (void *)(long)0);
+		queue_request(s, req);
 	}
 
- out:
-	/*Batch done*/
 	submit_requests(s);
-
-	return;
 }
 
 #if defined(USE_NFS_LOCKS)
@@ -1096,22 +1210,26 @@ static inline int check_locks(struct timeval *tv)
 
 static long lock_disk(struct disk_driver *dd)
 {
-	int ret, lease;
+	int ret, lease, err;
 	struct td_state *s = dd->td_state;
 
-	ret = lock(dd->name, s->lock_uuid, 0, s->lock_ro, &lease);
+	err = lock(dd->name, s->lock_uuid, 0, s->lock_ro, &lease, &ret);
 	if (!ret) {
-		DPRINTF("ERROR: VDI has been tampered with, closing queue!\n");
-		unlock(dd->name, s->lock_uuid, s->lock_ro);
-		s->flags |= TD_DEAD;
+		DPRINTF("ERROR: VDI %s has been tampered with, "
+			"closing queue! (err = %d)\n", dd->name, err);
+		//unlock(dd->name, s->lock_uuid, s->lock_ro);
+		kill_queue(s);
 		lease = ONE_DAY;
 	} else if (ret < 0) {
-		DPRINTF("Failed to get lock for %s, err: %d\n", dd->name, ret);
+		DBG("Failed to get lock for %s, err: %d\n", dd->name, ret);
 		s->flags |= TD_CLOSED;
 		lease = 1;  /* retry in one second */
 	}
-	else 
+	else {
+		if (s->flags & TD_CLOSED)
+			DBG("Reacquired lock for %s\n", dd->name);
 		s->flags &= ~TD_CLOSED;
+	}
 
 	return lease;
 }
@@ -1143,20 +1261,62 @@ static void assert_locks(struct timeval *tv)
 }
 #endif
 
+static inline void set_retry_timeout(struct timeval *tv)
+{
+	fd_list_entry_t *ptr;
+
+	ptr = fd_start;
+	while (ptr) {
+		if (ptr->s->flags & TD_RETRY_NEEDED) {
+			tv->tv_sec  = (tv->tv_sec < TD_RETRY_INTERVAL ?
+				       tv->tv_sec : TD_RETRY_INTERVAL);
+			tv->tv_usec = 0;
+			return;
+		}
+		ptr = ptr->next;
+	}
+}
+
+static inline int requests_pending(struct td_state *s)
+{
+	return (s->received - s->kicked);
+}
+
+static void check_progress(struct timeval *tv)
+{
+	struct td_state *s;
+	struct timeval time;
+	fd_list_entry_t *ptr;
+	int TO = 10;
+
+	ptr = fd_start;
+	gettimeofday(&time, NULL);
+
+	while (ptr) {
+		s = ptr->s;
+		if (!queue_closed(s) && requests_pending(s)) {
+			if (time.tv_sec - s->ts.tv_sec > TO && !s->dumped_log) {
+				DBG("%s: time: %ld.%ld, ts: %ld.%ld\n", 
+				    __func__, time.tv_sec, time.tv_usec,
+				    s->ts.tv_sec, s->ts.tv_usec);
+				debug(SIGUSR1);
+				s->dumped_log = 1;
+			} else if (!s->dumped_log)
+				tv->tv_sec = (tv->tv_sec < TO ? tv->tv_sec : TO);
+		}
+		ptr = ptr->next;
+	}
+}
+
 int main(int argc, char *argv[])
 {
 	int len, msglen, ret;
 	char *p, *buf;
-	fd_set readfds, writefds;	
+	fd_set readfds, writefds;
 	fd_list_entry_t *ptr;
 	struct td_state *s;
 	char openlogbuf[128];
-	struct timeval *timeout = NULL;
-
-#if defined(USE_NFS_LOCKS)
-	struct timeval lock_timeout = { .tv_sec = ONE_DAY, .tv_usec = 0 };
-	timeout = &lock_timeout;
-#endif
+	struct timeval timeout = { .tv_sec = ONE_DAY, .tv_usec = 0 };
 
 	if (argc != 3) usage();
 
@@ -1173,22 +1333,19 @@ int main(int argc, char *argv[])
 	fds[READ]  = open(argv[1],O_RDWR|O_NONBLOCK);
 	fds[WRITE] = open(argv[2],O_RDWR|O_NONBLOCK);
 
-	if ( (fds[READ] < 0) || (fds[WRITE] < 0) ) 
-	{
+	if (fds[READ] < 0 || fds[WRITE] < 0) {
 		DPRINTF("FD open failed [%d,%d]\n", fds[READ], fds[WRITE]);
 		exit(-1);
 	}
 
 	buf = calloc(MSG_SIZE, 1);
 
-	if (buf == NULL) 
-        {
+	if (buf == NULL) {
 		DPRINTF("ERROR: allocating memory.\n");
 		exit(-1);
 	}
 
-	while (run) 
-        {
+	while (run) {
 		ret = 0;
 		FD_ZERO(&readfds);
 		FD_SET(fds[READ], &readfds);
@@ -1198,21 +1355,32 @@ int main(int argc, char *argv[])
 		LOCAL_FD_SET(&readfds);
 
 #if defined(USE_NFS_LOCKS)
-		if (check_locks(timeout))
-			assert_locks(timeout);
+		if (check_locks(&timeout))
+			assert_locks(&timeout);
+#else
+		timeout.tv_sec = ONE_DAY;
 #endif
+		set_retry_timeout(&timeout);
+		check_progress(&timeout);
 
 		/*Wait for incoming messages*/
+		DBG("%s: selecting with timout %ld.%ld\n", 
+		    __func__, timeout.tv_sec, timeout.tv_usec);
 		ret = select(maxfds + 1, &readfds, (fd_set *) 0, 
-                             (fd_set *) 0, timeout);
+                             (fd_set *) 0, &timeout);
+		DBG("%s: select returned %d (%d)\n", __func__, ret, errno);
 
-		if (ret > 0) 
-		{
+		if (ret >= 0) {
 			ptr = fd_start;
 			while (ptr != NULL) {
 				int progress_made = 0;
 				struct disk_driver *dd;
 				tapdev_info_t *info = ptr->s->ring_info;
+
+				DBG("%s: %d reqs pending, "
+				    "received: %lu, returned: %lu, kicked: %lu\n", 
+				    __func__, requests_pending(ptr->s),
+				    ptr->s->received, ptr->s->returned, ptr->s->kicked);
 
 				td_for_each_disk(ptr->s, dd) {
 					if (dd->io_fd[READ] &&
@@ -1228,8 +1396,8 @@ int main(int argc, char *argv[])
 				if (progress_made)
 					submit_requests(ptr->s);
 
-				if (FD_ISSET(ptr->tap_fd, &readfds) ||
-				    (info->busy.req && progress_made))
+				retry_requests(ptr->s);
+				if (FD_ISSET(ptr->tap_fd, &readfds))
 					get_io_request(ptr->s);
 
 				if (ptr->s->flags & TD_CHECKPOINT)
