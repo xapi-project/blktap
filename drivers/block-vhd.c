@@ -716,23 +716,24 @@ static int
 vhd_read_bat(int fd, struct vhd_state *s)
 {
 	char *buf;
-	int i, count = 0, secs, err;
+	int i, secs, count = 0, err = 0;
+
 	u32 entries  = s->hdr.max_bat_size;
 	u64 location = s->hdr.table_offset;
-    
-	err  = -1;
-	secs = secs_round_up(entries * sizeof(u32));
+	secs         = secs_round_up(entries * sizeof(u32));
 
 	if (posix_memalign((void **)&buf, 512, (secs << VHD_SECTOR_SHIFT)))
-		return err;
+		return -ENOMEM;
 
 	DBG("Reading BAT at %lld, %d entries.\n", location, entries);
 
 	if (lseek64(fd, location, SEEK_SET) == (off64_t)-1) {
+		err = -errno;
 		goto out;
 	}
 	if (read(fd, buf, secs << VHD_SECTOR_SHIFT)
 	    != (secs << VHD_SECTOR_SHIFT) ) {
+		err = (errno ? -errno : -EIO);
 		goto out;
 	}
 
@@ -761,7 +762,6 @@ vhd_read_bat(int fd, struct vhd_state *s)
 	DBG("NextDB: %llu\n", s->next_db);
 	DBG("Read BAT.  This vhd has %d full and %d unfilled data "
 	    "blocks.\n", count, entries - count);
-	err = 0;
 
  out:
 	free(buf);
@@ -943,9 +943,8 @@ __vhd_open (struct disk_driver *dd, const char *name, vhd_flag_t flags)
 			return -ENOMEM;
                 }
 
-                if (vhd_read_bat(fd, s) != 0) {
+                if ((ret = vhd_read_bat(fd, s)) != 0) {
                         DPRINTF("Error reading BAT.\n");
-			ret = -EINVAL;
 			goto fail;
                 }
 
