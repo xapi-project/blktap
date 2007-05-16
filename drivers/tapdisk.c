@@ -33,6 +33,8 @@
 #include "lock.h"
 #include "profile.h"
 
+#include <sys/resource.h>
+
 #if 1                                                                        
 #define ASSERT(_p) \
     if ( !(_p) ) { DPRINTF("Assertion '%s' failed, line %d, file %s", #_p , \
@@ -1317,6 +1319,7 @@ int main(int argc, char *argv[])
 	struct td_state *s;
 	char openlogbuf[128];
 	struct timeval timeout = { .tv_sec = ONE_DAY, .tv_usec = 0 };
+        struct rlimit rlim;
 
 	if (argc != 3) usage();
 
@@ -1328,6 +1331,14 @@ int main(int argc, char *argv[])
 	signal (SIGBUS, sig_handler);
 	signal (SIGINT, sig_handler);
 	signal (SIGUSR1, debug);
+
+        /* set up core-dumps*/
+        rlim.rlim_cur = RLIM_INFINITY;
+        rlim.rlim_max = RLIM_INFINITY;
+        ret = setrlimit(RLIMIT_CORE, &rlim);
+        if (ret < 0) {
+                DPRINTF("Set resource limit for coredumps failed, errno=%d\n", errno);
+        } 
 
 	/*Open the control channel*/
 	fds[READ]  = open(argv[1],O_RDWR|O_NONBLOCK);
