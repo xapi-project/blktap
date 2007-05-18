@@ -367,8 +367,10 @@ finish:
                 /* we have exclusive lock */
 
                 /* fast check, see if we own a final lock and are reasserting */
-                if (!lstat(lockfn_flink, &stat1)) 
+                if (!lstat(lockfn_flink, &stat1)) {
+                        status = 1; /* set the return value to notice this is a reassert */
                         goto skip_scan;
+                }
 
                 /* we allow exclusive writer, or multiple readers */
                 if (lock_holder(fn_to_lock, lockfn, lockfn_flink, force,
@@ -382,7 +384,7 @@ finish:
         }
 
 skip_scan:
-        if (!status) {
+        if (status >= 0) {
                 /* update file, changes last modify time */
                 fd = open(lockfn_flink, O_WRONLY | O_CREAT, 0644); 
                 if (fd == -1) {
@@ -793,7 +795,7 @@ int main(int argc, char *argv[])
                 printf("%d %d\n", dlock, lease);
         } else if (!strcmp(argv[1],"lock") && (argc == 7)) {
                 readonly = (strcmp(argv[3], "r") == 0) ? 1 : 0;
-                force = atoi(argv[3]);
+                force = atoi(argv[4]);
                 ptr = argv[5];
                 lease = atoi(argv[6]);
                 status = lock(argv[2], ptr, force, readonly, &lease);
