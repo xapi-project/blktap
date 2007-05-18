@@ -999,14 +999,14 @@ static int req_locks(void)
         while (ptr != NULL) {
                 struct disk_driver *dd;
                 td_for_each_disk(ptr->s, dd) {
-                        LOCK_VDI(dd,ptr->s,lval,lease,return -1);
+                        LOCK_VDI(dd,ptr->s,lval,lease,return lval);
                         min_lease_time = (lease < min_lease_time) 
                                         ? lease : min_lease_time;
                 }
                 ptr = ptr->next;
         }
 
-        return 0;
+        return 1;
 }
 #endif
 
@@ -1064,8 +1064,8 @@ int main(int argc, char *argv[])
 #if defined(USE_NFS_LOCKS)
                 if (timeout.tv_sec == 0) {
                         /* only reassert locks when timeout less than a second */
-                        if (req_locks() == -1) {
-                                /* cleanup and bail? */
+                        if (req_locks() != 1) {
+                                /* lock get was not a reassert */
                         }
                         timeout.tv_sec = min_lease_time;
                         timeout.tv_usec = 0;
