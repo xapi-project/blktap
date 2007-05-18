@@ -44,14 +44,12 @@
 #define OUTPUT 1
 
 #if defined(USE_NFS_LOCKS)
-#define UNLOCK_VDI(d,s) unlock(d->name, s->vm_uuid, (d->flags & TD_RDONLY) ? 1 : 0);
-#define LOCK_VDI(d,s,lval,lease,clause)                                                          \
-        if ((lval = lock(d->name, s->vm_uuid, 0, (d->flags & TD_RDONLY) ? 1 : 0, &lease)) < 0) { \
-                DPRINTF("failed to get lock for %s, err=%d\n", d->name, lval);                   \
-                clause;                                                                          \
+#define LOCK_VDI(d,s,lval,lease,clause)                                                           \
+        if ((lval = lock(d->name, s->vm_uuid, 0, (d->flags & TD_RDONLY) ? 1 : 0, &lease)) <= 0) { \
+                DPRINTF("failed to get lock for %s, err=%d\n", d->name, lval);                    \
+                clause;                                                                           \
         }
 #else
-#define UNLOCK_VDI(d,s)
 #define LOCK_VDI(d,s,lval,lease,clause) lval;
 #endif
 
@@ -297,7 +295,6 @@ static void unmap_disk(struct td_state *s)
 	dd = s->disks;
 	while (dd) {
 		tmp = dd->next;
-                UNLOCK_VDI(dd,s);
 		dd->drv->td_close(dd);
 		free_driver(dd);
 		dd = tmp;
@@ -342,7 +339,6 @@ static int open_disk(struct td_state *s,
 
 	err = d->drv->td_open(d, path, flags);
 	if (err) {
-		UNLOCK_VDI(d, s);
 		free_driver(d);
 		s->disks = NULL;
 		return err;
@@ -370,7 +366,6 @@ static int open_disk(struct td_state *s,
 
 		err = new->drv->td_open(new, new->name, pflags);
 		if (err) {
-			UNLOCK_VDI(new, s);
 			free_driver(new);
 			goto fail;
 		}
@@ -398,7 +393,6 @@ static int open_disk(struct td_state *s,
 	while (d) {
 		struct disk_driver *tmp = d->next;
                 /* remove lock from backing files if necessary */
-                UNLOCK_VDI(d, s);
 		d->drv->td_close(d);
 		free_driver(d);
 		d = tmp;
