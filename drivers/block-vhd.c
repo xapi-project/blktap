@@ -830,7 +830,8 @@ free_bat(struct vhd_state *s)
 static int
 alloc_bat(struct vhd_state *s)
 {
-	s->bat.bat = malloc(s->hdr.max_bat_size * sizeof(u32));
+	memset(&s->bat, 0, sizeof(struct vhd_bat));
+	s->bat.bat = calloc(1, s->hdr.max_bat_size * sizeof(u32));
 	if (!s->bat.bat)
 		return -ENOMEM;
 
@@ -1765,6 +1766,7 @@ static inline void
 init_bat(struct vhd_state *s)
 {
 	s->bat.req.tx     = NULL;
+	s->bat.req.next   = NULL;
 	s->bat.pbw_blk    = 0;
 	s->bat.pbw_offset = 0;
 	s->bat.status     = 0;
