@@ -526,48 +526,53 @@ vhd_read_hd_ftr(int fd, struct hd_ftr *ftr)
 	int err, secs;
 	off_t vhd_end;
 
-	err  = -1;
+	err  = -EINVAL;
 	secs = secs_round_up(sizeof(struct hd_ftr));
 
 	if (posix_memalign((void **)&buf, 512, (secs << VHD_SECTOR_SHIFT)))
-		return err;
+		return -ENOMEM;
 
 	memset(ftr, 0, sizeof(struct hd_ftr));
 
 	/* Not sure if it's generally a good idea to use SEEK_END with -ve   */
 	/* offsets, so do one seek to find the end of the file, and then use */
 	/* SEEK_SETs when searching for the footer.                          */
-	if ( (vhd_end = lseek64(fd, 0, SEEK_END)) == -1 ) {
+	if ((vhd_end = lseek64(fd, 0, SEEK_END)) == -1) {
+		err = -errno;
 		goto out;
 	}
 
 	/* Look for the footer 512 bytes before the end of the file. */
-	if ( lseek64(fd, (off64_t)(vhd_end - 512), SEEK_SET) == -1 ) {
+	if (lseek64(fd, (off64_t)(vhd_end - 512), SEEK_SET) == -1) {
+		err = -errno;
 		goto out;
 	}
-	if ( read(fd, buf, 512) != 512 ) {
+	if (read(fd, buf, 512) != 512) {
+		err = (errno ? -errno : -EIO);
 		goto out;
 	}
 	memcpy(ftr, buf, sizeof(struct hd_ftr));
-	if ( memcmp(ftr->cookie, HD_COOKIE,  8) == 0 ) goto found_footer;
+	if (memcmp(ftr->cookie, HD_COOKIE,  8) == 0) goto found_footer;
     
 	/* According to the spec, pre-Virtual PC 2004 VHDs used a             */
 	/* 511B footer.  Try that...                                          */
 	memcpy(ftr, &buf[1], MIN(sizeof(struct hd_ftr), 511));
-	if ( memcmp(ftr->cookie, HD_COOKIE,  8) == 0 ) goto found_footer;
+	if (memcmp(ftr->cookie, HD_COOKIE,  8) == 0) goto found_footer;
     
 	/* Last try.  Look for the copy of the footer at the start of image. */
 	DPRINTF("NOTE: Couldn't find footer at the end of the VHD image.\n"
 		"      Using backup footer from start of file.          \n"
 		"      This VHD may be corrupt!\n");
 	if (lseek64(fd, 0, SEEK_SET) == -1) {
+		err = -errno;
 		goto out;
 	}
-	if ( read(fd, buf, 512) != 512 ) {
+	if (read(fd, buf, 512) != 512) {
+		err = (errno ? -errno : -EIO);
 		goto out;
 	}
 	memcpy(ftr, buf, sizeof(struct hd_ftr));
-	if ( memcmp(ftr->cookie, HD_COOKIE,  8) == 0 ) goto found_footer;
+	if (memcmp(ftr->cookie, HD_COOKIE,  8) == 0) goto found_footer;
 
 	DPRINTF("error reading footer.\n");
 	goto out;
@@ -673,17 +678,20 @@ static int
 vhd_read_dd_hdr(int fd, struct dd_hdr *hdr, u64 location)
 {
 	char *buf;
-	int   err = -1, size, i;
+	int   err, size, i;
 
+	err  = -EINVAL;
 	size = secs_round_up(sizeof(struct dd_hdr)) << VHD_SECTOR_SHIFT;
 
 	if (posix_memalign((void **)&buf, 512, size))
-		return err;
+		return -ENOMEM;
 
 	if (lseek64(fd, location, SEEK_SET) == -1) {
+		err = -errno;
 		goto out;
 	}
 	if (read(fd, buf, size) != size) {
+		err = (errno ? -errno : -EIO);
 		goto out;
 	}
 	memcpy(hdr, buf, sizeof(struct dd_hdr));
@@ -874,7 +882,7 @@ init_fds(struct disk_driver *dd)
 }
 
 static int
-__vhd_open (struct disk_driver *dd, const char *name, vhd_flag_t flags)
+__vhd_open(struct disk_driver *dd, const char *name, vhd_flag_t flags)
 {
 	u32 map_size;
         int fd, ret = 0, i, o_flags;

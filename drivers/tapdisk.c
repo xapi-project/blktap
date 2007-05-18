@@ -43,8 +43,8 @@
 #define ASSERT(_p) ((void)0)
 #endif 
 
-static struct bhandle bhandle;
-#define DBG(_f, _a...) BLOG(bhandle, _f, ##_a)
+static struct bhandle tbhandle;
+#define DBG(_f, _a...) BLOG(tbhandle, _f, ##_a)
 
 
 #define INPUT 0
@@ -112,7 +112,7 @@ void debug(int sig)
 {
 	fd_list_entry_t *ptr;
 
-	BDUMP("/tmp/tapdisk.log", bhandle);
+	BDUMP("/tmp/tapdisk.log", tbhandle);
 
 	ptr = fd_start;
 	while (ptr != NULL) {
@@ -885,7 +885,8 @@ int send_responses(struct disk_driver *dd, int res,
 	gettimeofday(&s->ts, NULL);
 
 	DBG("%s: req %d, sec %llu (%d secs) returned %d, pending: %d\n",
-	    __func__, idx, sector, nr_secs, res, preq->secs_pending);
+	    __func__, idx, req->sector_number, nr_secs, res, 
+	    preq->secs_pending);
 
 	if (res == BLK_NOT_ALLOCATED) {
 		if (queue_closed(s))
@@ -924,7 +925,7 @@ int send_responses(struct disk_driver *dd, int res,
 		rsp->status = preq->status;
 		
 		DBG("%s: writing req %d, sec %llu, res %d to ring\n",
-		    __func__, idx, sector, preq->status);
+		    __func__, idx, tmp.sector_number, preq->status);
 
 		write_rsp_to_ring(s, rsp);
 		responses_queued++;

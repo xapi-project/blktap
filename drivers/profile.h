@@ -160,27 +160,23 @@ __tp_log(struct profile_info *prof, u64 id, const char *func, int direction)
 #define BUF_PAD         (BALIGN << 1)
 #define BUF_SIZE        (2 << 20)
 #define MAX_ENTRY_LEN   256
-#define MAX_BUF_ENTRIES (BUF_SIZE / MAX_ENTRY_LEN)
 
 struct bhandle {
 	char          *p;
-	int            cur;
 	uint64_t       cnt;
 	char           buf[BUF_SIZE + BUF_PAD];
-	char          *entries[MAX_BUF_ENTRIES];
 };
 
-static char tmp_buf[BUF_SIZE + BUF_PAD];
-
-#define ALIGN(buf) (char *)((((long)buf + (BALIGN - 1)) >> BSHIFT) << BSHIFT)
+#define B_ALIGN(buf) (char *)((((long)buf + (BALIGN - 1)) >> BSHIFT) << BSHIFT)
+#define B_END(buf)   (char *)((long)B_ALIGN(buf) + BUF_SIZE)
 
 #define BLOG(h, _f, _a...)                                                     \
 do {                                                                           \
 	int _len;                                                              \
 	struct timeval t;                                                      \
                                                                                \
-	if (h.cur == 0)                                                        \
-		h.p = ALIGN(h.buf);                                            \
+	if (!h.p || (h.p + MAX_ENTRY_LEN) > B_END(h.buf))                      \
+		h.p = B_ALIGN(h.buf);                                          \
                                                                                \
 	gettimeofday(&t, NULL);                                                \
 	_len = snprintf(h.p, MAX_ENTRY_LEN - 2, "%llu:%ld.%ld: "               \
@@ -188,43 +184,16 @@ do {                                                                           \
 	_len = (_len < MAX_ENTRY_LEN ? _len : MAX_ENTRY_LEN - 1);              \
 	h.p[_len] = '\0';                                                      \
                                                                                \
-	h.entries[h.cur] = h.p;                                                \
-                                                                               \
 	h.cnt++;                                                               \
-	h.cur++;                                                               \
 	h.p += _len;                                                           \
-                                                                               \
-	if (h.cur == MAX_BUF_ENTRIES)                                          \
-		h.cur = 0;                                                     \
-} while (0)
-
-#define BPRINTF(print_fn, h)                                                   \
-do {                                                                           \
-	int _i, _min;                                                          \
-	                                                                       \
-	if (h.entries[h.cur])                                                  \
-		_min = h.cur;                                                  \
-	else                                                                   \
-		_min = 0;                                                      \
-                                                                               \
-	_i = _min;                                                             \
-	do {                                                                   \
-		if (!h.entries[_i])                                            \
-			break;                                                 \
-		print_fn("%s", h.entries[_i]);                                 \
-		if (++_i == MAX_BUF_ENTRIES)                                   \
-			_i = 0;                                                \
-	} while (_i != _min);                                                  \
 } while (0)
 
 #define BDUMP(file, h)                                                         \
 do {                                                                           \
 	int fd;                                                                \
 	char *name;                                                            \
-	struct timeval tv;                                                     \
                                                                                \
-	gettimeofday(&tv, NULL);                                               \
-	if (asprintf(&name, "%s.%d.%ld", file, getpid(), tv.tv_sec) == -1)     \
+	if (asprintf(&name, "%s.%d", file, getpid()) == -1)                    \
 		break;                                                         \
                                                                                \
 	fd = open(name, O_CREAT | O_TRUNC |                                    \
@@ -234,7 +203,7 @@ do {                                                                           \
 	if (fd == -1)                                                          \
 		break;                                                         \
                                                                                \
-	write(fd, ALIGN(h.buf), BUF_SIZE - BUF_PAD);                           \
+	write(fd, B_ALIGN(h.buf), BUF_SIZE);                                   \
 	close(fd);                                                             \
 } while (0)
 
