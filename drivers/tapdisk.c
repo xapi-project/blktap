@@ -988,24 +988,31 @@ static void get_io_request(struct td_state *s)
 }
 
 #if defined(USE_NFS_LOCKS)
-static int req_locks(void)
+static int assert_locks(void)
 {
         fd_list_entry_t *ptr;
         int lval;
         int lease;
+        struct disk_driver *dd;
 
         /* reassert locks for all disks */
         ptr = fd_start;
         while (ptr != NULL) {
-                struct disk_driver *dd;
                 td_for_each_disk(ptr->s, dd) {
-                        LOCK_VDI(dd,ptr->s,lval,lease,return lval);
+                        LOCK_VDI(dd,ptr->s,lval,lease,goto fail);
                         min_lease_time = (lease < min_lease_time) 
                                         ? lease : min_lease_time;
                 }
                 ptr = ptr->next;
         }
 
+        return 0;
+
+fail:
+        if (!lval) {
+                /* we got a lock but was not expecting to */
+                unlock(dd->name, ptr->s->vm_uuid, (dd->flags & TD_RDONLY) ? 1 : 0);
+        }
         return 1;
 }
 #endif
@@ -1064,7 +1071,7 @@ int main(int argc, char *argv[])
 #if defined(USE_NFS_LOCKS)
                 if (timeout.tv_sec == 0) {
                         /* only reassert locks when timeout less than a second */
-                        if (req_locks() != 1) {
+                        if (assert_locks()) {
                                 /* lock get was not a reassert */
                         }
                         timeout.tv_sec = min_lease_time;
