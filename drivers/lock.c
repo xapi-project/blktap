@@ -203,6 +203,7 @@ int lock(char *fn_to_lock, char *uuid, int force, int readonly, int *lease_time)
         int stealw = 0;
         int stealr = 0;
         int established_lease_time = 0;
+        char tmpbuf[4096];
     
         if (!fn_to_lock || !uuid)
                 return LOCK_EBADPARM;
@@ -368,7 +369,24 @@ finish:
 
                 /* fast check, see if we own a final lock and are reasserting */
                 if (!lstat(lockfn_flink, &stat1)) {
-                        status = 1; /* set the return value to notice this is a reassert */
+                        char *ptr;
+
+                        /* set the return value to notice this is a reassert */
+                        status = 1; 
+
+                        /* read existing lock file and extract established lease time */
+                        fd = open(lockfn_flink, O_RDONLY, 0644); 
+                        memset(tmpbuf, 0, sizeof(tmpbuf));
+                        if (read(fd, tmpbuf, sizeof(tmpbuf)) < 0) {
+                            /* error on read? */
+                        }
+                        close(fd);
+                        ptr = strrchr(tmpbuf, '.');
+                        if (ptr) {
+                            *lease_time = atoi(ptr+1);
+                        } else {
+                            *lease_time = -1;
+                        }
                         goto skip_scan;
                 }
 
@@ -433,6 +451,9 @@ skip_scan:
         free(lockfn);
         free(lockfn_xlink);
         free(lockfn_flink);
+
+        /* set lease time to -1 if error, so no one is apt to use it */
+        if (status < 0) *lease_time = -1;
 
         LOG("returning status %d, errno=%d\n", status, errno);
         return status;
@@ -571,6 +592,9 @@ finish:
 
         /* returns smallest lock time, or error */
         if (result == INT_MAX) result = LOCK_ENOLOCK;
+
+        /* set lease time to -1 if error, so no one is apt to use it */
+        if (result < 0) *max_lease = -1;
         return result;
 }
 
