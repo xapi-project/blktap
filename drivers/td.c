@@ -40,6 +40,7 @@
 
 #define TAPDISK
 #include "tapdisk.h"
+#include "vhd.h"
 
 #if 1
 #define DFPRINTF(_f, _a...) fprintf ( stdout, _f , ## _a )
@@ -139,6 +140,18 @@ get_driver_type(char *type)
 }
 
 int
+namedup(char **dup, char *name)
+{
+	*dup = NULL;
+
+	if (strnlen(name, MAX_NAME_LEN) >= MAX_NAME_LEN)
+		return ENAMETOOLONG;
+	
+	*dup = strdup(name);
+	return 0;
+}
+
+int
 init_disk_driver(struct disk_driver *dd, int type, char *name, td_flag_t flags)
 {
 	int err = -ENOMEM;
@@ -153,6 +166,10 @@ init_disk_driver(struct disk_driver *dd, int type, char *name, td_flag_t flags)
 		goto fail;
 
 	if (name) {
+		err = namedup(&dd->name, name);
+		if (err)
+			goto fail;
+
 		err = dd->drv->td_open(dd, name, flags);
 		if (err)
 			goto fail;
@@ -161,6 +178,7 @@ init_disk_driver(struct disk_driver *dd, int type, char *name, td_flag_t flags)
 	return 0;
 
  fail:
+	free(dd->name);
 	free(dd->private);
 	free(dd->td_state);
 	return -err;
@@ -170,6 +188,7 @@ inline void
 free_disk_driver(struct disk_driver *dd)
 {
 	dd->drv->td_close(dd);
+	free(dd->name);
 	free(dd->private);
 	free(dd->td_state);
 }
@@ -257,10 +276,72 @@ td_create(int type, int argc, char *argv[])
 	return EINVAL;
 }
 
+
+/* 
+ * search a chain of vhd snapshots for
+ * the first image that has been written to 
+ */
+int
+get_non_zero_image(char **image, int type, char *backing)
+{
+	int i, err;
+	char *name;
+	struct disk_id pid;
+	struct vhd_info info;
+	struct disk_driver dd;
+
+	if (type != DISK_TYPE_VHD)
+		return namedup(image, backing);
+
+	*image         = NULL;
+	name           = backing;
+	pid.drivertype = type;
+
+	do {
+		err = init_disk_driver(&dd, type, name, TD_RDONLY);
+
+		if (name != backing)
+			free(name);
+
+		if (err)
+			return err;
+
+		err = dd.drv->td_get_parent_id(&dd, &pid);
+		if (err) {
+			if (err == TD_NO_PARENT)
+				err = namedup(image, dd.name);
+			free_disk_driver(&dd);
+			return err;
+		}
+
+		err = vhd_get_info(&dd, &info);
+		if (err) {
+			free_disk_driver(&dd);
+			free(pid.name);
+			return err;
+		}
+
+		for (i = 0; i < info.bat_entries; i++)
+			if (info.bat[i] != DD_BLK_UNUSED) {
+				err = namedup(image, dd.name);
+				free(pid.name);
+				pid.name = NULL;
+				break;
+			}
+
+		name = pid.name;
+		free(info.bat);
+		free_disk_driver(&dd);
+
+	} while(!*image && !err);
+
+	return err;
+}
+
 int
 td_snapshot(int type, int argc, char *argv[])
 {
-	int c;
+	int c, err;
 	struct stat stats;
 	char *name, *backing;
 	struct disk_id pid;
@@ -297,9 +378,15 @@ td_snapshot(int type, int argc, char *argv[])
 		return errno;
 	}
 
-	pid.name       = backing;
 	pid.drivertype = type;
-	return dtypes[type]->drv->td_snapshot(&pid, name, 0);
+	err = get_non_zero_image(&pid.name, type, backing);
+	if (err)
+		return err;
+
+	err = dtypes[type]->drv->td_snapshot(&pid, name, 0);
+
+	free(pid.name);
+	return err;
 
  usage:
 	fprintf(stderr, "usage: td-util snapshot %s [-h help] "
