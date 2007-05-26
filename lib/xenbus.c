@@ -170,7 +170,8 @@ static void audit_backend_devices(struct xs_handle *h)
 		}
 
 		/* frontend-id removed, kill backend */
-		backend_remove(be);
+		if (errno == ENOENT)
+			backend_remove(be);
 	}
 }
 
