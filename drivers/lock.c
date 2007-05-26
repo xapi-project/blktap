@@ -471,9 +471,10 @@ int unlock(char *fn_to_unlock, char *uuid, int readonly)
         lockfn_link = create_lockfn_link(fn_to_unlock, LFFL_FORMAT, uuid, readonly);
         if (unlikely(!lockfn_link)) { status = LOCK_ENOMEM; goto finish; }
 
-        if (unlikely(unlink(lockfn_link) == -1)) {
-                /* if no lock file than fold into success case */
+        if (unlink(lockfn_link) == -1) {
                 LOG("error removing linked lock file %s", lockfn_link);
+                status = LOCK_ENOLOCK;
+                goto finish;
         }
 
         status = LOCK_OK;
