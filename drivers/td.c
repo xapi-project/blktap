@@ -527,7 +527,7 @@ td_query(int type, int argc, char *argv[])
 			free(id.name);
 		} else if (err == TD_NO_PARENT) {
 			printf("%s has no parent\n", name);
-			err = EINVAL;
+			err = ENODATA;
 		} else
 			printf("query failed\n");
 	}
