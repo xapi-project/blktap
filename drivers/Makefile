@@ -47,6 +47,7 @@ BLK-OBJS  += lock.o
 BLK-OBJS  += atomicio.o
 BLK-OBJS  += vhd-coalesce.o
 BLK-OBJS  += qcow-coalesce.o
+BLK-OBJS  += io-optimize.o
 
 all: $(IBIN) qcow-util vhd-util lock-util
 

@@ -43,6 +43,7 @@
 #include "bswap.h"
 #include "profile.h"
 #include "atomicio.h"
+#include "io-optimize.h"
 
 unsigned int SPB;
 
@@ -57,10 +58,11 @@ unsigned int SPB;
 #define __TRACE(s)                                                             \
 do {                                                                           \
 	BLOG(bhandle, "%s: %s: QUEUED: %llu, SUBMITTED: %llu, "                \
-		"RETURNED: %llu DATA_ALLOCATED: %lu, BBLK: %u\n",              \
-		__func__, s->name, s->queued, s->submitted,                    \
-		 s->returned, VHD_REQS_DATA - s->vreq_free_count,              \
-		s->bat.pbw_blk);                                               \
+	     "RETURNED: %llu, TO_AIO: %llu, FROM_AIO: %llu, "                  \
+	     "DATA_ALLOCATED: %lu, BBLK: %u\n", __func__,                      \
+	     s->name, s->queued, s->submitted, s->returned,                    \
+	     s->to_aio, s->from_aio, VHD_REQS_DATA - s->vreq_free_count,       \
+	     s->bat.pbw_blk);                                                  \
 } while(0)
 
 #define __ASSERT(_p)                                                           \
@@ -237,6 +239,8 @@ struct vhd_state {
 	io_context_t          aio_ctx;
 	int                   poll_fd;         /* requires aio_poll support */
 
+	struct opioctx        opioctx;
+
 	char                 *name;
 
 #if (PREALLOCATE_BLOCKS == 1)
@@ -246,6 +250,7 @@ struct vhd_state {
 
 	/* debug info */
 	struct profile_info   tp;
+	uint64_t to_aio, from_aio;
 	uint64_t queued, submitted, returned;
 	uint64_t writes, reads, write_size, read_size;
 	uint64_t submits, callback_sum, callbacks;
@@ -979,6 +984,10 @@ __vhd_open(struct disk_driver *dd, const char *name, vhd_flag_t flags)
 		}
         }
 
+	ret = opio_init(&s->opioctx, VHD_REQS_TOTAL);
+	if (ret)
+		goto fail;
+
  out:
 	ret = init_aio_state(s);
 	if (ret)
@@ -1069,6 +1078,7 @@ vhd_close(struct disk_driver *dd)
 		free(bm->shadow);
 	}
 	free_bat(s);
+	opio_free(&s->opioctx);
 	close(s->fd);
 
 	if (s->sync) {
@@ -3393,7 +3403,7 @@ vhd_cancel_requests(struct disk_driver *dd)
 int
 vhd_submit(struct disk_driver *dd)
 {
-	int ret, err = 0, rsp = 0;
+	int ret, queued, err = 0, rsp = 0;
 	struct vhd_state *s = (struct vhd_state *)dd->private;
 
 	if (!s->iocb_queued)
@@ -3401,10 +3411,14 @@ vhd_submit(struct disk_driver *dd)
 
 	tp_in(&s->tp);
 
-        DBG("%s: %s: submitting %d\n", __func__, s->name, s->iocb_queued);
-	ret = io_submit(s->aio_ctx, s->iocb_queued, s->iocb_queue);
+	queued = io_merge(&s->opioctx, s->iocb_queue, s->iocb_queued);
+	ret    = io_submit(s->aio_ctx, queued, s->opioctx.iocb_queue);
+
+        DBG("%s: %s: submitting %d, merged to %d, ret: %d\n", 
+	    __func__, s->name, s->iocb_queued, queued, ret);
 
 	s->submits++;
+	s->to_aio    += queued;
 	s->submitted += s->iocb_queued;
 	TRACE(s);
 
@@ -3413,15 +3427,18 @@ vhd_submit(struct disk_driver *dd)
 		DBG("%s: io_submit returned %d", __func__, ret);
 		err = ret;
 		ret = 0;
-	} else if (ret < s->iocb_queued)
+	} else if (ret < queued)
 		err = -EIO;
 
 	if (err) {
-		int i, rval;
 		struct iocb *io;
+		int i, rval, failed;
 		struct vhd_request *req;
+
+		failed = io_expand_iocbs(&s->opioctx, 
+					 s->iocb_queue, ret, queued);
 		
-		for (i = ret; i < s->iocb_queued; i++) {
+		for (i = ret; i < failed; i++) {
 			io   = s->iocb_queue[i];
 			req  = (struct vhd_request *)io->data;
 			rval = fail_vhd_request(dd, req, err);
@@ -3442,7 +3459,7 @@ vhd_do_callbacks(struct disk_driver *dd, int sid)
 {
 	struct io_event   *ep;
 	struct vhd_bitmap *bm;
-	int ret, nr_iocbs, rsp = 0;
+	int ret, split, nr_iocbs, rsp = 0;
 	struct vhd_state *s = (struct vhd_state *)dd->private;
 
 	if (sid > MAX_IOFD)
@@ -3453,14 +3470,16 @@ vhd_do_callbacks(struct disk_driver *dd, int sid)
 	nr_iocbs = s->iocb_queued;
 
 	/* non-blocking test for completed io */
-	ret = io_getevents(s->aio_ctx, 0, VHD_REQS_TOTAL, s->aio_events, NULL);
-	DBG("%s: got %d events\n", __func__, ret);
+	ret   = io_getevents(s->aio_ctx, 0, VHD_REQS_TOTAL, s->aio_events, NULL);
+	split = io_split(&s->opioctx, s->aio_events, ret);
+	DBG("%s: got %d events, expanded to %d\n", __func__, ret, split);
 
 	s->callbacks++;
-	s->callback_sum += ret;
+	s->from_aio     += ret;
+	s->callback_sum += split;
 	TRACE(s);
 
-	for (ep = s->aio_events; ret-- > 0; ep++) {
+	for (ep = s->opioctx.event_queue; split-- > 0; ep++) {
 		struct iocb *io = ep->obj;
 		struct vhd_request *req = (struct vhd_request *)io->data;
 
@@ -3577,6 +3596,7 @@ vhd_debug(struct disk_driver *dd)
 
 	DBGDUMP();
 
+	io_debug(&s->opioctx);
 /*
 	for (i = 0; i < s->hdr.max_bat_size; i++)
 		DPRINTF("%d: %u\n", i, s->bat.bat[i]);

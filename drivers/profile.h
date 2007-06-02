@@ -8,7 +8,9 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <syslog.h>
+#include <sys/time.h>
 #include <time.h>
+#include <fcntl.h>
 
 //#define PROFILING
 //#define LOGGING
