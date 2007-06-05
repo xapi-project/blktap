@@ -1100,6 +1100,12 @@ vhd_validate_parent(struct disk_driver *child_dd,
 	struct vhd_state *child  = (struct vhd_state *)child_dd->private;
 	struct vhd_state *parent = (struct vhd_state *)parent_dd->private;
 
+	/* 
+	 * This check removed because of cases like:
+	 *   - parent VHD marked as 'hidden'
+	 *   - parent VHD modified during coalesce
+	 */
+	/*
 	if (stat(parent->name, &stats)) {
 		DPRINTF("ERROR stating parent file %s\n", parent->name);
 		return -errno;
@@ -1110,6 +1116,7 @@ vhd_validate_parent(struct disk_driver *child_dd,
 			"snapshot.  Child image no longer valid.\n");
 		return -EINVAL;
 	}
+	*/
 
 	if (uuid_compare(child->hdr.prt_uuid, parent->ftr.uuid)) {
 		DPRINTF("ERROR: parent uuid has changed since "
