@@ -199,7 +199,7 @@ void free_blkif(blkif_t *blkif)
 		if (blkif->info!=NULL) {
 			free(blkif->info);
 		}
-		if (new_unmap_hook != NULL && blkif->devnum != -1) 
+		if (new_unmap_hook != NULL && blkif->minor != 0) 
 			new_unmap_hook(blkif);
 		free(blkif->lock_info);
 		free(blkif);
