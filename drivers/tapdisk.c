@@ -1320,7 +1320,9 @@ int main(int argc, char *argv[])
 	struct td_state *s;
 	char openlogbuf[128];
 	struct timeval timeout = { .tv_sec = ONE_DAY, .tv_usec = 0 };
+#if defined(CORE_DUMP)
         struct rlimit rlim;
+#endif
 
 	if (argc != 3) usage();
 
@@ -1333,6 +1335,7 @@ int main(int argc, char *argv[])
 	signal (SIGINT, sig_handler);
 	signal (SIGUSR1, debug);
 
+#if defined(CORE_DUMP)
         /* set up core-dumps*/
         rlim.rlim_cur = RLIM_INFINITY;
         rlim.rlim_max = RLIM_INFINITY;
@@ -1340,6 +1343,7 @@ int main(int argc, char *argv[])
         if (ret < 0) {
                 DPRINTF("Set resource limit for coredumps failed, errno=%d\n", errno);
         } 
+#endif
 
 	/*Open the control channel*/
 	fds[READ]  = open(argv[1],O_RDWR|O_NONBLOCK);
