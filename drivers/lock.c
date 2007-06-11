@@ -84,6 +84,44 @@ static char *create_lockfn_link(char *fn_to_lock, char *format,
         return lockfn_link;
 }
 
+static int NFSnormalizedStatTime(char *fn, struct stat *statnow, int *reterrno)
+{
+        int result = LOCK_OK;
+        int uniq;
+        char *buf;
+        int fd;
+        int pid = (int)getpid();
+        int clstat;
+
+        *reterrno = 0;
+
+        /* create file to normalize time */
+        srandom((int)time(0) ^ pid);
+        uniq = random() % 0xffffff;
+        buf = malloc(strlen(fn) + 24);
+        if (unlikely(!buf)) { result = LOCK_ENOMEM; goto finish; }
+
+        strcpy(buf, fn);
+        sprintf(buf + strlen(buf), ".xen%08d.tmp", uniq);
+
+        fd = open(buf, O_WRONLY | O_CREAT, 0644);
+        if (fd == -1) { *reterrno = errno; result = LOCK_EOPEN; goto finish; }
+        clstat = close(fd);
+        if (unlikely(clstat == -1)) {
+                LOG("fail on close\n");
+        }
+        if (lstat(buf, statnow) == -1) {
+                unlink(buf);
+                *reterrno = errno;
+                result = LOCK_ESTAT;
+                goto finish;
+        }
+        unlink(buf);
+
+finish:
+        return result;
+}
+
 static int writer_eval(char *name, int readonly) 
 {
         return name[strlen(name)-1] == 'w';
@@ -115,7 +153,7 @@ static int lock_holder(char *fn, char *lockfn, char *lockfn_link,
 
         if (!dirname) goto finish;
         if (!uname) goto finish;
-        
+
         /* get directory */
         ptr = strrchr(lockfn, '/');
         if (!ptr) {
@@ -123,10 +161,11 @@ static int lock_holder(char *fn, char *lockfn, char *lockfn_link,
         } else {
                 int numbytes = ptr - lockfn;
                 strncpy(dirname, lockfn, numbytes);
+                dirname[numbytes] = '\0';
         }
         pd = opendir(dirname); 
         if (!pd) {
-                *ioerror = errno;
+                *ioerror = errno ? errno : EIO;
                 goto finish;
         }
 
@@ -137,7 +176,11 @@ static int lock_holder(char *fn, char *lockfn, char *lockfn_link,
          * all locks that appear for target of our lock, regardless
          * if it a reader/writer owns the lock.
          */
+        errno = 0;
         dptr = readdir(pd);
+        if (!dptr) {
+            *ioerror = EIO;
+        }
         while (dptr) {
                 char *p1 = strrchr(fn, '/');
                 char *p2 = strrchr(lockfn, '/');
@@ -185,6 +228,9 @@ static int lock_holder(char *fn, char *lockfn, char *lockfn_link,
                         }
                 }
                 dptr = readdir(pd);
+                if (!dptr & errno) {
+                    *ioerror = EIO;
+                }
         }
 
         closedir(pd);
@@ -193,7 +239,8 @@ finish:
         free(dirname);
         free(uname);
 
-        return status;
+        /* if IO error, force a taken status */
+        return (*ioerror) ? 1 : status;
 }
 
 int lock(char *fn_to_lock, char *uuid, int force, int readonly, int *lease_time, int *retstatus)
@@ -238,7 +285,28 @@ int lock(char *fn_to_lock, char *uuid, int force, int readonly, int *lease_time,
         if (unlikely(!lockfn_flink)) { status = ENOMEM; *retstatus = LOCK_ENOMEM; goto finish; }
 
 try_again:
-        if (retry_attempts++ > RETRY_MAX) goto finish;
+        if (retry_attempts++ > RETRY_MAX) {
+                if (*retstatus == LOCK_EXLOCK_OPEN) {
+                        struct stat statnow, stat_exlock;
+                        int diff;
+
+                        if (lstat(lockfn, &stat_exlock) == -1) {
+                                goto finish;
+                        }
+                
+                        if (NFSnormalizedStatTime(fn_to_lock, &statnow, &ioerr)) {
+                                goto finish;
+                        }
+
+                        diff = (int)statnow.st_mtime - (int)stat_exlock.st_mtime;
+                        if (diff > DEFAULT_LEASE_TIME_SECS) {
+                                unlink(lockfn);
+                                retry_attempts = 0;
+                                goto try_again;
+                        }
+                }
+                goto finish;
+        }
 
         /* try to open exlusive lockfile */
         fd = open(lockfn, O_WRONLY | O_CREAT | O_EXCL, 0644); 
@@ -566,17 +634,13 @@ int lock_delta(char *fn, int *ret_lease, int *max_lease)
         struct dirent *dptr;
         char *ptr;
         int result = INT_MAX;
-        char *buf = 0;
-        int fd;
-        int clstat;
         struct stat statbuf, statnow;
         char *dirname = malloc(strlen(fn));
         char *uname = malloc(strlen(fn) + 8);
-        int pid = (int)getpid();
-        int uniq;
         int elt_established = 0;
         char *dotptr;
         char tmpbuf[4096];
+        int fd;
 
         if (!fn || !dirname || !uname) {
                 *ret_lease = LOCK_EBADPARM;
@@ -584,28 +648,10 @@ int lock_delta(char *fn, int *ret_lease, int *max_lease)
                 return 0;
         }
         
-        /* create file to normalize time */
-        srandom((int)time(0) ^ pid);
-        uniq = random() % 0xffffff; 
-        buf = malloc(strlen(fn) + 24);
-        if (unlikely(!buf)) { result = LOCK_ENOMEM; goto finish; }
-
-        strcpy(buf, fn);
-        sprintf(buf + strlen(buf), ".xen%08d.tmp", uniq);
-
-        fd = open(buf, O_WRONLY | O_CREAT, 0644);
-        if (fd == -1) { reterrno = errno; result = LOCK_EOPEN; goto finish; }
-        clstat = close(fd);
-        if (unlikely(clstat == -1)) {
-                LOG("fail on close\n");
-        }
-        if (lstat(buf, &statnow) == -1) {
-                unlink(buf);
-                reterrno = errno;
+        if (NFSnormalizedStatTime(fn, &statnow, &reterrno)) {
                 result = LOCK_ESTAT;
                 goto finish;
         }
-        unlink(buf);
 
         /* get directory */
         ptr = strrchr(fn, '/');

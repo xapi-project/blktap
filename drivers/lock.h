@@ -4,7 +4,7 @@
  *
  */
 
-#define DEFAULT_LEASE_TIME_SECS 5
+#define DEFAULT_LEASE_TIME_SECS 30
 
 int lock(char *fn_to_lock, char *uuid, int force, int readonly, int *lease_time, int *retstat);
 int unlock(char *fn_to_unlock, char *uuid, int readonly, int *retstat);
