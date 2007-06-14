@@ -511,7 +511,7 @@ td_query(int type, int argc, char *argv[])
 		return ENAMETOOLONG;
 	}
 
-	err = init_disk_driver(&dd, type, name, TD_RDONLY);
+	err = init_disk_driver(&dd, type, name, TD_RDONLY | TD_QUIET);
 	if (err) {
 		DFPRINTF("Failed opening %s\n", name);
 		return err;

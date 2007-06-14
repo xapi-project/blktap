@@ -121,6 +121,7 @@ if ( !(_p) ) {                                                                 \
 
 #define VHD_FLAG_OPEN_RDONLY         1
 #define VHD_FLAG_OPEN_NO_CACHE       2
+#define VHD_FLAG_OPEN_QUIET          4
 
 #define VHD_FLAG_BAT_LOCKED          1
 #define VHD_FLAG_BAT_WRITE_STARTED   2
@@ -525,7 +526,7 @@ debug_print_header( struct dd_hdr *h )
 /* End of debug print functions. */
 
 static int
-vhd_read_hd_ftr(int fd, struct hd_ftr *ftr)
+vhd_read_hd_ftr(int fd, struct hd_ftr *ftr, vhd_flag_t flags)
 {
 	char *buf;
 	int err, secs;
@@ -565,9 +566,10 @@ vhd_read_hd_ftr(int fd, struct hd_ftr *ftr)
 	if (memcmp(ftr->cookie, HD_COOKIE,  8) == 0) goto found_footer;
     
 	/* Last try.  Look for the copy of the footer at the start of image. */
-	DPRINTF("NOTE: Couldn't find footer at the end of the VHD image.\n"
-		"      Using backup footer from start of file.          \n"
-		"      This VHD may be corrupt!\n");
+	if (!test_vhd_flag(flags, VHD_FLAG_OPEN_QUIET))
+		DPRINTF("NOTE: Couldn't find footer at the end of the VHD "
+			"image.  Using backup footer from start of file."
+			"This VHD may be corrupt!\n");
 	if (lseek64(fd, 0, SEEK_SET) == -1) {
 		err = -errno;
 		goto out;
@@ -579,7 +581,8 @@ vhd_read_hd_ftr(int fd, struct hd_ftr *ftr)
 	memcpy(ftr, buf, sizeof(struct hd_ftr));
 	if (memcmp(ftr->cookie, HD_COOKIE,  8) == 0) goto found_footer;
 
-	DPRINTF("error reading footer.\n");
+	if (!test_vhd_flag(flags, VHD_FLAG_OPEN_QUIET))
+		DPRINTF("error reading footer.\n");
 	goto out;
 
  found_footer:
@@ -913,13 +916,15 @@ __vhd_open(struct disk_driver *dd, const char *name, vhd_flag_t flags)
 		DBG("open(%s) with O_DIRECT\n", name);
 
 	if (fd == -1) {
-		DPRINTF("Unable to open [%s] (%d)!\n", name, -errno);
+		if (!test_vhd_flag(flags, VHD_FLAG_OPEN_QUIET))
+			DPRINTF("Unable to open [%s] (%d)!\n", name, -errno);
 		return -errno;
 	}
 
         /* Read the disk footer. */
-        if (vhd_read_hd_ftr(fd, &s->ftr) != 0) {
-                DPRINTF("Error reading VHD footer.\n");
+        if (vhd_read_hd_ftr(fd, &s->ftr, flags) != 0) {
+		if (!test_vhd_flag(flags, VHD_FLAG_OPEN_QUIET))
+			DPRINTF("Error reading VHD footer.\n");
                 return -EINVAL;
         }
 #if (DEBUGGING == 1)
@@ -934,7 +939,8 @@ __vhd_open(struct disk_driver *dd, const char *name, vhd_flag_t flags)
 
                 if (vhd_read_dd_hdr(fd, &s->hdr, 
 				    s->ftr.data_offset) != 0) {
-                        DPRINTF("Error reading VHD DD header.\n");
+			if (!test_vhd_flag(flags, VHD_FLAG_OPEN_QUIET))
+				DPRINTF("Error reading VHD DD header.\n");
                         return -EINVAL;
                 }
 
@@ -1023,8 +1029,13 @@ __vhd_open(struct disk_driver *dd, const char *name, vhd_flag_t flags)
 int
 vhd_open (struct disk_driver *dd, const char *name, td_flag_t flags)
 {
-	vhd_flag_t vhd_flags = ((flags & TD_RDONLY) ? 
-				VHD_FLAG_OPEN_RDONLY : 0);
+	vhd_flag_t vhd_flags = 0;
+
+	if (flags & TD_RDONLY)
+		vhd_flags |= VHD_FLAG_OPEN_RDONLY;
+	if (flags & TD_QUIET)
+		vhd_flags |= VHD_FLAG_OPEN_QUIET;
+
 	return __vhd_open(dd, name, vhd_flags);
 }
 
@@ -1329,7 +1340,7 @@ vhd_get_parent_id(struct disk_driver *child_dd, struct disk_id *id)
 		free(out);
 	}
 
-	DPRINTF("%s: done: %s\n", __func__, id->name);
+	DBG("%s: done: %s\n", __func__, id->name);
 	return err;
 }
 
