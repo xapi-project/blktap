@@ -926,6 +926,8 @@ __vhd_open(struct disk_driver *dd, const char *name, vhd_flag_t flags)
         debug_print_footer(&s->ftr);
 #endif
 
+	s->spb = s->spp = 1;
+
         /* If this is a dynamic or differencing disk, read the dd header. */
         if ((s->ftr.type == HD_TYPE_DYNAMIC) ||
 	    (s->ftr.type == HD_TYPE_DIFF)) {
