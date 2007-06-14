@@ -51,6 +51,7 @@ static struct bhandle tbhandle;
 #define OUTPUT 1
 
 static int maxfds, fds[2], run = 1;
+static int shutdown_requested = 0;
 
 static pid_t process;
 int connected_disks = 0;
@@ -97,6 +98,12 @@ void sig_handler(int sig)
 	/*Received signal to close. If no disks are active, we close app.*/
 
 	if (connected_disks < 1) run = 0;	
+}
+
+void initiate_shutdown(int sig)
+{
+	DPRINTF("received signal to terminate\n");
+	shutdown_requested = 1;
 }
 
 void inline debug_disks(struct td_state *s)
@@ -194,20 +201,35 @@ static inline void init_preq(pending_req_t *preq)
 {
 	memset(preq, 0, sizeof(pending_req_t));
 }
+
 static struct td_state *state_init(void)
 {
 	int i;
-	struct td_state *s;
-	blkif_t *blkif;
+	struct td_state *s = NULL;
+	blkif_t *blkif = NULL;
 
 	s = calloc(1, sizeof(struct td_state));
+	if (!s)
+		return NULL;
+
 	blkif = s->blkif = malloc(sizeof(blkif_t));
+	if (!blkif)
+		goto fail;
+
 	s->ring_info = calloc(1, sizeof(tapdev_info_t));
+	if (!s->ring_info)
+		goto fail;
 
 	for (i = 0; i < MAX_REQUESTS; i++)
 		init_preq(&blkif->pending_list[i]);
 
 	return s;
+
+ fail:
+	free(s->blkif);
+	free(s->ring_info);
+	free(s);
+	return NULL;
 }
 
 static void free_state(struct td_state *s)
@@ -291,7 +313,6 @@ static int map_new_dev(struct td_state *s, int minor)
 	info->vstart = 
 	        (unsigned long)info->mem + (BLKTAP_RING_PAGES * page_size);
 
-	ioctl(info->fd, BLKTAP_IOCTL_SENDPID, process );
 	ioctl(info->fd, BLKTAP_IOCTL_SETMODE, BLKTAP_MODE_INTERPOSE );
 	free(devname);
 
@@ -321,6 +342,7 @@ static void unmap_disk(struct td_state *s)
 	dd = s->disks;
 	while (dd) {
 		tmp = dd->next;
+		DPRINTF("closing %s\n", dd->name);
 		dd->drv->td_close(dd);
 		free_driver(dd);
 		dd = tmp;
@@ -501,6 +523,23 @@ static inline void kill_queue(struct td_state *s)
 static inline int queue_closed(struct td_state *s)
 {
 	return (s->flags & TD_CLOSED || s->flags & TD_DEAD);
+}
+
+static int shutdown(struct td_state *s)
+{
+	struct disk_driver *dd;
+
+	if (s->flags & TD_SHUTDOWN)
+		return 0;
+
+	if (drain_queue(s))
+		return 0;
+
+	s->flags |= TD_SHUTDOWN;
+	td_for_each_disk(s, dd)
+		DPRINTF("shutting down %s\n", dd->name);
+
+	return (--connected_disks == 0);
 }
 
 /*
@@ -697,7 +736,8 @@ static int read_msg(char *buf)
 			if (s != NULL) {
 				ret = ((map_new_dev(s, msg_dev->devnum) 
 					== msg_dev->devnum ? 0: -1));
-				connected_disks++;
+				if (!ret)
+					connected_disks++;
 			}	
 
 			memset(buf, 0x00, MSG_SIZE); 
@@ -711,9 +751,12 @@ static int read_msg(char *buf)
 
 		case CTLMSG_CLOSE:
 			s = get_state(msg->cookie);
-			if (s) unmap_disk(s);
 			
-			connected_disks--;
+			/* close now if process was created but not mapped,
+			 * as it will never receive SIGTERM from blktap */
+			if (s && ((tapdev_info_t *)s->ring_info)->mem <= 0)
+				unmap_disk(s);
+
 			sig_handler(SIGINT);
 
 			return 1;			
@@ -1340,6 +1383,7 @@ int main(int argc, char *argv[])
 	/*Setup signal handlers*/
 	signal (SIGBUS, sig_handler);
 	signal (SIGINT, sig_handler);
+	signal (SIGTERM, initiate_shutdown);
 	signal (SIGUSR1, debug);
 
 #if defined(CORE_DUMP)
@@ -1399,6 +1443,10 @@ int main(int argc, char *argv[])
 				int progress_made = 0;
 				struct disk_driver *dd;
 				tapdev_info_t *info = ptr->s->ring_info;
+
+				if (shutdown_requested)
+					if (shutdown(ptr->s))
+						run = 0;
 
 				DBG("%s: %d reqs pending, "
 				    "received: %lu, returned: %lu, kicked: %lu\n", 

@@ -139,7 +139,7 @@ static int backend_remove(struct backend_info *be)
 
 	/* Free everything else. */
 	if (be->blkif) {
-		DPRINTF("Freeing blkif dev [%d]\n", be->blkif->devnum);
+		DPRINTF("Freeing blkif dev [%d]\n", be->blkif->minor - 1);
 		free_blkif(be->blkif);
 	}
 
@@ -169,8 +169,11 @@ static void audit_backend_devices(struct xs_handle *h)
 		}
 
 		/* frontend-id removed, kill backend */
-		if (errno == ENOENT)
+		if (errno == ENOENT) {
+			DPRINTF("%s: removing backend: [%s]\n", 
+				__func__, be->backpath);
 			backend_remove(be);
+		}
 	}
 }
 
@@ -404,8 +407,7 @@ static void ueblktap_probe(struct xs_handle *h, struct xenbus_watch *w,
 		 *Unable to find frontend entries, 
 		 *bus-id is no longer valid
 		 */
-		DPRINTF("ERROR: Frontend-id check failed, removing backend: "
-			"[%s]\n",bepath);
+		DPRINTF("%s: removing backend: [%s]\n", __func__, bepath);
 
 		/**
 		 * BE info should already exist, 
