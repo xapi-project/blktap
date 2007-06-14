@@ -883,7 +883,10 @@ int tdqcow_open (struct disk_driver *dd, const char *name, td_flag_t flags)
 	}
 
 	s->fd = fd;
-	asprintf(&s->name,"%s", name);
+	if (asprintf(&s->name, "%s", name) == -1) {
+		close(fd);
+		return -1;
+	}
 
 	ASSERT(sizeof(QCowHeader) + sizeof(QCowHeader_ext) < 512);
 
