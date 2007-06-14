@@ -907,10 +907,12 @@ int send_responses(struct disk_driver *dd, int res,
 
 	if (preq->status == BLKIF_RSP_ERROR &&
 	    preq->num_retries < TD_MAX_RETRIES) {
-		gettimeofday(&preq->last_try, NULL);
-		s->flags |= TD_RETRY_NEEDED;
-		DBG("%s: retry needed: %d, %llu\n", __func__, idx, sector);
-		return res;
+		if (!(s->flags & TD_DEAD)) {
+			gettimeofday(&preq->last_try, NULL);
+			s->flags |= TD_RETRY_NEEDED;
+			DBG("%s: retry needed: %d, %llu\n", __func__, idx, sector);
+			return res;
+		}
 	}
 
 	if (!preq->submitting && !preq->secs_pending) {
@@ -1073,6 +1075,8 @@ static int queue_request(struct td_state *s, blkif_request_t *req)
 		ret = send_responses(dd, err, 0, 0, idx, (void *)(long)0);
 		if (ret > 0)
 			dd->early += ret;
+		else if (ret < 0)
+			return ret;
 	}
 
 	return 0;
@@ -1085,7 +1089,7 @@ static void invalidate_requests(struct td_state *s)
 
 	td_for_each_disk(s, dd) {
 		ret = dd->drv->td_cancel_requests(dd);
-		if (ret > 0) {
+		if (ret > 0 || dd->early > 0) {
 			io_done(dd, MAX_IOFD + 1);
 			dd->early = 0;
 		}
