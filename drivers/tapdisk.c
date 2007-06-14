@@ -1298,13 +1298,9 @@ static void assert_locks(struct timeval *tv)
 	while (ptr) {
 		s = ptr->s;
 		if ((s->flags & TD_LOCKING) && !(s->flags & TD_DEAD)) {
-			td_for_each_disk(s, dd) {
-				lease = lock_disk(dd);
-				min_lease_time = (lease < min_lease_time ?
-						  lease : min_lease_time);
-				if (queue_closed(s))
-					break;
-			}
+			lease = lock_disk(s->disks);
+			min_lease_time = (lease < min_lease_time ?
+					  lease : min_lease_time);
 		}
 		ptr = ptr->next;
 	}

@@ -1553,10 +1553,6 @@ __vhd_create(const char *name, uint64_t total_size,
 	type = ((sparse) ? HD_TYPE_DYNAMIC : HD_TYPE_FIXED);
 	if (sparse && backing_file)
 		type = HD_TYPE_DIFF;
-		
-	DPRINTF("%s: total_size: %llu, size: %llu, blk_size: %llu, "
-		"blks: %llu\n",	__func__, total_size, size, 
-		(uint64_t)1 << BLK_SHIFT, blks);
 
 	s.fd = fd = open(name, 
 			 O_WRONLY | O_CREAT | O_TRUNC | O_LARGEFILE, 0644);
@@ -1691,7 +1687,10 @@ __vhd_create(const char *name, uint64_t total_size,
 		goto out;
 
 	/* finished */
-	DPRINTF("%s: done\n", __func__);
+		
+	DPRINTF("%s: size: %llu, blk_size: %llu, blks: %llu\n",	
+		__func__, ftr->orig_size, (uint64_t)1 << BLK_SHIFT, blks);
+
 	err = 0;
 
 out:
