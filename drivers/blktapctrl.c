@@ -392,7 +392,6 @@ static int write_msg(int fd, int msgtype, void *ptr, void *ptr2)
 		/*Copy blk->params to msg*/
 		msg_p           = (msg_params_t *)(buf + sizeof(msg_hdr_t));
 		msg_p->readonly = blk->readonly;
-		msg_p->has_phantom = blk->has_phantom;
 
 		msg_p->path_off = sizeof(msg_hdr_t) + sizeof(msg_params_t);
 		msg_p->path_len = strlen(path) + 1;

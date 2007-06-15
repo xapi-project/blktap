@@ -258,7 +258,7 @@ static void ueblktap_setup(struct xs_handle *h, char *bepath)
 	}
 
 	if (be->blkif == NULL) {
-		char mode, *phantom;
+		char mode;
 
 		/* Front end dir is a number, which is used as the handle. */
 		p = strrchr(be->frontpath, '/') + 1;
@@ -285,16 +285,6 @@ static void ueblktap_setup(struct xs_handle *h, char *bepath)
 			goto fail;
 		if (mode == 'r')
 			blk->readonly = 1;
-
-		/* does this device have a phantom? */
-		if (asprintf(&path, "%s/phantom_vbd", be->frontpath) == -1)
-			goto fail;
-		phantom = xs_read(h, XBT_NULL, path, &len);
-		if (phantom) {
-			blk->has_phantom = 1;
-			free(phantom);
-		} else if (errno != ENOENT)
-			goto fail;
 		
 		be->blkif->info = blk;
 		

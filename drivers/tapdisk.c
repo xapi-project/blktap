@@ -440,20 +440,40 @@ static int open_disk(struct td_state *s,
 	return -1;
 }
 
+#define EIO_SLEEP   1
+#define EIO_RETRIES 10
+
 static int reopen_disks(struct td_state *s)
 {
+	int i, err;
 	struct disk_driver *dd, *next, *p = NULL;
 
 	td_for_each_disk(s, dd) {
 		dd->drv->td_close(dd);
-		if (dd->drv->td_open(dd, dd->name, dd->flags))
+
+		for (i = 0; i < EIO_RETRIES; i++) {
+			err = dd->drv->td_open(dd, dd->name, dd->flags);
+			if (err != -EIO)
+				break;
+			
+			sleep(EIO_SLEEP);
+		}
+		if (err)
 			goto fail;
-		
-		if (p)
-			if (dd->drv->td_validate_parent(p, dd, 0)) {
+
+		if (p) {
+			for (i = 0; i < EIO_RETRIES; i++) {
+				err = dd->drv->td_validate_parent(p, dd, 0);
+				if (err != -EIO)
+					break;
+
+				sleep(EIO_SLEEP);
+			}
+			if (err) {
 				dd->drv->td_close(dd);
 				goto fail;
 			}
+		}
 
 		p = dd;
 	}
@@ -701,7 +721,6 @@ static int read_msg(char *buf)
 			if (ret)
 				goto params_done;
 
-			s->flags |= (msg_p->has_phantom ? TD_HAS_PHANTOM : 0);
 			entry = add_fd_entry(0, s);
 			entry->cookie = msg->cookie;
 			DPRINTF("Entered cookie %d\n", entry->cookie);
@@ -1221,7 +1240,7 @@ static void get_io_request(struct td_state *s)
 	if (!run)
 		return; /* We have received signal to close */
 
-	if ((s->flags & TD_HAS_PHANTOM) && !s->received) {
+	if (!s->received) {
 		if (reopen_disks(s)) {
 			DPRINTF("reopening disks failed\n");
 			kill_queue(s);

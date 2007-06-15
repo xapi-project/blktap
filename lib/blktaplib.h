@@ -141,7 +141,6 @@ typedef struct blkif {
 typedef struct blkif_info {
 	char *params;
 	int   readonly;
-	int   has_phantom;
 } blkif_info_t;
 
 void register_new_devmap_hook(int (*fn)(blkif_t *blkif));
@@ -188,7 +187,6 @@ typedef struct msg_hdr {
 
 typedef struct msg_params {
 	uint8_t    readonly;
-	uint8_t    has_phantom;
 	int        path_off;
 	int        path_len;
 } msg_params_t;
