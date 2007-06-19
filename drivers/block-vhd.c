@@ -614,13 +614,14 @@ static int
 vhd_write_hd_ftr(int fd, struct hd_ftr *in_use_ftr)
 {
 	char *buf;
-	int ret, secs;
+	int ret, secs, err;
 	struct hd_ftr ftr = *in_use_ftr;
 
+	err  = 0;
 	secs = secs_round_up(sizeof(struct hd_ftr));
 
 	if (posix_memalign((void **)&buf, 512, (secs << VHD_SECTOR_SHIFT)))
-		return -1;
+		return -ENOMEM;
 
 	BE32_OUT(&ftr.features);
 	BE32_OUT(&ftr.ff_version);
@@ -637,9 +638,11 @@ vhd_write_hd_ftr(int fd, struct hd_ftr *in_use_ftr)
 	memcpy(buf, &ftr, sizeof(struct hd_ftr));
 	
 	ret = write(fd, buf, 512);
-	free(buf);
+	if (ret != 512)
+		err = (errno ? -errno : -EIO);
 
-	return (ret != 512);
+	free(buf);
+	return err;
 }
 
 /* 
@@ -650,13 +653,14 @@ static int
 vhd_write_dd_hdr(int fd, struct dd_hdr *in_use_hdr)
 {
 	char *buf;
-	int ret, secs, i, n;
+	int ret, secs, err, i, n;
 	struct dd_hdr hdr = *in_use_hdr;
 
+	err  = 0;
 	secs = secs_round_up(sizeof(struct dd_hdr));
 
 	if (posix_memalign((void **)&buf, 512, (secs << VHD_SECTOR_SHIFT)))
-		return -1;
+		return -ENOMEM;
 
 	BE64_OUT(&hdr.data_offset);
 	BE64_OUT(&hdr.table_offset);
@@ -677,9 +681,11 @@ vhd_write_dd_hdr(int fd, struct dd_hdr *in_use_hdr)
 	memcpy(buf, &hdr, sizeof(struct dd_hdr));
 
 	ret = write(fd, buf, 1024);
-	free(buf);
+	if (ret != 1024)
+		err = (errno ? -errno : -EIO);
 
-	return (ret != 1024);
+	free(buf);
+	return err;
 }
 
 static int
@@ -937,11 +943,11 @@ __vhd_open(struct disk_driver *dd, const char *name, vhd_flag_t flags)
         if ((s->ftr.type == HD_TYPE_DYNAMIC) ||
 	    (s->ftr.type == HD_TYPE_DIFF)) {
 
-                if (vhd_read_dd_hdr(fd, &s->hdr, 
-				    s->ftr.data_offset) != 0) {
+		ret = vhd_read_dd_hdr(fd, &s->hdr, s->ftr.data_offset);
+                if (ret) {
 			if (!test_vhd_flag(flags, VHD_FLAG_OPEN_QUIET))
 				DPRINTF("Error reading VHD DD header.\n");
-                        return -EINVAL;
+                        return ret;
                 }
 
                 if (s->hdr.hdr_ver != 0x00010000) {
@@ -1460,7 +1466,7 @@ set_parent_name(struct vhd_state *child, char *pname)
 	tmp = child->hdr.prt_name;
 
 	if (iconv(cd, &pname, &ibl, &tmp, &obl) == (size_t)-1 || ibl)
-		ret = -errno;
+		ret = (errno ? -errno : -EINVAL);
 
 	iconv_close(cd);
 	return ret;
@@ -1545,7 +1551,7 @@ __vhd_create(const char *name, uint64_t total_size,
 
 	hdr  = &s.hdr;
 	ftr  = &s.ftr;
-	err  = -1;
+	err  = 0;
 	bat  = NULL;
 
 	blks = (total_size + ((u64)1 << BLK_SHIFT) - 1) >> BLK_SHIFT;
@@ -1557,7 +1563,7 @@ __vhd_create(const char *name, uint64_t total_size,
 	s.fd = fd = open(name, 
 			 O_WRONLY | O_CREAT | O_TRUNC | O_LARGEFILE, 0644);
 	if (fd < 0)
-		return err;
+		return -errno;
 
 	memset(ftr, 0, sizeof(struct hd_ftr));
 	memcpy(ftr->cookie, HD_COOKIE, sizeof(ftr->cookie));
@@ -1602,14 +1608,15 @@ __vhd_create(const char *name, uint64_t total_size,
 			parent.private  = malloc(sizeof(struct vhd_state));
 			if (!parent.private) {
 				DPRINTF("ERROR allocating parent state\n");
-				return -ENOMEM;
+				err = -ENOMEM;
+				goto out;
 			}
 			oflags = VHD_FLAG_OPEN_RDONLY | VHD_FLAG_OPEN_NO_CACHE;
-			if ((ret = __vhd_open(&parent, backing_file->name, 
-					      oflags)) != 0) {
-				DPRINTF("ERROR: %s is not a valid VHD file.",
+			err = __vhd_open(&parent, backing_file->name, oflags);
+			if (err) {
+				DPRINTF("ERROR: opening parent %s",
 					backing_file->name);
-				return ret;
+				goto out;
 			}
 
 			p = (struct vhd_state *)parent.private;
@@ -1622,16 +1629,16 @@ __vhd_create(const char *name, uint64_t total_size,
 			hdr->max_bat_size = blks;
 
 		set_parent:
-			if ((ret = set_parent(&s, p, 
-					      backing_file, flags)) != 0) {
-				DPRINTF("ERROR attaching to parent %s (%d)\n",
-					backing_file->name, ret);
-				if (p)
-					vhd_close(&parent);
-				return ret;
-			}
-			if (p)
+			err = set_parent(&s, p, backing_file, flags);
+			if (p) {
 				vhd_close(&parent);
+				free(p);
+			}
+			if (err) {
+				DPRINTF("ERROR attaching to parent %s (%d)\n",
+					backing_file->name, err);
+				goto out;
+			}
 		}
 
 		hdr->checksum = h_checksum(hdr);
@@ -1643,23 +1650,27 @@ __vhd_create(const char *name, uint64_t total_size,
 		/* copy of footer */
 		if (lseek64(fd, 0, SEEK_SET) == (off64_t)-1) {
 			DPRINTF("ERROR seeking footer copy\n");
+			err = -errno;
 			goto out;
 		}
-		if (vhd_write_hd_ftr(fd, ftr))
+		if ((err = vhd_write_hd_ftr(fd, ftr)))
 			goto out;
 
 		/* header */
 		if (lseek64(fd, ftr->data_offset, SEEK_SET) == (off64_t)-1) {
 			DPRINTF("ERROR seeking header\n");
+			err = -errno;
 			goto out;
 		}
-		if (vhd_write_dd_hdr(fd, hdr))
+		if ((err = vhd_write_dd_hdr(fd, hdr)))
 			goto out;
 
 		bat_secs = secs_round_up(blks * sizeof(u32));
 		bat = calloc(1, bat_secs << VHD_SECTOR_SHIFT);
-		if (!bat)
+		if (!bat) {
+			err = -ENOMEM;
 			goto out;
+		}
 
 		for (i = 0; i < blks; i++) {
 			bat[i] = DD_BLK_UNUSED;
@@ -1669,21 +1680,34 @@ __vhd_create(const char *name, uint64_t total_size,
 		/* bat */
 		if (lseek64(fd, hdr->table_offset, SEEK_SET) == (off64_t)-1) {
 			DPRINTF("ERROR seeking bat\n");
+			err = -errno;
 			goto out;
 		}
 		if (write(fd, bat, bat_secs << VHD_SECTOR_SHIFT) !=
-		    bat_secs << VHD_SECTOR_SHIFT)
+		    bat_secs << VHD_SECTOR_SHIFT) {
+			err = (errno ? -errno : -EIO);
 			goto out;
+		}
 	} else {
-		char buf[4096];
-		memset(buf, 0, 4096);
+		char *buf;
+		ssize_t megs, mb;
+		
+		mb   = 1 << 20;
+		megs = size >> 20;
+		buf  = calloc(1, mb);
+		if (!buf) {
+			err = -ENOMEM;
+			goto out;
+		}
 
-		for (i = 0; i < size; i += 4096) 
-			if (write(fd, buf, 4096) != 4096) 
+		for (i = 0; i < megs; i++)
+			if (write(fd, buf, mb) != mb) {
+				err = (errno ? -errno : -EIO);
 				goto out;
+			}
 	}
 
-	if (vhd_write_hd_ftr(fd, ftr))
+	if ((err = vhd_write_hd_ftr(fd, ftr)))
 		goto out;
 
 	/* finished */
@@ -1696,6 +1720,8 @@ __vhd_create(const char *name, uint64_t total_size,
 out:
 	free(bat);
 	close(fd);
+	if (err)
+		unlink(name);
 	return err;
 }
 

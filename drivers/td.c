@@ -259,6 +259,7 @@ td_create(int type, int argc, char *argv[])
 	if (fd == -1)
 		return errno;
 
+	size >>= 20;
 	for (i = 0; i < size; i++)
 		if (write(fd, buf, mb) != mb) {
 			close(fd);
