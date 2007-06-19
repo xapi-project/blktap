@@ -223,6 +223,7 @@ td_create(int type, int argc, char *argv[])
 
 	mb   = 1 << 20;
 	size = atoi(argv[optind++]);
+	size = size << 20;
 	name = argv[optind];
 
 	if (strnlen(name, MAX_NAME_LEN) == MAX_NAME_LEN) {
