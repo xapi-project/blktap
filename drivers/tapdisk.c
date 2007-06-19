@@ -1005,11 +1005,15 @@ int do_cow_read(struct disk_driver *dd, blkif_request_t *req,
 {
 	int ret;
 	char *page;
+	blkif_t *blkif;
+	pending_req_t *preq;
 	uint64_t seg_start, seg_end;
 	struct td_state  *s = dd->td_state;
 	tapdev_info_t *info = s->ring_info;
 	struct disk_driver *parent = dd->next;
 	
+	blkif     = s->blkif;
+	preq      = &blkif->pending_list[req->id];
 	seg_start = segment_start(req, sidx);
 	seg_end   = seg_start + req->seg[sidx].last_sect + 1;
 	
@@ -1030,9 +1034,13 @@ int do_cow_read(struct disk_driver *dd, blkif_request_t *req,
 	/* reissue request to backing file */
 	DBG("%s: submitting %d, %llu (%d secs) to parent\n",
 	    __func__, sidx, sector, nr_secs);
+
+	preq->submitting++;
 	ret = parent->drv->td_queue_read(parent, sector, nr_secs,
 					 page, send_responses, 
 					 req->id, (void *)(long)sidx);
+	preq->submitting--;
+
 	if (ret > 0)
 		parent->early += ret;
 
@@ -1060,12 +1068,12 @@ static int queue_request(struct td_state *s, blkif_request_t *req)
 
 	if (queue_closed(s)) {
 		err = -EIO;
-		goto send_responses;
+		goto send_response;
 	}
 	
 	if ((dd->flags & TD_RDONLY) && (req->operation == BLKIF_OP_WRITE)) {
 		err = -EINVAL;
-		goto send_responses;
+		goto send_response;
 	}
 	
 	preq->submitting = 1;
@@ -1131,8 +1139,9 @@ static int queue_request(struct td_state *s, blkif_request_t *req)
 		sector_nr += nsects;
 	}
 
- send_responses:
-	preq->submitting = 0;
+	preq->submitting--;
+
+ send_response:
 	/* force write_rsp_to_ring for synchronous case */
 	if (preq->secs_pending == 0) {
 		ret = send_responses(dd, err, 0, 0, idx, (void *)(long)0);
