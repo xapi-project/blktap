@@ -196,9 +196,10 @@ free_disk_driver(struct disk_driver *dd)
 int
 td_create(int type, int argc, char *argv[])
 {
+	ssize_t mb;
 	uint64_t size;
 	char *name, *buf;
-	int c, i, fd, pagesize, sparse = 1;
+	int c, i, fd, sparse = 1;
 
 	if (type == DISK_TYPE_VMDK) {
 		fprintf(stderr, "vmdk create not supported\n");
@@ -220,10 +221,9 @@ td_create(int type, int argc, char *argv[])
 	if (optind != (argc - 2))
 		goto usage;
 
-	size     = atoi(argv[optind++]);
-	size     = size << 20;
-	name     = argv[optind];
-	pagesize = getpagesize();
+	mb   = 1 << 20;
+	size = atoi(argv[optind++]);
+	name = argv[optind];
 
 	if (strnlen(name, MAX_NAME_LEN) == MAX_NAME_LEN) {
 		fprintf(stderr, "Device name too long\n");
@@ -250,7 +250,7 @@ td_create(int type, int argc, char *argv[])
 		return EINVAL;
 	}
 
-	buf = calloc(1, pagesize);
+	buf = calloc(1, mb);
 	if (!buf)
 		return ENOMEM;
 
@@ -258,8 +258,8 @@ td_create(int type, int argc, char *argv[])
 	if (fd == -1)
 		return errno;
 
-	for (i = 0; i < size; i += pagesize)
-		if (write(fd, buf, pagesize) != pagesize) {
+	for (i = 0; i < size; i++)
+		if (write(fd, buf, mb) != mb) {
 			close(fd);
 			unlink(name);
 			free(buf);
