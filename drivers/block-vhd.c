@@ -1703,8 +1703,10 @@ __vhd_create(const char *name, uint64_t total_size,
 		for (i = 0; i < megs; i++)
 			if (write(fd, buf, mb) != mb) {
 				err = (errno ? -errno : -EIO);
+				free(buf);
 				goto out;
 			}
+		free(buf);
 	}
 
 	if ((err = vhd_write_hd_ftr(fd, ftr)))
