@@ -357,7 +357,6 @@ static void unmap_disk(struct td_state *s)
 		entry->next->pprev = entry->pprev;
 
 	close(info->fd);
-	free_state(s);
 
 	return;
 }
@@ -769,12 +768,11 @@ static int read_msg(char *buf)
 			return 1;
 
 		case CTLMSG_CLOSE:
-			s = get_state(msg->cookie);
-			
-			/* close now if process was created but not mapped,
-			 * as it will never receive SIGTERM from blktap */
-			if (s && ((tapdev_info_t *)s->ring_info)->mem <= 0)
-				unmap_disk(s);
+			/* we'll close when we receive SIGTERM from blktap,
+			 * unless there are no connected disks, in which case
+			 * we'll close now.
+			 *
+			 * cleanup is done in main() when (run == 0). */
 
 			sig_handler(SIGINT);
 
@@ -1508,9 +1506,7 @@ int main(int argc, char *argv[])
 		s = ptr->s;
 
 		unmap_disk(s);
-		free(s->blkif);
-		free(s->ring_info);
-		free(s);
+		free_state(s);
 		close(ptr->tap_fd);
 		ptr = ptr->next;
 	}
