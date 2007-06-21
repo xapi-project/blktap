@@ -928,11 +928,13 @@ __vhd_open(struct disk_driver *dd, const char *name, vhd_flag_t flags)
 	}
 
         /* Read the disk footer. */
-        if (vhd_read_hd_ftr(fd, &s->ftr, flags) != 0) {
+        ret = vhd_read_hd_ftr(fd, &s->ftr, flags);
+	if (ret) {
 		if (!test_vhd_flag(flags, VHD_FLAG_OPEN_QUIET))
 			DPRINTF("Error reading VHD footer.\n");
-                return -EINVAL;
+                return ret;
         }
+
 #if (DEBUGGING == 1)
         debug_print_footer(&s->ftr);
 #endif
