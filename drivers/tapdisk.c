@@ -1459,7 +1459,7 @@ int main(int argc, char *argv[])
                              (fd_set *) 0, &timeout);
 		DBG("%s: select returned %d (%d)\n", __func__, ret, errno);
 
-		if (ret >= 0) {
+		if (ret >= 0 || shutdown_requested) {
 			ptr = fd_start;
 			while (ptr != NULL) {
 				int progress_made = 0;
