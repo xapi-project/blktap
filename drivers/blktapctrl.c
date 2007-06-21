@@ -855,10 +855,28 @@ int open_ctrl_socket(char *devname)
 
 	if (mkdir(BLKTAP_CTRL_DIR, 0755) == 0)
 		DPRINTF("Created %s directory\n", BLKTAP_CTRL_DIR);
-	ret = mkfifo(devname,S_IRWXU|S_IRWXG|S_IRWXO);
-	if ( (ret != 0) && (errno != EEXIST) ) {
-		DPRINTF("ERROR: pipe failed (%d)\n", errno);
-		exit(0);
+
+	ret = mkfifo(devname, S_IRWXU | S_IRWXG | S_IRWXO);
+	if (ret) {
+		if (errno == EEXIST) {
+			/*
+			 * Remove fifo since it may have data from
+			 * it's previous use --- earlier invocation
+			 * of tapdisk may not have read all messages.
+			 */
+			ret = unlink(devname);
+			if (ret) {
+				DPRINTF("ERROR: unlink(%s) failed (%d)\n",
+					devname, errno);
+				return -1;
+			}
+
+			ret = mkfifo(devname, S_IRWXU | S_IRWXG | S_IRWXO);
+		}
+		if (ret) {
+			DPRINTF("ERROR: pipe failed (%d)\n", errno);
+			return -1;
+		}
 	}
 
 	ipc_fd = open(devname,O_RDWR|O_NONBLOCK);
