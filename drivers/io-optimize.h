@@ -4,7 +4,7 @@
 #include <libaio.h>
 #include "profile.h"
 
-#define IO_TRACE 1
+#define IO_TRACE 0
 
 struct opio;
 
