@@ -171,7 +171,7 @@ int blkif_init(blkif_t *blkif, long int handle, long int pdev)
 	}
 	
 	devnum = new_devmap_hook(blkif);
-	if (devnum == -1)
+	if (devnum < 0)
 		return -1;
 	blkif->devnum = devnum;
 	
