@@ -206,28 +206,32 @@ static void handle_checkpoint_request(struct xs_handle *h, char *bepath)
 	free(cpp);
 }
 
-static void handle_lock_request(struct xs_handle *h, char *bepath)
+static int handle_lock_request(struct xs_handle *h, char *bepath)
 {
-	int err;
-	char *lock;
+	int ret;
+	unsigned int len;
+	char *lock, *lock_path;
 	struct backend_info *binfo;
 
-	err = xs_gather(h, bepath, "lock", NULL, &lock, NULL);
-	if (err)
-		return;
-
 	binfo = be_lookup_be(bepath);
-	if (binfo) {
-		if (!binfo->blkif->lock_info || 
-		    strcmp(binfo->blkif->lock_info, lock)) {
-			free(binfo->blkif->lock_info);
-			binfo->blkif->lock_info = lock;
-			blkif_lock(binfo->blkif);
-			return;
-		}
+	if (!binfo)
+		return -EINVAL;
+
+	if (asprintf(&lock_path, "%s/lock", bepath) == -1)
+		return -ENOMEM;
+
+	lock = xs_read(h, XBT_NULL, lock_path, &len);
+	if (!lock) {
+		ret = (errno == ENOENT ? 0 : -errno);
+		goto out;
 	}
 
+	ret = blkif_lock(binfo->blkif, lock);
+
+ out:
 	free(lock);
+	free(lock_path);
+	return ret;
 }
 
 static void ueblktap_setup(struct xs_handle *h, char *bepath)
@@ -303,7 +307,9 @@ static void ueblktap_setup(struct xs_handle *h, char *bepath)
 		}
 
 		/* start locking if needed */
-		handle_lock_request(h, bepath);
+		er = handle_lock_request(h, bepath);
+		if (er)
+			goto fail;
 
 		DPRINTF("[BECHG]: ADDED A NEW BLKIF (%s)\n", bepath);
 	}
@@ -417,10 +423,6 @@ static void ueblktap_probe(struct xs_handle *h, struct xenbus_watch *w,
 	if (be_exists_be(bepath)) {
 		/* check for snapshot request */
 		handle_checkpoint_request(h, bepath);
-
-		/* check for lock request */
-		handle_lock_request(h, bepath);
-
 		goto free_be;
 	}
 	

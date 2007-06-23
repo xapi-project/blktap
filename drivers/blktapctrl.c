@@ -66,6 +66,16 @@
 #define MAX_RAND_VAL 0xFFFF
 #define MAX_ATTEMPTS 10
 
+struct cp_request {
+	char     *cp_uuid;
+	int       cp_drivertype;
+};
+
+struct lock_request {
+	int       ro;
+	char     *lock_uuid;
+};
+
 int run = 1;
 int max_timeout = MAX_TIMEOUT;
 int ctlfd = 0;
@@ -481,9 +491,8 @@ static int write_msg(int fd, int msgtype, void *ptr, void *ptr2)
 	case CTLMSG_LOCK:
 		DPRINTF("Write_msg called: CTLMSG_LOCK\n");
 		lock_req = (struct lock_request *)ptr2;
-		msglen = sizeof(msg_hdr_t) + sizeof(msg_lock_t);
-		if (lock_req->locking)
-			msglen += strlen(lock_req->lock_uuid) + 1;
+		msglen = sizeof(msg_hdr_t) + sizeof(msg_lock_t) + 
+			strlen(lock_req->lock_uuid) + 1;
 		buf = calloc(1, msglen);
 		if (!buf)
 			return -1;
@@ -495,15 +504,12 @@ static int write_msg(int fd, int msgtype, void *ptr, void *ptr2)
 		msg->cookie = blkif->cookie;
 
 		msg_lock = (msg_lock_t *)(buf + sizeof(msg_hdr_t));
-		msg_lock->locking = lock_req->locking;
-		if (msg_lock->locking) {
-			msg_lock->ro = lock_req->ro;
-			msg_lock->uuid_off = sizeof(msg_hdr_t) + 
-				sizeof(msg_lock_t);
-			msg_lock->uuid_len = strlen(lock_req->lock_uuid) + 1;
-			memcpy(&buf[msg_lock->uuid_off], 
-			       lock_req->lock_uuid, msg_lock->uuid_len);
-		}
+		msg_lock->ro = lock_req->ro;
+		msg_lock->uuid_off = sizeof(msg_hdr_t) + 
+			sizeof(msg_lock_t);
+		msg_lock->uuid_len = strlen(lock_req->lock_uuid) + 1;
+		memcpy(&buf[msg_lock->uuid_off], 
+		       lock_req->lock_uuid, msg_lock->uuid_len);
 
 		break;
 		
@@ -610,7 +616,16 @@ static int read_msg(int fd, int msgtype, void *ptr)
 				blkif->err = 
 					*((int *)(buf + sizeof(msg_hdr_t)));
 			break;
-			
+
+		case CTLMSG_LOCK_RSP:
+			DPRINTF("Received CTLMSG_LOCK_RSP\n");
+			if (msgtype != CTLMSG_LOCK_RSP)
+				ret = 0;
+			else
+				blkif->err =
+					*((int *)(buf + sizeof(msg_hdr_t)));
+			break;
+
 		default:
 			DPRINTF("UNKNOWN MESSAGE TYPE RECEIVED\n");
 			ret = 0;
@@ -775,6 +790,8 @@ int blktapctrl_checkpoint(blkif_t *blkif, char *cp_request)
 	blkif_t *tmp = NULL;
 	struct cp_request req;
 
+	blkif->err = 0;
+
 	DPRINTF("Creating checkpoint %s\n", cp_request);
 	if (test_path(cp_request, &path, &drivertype, &tmp) == -1) {
 		DPRINTF("invalid checkpoint request\n");
@@ -798,48 +815,47 @@ int blktapctrl_checkpoint(blkif_t *blkif, char *cp_request)
 	return blkif->err;
 }
 
-int blktapctrl_lock(blkif_t *blkif)
+int blktapctrl_lock(blkif_t *blkif, char *lock)
 {
 	int len, err = 0;
-	char *tmp, *lock, rw;
+	char *tmp, rw;
 	struct lock_request req;
 
-	lock = blkif->lock_info;
-
-	if (!lock)
-		return -EINVAL;
+	/* not locking... no need to signal tapdisk */
+	if (!strcmp(lock, "nil"))
+		return 0;
 
 	memset(&req, 0, sizeof(struct lock_request));
 
-	if (!strcmp(lock, "nil"))
-		req.locking = 0;
-	else {
-		req.locking = 1;
-		tmp = strchr(lock, ':');
-		if (!tmp)
-			return -EINVAL;
+	tmp = strchr(lock, ':');
+	if (!tmp)
+		return -EINVAL;
 
-		rw = *(tmp + 1);
-		if (rw == 'r')
-			req.ro = 1;
-		else if (rw != 'w')
-			return -EINVAL;
-
-		req.lock_uuid = malloc(tmp - lock + 1);
-		if (!req.lock_uuid)
-			return -ENOMEM;
-
-		memcpy(req.lock_uuid, lock, tmp - lock);
-		req.lock_uuid[tmp - lock] = '\0';
-	}
+	rw = *(tmp + 1);
+	if (rw == 'r')
+		req.ro = 1;
+	else if (rw != 'w')
+		return -EINVAL;
+	
+	req.lock_uuid = malloc(tmp - lock + 1);
+	if (!req.lock_uuid)
+		return -ENOMEM;
+	
+	memcpy(req.lock_uuid, lock, tmp - lock);
+	req.lock_uuid[tmp - lock] = '\0';
 
 	if (write_msg(blkif->fds[WRITE], CTLMSG_LOCK, blkif, &req) <= 0) {
 		DPRINTF("Write_msg failed - CTLMSG_LOCK\n");
 		err = -EIO;
 	}
-	
+
+	if (read_msg(blkif->fds[READ], CTLMSG_LOCK_RSP, blkif) <= 0) {
+		DPRINTF("Read_msg failed - CTLMSG_LOCK_RSP\n");
+		err = -EIO;
+	}
+
 	free(req.lock_uuid);
-	return err;
+	return (err ? err : blkif->err);
 }
 
 int open_ctrl_socket(char *devname)

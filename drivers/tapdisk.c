@@ -561,6 +561,63 @@ static int shutdown(struct td_state *s)
 	return (--connected_disks == 0);
 }
 
+static inline int check_locks(struct timeval *tv)
+{
+	int ret = (!tv->tv_sec || force_lock_check);
+	force_lock_check = 0;
+	return ret;
+}
+
+static int lock_disk(struct disk_driver *dd)
+{
+	int ret, lease, err;
+	struct td_state *s = dd->td_state;
+
+	err = lock(dd->name, s->lock_uuid, 0, s->lock_ro, &lease, &ret);
+	if (!ret) {
+		DPRINTF("ERROR: VDI %s has been tampered with, "
+			"closing queue! (err = %d)\n", dd->name, err);
+		unlock(dd->name, s->lock_uuid, s->lock_ro, &ret);
+		kill_queue(s);
+		lease = ONE_DAY;
+	} else if (ret < 0) {
+		DBG("Failed to get lock for %s, err: %d\n", dd->name, ret);
+		s->flags |= TD_CLOSED;
+		lease = 1;  /* retry in one second */
+	} else {
+		if (s->flags & TD_CLOSED)
+			DBG("Reacquired lock for %s\n", dd->name);
+		s->flags &= ~TD_CLOSED;
+	}
+
+	return lease;
+}
+
+static void assert_locks(struct timeval *tv)
+{
+	struct td_state *s;
+	fd_list_entry_t *ptr;
+	long lease, min_lease_time = ONE_DAY;
+
+	if (!check_locks(tv))
+		return;
+
+	ptr = fd_start;
+	while (ptr) {
+		s = ptr->s;
+		if (s->received &&
+		    !(s->flags & TD_DEAD) && (s->flags & TD_LOCKING)) {
+			lease = lock_disk(s->disks);
+			min_lease_time = (lease < min_lease_time ?
+					  lease : min_lease_time);
+		}
+		ptr = ptr->next;
+	}
+
+	tv->tv_sec  = min_lease_time;
+	tv->tv_usec = 0;
+}
+
 /*
  * order of operations:
  *  1: drain request queue
@@ -609,8 +666,8 @@ static int checkpoint(struct td_state *s)
 	if (drv != parent->drv)
 		flags |= TD_MULTITYPE_CP;
 
-	err     = -ENOMEM;
-	child   = disk_init(s, drv, NULL, 0);
+	err   = -ENOMEM;
+	child = disk_init(s, drv, NULL, 0);
 	if (!child)
 		goto out;
 
@@ -836,38 +893,40 @@ static int read_msg(char *buf)
 
 		case CTLMSG_LOCK:
 			msg_lock = (msg_lock_t *)(buf + sizeof(msg_hdr_t));
-			
-#ifdef USE_NFS_LOCKS
-			DPRINTF("locking: %d\n", msg_lock->locking);
-#else
+			ret = -EINVAL;
+
+#ifndef USE_NFS_LOCKS
 			DPRINTF("locking support not enabled!\n");
-			return 1;
+			goto lock_out;
 #endif
 
 			s = get_state(msg->cookie);
 			if (!s)
-				return 1;
+				goto lock_out;
 
-			if (!msg_lock->locking) {
-				s->flags &= ~TD_LOCKING;
-				s->flags &= ~TD_CLOSED;
-				return 1;
-			}
-
-			free(s->lock_uuid);
 			s->lock_uuid = malloc(msg_lock->uuid_len);
-			if (!s->lock_uuid)
-				return 1;
+			if (!s->lock_uuid) {
+				ret = -ENOMEM;
+				goto lock_out;
+			}
 			
 			memcpy(s->lock_uuid, 
 			       &buf[msg_lock->uuid_off], msg_lock->uuid_len);
 			s->lock_ro = msg_lock->ro;
 			s->flags  |= TD_LOCKING;
-			force_lock_check = 1;
+			ret        = 0;
 			
-			DPRINTF("%s: lock_uuid: %s, ro: %d\n",
+			DPRINTF("%s: locking: uuid: %s, ro: %d\n",
 				__func__, s->lock_uuid, s->lock_ro);
 
+		lock_out:
+			memset(buf, 0x00, MSG_SIZE);
+			msglen    = sizeof(msg_hdr_t) + sizeof(int);
+			msg->type = CTLMSG_LOCK_RSP;
+			msg->len  = msglen;
+			*((int *)(buf + sizeof(msg_hdr_t))) = ret;
+
+			len = write(fds[WRITE], buf, msglen);
 			return 1;
 
 		default:
@@ -1248,11 +1307,18 @@ static void get_io_request(struct td_state *s)
 		return; /* We have received signal to close */
 
 	if (!s->received) {
-		if (reopen_disks(s)) {
-			DPRINTF("reopening disks failed\n");
-			kill_queue(s);
-		} else 
-			DPRINTF("reopening disks succeeded\n");
+		if (s->flags & TD_LOCKING) {
+			lock_disk(s->disks);
+			force_lock_check = 1;
+		}
+
+		if (!queue_closed(s)) {
+			if (reopen_disks(s)) {
+				DPRINTF("reopening disks failed\n");
+				kill_queue(s);
+			} else 
+				DPRINTF("reopening disks succeeded\n");
+		}
 	}
 
 	rp = info->fe_ring.sring->req_prod; 
@@ -1278,63 +1344,6 @@ static void get_io_request(struct td_state *s)
 
 	submit_requests(s);
 }
-
-#if defined(USE_NFS_LOCKS)
-static inline int check_locks(struct timeval *tv)
-{
-	int ret = (!tv->tv_sec || force_lock_check);
-	force_lock_check = 0;
-	return ret;
-}
-
-static long lock_disk(struct disk_driver *dd)
-{
-	int ret, lease, err;
-	struct td_state *s = dd->td_state;
-
-	err = lock(dd->name, s->lock_uuid, 0, s->lock_ro, &lease, &ret);
-	if (!ret) {
-		DPRINTF("ERROR: VDI %s has been tampered with, "
-			"closing queue! (err = %d)\n", dd->name, err);
-		//unlock(dd->name, s->lock_uuid, s->lock_ro);
-		kill_queue(s);
-		lease = ONE_DAY;
-	} else if (ret < 0) {
-		DBG("Failed to get lock for %s, err: %d\n", dd->name, ret);
-		s->flags |= TD_CLOSED;
-		lease = 1;  /* retry in one second */
-	}
-	else {
-		if (s->flags & TD_CLOSED)
-			DBG("Reacquired lock for %s\n", dd->name);
-		s->flags &= ~TD_CLOSED;
-	}
-
-	return lease;
-}
-
-static void assert_locks(struct timeval *tv)
-{
-	struct td_state *s;
-	fd_list_entry_t *ptr;
-	struct disk_driver *dd;
-	long lease, min_lease_time = ONE_DAY;
-
-	ptr = fd_start;
-	while (ptr) {
-		s = ptr->s;
-		if ((s->flags & TD_LOCKING) && !(s->flags & TD_DEAD)) {
-			lease = lock_disk(s->disks);
-			min_lease_time = (lease < min_lease_time ?
-					  lease : min_lease_time);
-		}
-		ptr = ptr->next;
-	}
-
-	tv->tv_sec  = min_lease_time;
-	tv->tv_usec = 0;
-}
-#endif
 
 static inline void set_retry_timeout(struct timeval *tv)
 {
@@ -1444,8 +1453,7 @@ int main(int argc, char *argv[])
 		LOCAL_FD_SET(&readfds);
 
 #if defined(USE_NFS_LOCKS)
-		if (check_locks(&timeout))
-			assert_locks(&timeout);
+		assert_locks(&timeout);
 #else
 		timeout.tv_sec = ONE_DAY;
 #endif
