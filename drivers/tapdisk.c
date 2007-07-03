@@ -342,8 +342,8 @@ static void unmap_disk(struct td_state *s)
 	dd = s->disks;
 	while (dd) {
 		tmp = dd->next;
-		DPRINTF("closing %s\n", dd->name);
 		dd->drv->td_close(dd);
+		DPRINTF("closed %s\n", dd->name);
 		free_driver(dd);
 		dd = tmp;
 	}

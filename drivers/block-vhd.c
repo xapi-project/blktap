@@ -1098,9 +1098,14 @@ vhd_close(struct disk_driver *dd)
 		free(bm->map);
 		free(bm->shadow);
 	}
+
 	free_bat(s);
 	opio_free(&s->opioctx);
-	close(s->fd);
+
+	if (fsync(s->fd) == -1)
+		DPRINTF("ERROR: syncing file: %d\n", errno);
+	if (close(s->fd) == -1)
+		DPRINTF("ERROR: closing file: %d\n", errno);
 
 	if (s->sync) {
 		close(s->dummy_pipe[0]);
