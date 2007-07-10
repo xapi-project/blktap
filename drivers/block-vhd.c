@@ -2504,8 +2504,8 @@ update_bat(struct vhd_state *s, uint32_t blk)
 static int
 allocate_block(struct vhd_state *s, uint32_t blk)
 {
-	int err;
-	uint64_t offset;
+	int err, gap;
+	uint64_t offset, size;
 	struct vhd_bitmap *bm;
 
 	ASSERT(bat_entry(s, blk) == DD_BLK_UNUSED);
@@ -2515,12 +2515,15 @@ allocate_block(struct vhd_state *s, uint32_t blk)
 		return 0;
 	}
 
-	s->bat.pbw_blk    = blk;
-	offset            = s->next_db << VHD_SECTOR_SHIFT;
+	gap            = 0;
+	s->bat.pbw_blk = blk;
+	offset         = s->next_db << VHD_SECTOR_SHIFT;
 
 	/* data region of segment should begin on page boundary */
-	if ((s->next_db + s->bm_secs) % s->spp)
-		s->next_db += (s->spp - ((s->next_db + s->bm_secs) % s->spp));
+	if ((s->next_db + s->bm_secs) % s->spp) {
+		gap = (s->spp - ((s->next_db + s->bm_secs) % s->spp));
+		s->next_db += gap;
+	}
 
 	s->bat.pbw_offset = s->next_db;
 
@@ -2532,7 +2535,14 @@ allocate_block(struct vhd_state *s, uint32_t blk)
 		return -errno;
 	}
 
-	if ((err = write(s->fd, s->zeros, s->zsize)) != s->zsize) {
+	size = ((u64)(s->spb + s->bm_secs + gap)) << VHD_SECTOR_SHIFT;
+	if (size > s->zsize) {
+		DPRINTF("ERROR: size: %llx, zsize: %x, gap: %d\n", 
+			size, s->zsize, gap);
+		size = s->zsize;
+	}
+
+	if ((err = write(s->fd, s->zeros, size)) != size) {
 		DBG("%s: write failed: %d\n", __func__, errno);
 		return (err == -1 ? -errno : -EIO);
 	}
