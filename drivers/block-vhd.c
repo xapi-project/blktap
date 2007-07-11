@@ -3547,14 +3547,14 @@ vhd_do_callbacks(struct disk_driver *dd, int sid)
 		struct iocb *io = ep->obj;
 		struct vhd_request *req = (struct vhd_request *)io->data;
 
-		req->error = (ep->res == io->u.c.nbytes) ? 0 : -EIO;
+		req->error = (ep->res == io->u.c.nbytes ? 0 : (int)ep->res);
 
 		if (req->error) {
-			DBG("%s: %s: ERROR: op: %u, lsec: %llu, "
-			    "nr_secs: %u, res: %lu, nbytes: %lu, "
-			    "blk: %llu, blk_offset: %u\n", __func__, 
-			    s->name, req->op, req->lsec, req->nr_secs, 
-			    ep->res, io->u.c.nbytes, req->lsec / s->spb,
+			DBG("%s: %s: ERROR: %d: op: %u, lsec: %llu, "
+			    "nr_secs: %u, nbytes: %lu, blk: %llu, "
+			    "blk_offset: %u\n", __func__, s->name, 
+			    req->error, req->op, req->lsec, req->nr_secs, 
+			    io->u.c.nbytes, req->lsec / s->spb,
 			    bat_entry(s, req->lsec / s->spb));
 			TRACE(s);
 		}
