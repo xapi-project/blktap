@@ -117,6 +117,18 @@ int blkif_connected(blkif_t *blkif)
 	return 0;
 }
 
+void blkif_unmap(blkif_t *blkif)
+{
+	if (blkif->state != CONNECTED)
+		return;
+
+	if (new_unmap_hook && blkif->minor) {
+		blkif->state = DISCONNECTING;
+		new_unmap_hook(blkif);
+		blkif->state = DISCONNECTED;
+	}
+}
+
 int blkif_init(blkif_t *blkif, long int handle, long int pdev)
 {
 	domid_t domid;
@@ -199,8 +211,7 @@ void free_blkif(blkif_t *blkif)
 		if (blkif->info!=NULL) {
 			free(blkif->info);
 		}
-		if (new_unmap_hook != NULL && blkif->minor != 0) 
-			new_unmap_hook(blkif);
+		blkif_unmap(blkif);
 		free(blkif);
 	}
 }

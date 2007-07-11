@@ -100,12 +100,6 @@ void sig_handler(int sig)
 	if (connected_disks < 1) run = 0;	
 }
 
-void initiate_shutdown(int sig)
-{
-	DPRINTF("received signal to terminate\n");
-	shutdown_requested = 1;
-}
-
 void inline debug_disks(struct td_state *s)
 {
 	struct disk_driver *dd;
@@ -825,11 +819,12 @@ static int read_msg(char *buf)
 			return 1;
 
 		case CTLMSG_CLOSE:
-			/* we'll close when we receive SIGTERM from blktap,
-			 * unless there are no connected disks, in which case
-			 * we'll close now.
-			 *
-			 * cleanup is done in main() when (run == 0). */
+			s = get_state(msg->cookie);
+			if (s) {
+				unmap_disk(s);
+				free_state(s);
+				connected_disks--;
+			}
 
 			sig_handler(SIGINT);
 
@@ -1414,7 +1409,6 @@ int main(int argc, char *argv[])
 	/*Setup signal handlers*/
 	signal (SIGBUS, sig_handler);
 	signal (SIGINT, sig_handler);
-	signal (SIGTERM, initiate_shutdown);
 	signal (SIGUSR1, debug);
 
 #if defined(CORE_DUMP)

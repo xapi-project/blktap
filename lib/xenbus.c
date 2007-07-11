@@ -234,6 +234,24 @@ static int handle_lock_request(struct xs_handle *h, char *bepath)
 	return ret;
 }
 
+static void handle_shutdown_request(struct xs_handle *h, char *bepath)
+{
+	char *shutdown_path;
+	struct backend_info *binfo;
+
+	binfo = be_lookup_be(bepath);
+	if (!binfo)
+		return;
+
+	if (asprintf(&shutdown_path, "%s/shutdown-tapdisk", bepath) == -1)
+		return;
+
+	if (xs_exists(h, shutdown_path))
+		blkif_unmap(binfo->blkif);
+
+	free(shutdown_path);
+}
+
 static void ueblktap_setup(struct xs_handle *h, char *bepath)
 {
 	struct backend_info *be;
@@ -423,6 +441,10 @@ static void ueblktap_probe(struct xs_handle *h, struct xenbus_watch *w,
 	if (be_exists_be(bepath)) {
 		/* check for snapshot request */
 		handle_checkpoint_request(h, bepath);
+
+		/* check for shutdown request */
+		handle_shutdown_request(h, bepath);
+
 		goto free_be;
 	}
 	
