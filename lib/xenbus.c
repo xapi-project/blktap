@@ -384,6 +384,7 @@ static void ueblktap_probe(struct xs_handle *h, struct xenbus_watch *w,
 	int er, len;
 	blkif_t *blkif;
 	
+	DPRINTF("ueblktap_probe %s\n", bepath_im);
 	
 	bepath = strdup(bepath_im);
 	
@@ -439,6 +440,8 @@ static void ueblktap_probe(struct xs_handle *h, struct xenbus_watch *w,
 
 	/* Are we already tracking this device? */
 	if (be_exists_be(bepath)) {
+		DPRINTF("ueblktap_probe exists %s\n", bepath);
+
 		/* check for snapshot request */
 		handle_checkpoint_request(h, bepath);
 
