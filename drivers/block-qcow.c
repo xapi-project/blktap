@@ -1388,7 +1388,7 @@ qcow_get_info(struct disk_driver *dd, struct qcow_info *info)
         info->secs    = dd->td_state->size;
         info->l1      = malloc(sizeof(uint64_t) * info->l1_size);
         if (!info->l1)
-                return -1;
+                return -ENOMEM;
         memcpy(info->l1, s->l1_table, sizeof(uint64_t) * info->l1_size);
 
 	if (s->ext_hdr.xmagic != XEN_MAGIC) {

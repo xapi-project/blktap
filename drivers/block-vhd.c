@@ -1360,6 +1360,7 @@ vhd_get_parent_id(struct disk_driver *child_dd, struct disk_id *id)
 int
 vhd_get_info(struct disk_driver *dd, struct vhd_info *info)
 {
+	int err;
 	char *buf = NULL;
 	struct hd_ftr ftr;
         struct vhd_state *s = (struct vhd_state *)dd->private;
@@ -1369,16 +1370,22 @@ vhd_get_info(struct disk_driver *dd, struct vhd_info *info)
         info->bat_entries = s->hdr.max_bat_size;
         info->bat         = malloc(sizeof(uint32_t) * info->bat_entries);
         if (!info->bat)
-                return -1;
+                return -ENOMEM;
         memcpy(info->bat, s->bat.bat, sizeof(uint32_t) * info->bat_entries);
 
 	if (s->ftr.type != HD_TYPE_FIXED) {
-		if (posix_memalign((void **)&buf, 512, 512))
+		if (posix_memalign((void **)&buf, 512, 512)) {
+			err = -errno;
 			goto fail;
-		if (lseek64(s->fd, 0, SEEK_SET) == (off64_t)-1)
+		}
+		if (lseek64(s->fd, 0, SEEK_SET) == (off64_t)-1) {
+			err = -errno;
 			goto fail;
-		if (read(s->fd, buf, 512) != 512)
+		}
+		if (read(s->fd, buf, 512) != 512) {
+			err = (errno ? -errno : -EIO);
 			goto fail;
+		}
 		memcpy(&ftr, buf, sizeof(struct hd_ftr));
 		
 		info->td_fields[TD_FIELD_HIDDEN] = (long)ftr.hidden;
@@ -1393,7 +1400,8 @@ vhd_get_info(struct disk_driver *dd, struct vhd_info *info)
  fail:
 	free(buf);
 	free(info->bat);
-	return -1;
+	info->bat = NULL;
+	return err;
 }
 
 int
