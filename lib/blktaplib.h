@@ -153,6 +153,7 @@ blkif_t *alloc_blkif(domid_t domid);
 int blkif_init(blkif_t *blkif, long int handle, long int pdev);
 int blkif_connected(blkif_t *blkif);
 void blkif_unmap(blkif_t *blkif);
+int blkif_remap(blkif_t *blkif);
 int blkif_checkpoint(blkif_t *blkif, char *cp_uuid);
 int blkif_lock(blkif_t *blkif, char *lock);
 void free_blkif(blkif_t *blkif);

@@ -234,22 +234,76 @@ static int handle_lock_request(struct xs_handle *h, char *bepath)
 	return ret;
 }
 
-static void handle_shutdown_request(struct xs_handle *h, char *bepath)
+static void handle_shutdown_request(struct xs_handle *h,
+				    struct backend_info *binfo, char *node)
 {
-	char *shutdown_path;
-	struct backend_info *binfo;
+	char *path;
 
-	binfo = be_lookup_be(bepath);
-	if (!binfo)
+	if (strcmp(node, "shutdown-tapdisk"))
 		return;
 
-	if (asprintf(&shutdown_path, "%s/shutdown-tapdisk", bepath) == -1)
+	if (asprintf(&path, "%s/%s", binfo->backpath, node) == -1)
 		return;
 
-	if (xs_exists(h, shutdown_path))
-		blkif_unmap(binfo->blkif);
+	if (!xs_exists(h, path))
+		goto out;
 
-	free(shutdown_path);
+	blkif_unmap(binfo->blkif);
+	xs_rm(h, XBT_NULL, path);
+
+ out:
+	free(path);
+}
+
+/* Supply the information about the device to xenstore */
+static int tapdisk_connect(struct xs_handle *h, struct backend_info *be)
+{
+	if (!xs_printf(h, be->backpath, "sectors", "%llu",
+		       be->blkif->ops->get_size(be->blkif))) {
+		DPRINTF("ERROR: Failed writing sectors");
+		return -1;
+	}
+
+	if (!xs_printf(h, be->backpath, "sector-size", "%lu",
+		       be->blkif->ops->get_secsize(be->blkif))) {
+		DPRINTF("ERROR: Failed writing sector-size");
+		return -1;
+	}
+
+	if (!xs_printf(h, be->backpath, "info", "%u",
+		       be->blkif->ops->get_info(be->blkif))) {
+		DPRINTF("ERROR: Failed writing info");
+		return -1;
+	}
+
+	blkif_connected(be->blkif);
+	return 0;
+}
+
+static void handle_restart_request(struct xs_handle *h,
+				   struct backend_info *binfo, char *node)
+{
+	char *path;
+
+	if (strcmp(node, "restart-tapdisk"))
+		return;
+
+	if (asprintf(&path, "%s/%s", binfo->backpath, node) == -1)
+		return;
+
+	if (!xs_exists(h, path))
+		goto out;
+
+	if (!blkif_remap(binfo->blkif))
+		tapdisk_connect(h, binfo);
+	else
+		DPRINTF("ERROR: failed to restart tapdisk\n");
+
+	xs_rm(h, XBT_NULL, path);
+
+ out:
+	free(path);
+	return;
 }
 
 static void ueblktap_setup(struct xs_handle *h, char *bepath)
@@ -332,36 +386,11 @@ static void ueblktap_setup(struct xs_handle *h, char *bepath)
 		DPRINTF("[BECHG]: ADDED A NEW BLKIF (%s)\n", bepath);
 	}
 
-	/* Supply the information about the device to xenstore */
-	er = xs_printf(h, be->backpath, "sectors", "%llu",
-			be->blkif->ops->get_size(be->blkif));
-
-	if (er == 0) {
-		DPRINTF("ERROR: Failed writing sectors");
-		goto fail;
+	if (!tapdisk_connect(h, be)) {
+		DPRINTF("[SETUP] Complete\n\n");
+		goto close;
 	}
 
-	er = xs_printf(h, be->backpath, "sector-size", "%lu",
-		       be->blkif->ops->get_secsize(be->blkif));
-
-	if (er == 0) {
-		DPRINTF("ERROR: Failed writing sector-size");
-		goto fail;
-	}
-
-	er = xs_printf(h, be->backpath, "info", "%u",
-			be->blkif->ops->get_info(be->blkif));
-
-	if (er == 0) {
-		DPRINTF("ERROR: Failed writing info");
-		goto fail;
-	}
-
-	blkif_connected(be->blkif);
-
-	DPRINTF("[SETUP] Complete\n\n");
-	goto close;
-	
 fail:
 	if ( (be != NULL) && (be->blkif != NULL) ) 
 		backend_remove(be);
@@ -379,8 +408,8 @@ close:
 static void ueblktap_probe(struct xs_handle *h, struct xenbus_watch *w, 
 			   const char *bepath_im)
 {
-	struct backend_info *be = NULL;
-	char *frontend = NULL, *bepath = NULL, *p;
+	struct backend_info *be = NULL, *existing_be = NULL;
+	char *frontend = NULL, *bepath = NULL, *p, *node;
 	int er, len;
 	blkif_t *blkif;
 	
@@ -403,7 +432,8 @@ static void ueblktap_probe(struct xs_handle *h, struct xenbus_watch *w,
 		goto free_be;
 	}
 	bepath[len] = '\0';
-	
+	node = bepath + len + 1;
+
 	be = malloc(sizeof(*be));
 	if (!be) {
 		DPRINTF("ERROR: allocating backend structure\n");
@@ -439,14 +469,17 @@ static void ueblktap_probe(struct xs_handle *h, struct xenbus_watch *w,
 	}
 
 	/* Are we already tracking this device? */
-	if (be_exists_be(bepath)) {
+	if ((existing_be = be_lookup_be(bepath))) {
 		DPRINTF("ueblktap_probe exists %s\n", bepath);
 
 		/* check for snapshot request */
 		handle_checkpoint_request(h, bepath);
 
 		/* check for shutdown request */
-		handle_shutdown_request(h, bepath);
+		handle_shutdown_request(h, existing_be, node);
+
+		/* check for restart request */
+		handle_restart_request(h, existing_be, node);
 
 		goto free_be;
 	}

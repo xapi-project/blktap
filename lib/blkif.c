@@ -125,6 +125,8 @@ void blkif_unmap(blkif_t *blkif)
 	if (new_unmap_hook && blkif->minor) {
 		blkif->state = DISCONNECTING;
 		new_unmap_hook(blkif);
+		blkif->major = 0;
+		blkif->minor = 0;
 		blkif->state = DISCONNECTED;
 	}
 }
@@ -187,6 +189,38 @@ int blkif_init(blkif_t *blkif, long int handle, long int pdev)
 		return -1;
 	blkif->devnum = devnum;
 	
+	return 0;
+}
+
+int blkif_remap(blkif_t *blkif)
+{
+	int devnum;
+
+	if (!blkif || blkif->state != DISCONNECTED) {
+		DPRINTF("ERROR: invalid attempt to remap blkif\n");
+		return -1;
+	}
+
+	DPRINTF("reconnecting tapdisk for %s\n", blkif->backend_path);
+
+	if (!new_blkif_hook) {
+		DPRINTF("Probe detected a new blkif, but no new_blkif_hook!");
+		return -1;
+	}
+	if (new_blkif_hook(blkif)) {
+		DPRINTF("BLKIF: Image open failed\n");
+		return -1;
+	}
+
+	if (!new_devmap_hook) {
+		DPRINTF("Probe setting up new blkif but no devmap hook!");
+		return -1;
+	}
+	devnum = new_devmap_hook(blkif);
+	if (devnum < 0)
+		return -1;
+	blkif->devnum = devnum;
+
 	return 0;
 }
 
