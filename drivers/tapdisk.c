@@ -960,6 +960,26 @@ static inline void kick_responses(struct td_state *s)
 	}
 }
 
+static void make_response(struct td_state *s, pending_req_t *preq)
+{
+	blkif_request_t tmp;
+	blkif_response_t *rsp;
+
+	tmp = preq->req;
+	rsp = (blkif_response_t *)&preq->req;
+
+	rsp->id = tmp.id;
+	rsp->operation = tmp.operation;
+	rsp->status = preq->status;
+
+	DBG("%s: writing req %d, sec %llu, res %d to ring\n",
+	    __func__, (int)tmp.id, tmp.sector_number, preq->status);
+
+	write_rsp_to_ring(s, rsp);
+	s->returned++;
+	init_preq(preq);
+}
+
 void io_done(struct disk_driver *dd, int sid)
 {
 	struct tap_disk *drv = dd->drv;
@@ -1034,23 +1054,8 @@ int send_responses(struct disk_driver *dd, int res,
 	}
 
 	if (!preq->submitting && !preq->secs_pending) {
-		blkif_request_t tmp;
-		blkif_response_t *rsp;
-
-		tmp = preq->req;
-		rsp = (blkif_response_t *)req;
-		
-		rsp->id = tmp.id;
-		rsp->operation = tmp.operation;
-		rsp->status = preq->status;
-		
-		DBG("%s: writing req %d, sec %llu, res %d to ring\n",
-		    __func__, idx, tmp.sector_number, preq->status);
-
-		write_rsp_to_ring(s, rsp);
+		make_response(s, preq);
 		responses_queued++;
-		s->returned++;
-		init_preq(preq);
 	}
 	return responses_queued;
 }
@@ -1120,6 +1125,13 @@ static int queue_request(struct td_state *s, blkif_request_t *req)
 	dd        = s->disks;
 	preq      = &blkif->pending_list[idx];
 	info      = s->ring_info;
+
+	if (!dd) {
+		preq->status = BLKIF_RSP_ERROR;
+		make_response(s, preq);
+		kick_responses(s);
+		return 0;
+	}
 
 	if (queue_closed(s)) {
 		err = -EIO;
@@ -1227,8 +1239,6 @@ static inline void submit_requests(struct td_state *s)
 {
 	int ret;
 	struct disk_driver *dd;
-
-	DBG("%s: dead? %d\n", __func__, s->flags & TD_DEAD);
 
 	if (s->flags & TD_DEAD) {
 		invalidate_requests(s);
@@ -1473,10 +1483,11 @@ int main(int argc, char *argv[])
 					if (shutdown(ptr->s))
 						run = 0;
 
-				DBG("%s: %d reqs pending, "
-				    "received: %lu, returned: %lu, kicked: %lu\n", 
-				    __func__, requests_pending(ptr->s),
-				    ptr->s->received, ptr->s->returned, ptr->s->kicked);
+				DBG("%s: flags: %u, %d reqs pending, "
+				    "received: %lu, returned: %lu, "
+				    "kicked: %lu\n", __func__, ptr->s->flags,
+				    requests_pending(ptr->s), ptr->s->received,
+				    ptr->s->returned, ptr->s->kicked);
 
 				td_for_each_disk(ptr->s, dd) {
 					if (dd->io_fd[READ] &&
