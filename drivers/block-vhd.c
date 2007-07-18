@@ -567,11 +567,16 @@ vhd_read_hd_ftr(int fd, struct hd_ftr *ftr, vhd_flag_t flags)
 	if (memcmp(ftr->cookie, HD_COOKIE,  8) == 0) goto found_footer;
     
 	/* Last try.  Look for the copy of the footer at the start of image. */
-	if (test_vhd_flag(flags, VHD_FLAG_OPEN_STRICT))
+	if (test_vhd_flag(flags, VHD_FLAG_OPEN_STRICT)) {
 		DPRINTF("NOTE: Couldn't find footer at the end of the VHD "
 			"image.  Using backup footer from start of file.  "
 			"This may have been caused by system crash recovery, "
 			"or this VHD may be corrupt.\n");
+		DPRINTF("Failed to find footer on reopen.  This is probably "
+			"because another tapdisk has opened this VDI.  "
+			"Closing tapdisk queue for debugging purposes.\n");
+		goto out;
+	}
 	if (lseek64(fd, 0, SEEK_SET) == -1) {
 		err = -errno;
 		goto out;
