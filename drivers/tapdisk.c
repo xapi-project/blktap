@@ -443,6 +443,7 @@ static int reopen_disks(struct td_state *s)
 
 	td_for_each_disk(s, dd) {
 		dd->drv->td_close(dd);
+		dd->flags |= TD_STRICT;
 
 		for (i = 0; i < EIO_RETRIES; i++) {
 			err = dd->drv->td_open(dd, dd->name, dd->flags);

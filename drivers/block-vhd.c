@@ -122,6 +122,7 @@ if ( !(_p) ) {                                                                 \
 #define VHD_FLAG_OPEN_RDONLY         1
 #define VHD_FLAG_OPEN_NO_CACHE       2
 #define VHD_FLAG_OPEN_QUIET          4
+#define VHD_FLAG_OPEN_STRICT         8
 
 #define VHD_FLAG_BAT_LOCKED          1
 #define VHD_FLAG_BAT_WRITE_STARTED   2
@@ -560,16 +561,17 @@ vhd_read_hd_ftr(int fd, struct hd_ftr *ftr, vhd_flag_t flags)
 	memcpy(ftr, buf, sizeof(struct hd_ftr));
 	if (memcmp(ftr->cookie, HD_COOKIE,  8) == 0) goto found_footer;
     
-	/* According to the spec, pre-Virtual PC 2004 VHDs used a             */
-	/* 511B footer.  Try that...                                          */
+	/* According to the spec, pre-Virtual PC 2004 VHDs used a            */
+	/* 511B footer.  Try that...                                         */
 	memcpy(ftr, &buf[1], MIN(sizeof(struct hd_ftr), 511));
 	if (memcmp(ftr->cookie, HD_COOKIE,  8) == 0) goto found_footer;
     
 	/* Last try.  Look for the copy of the footer at the start of image. */
-	if (!test_vhd_flag(flags, VHD_FLAG_OPEN_QUIET))
+	if (test_vhd_flag(flags, VHD_FLAG_OPEN_STRICT))
 		DPRINTF("NOTE: Couldn't find footer at the end of the VHD "
-			"image.  Using backup footer from start of file."
-			"This VHD may be corrupt!\n");
+			"image.  Using backup footer from start of file.  "
+			"This may have been caused by system crash recovery, "
+			"or this VHD may be corrupt.\n");
 	if (lseek64(fd, 0, SEEK_SET) == -1) {
 		err = -errno;
 		goto out;
@@ -1043,6 +1045,8 @@ vhd_open (struct disk_driver *dd, const char *name, td_flag_t flags)
 		vhd_flags |= VHD_FLAG_OPEN_RDONLY;
 	if (flags & TD_QUIET)
 		vhd_flags |= VHD_FLAG_OPEN_QUIET;
+	if (flags & TD_STRICT)
+		vhd_flags |= VHD_FLAG_OPEN_STRICT;
 
 	return __vhd_open(dd, name, vhd_flags);
 }
