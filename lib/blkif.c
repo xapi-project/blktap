@@ -119,9 +119,6 @@ int blkif_connected(blkif_t *blkif)
 
 void blkif_unmap(blkif_t *blkif)
 {
-	if (blkif->state != CONNECTED)
-		return;
-
 	if (new_unmap_hook && blkif->minor) {
 		blkif->state = DISCONNECTING;
 		new_unmap_hook(blkif);
