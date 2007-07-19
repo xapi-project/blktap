@@ -569,6 +569,20 @@ static int lock_disk(struct disk_driver *dd)
 	struct td_state *s = dd->td_state;
 
 	err = lock(dd->name, s->lock_uuid, 0, s->lock_ro, &lease, &ret);
+
+	if (!(s->flags & TD_LOCK_ENFORCE)) {
+		if (!ret) {
+			DPRINTF("TAPDISK LOCK ERROR: lock %s did not exist "
+				"for %s: ret %d, err %d\n", s->lock_uuid,
+				dd->name, ret, err);
+			unlock(dd->name, s->lock_uuid, s->lock_ro, &ret);
+		} else if (ret < 0)
+			DPRINTF("TAPDISK LOCK ERROR: failed to renew lock %s "
+				"for %s: ret %d, err %d\n", s->lock_uuid,
+				dd->name, ret, err);
+		return 10;
+	}
+
 	if (!ret) {
 		DPRINTF("ERROR: VDI %s has been tampered with, "
 			"closing queue! (err = %d)\n", dd->name, err);
@@ -911,6 +925,9 @@ static int read_msg(char *buf)
 			s->lock_ro = msg_lock->ro;
 			s->flags  |= TD_LOCKING;
 			ret        = 0;
+
+			if (msg_lock->enforce)
+				s->flags |= TD_LOCK_ENFORCE;
 			
 			DPRINTF("%s: locking: uuid: %s, ro: %d\n",
 				__func__, s->lock_uuid, s->lock_ro);

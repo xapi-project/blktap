@@ -147,7 +147,7 @@ void register_new_unmap_hook(int (*fn)(blkif_t *blkif));
 void register_new_blkif_hook(int (*fn)(blkif_t *blkif));
 void register_connected_blkif_hook(int (*fn)(blkif_t *blkif));
 void register_new_checkpoint_hook(int (*fn)(blkif_t *blkif, char *cp_uuid));
-void register_new_lock_hook(int (*fn)(blkif_t *blkif, char *lock));
+void register_new_lock_hook(int (*fn)(blkif_t *blkif, char *lock, int enforce));
 blkif_t *blkif_find_by_handle(domid_t domid, unsigned int handle);
 blkif_t *alloc_blkif(domid_t domid);
 int blkif_init(blkif_t *blkif, long int handle, long int pdev);
@@ -155,7 +155,7 @@ int blkif_connected(blkif_t *blkif);
 void blkif_unmap(blkif_t *blkif);
 int blkif_remap(blkif_t *blkif);
 int blkif_checkpoint(blkif_t *blkif, char *cp_uuid);
-int blkif_lock(blkif_t *blkif, char *lock);
+int blkif_lock(blkif_t *blkif, char *lock, int enforce);
 void free_blkif(blkif_t *blkif);
 void __init_blkif(void);
 
@@ -209,6 +209,7 @@ typedef struct msg_cp {
 
 typedef struct msg_lock {
 	int       ro;
+	int       enforce;
 	int       uuid_off;
 	int       uuid_len;
 } msg_lock_t;

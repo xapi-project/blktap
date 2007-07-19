@@ -103,8 +103,8 @@ void register_new_checkpoint_hook(int (*fn)(blkif_t *blkif, char *cp_uuid))
 	new_checkpoint_hook = fn;
 }
 
-static int (*new_lock_hook)(blkif_t *blkif, char *lock) = NULL;
-void register_new_lock_hook(int (*fn)(blkif_t *blkif, char *lock))
+static int (*new_lock_hook)(blkif_t *blkif, char *lock, int enforce) = NULL;
+void register_new_lock_hook(int (*fn)(blkif_t *blkif, char *lock, int enforce))
 {
 	new_lock_hook = fn;
 }
@@ -257,11 +257,11 @@ int blkif_checkpoint(blkif_t *blkif, char *cp_uuid)
 	return new_checkpoint_hook(blkif, cp_uuid);
 }
 
-int blkif_lock(blkif_t *blkif, char *lock)
+int blkif_lock(blkif_t *blkif, char *lock, int enforce)
 {
 	if (!new_lock_hook)
 		return -1;
-	return new_lock_hook(blkif, lock);
+	return new_lock_hook(blkif, lock, enforce);
 }
 
 void __init_blkif(void)

@@ -98,6 +98,7 @@ typedef uint32_t td_flag_t;
 #define TD_QUIET           0x00200
 #define TD_STRICT          0x00400
 #define TD_SHUTDOWN        0x00800
+#define TD_LOCK_ENFORCE    0x01000
 
 typedef enum {
 	TD_FIELD_HIDDEN  = 0,

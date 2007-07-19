@@ -208,7 +208,7 @@ static void handle_checkpoint_request(struct xs_handle *h, char *bepath)
 
 static int handle_lock_request(struct xs_handle *h, char *bepath)
 {
-	int ret;
+	int ret, enforce = 0;
 	unsigned int len;
 	char *lock, *lock_path;
 	struct backend_info *binfo;
@@ -217,16 +217,23 @@ static int handle_lock_request(struct xs_handle *h, char *bepath)
 	if (!binfo)
 		return -EINVAL;
 
+	if (!xs_exists(h, "/local/tapdisk/VHD-expects-locking"))
+		return 0;
+
 	if (asprintf(&lock_path, "%s/lock", bepath) == -1)
 		return -ENOMEM;
 
 	lock = xs_read(h, XBT_NULL, lock_path, &len);
 	if (!lock) {
+		DPRINTF("TAPDISK LOCK ERROR: expected lock for %s\n", bepath);
 		ret = (errno == ENOENT ? 0 : -errno);
 		goto out;
 	}
 
-	ret = blkif_lock(binfo->blkif, lock);
+	if (xs_exists(h, "/local/tapdisk/VHD-enforce-locking"))
+		enforce = 1;
+
+	ret = blkif_lock(binfo->blkif, lock, enforce);
 
  out:
 	free(lock);

@@ -73,6 +73,7 @@ struct cp_request {
 
 struct lock_request {
 	int       ro;
+	int       enforce;
 	char     *lock_uuid;
 };
 
@@ -505,6 +506,7 @@ static int write_msg(int fd, int msgtype, void *ptr, void *ptr2)
 
 		msg_lock = (msg_lock_t *)(buf + sizeof(msg_hdr_t));
 		msg_lock->ro = lock_req->ro;
+		msg_lock->enforce = lock_req->enforce;
 		msg_lock->uuid_off = sizeof(msg_hdr_t) + 
 			sizeof(msg_lock_t);
 		msg_lock->uuid_len = strlen(lock_req->lock_uuid) + 1;
@@ -815,7 +817,7 @@ int blktapctrl_checkpoint(blkif_t *blkif, char *cp_request)
 	return blkif->err;
 }
 
-int blktapctrl_lock(blkif_t *blkif, char *lock)
+int blktapctrl_lock(blkif_t *blkif, char *lock, int enforce)
 {
 	int len, err = 0;
 	char *tmp, rw;
@@ -843,6 +845,7 @@ int blktapctrl_lock(blkif_t *blkif, char *lock)
 	
 	memcpy(req.lock_uuid, lock, tmp - lock);
 	req.lock_uuid[tmp - lock] = '\0';
+	req.enforce = enforce;
 
 	if (write_msg(blkif->fds[WRITE], CTLMSG_LOCK, blkif, &req) <= 0) {
 		DPRINTF("Write_msg failed - CTLMSG_LOCK\n");
