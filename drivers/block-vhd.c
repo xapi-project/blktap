@@ -575,6 +575,11 @@ vhd_read_hd_ftr(int fd, struct hd_ftr *ftr, vhd_flag_t flags)
 		DPRINTF("Failed to find footer on reopen.  This is probably "
 			"because another tapdisk has opened this VDI.  "
 			"Closing tapdisk queue for debugging purposes.\n");
+		{
+			int *i = (int *)buf;
+			if (i[0] == 0xc7c7c7c7)
+				DPRINTF("footer dead\n");
+		}
 		goto out;
 	}
 	if (lseek64(fd, 0, SEEK_SET) == -1) {
@@ -611,6 +616,35 @@ vhd_read_hd_ftr(int fd, struct hd_ftr *ftr, vhd_flag_t flags)
  out:
 	free(buf);
 	return err;
+}
+
+static int
+vhd_kill_hd_ftr(int fd)
+{
+	int err = 1;
+	off64_t end;
+	char *zeros;
+
+	if (posix_memalign((void **)&zeros, 512, 512) == -1)
+		return -errno;
+	memset(zeros, 0xc7c7c7c7, 512);
+
+	if ((end = lseek64(fd, 0, SEEK_END)) == -1)
+		goto fail;
+
+	if (lseek64(fd, (end - 512), SEEK_SET) == -1)
+		goto fail;
+
+	if (write(fd, zeros, 512) != 512)
+		goto fail;
+
+	err = 0;
+
+ fail:
+	free(zeros);
+	if (err)
+		return (errno ? -errno : -EIO);
+	return 0;
 }
 
 /* 
@@ -871,14 +905,14 @@ alloc_bat(struct vhd_state *s)
 		free_bat(s);
 		return -ENOMEM;
 	}
-	memset(s->zeros, 0, s->zsize);
+	memset(s->zeros, 0x5a5a5a5a, s->zsize);
 #else
 	if (posix_memalign((void **)&s->bat.zero_req.buf,
 			   VHD_SECTOR_SIZE, s->bm_secs << VHD_SECTOR_SHIFT)) {
 		free_bat(s);
 		return -ENOMEM;
 	}
-	memset(s->bat.zero_req.buf, 0, s->bm_secs << VHD_SECTOR_SHIFT);
+	memset(s->bat.zero_req.buf, 0x6b6b6b6b, s->bm_secs << VHD_SECTOR_SHIFT);
 #endif
 
 	if (posix_memalign((void **)&s->bat.req.buf, 
@@ -941,6 +975,16 @@ __vhd_open(struct disk_driver *dd, const char *name, vhd_flag_t flags)
 			DPRINTF("Error reading VHD footer.\n");
                 return ret;
         }
+
+	if (test_vhd_flag(flags, VHD_FLAG_OPEN_STRICT) && 
+	    !test_vhd_flag(flags, VHD_FLAG_OPEN_RDONLY)) {
+		ret = vhd_kill_hd_ftr(fd);
+		if (ret) {
+			DPRINTF("ERROR killing footer: %d\n", ret);
+			return ret;
+		}
+		s->writes++;
+	}
 
 #if (DEBUGGING == 1)
         debug_print_footer(&s->ftr);

@@ -333,6 +333,16 @@ static void unmap_disk(struct td_state *s)
 	struct disk_driver *dd, *tmp;
 	fd_list_entry_t *entry;
 
+	int i;
+	blkif_t *blkif = s->blkif;
+	for (i = 0; blkif && i < MAX_REQUESTS; i++)
+		if (blkif->pending_list[i].secs_pending)
+			DPRINTF("%s: request %d has %d secs pending\n",
+				__func__, i, blkif->pending_list[i].secs_pending);
+	if (s->received != s->kicked)
+		DPRINTF("%s: received %lu, kicked %lu\n",
+			__func__, s->received, s->kicked);
+
 	dd = s->disks;
 	while (dd) {
 		tmp = dd->next;
