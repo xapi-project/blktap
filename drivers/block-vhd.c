@@ -580,6 +580,14 @@ vhd_read_hd_ftr(int fd, struct hd_ftr *ftr, vhd_flag_t flags)
 			if (i[0] == 0xc7c7c7c7)
 				DPRINTF("footer dead\n");
 		}
+		{ /* CA-8304: trigger sysrq-t */
+		    int sysrq_fd = open("/proc/sysrq-trigger", O_WRONLY);
+		    DPRINTF("sysrq_fd %d\n", sysrq_fd);
+		    if (sysrq_fd != -1) {
+			write(sysrq_fd, "t", 1);
+			close(sysrq_fd);
+		    }
+		}
 		goto out;
 	}
 	if (lseek64(fd, 0, SEEK_SET) == -1) {
