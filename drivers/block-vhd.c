@@ -902,13 +902,14 @@ alloc_bat(struct vhd_state *s)
 		return -ENOMEM;
 	}
 	memset(s->zeros, 0x5a5a5a5a, s->zsize);
+	memset(s->zeros, 0, getpagesize());
 #else
 	if (posix_memalign((void **)&s->bat.zero_req.buf,
 			   VHD_SECTOR_SIZE, s->bm_secs << VHD_SECTOR_SHIFT)) {
 		free_bat(s);
 		return -ENOMEM;
 	}
-	memset(s->bat.zero_req.buf, 0x6b6b6b6b, s->bm_secs << VHD_SECTOR_SHIFT);
+	memset(s->bat.zero_req.buf, 0, s->bm_secs << VHD_SECTOR_SHIFT);
 #endif
 
 	if (posix_memalign((void **)&s->bat.req.buf, 
