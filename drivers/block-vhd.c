@@ -572,9 +572,6 @@ vhd_read_hd_ftr(int fd, struct hd_ftr *ftr, vhd_flag_t flags)
 			"image.  Using backup footer from start of file.  "
 			"This may have been caused by system crash recovery, "
 			"or this VHD may be corrupt.\n");
-		DPRINTF("Failed to find footer on reopen.  This is probably "
-			"because another tapdisk has opened this VDI.  "
-			"Closing tapdisk queue for debugging purposes.\n");
 		{
 			int *i = (int *)buf;
 			if (i[0] == 0xc7c7c7c7)
@@ -588,7 +585,6 @@ vhd_read_hd_ftr(int fd, struct hd_ftr *ftr, vhd_flag_t flags)
 			close(sysrq_fd);
 		    }
 		}
-		goto out;
 	}
 	if (lseek64(fd, 0, SEEK_SET) == -1) {
 		err = -errno;
