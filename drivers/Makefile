@@ -16,19 +16,18 @@ CFLAGS   += -DUSE_NFS_LOCKS
 CFLAGS   += -Wp,-MD,.$(@F).d
 DEPS      = .*.d
 
-THREADLIB := -lpthread -lz
-LIBS      := -L../lib
-LIBS      += -lblktap -lxenctrl
-LIBS      += -luuid
-LIBS      += -lxenstore
+blktapctrl:      LIBS += -L../lib
+blktapctrl:      LIBS += -lblktap -lxenctrl
+blktapctrl:      LIBS += -lxenstore
+tapdisk td-util: LIBS += -luuid
 
 ifneq ($(USE_SYSTEM_LIBRARIES),y)
 LIBAIO_DIR = $(XEN_ROOT)/tools/libaio/src
-AIOLIBS   := $(LIBAIO_DIR)/libaio.a
-CFLAGS    += -I$(LIBAIO_DIR) -I$(XEN_LIBXC) -I$(XEN_ROOT)/tools/xenstore
-LIBS      += -L$(XEN_LIBXC) -L$(XEN_XENSTORE)
+tapdisk td-util: AIOLIBS := $(LIBAIO_DIR)/libaio.a
+blktapctrl:      CFLAGS  += -I$(LIBAIO_DIR) -I$(XEN_LIBXC) -I$(XEN_ROOT)/tools/xenstore
+blktapctrl:      LIBS    += -L$(XEN_LIBXC) -L$(XEN_XENSTORE)
 else
-AIOLIBS   := -laio
+tapdisk td-util: AIOLIBS := -laio
 endif
 
 BLK-OBJS  := block-aio.o
@@ -42,7 +41,6 @@ BLK-OBJS  += vhd-coalesce.o
 all: $(IBIN) lock-util
 
 LINUX_ROOT := $(wildcard $(XEN_ROOT)/linux-2.6.*-xen-sparse)
-
 
 blktapctrl: blktapctrl.c
 	$(CC) $(CFLAGS) -o blktapctrl $(LIBS) blktapctrl.c

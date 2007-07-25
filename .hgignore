@@ -13,4 +13,5 @@
 ^drivers/qcow2raw$
 ^drivers/tapdisk$
 ^drivers/vhd-create$
-
+^drivers/lock-util$
+^drivers/td-util$
