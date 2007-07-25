@@ -5,6 +5,8 @@
  * Copyright (c) 2007, XenSource Inc.
  * All rights reserved.
  *
+ * XenSource proprietary code.
+ *
  * A note on write transactions:
  * Writes that require updating the BAT or bitmaps cannot be signaled
  * as complete until all updates have reached disk.  Transactions are

@@ -1,5 +1,7 @@
 /* Copyright (c) 2007, XenSource Inc.
  * All rights reserved.
+ *
+ * XenSource proprietary code.
  */
 
 #include <time.h>

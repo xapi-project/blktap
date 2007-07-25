@@ -35,13 +35,55 @@ build: $(RPM_BUILD_COOKIE)
 clean: 
 	rm -f $(RPM_BUILD_COOKIE)
 	rm -f $(MY_OBJ_DIR)/version.inc
-	rm -f $(SOURCES)
+	rm -f $(SOURCES) $(SOURCES:%=%.tainted)
+	rm -f $(MY_OBJ_DIR)/proprietary.code.check.stamp
 
-$(RPM_SOURCESDIR)/blktap-$(BLKTAP_VERSION).tar.bz2: $(RPM_SOURCESDIR)/.dirstamp $(REPO)
-	hg -R $(REPO) archive -t tbz2 $@
+PROPRIETARY_SOURCE :=
+PROPRIETARY_SOURCE += mk/Makefile
+PROPRIETARY_SOURCE += mk/blktap.spec.in
+PROPRIETARY_SOURCE += drivers/block-vhd.c
+PROPRIETARY_SOURCE += drivers/io-optimize.c
+PROPRIETARY_SOURCE += drivers/io-optimize.h
+PROPRIETARY_SOURCE += drivers/vhd-coalesce.c
 
-$(RPM_SOURCESDIR)/blktap-development.patch: $(RPM_SOURCESDIR)/.dirstamp $(REPO)
-	hg -R $(REPO) diff > $@
+PROPRIETARY_C += $(filter drivers/%.c,$(PROPRIETARY_SOURCE))
+SOURCES += $(patsubst drivers/%.c,$(RPM_SOURCESDIR)/%.o,$(PROPRIETARY_C))
+
+HG_EXCLUDE := $(PROPRIETARY_SOURCE:%=-X "%")
+
+$(MY_OBJ_DIR)/proprietary.code.check.stamp:
+	@for i in $(filter-out mk/%,$(PROPRIETARY_SOURCE)) ; do \
+	    echo "Checking $${i} for proprietary code marker" ; \
+	    if ! grep -q "XenSource proprietary code." $(REPO)/$${i} ; then \
+	        echo "ERROR: source code marker not found in $${i}" ; \
+	        exit 1 ; \
+	    fi ; \
+	done
+	touch $@
+
+$(RPM_SOURCESDIR)/%.o:
+	make -C $(REPO)/drivers/ USE_SYSTEM_LIBRARIES=y XEN_ROOT=$(XEN_ROOT) $*.o
+	mv $(REPO)/drivers/$*.o $(RPM_SOURCESDIR)/$*.o
+
+$(RPM_SOURCESDIR)/blktap-$(BLKTAP_VERSION).tar.bz2: $(MY_OBJ_DIR)/proprietary.code.check.stamp \
+	                                            $(RPM_SOURCESDIR)/.dirstamp $(REPO)
+	cd $(REPO) && hg archive -t tbz2 $(HG_EXCLUDE) $@
+	@if tar xjOf $@ | grep -q "XenSource proprietary code." ; then \
+	    echo "ERROR: $@ contains XenSource proprietary code!"; \
+	    echo "       Saved as $@.tainted" ; \
+	    mv $@ $@.tainted ; \
+	    /bin/false ; \
+	fi
+
+$(RPM_SOURCESDIR)/blktap-development.patch: $(MY_OBJ_DIR)/proprietary.code.check.stamp \
+                                            $(RPM_SOURCESDIR)/.dirstamp $(REPO)
+	cd $(REPO) && hg diff $(HG_EXCLUDE) > $@
+	@if grep -q "XenSource proprietary code." $@ ; then \
+	    echo "ERROR: $@ contains XenSource proprietary code!"; \
+	    echo "       Saved as $@.tainted" ; \
+	    mv $@ $@.tainted ; \
+	    /bin/false ; \
+	fi
 
 $(RPM_SPECSDIR)/blktap.spec: blktap.spec.in $(RPM_SPECSDIR)/.dirstamp
 # Use a temporary file because sed in rhel3 doesn't understand "\n"

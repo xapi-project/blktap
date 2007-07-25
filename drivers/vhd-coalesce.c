@@ -1,3 +1,8 @@
+/* Copyright (c) 2007, XenSource Inc.
+ * All rights reserved.
+ *
+ * XenSource proprietary code.
+ */
 #include <errno.h>
 #include <fcntl.h>
 #include <stdio.h>

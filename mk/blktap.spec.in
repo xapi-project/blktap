@@ -7,6 +7,9 @@ Release: @BLKTAP_RELEASE@
 License: Proprietary
 Group: System/Hypervisor
 Source0: %{name}-%{version}.tar.bz2
+Source1: block-vhd.o
+Source2: io-optimize.o
+Source3: vhd-coalesce.o
 Patch0: %{name}-development.patch
 BuildRoot: %{_tmppath}/%{name}-%{version}-%{release}-buildroot
 Obsoletes: xen-blktap
@@ -26,6 +29,9 @@ This package contains the blktap development libraries and header files.
 %prep
 %setup -q
 %patch0 -p1
+cp %{SOURCE1} drivers
+cp %{SOURCE2} drivers
+cp %{SOURCE3} drivers
 
 %build
 %{__make} XEN_ROOT=%{xen_root} USE_SYSTEM_LIBRARIES=y
