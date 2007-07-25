@@ -1,7 +1,9 @@
 /* td.c
  *
  * Tapdisk utility program.
- * 
+ *
+ * XenSource proprietary code.
+ *
  * Copyright (c) 2007, XenSource Inc.
  * All rights reserved.
  */

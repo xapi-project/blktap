@@ -49,8 +49,8 @@ tapdisk: $(BLK-OBJS) tapdisk.c
 	$(CC) $(CFLAGS) -o tapdisk $(BLK-OBJS) tapdisk.c \
 		$(AIOLIBS) $(LIBS)
 
-td-util: $(BLK-OBJS) td.c
-	$(CC) $(CFLAGS) -o td-util $(BLK-OBJS) td.c $(AIOLIBS) $(LIBS)
+td-util: $(BLK-OBJS) td.o
+	$(CC) $(CFLAGS) -o td-util $(BLK-OBJS) td.o $(AIOLIBS) $(LIBS)
 
 lock-util: lock.c
 	$(CC) $(CFLAGS) -DUTIL -o lock-util lock.c $(LIBS)
