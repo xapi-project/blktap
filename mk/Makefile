@@ -28,7 +28,7 @@ SOURCES = $(RPM_SOURCESDIR)/blktap-$(BLKTAP_VERSION).tar.bz2 \
           $(RPM_SPECSDIR)/blktap.spec
 
 .PHONY: build
-build: $(RPM_BUILD_COOKIE)
+build: $(RPM_BUILD_COOKIE) $(MY_SOURCES)/MANIFEST
 	@ :
 
 .PHONY: clean
@@ -102,3 +102,6 @@ $(RPM_SPECSDIR)/blktap.spec: blktap.spec.in $(RPM_SPECSDIR)/.dirstamp
 $(RPM_BUILD_COOKIE): $(RPM_DIRECTORIES) $(SOURCES)
 	$(RPMBUILD) --target i686 -ba $(RPM_SPECSDIR)/blktap.spec
 	@touch $@
+
+$(MY_SOURCES)/MANIFEST: $(MY_SOURCES_DIRSTAMP)
+	echo "blktap gpl+bsd+proprietary file $(MY_OUTPUT_DIR)/SRPMS/blktap-$(BLKTAP_VERSION)-$(BLKTAP_RELEASE).src.rpm" >$@
