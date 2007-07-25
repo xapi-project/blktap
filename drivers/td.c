@@ -108,7 +108,8 @@ get_driver_type(char *type)
 	for (i = 0; i < types; i++)
 		if (!strcmp(type, dtypes[i]->handle)) {
 			if (dtypes[i]->idnum == DISK_TYPE_SYNC ||
-			    dtypes[i]->idnum == DISK_TYPE_VHDSYNC)
+			    dtypes[i]->idnum == DISK_TYPE_VHDSYNC ||
+			    !dtypes[i]->drv)
 				return -1;
 			return i;
 		}
