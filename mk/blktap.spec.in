@@ -42,13 +42,7 @@ rm -rf $RPM_BUILD_ROOT
 %doc
 %{_libdir}/libblktap.so.*
 %{_sbindir}/blktapctrl
-%{_sbindir}/img2qcow
-%{_sbindir}/qcow-create
-%{_sbindir}/qcow-query
-%{_sbindir}/qcow2raw
 %{_sbindir}/tapdisk
-%{_sbindir}/vhd-create
-%{_sbindir}/vhd-query
 %{_sbindir}/td-util
 %{_sbindir}/lock-util
 

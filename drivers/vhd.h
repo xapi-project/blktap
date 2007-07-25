@@ -1,3 +1,7 @@
+/* Copyright (c) 2007, XenSource Inc.
+ * All rights reserved.
+ */
+
 #include <asm/types.h>
 #include <uuid/uuid.h>
 

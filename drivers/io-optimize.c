@@ -1,3 +1,7 @@
+/* Copyright (c) 2007, XenSource Inc.
+ * All rights reserved.
+ */
+
 #include <time.h>
 #include <stdio.h>
 #include <errno.h>

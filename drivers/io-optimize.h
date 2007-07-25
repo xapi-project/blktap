@@ -1,3 +1,7 @@
+/* Copyright (c) 2007, XenSource Inc.
+ * All rights reserved.
+ */
+
 #ifndef __IO_OPTIMIZE_H__
 #define __IO_OPTIMIZE_H__
 

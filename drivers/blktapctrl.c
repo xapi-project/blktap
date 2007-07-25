@@ -286,6 +286,9 @@ static int test_path(char *path, char **dev, int *type, blkif_t **blkif)
 
                 if (found) {
                         *type = dtypes[i]->idnum;
+
+			if (dtypes[i]->idnum == -1)
+				goto fail;
                         
                         if (dtypes[i]->single_handler == 1) {
                                 /* Check whether tapdisk process 
@@ -299,7 +302,7 @@ static int test_path(char *path, char **dev, int *type, blkif_t **blkif)
                         return 0;
                 }
         }
-
+ fail:
         /* Fall-through case, we didn't find a disk driver. */
         DPRINTF("Unknown blktap disk type [%s]!\n",handle);
         *dev = NULL;

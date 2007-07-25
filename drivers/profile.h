@@ -1,3 +1,7 @@
+/* Copyright (c) 2007, XenSource Inc.
+ * All rights reserved.
+ */
+
 #ifndef __TAP_PROFILE_H__
 #define __TAP_PROFILE_H__
 

@@ -2,7 +2,8 @@
  *
  * asynchronous vhd implementation.
  *
- * (c) 2006 Andrew Warfield and Jake Wires
+ * Copyright (c) 2007, XenSource Inc.
+ * All rights reserved.
  *
  * A note on write transactions:
  * Writes that require updating the BAT or bitmaps cannot be signaled
@@ -37,10 +38,11 @@
 #include <libaio.h>
 #include <iconv.h>
 #include <libgen.h>
+#include <endian.h>
+#include <byteswap.h>
 
 #include "tapdisk.h"
 #include "vhd.h"
-#include "bswap.h"
 #include "profile.h"
 #include "atomicio.h"
 #include "io-optimize.h"
@@ -259,10 +261,17 @@ struct vhd_state {
 };
 
 /* Helpers: */
-#define BE32_IN(foo)  (*(foo)) = be32_to_cpu(*(foo))
-#define BE64_IN(foo)  (*(foo)) = be64_to_cpu(*(foo))
-#define BE32_OUT(foo) (*(foo)) = cpu_to_be32(*(foo))
-#define BE64_OUT(foo) (*(foo)) = cpu_to_be64(*(foo))
+#if BYTE_ORDER == LITTLE_ENDIAN
+  #define BE32_IN(foo)  (*(foo)) = bswap_32(*(foo))
+  #define BE64_IN(foo)  (*(foo)) = bswap_64(*(foo))
+  #define BE32_OUT(foo) (*(foo)) = bswap_32(*(foo))
+  #define BE64_OUT(foo) (*(foo)) = bswap_64(*(foo))
+#else
+  #define BE32_IN(foo)
+  #define BE64_IN(foo)
+  #define BE32_OUT(foo)
+  #define BE64_OUT(foo)
+#endif
 
 #define MIN(a, b)                  (((a) < (b)) ? (a) : (b))
 
