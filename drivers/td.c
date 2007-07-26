@@ -35,7 +35,8 @@ typedef enum {
 	TD_CMD_COALESCE  = 2,
 	TD_CMD_QUERY     = 3,
 	TD_CMD_SET       = 4,
-	TD_CMD_INVALID   = 5
+	TD_CMD_REPAIR    = 5,
+	TD_CMD_INVALID   = 6
 } td_command_t;
 
 struct command {
@@ -50,9 +51,10 @@ struct command commands[TD_CMD_INVALID] = {
 	{ .id = TD_CMD_COALESCE, .name = "coalesce", .needs_type = 1 },
 	{ .id =	TD_CMD_QUERY,    .name = "query",    .needs_type = 1 },
 	{ .id = TD_CMD_SET,      .name = "set",      .needs_type = 1 },
+	{ .id = TD_CMD_REPAIR,   .name = "repair",   .needs_type = 1 },
 };
 
-#define COMMAND_NAMES "{ create | snapshot | coalesce | query | set }"
+#define COMMAND_NAMES "{ create | snapshot | coalesce | query | set | repair }"
 #define PLUGIN_TYPES  "{ aio | qcow | ram | vhd | vmdk }"
 
 #define print_field_names()                                           \
@@ -622,6 +624,54 @@ td_set_field(int type, int argc, char *argv[])
 }
 
 int
+td_repair(int type, int argc, char *argv[])
+{
+	char *name;
+	int ret, c;
+	struct disk_driver dd;
+
+	if (type != DISK_TYPE_VHD) {
+		fprintf(stderr, "Cannot repair %s images\n",
+			dtypes[type]->handle);
+		return EINVAL;
+	}
+
+	while ((c = getopt(argc, argv, "h")) != -1) {
+		switch(c) {
+		default:
+			fprintf(stderr, "Unknown option %c\n", (char)c);
+		case 'h':
+			goto usage;
+		}
+	}
+
+	if (optind != (argc - 1))
+		goto usage;
+
+	name = argv[optind++];
+	ret  = init_disk_driver(&dd, type, name, 0);
+	if (ret) {
+		DPRINTF("Failed opening %s\n", name);
+		return ret;
+	}
+
+	ret = vhd_repair(&dd);
+	if (!ret)
+		printf("%s successfully repaired\n", name);
+	else
+		printf("failed to repair %s: %d\n", name, ret);
+
+	free_disk_driver(&dd);
+
+	return ret;
+
+ usage:
+	fprintf(stderr, "usage: td-util repair %s [-h help] "
+		"<FILENAME>\n", dtypes[type]->handle);
+	return EINVAL;
+}
+
+int
 main(int argc, char *argv[])
 {
 	char **cargv;
@@ -676,6 +726,9 @@ main(int argc, char *argv[])
 		break;
 	case TD_CMD_SET:
 		ret = td_set_field(type, cargc, cargv);
+		break;
+	case TD_CMD_REPAIR:
+		ret = td_repair(type, cargc, cargv);
 		break;
 	case TD_CMD_INVALID:
 		ret = EINVAL;

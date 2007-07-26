@@ -368,5 +368,6 @@ int vhd_set_field(struct disk_driver *dd, td_field_t field, long value);
 int vhd_get_info(struct disk_driver *dd, struct vhd_info *info);
 int vhd_coalesce(char *name);
 void vhd_debug(struct disk_driver *dd);
+int vhd_repair(struct disk_driver *dd);
 
 #endif /*TAPDISK_H_*/

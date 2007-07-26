@@ -3746,6 +3746,40 @@ vhd_debug(struct disk_driver *dd)
 */
 }
 
+int
+vhd_repair(struct disk_driver *dd)
+{
+	int err;
+	off64_t off, end;
+	struct vhd_state *s = (struct vhd_state *)dd->private;
+
+	if (s->ftr.type == HD_TYPE_FIXED) {
+		if ((off = lseek64(s->fd, 0, SEEK_END)) == (off64_t)-1)
+			return -errno;
+
+		if (lseek64(s->fd, (off - 512), SEEK_CUR) == (off64_t)-1)
+			return -errno;
+	} else {
+		off = s->next_db << VHD_SECTOR_SHIFT;
+		if (lseek64(s->fd, off, SEEK_SET) == (off64_t)-1)
+			return -errno;
+	}
+
+	err = vhd_write_hd_ftr(s->fd, &s->ftr);
+	if (err)
+		return err;
+
+	off += sizeof(struct hd_ftr); /* 512 */
+	if ((end = lseek64(s->fd, 0, SEEK_END)) == (off64_t)-1)
+		return -errno;
+
+	if (end != off)
+		if (ftruncate(s->fd, off) == -1)
+			return -errno;
+
+	return 0;
+}
+
 struct tap_disk tapdisk_vhd = {
 	.disk_type          = "tapdisk_vhd",
 	.private_data_size  = sizeof(struct vhd_state),
