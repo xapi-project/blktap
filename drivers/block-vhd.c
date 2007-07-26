@@ -589,6 +589,9 @@ vhd_read_hd_ftr(int fd, struct hd_ftr *ftr, vhd_flag_t flags)
 			if (i[0] == 0xc7c7c7c7)
 				DPRINTF("footer dead\n");
 		}
+		DPRINTF("DEBUG MODE: KILLING DISK.  "
+			"(try 'td-util repair' to restore footer)\n");
+		goto out;
 	}
 	if (lseek64(fd, 0, SEEK_SET) == -1) {
 		err = -errno;
