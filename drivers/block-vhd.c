@@ -984,16 +984,6 @@ __vhd_open(struct disk_driver *dd, const char *name, vhd_flag_t flags)
                 return ret;
         }
 
-	if (test_vhd_flag(flags, VHD_FLAG_OPEN_STRICT) && 
-	    !test_vhd_flag(flags, VHD_FLAG_OPEN_RDONLY)) {
-		ret = vhd_kill_hd_ftr(fd);
-		if (ret) {
-			DPRINTF("ERROR killing footer: %d\n", ret);
-			return ret;
-		}
-		s->writes++;
-	}
-
 #if (DEBUGGING == 1)
         debug_print_footer(&s->ftr);
 #endif
@@ -1080,6 +1070,16 @@ __vhd_open(struct disk_driver *dd, const char *name, vhd_flag_t flags)
 	    tds->size, tds->sector_size, tds->info);
 
 	tp_open(&s->tp, s->name, "/tmp/vhd_log.txt", 100);
+
+	if (test_vhd_flag(flags, VHD_FLAG_OPEN_STRICT) && 
+	    !test_vhd_flag(flags, VHD_FLAG_OPEN_RDONLY)) {
+		ret = vhd_kill_hd_ftr(fd);
+		if (ret) {
+			DPRINTF("ERROR killing footer: %d\n", ret);
+			return ret;
+		}
+		s->writes++;
+	}
 
         return 0;
 
