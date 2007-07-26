@@ -134,6 +134,8 @@ static struct backend_info *be_lookup_fe(const char *fepath)
 
 static int backend_remove(struct backend_info *be)
 {
+	DPRINTF("%s: removing %s\n", __func__, be->backpath);
+
 	/* Unhook from be list. */
 	list_del(&be->list);
 
@@ -177,11 +179,14 @@ static void audit_backend_devices(struct xs_handle *h)
 	}
 }
 
-static void handle_checkpoint_request(struct xs_handle *h, char *bepath)
+static void handle_checkpoint_request(struct xs_handle *h, 
+				      struct backend_info *binfo, char *node)
 {
 	int err;
-	char *cp_uuid, *cpp, *rsp;
-	struct backend_info *binfo;
+	char *cp_uuid, *cpp, *rsp, *bepath = binfo->backpath;
+
+	if (strcmp(node, "checkpoint"))
+		return;
 
 	if (asprintf(&cpp, "%s/checkpoint", bepath) == -1)
 		return;
@@ -194,11 +199,8 @@ static void handle_checkpoint_request(struct xs_handle *h, char *bepath)
 
 	err = xs_gather(h, cpp, "cp_uuid", NULL, &cp_uuid, NULL);
 	if (!err) {
-		binfo = be_lookup_be(bepath);
-		if (binfo) {
-			err = blkif_checkpoint(binfo->blkif, cp_uuid);
-			xs_printf(h, cpp, "rsp", "%d", err);
-		}
+		err = blkif_checkpoint(binfo->blkif, cp_uuid);
+		xs_printf(h, cpp, "rsp", "%d", err);
 		free(cp_uuid);
 	}
 
@@ -255,8 +257,7 @@ static void handle_shutdown_request(struct xs_handle *h,
 	if (!xs_exists(h, path))
 		goto out;
 
-	blkif_unmap(binfo->blkif);
-	xs_rm(h, XBT_NULL, path);
+	backend_remove(binfo);
 
  out:
 	free(path);
@@ -287,48 +288,15 @@ static int tapdisk_connect(struct xs_handle *h, struct backend_info *be)
 	return 0;
 }
 
-static void handle_restart_request(struct xs_handle *h,
-				   struct backend_info *binfo, char *node)
+static void ueblktap_setup(struct xs_handle *h, struct backend_info *be)
 {
-	char *path;
-
-	if (strcmp(node, "restart-tapdisk"))
-		return;
-
-	if (asprintf(&path, "%s/%s", binfo->backpath, node) == -1)
-		return;
-
-	if (!xs_exists(h, path))
-		goto out;
-
-	if (!blkif_remap(binfo->blkif))
-		tapdisk_connect(h, binfo);
-	else
-		DPRINTF("ERROR: failed to restart tapdisk\n");
-
-	xs_rm(h, XBT_NULL, path);
-
- out:
-	free(path);
-	return;
-}
-
-static void ueblktap_setup(struct xs_handle *h, char *bepath)
-{
-	struct backend_info *be;
-	char *path = NULL, *p, *dev;
+	char *path = NULL, *p, *dev, *bepath;
 	int er, deverr;
 	unsigned len;
 	long int pdev = 0, handle;
 	blkif_info_t *blk;
-	
-	be = be_lookup_be(bepath);
-	if (be == NULL)
-	{
-		DPRINTF("ERROR: backend changed called for nonexistent "
-			"backend! (%s)\n", bepath);
-		goto fail;
-	}
+
+	bepath = be->backpath;
 
 	deverr = xs_gather(h, bepath, "physical-device", "%li", &pdev, NULL);
 	if (!deverr) {
@@ -407,6 +375,99 @@ close:
 	return;
 }
 
+/* don't service requests if we've already shut down */
+static int backend_ready(struct xs_handle *h, char *bepath)
+{
+	int ret = 0;
+	char *path = NULL;
+
+	if (asprintf(&path, "%s/shutdown-request", bepath) == -1) {
+		DPRINTF("%s: asprintf failed: %d\n", __func__, errno);
+		return 0;
+	}
+
+	if (xs_exists(h, path))
+		goto out;
+
+	free(path);
+	if (asprintf(&path, "%s/shutdown-tapdisk", bepath) == -1) {
+		DPRINTF("%s: asprintf failed: %d\n", __func__, errno);
+		return 0;
+	}
+
+	if (xs_exists(h, path))
+		goto out;
+
+	free(path);
+	if (asprintf(&path, "%s/shutdown-done", bepath) == -1) {
+		DPRINTF("%s: asprintf failed: %d\n", __func__, errno);
+		return 0;
+	}
+
+	if (xs_exists(h, path))
+		goto out;
+
+	ret = 1;
+
+ out:
+	free(path);
+	return ret;
+}
+
+static int valid_start_request(struct xs_handle *h, char *bepath, char *node)
+{
+	if (strcmp(node, "frontend-id") && strcmp(node, "restart-tapdisk"))
+		return 0;
+
+	if (!backend_ready(h, bepath)) {
+		DPRINTF("%s: got request %s, but backend %s "
+			"not ready\n", __func__, node, bepath);
+		return 0;
+	}
+
+	return 1;
+}
+
+static void handle_start_request(struct xs_handle *h, char *bepath)
+{
+	int err, fid;
+	struct backend_info *be;
+	char *frontpath, *backpath;
+
+	DPRINTF("ADDING NEW DEVICE for %s\n", bepath);
+
+	err = xs_gather(h, bepath, "frontend-id", "%li", &fid,
+			"frontend", NULL, &frontpath, NULL);
+	if (err) {
+		DPRINTF("could not find frontend and frontend-id: %d\n", err);
+		return;
+	}
+
+	backpath = strdup(bepath);
+	if (!backpath) {
+		DPRINTF("failed to allocate backpath: %d\n", errno);
+		free(frontpath);
+		return;
+	}
+
+	be = malloc(sizeof(struct backend_info));
+	if (!be) {
+		DPRINTF("failed to allocate new backend info: %d\n", errno);
+		free(frontpath);
+		free(backpath);
+		return;
+	}
+
+	memset(be, 0, sizeof(struct backend_info));
+	be->backpath    = backpath;
+	be->frontpath   = frontpath;
+	be->frontend_id = fid;
+
+	list_add(&be->list, &belist);
+
+	ueblktap_setup(h, be);
+}
+
 /**
  * Xenstore watch callback entry point. This code replaces the hotplug scripts,
  * and as soon as the xenstore backend driver entries are created, this script
@@ -415,15 +476,13 @@ close:
 static void ueblktap_probe(struct xs_handle *h, struct xenbus_watch *w, 
 			   const char *bepath_im)
 {
-	struct backend_info *be = NULL, *existing_be = NULL;
-	char *frontend = NULL, *bepath = NULL, *p, *node;
-	int er, len;
-	blkif_t *blkif;
+	int len;
+	char *node, *bepath;
+	struct backend_info *be;
 	
 	DPRINTF("ueblktap_probe %s\n", bepath_im);
 	
 	bepath = strdup(bepath_im);
-	
 	if (!bepath) {
 		DPRINTF("No path\n");
 		return;
@@ -436,79 +495,26 @@ static void ueblktap_probe(struct xs_handle *h, struct xenbus_watch *w,
 	len = strsep_len(bepath, '/', 7);
 	if (len < 0) {
 		audit_backend_devices(h);
-		goto free_be;
+		goto free;
 	}
 	bepath[len] = '\0';
 	node = bepath + len + 1;
 
-	be = malloc(sizeof(*be));
-	if (!be) {
-		DPRINTF("ERROR: allocating backend structure\n");
-		goto free_be;
-	}
-	memset(be, 0, sizeof(*be));
-	frontend = NULL;
-
-	er = xs_gather(h, bepath,
-		       "frontend-id", "%li", &be->frontend_id,
-		       "frontend", NULL, &frontend,
-		       NULL);
-
-	if (er) {
-		/*
-		 *Unable to find frontend entries, 
-		 *bus-id is no longer valid
-		 */
-		DPRINTF("%s: removing backend: [%s]\n", __func__, bepath);
-
-		/**
-		 * BE info should already exist, 
-		 * free new mem and find old entry
-		 */
-		free(be);
-		be = be_lookup_be(bepath);
-		if ( (be != NULL) && (be->blkif != NULL) ) 
-			backend_remove(be);
-		else goto free_be;
-		if (bepath)
-			free(bepath);
-		return;
-	}
-
 	/* Are we already tracking this device? */
-	if ((existing_be = be_lookup_be(bepath))) {
+	if ((be = be_lookup_be(bepath))) {
 		DPRINTF("ueblktap_probe exists %s\n", bepath);
 
 		/* check for snapshot request */
-		handle_checkpoint_request(h, bepath);
+		handle_checkpoint_request(h, be, node);
 
 		/* check for shutdown request */
-		handle_shutdown_request(h, existing_be, node);
+		handle_shutdown_request(h, be, node);
 
-		/* check for restart request */
-		handle_restart_request(h, existing_be, node);
+	} else if (valid_start_request(h, bepath, node))
+		handle_start_request(h, bepath);
 
-		goto free_be;
-	}
-	
-	be->backpath = bepath;
-	be->frontpath = frontend;
-	
-	list_add(&be->list, &belist);
-	
-	DPRINTF("[PROBE]\tADDED NEW DEVICE (%s)\n", bepath);
-	DPRINTF("\tFRONTEND (%s),(%ld)\n", frontend,be->frontend_id);
-	
-	ueblktap_setup(h, bepath);	
-	return;
-	
- free_be:
-	if (frontend)
-		free(frontend);
-	if (bepath)
-		free(bepath);
-	if (be) 
-		free(be);
+ free:
+	free(bepath);
 }
 
 /**
