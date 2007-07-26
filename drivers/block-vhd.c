@@ -211,7 +211,8 @@ struct vhd_bitmap {
 };
 
 struct vhd_state {
-	int fd;
+	int                   fd;
+	vhd_flag_t            flags;
 
 	/* synchronous state */
 	int                   sync;
@@ -1062,6 +1063,7 @@ __vhd_open(struct disk_driver *dd, const char *name, vhd_flag_t flags)
 
 	s->name          = strdup(name);
 	s->fd            = fd;
+	s->flags         = flags;
         tds->size        = s->ftr.curr_size >> VHD_SECTOR_SHIFT;
         tds->sector_size = VHD_SECTOR_SIZE;
         tds->info        = 0;
@@ -1129,8 +1131,16 @@ vhd_close(struct disk_driver *dd)
 	    s->callbacks,
 	    ((s->callbacks) ? 
 	     ((float)s->callback_sum / s->callbacks) : 0.0));
+
+	/* don't write footer if tapdisk is read-only */
+	if (dd->flags & TD_RDONLY)
+		goto free;
 	
-	if (!(dd->flags & TD_RDONLY) && s->writes) {
+	/* write footer if:
+	 *   - we killed it on open (opened with strict) 
+	 *   - we've written data since opening
+	 */
+	if (test_vhd_flag(s->flags, VHD_FLAG_OPEN_STRICT) || s->writes) {
 		if (s->ftr.type != HD_TYPE_FIXED) {
 			off = s->next_db << VHD_SECTOR_SHIFT;
 			if (lseek64(s->fd, off, SEEK_SET) == (off64_t)-1) {
