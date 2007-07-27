@@ -107,19 +107,19 @@
 
 typedef uint32_t td_flag_t;
 
-#define TD_RDONLY          0x00001
-#define TD_DRAIN_QUEUE     0x00002
-#define TD_CHECKPOINT      0x00004
-#define TD_MULTITYPE_CP    0x00008
-#define TD_SPARSE          0x00010
-#define TD_LOCKING         0x00020
-#define TD_CLOSED          0x00040
-#define TD_DEAD            0x00080
-#define TD_RETRY_NEEDED    0x00100
-#define TD_QUIET           0x00200
-#define TD_STRICT          0x00400
-#define TD_SHUTDOWN        0x00800
-#define TD_LOCK_ENFORCE    0x01000
+#define TD_RDONLY                    0x00001
+#define TD_DRAIN_QUEUE               0x00002
+#define TD_CHECKPOINT                0x00004
+#define TD_MULTITYPE_CP              0x00008
+#define TD_SPARSE                    0x00010
+#define TD_LOCKING                   0x00020
+#define TD_CLOSED                    0x00040
+#define TD_DEAD                      0x00080
+#define TD_RETRY_NEEDED              0x00100
+#define TD_QUIET                     0x00200
+#define TD_STRICT                    0x00400
+#define TD_SHUTDOWN_REQUESTED        0x00800
+#define TD_LOCK_ENFORCE              0x01000
 
 typedef enum {
 	TD_FIELD_HIDDEN  = 0,

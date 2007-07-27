@@ -70,11 +70,10 @@ static struct bhandle tbhandle;
 #define OUTPUT 1
 
 static int maxfds, fds[2], run = 1;
-static int shutdown_requested = 0;
 
 static pid_t process;
 int connected_disks = 0;
-fd_list_entry_t *fd_start = NULL;
+static fd_list_entry_t fd_start;
 
 #define ONE_DAY (24 * 60 * 60)
 int force_lock_check = 0;
@@ -134,7 +133,7 @@ void debug(int sig)
 
 	BDUMP("/tmp/tapdisk.log", tbhandle);
 
-	ptr = fd_start;
+	ptr = fd_start.next;
 	while (ptr != NULL) {
 		if (ptr->s)
 			debug_disks(ptr->s);
@@ -147,7 +146,7 @@ static inline int LOCAL_FD_SET(fd_set *readfds)
 	fd_list_entry_t *ptr;
 	struct disk_driver *dd;
 
-	ptr = fd_start;
+	ptr = fd_start.next;
 	while (ptr != NULL) {
 		if (ptr->tap_fd) {
 			if (!(ptr->s->flags & TD_DRAIN_QUEUE)) {
@@ -181,7 +180,7 @@ static inline fd_list_entry_t *add_fd_entry(int tap_fd, struct td_state *s)
 	entry->s      = s;
 	entry->next   = NULL;
 
-	pprev = &fd_start;
+	pprev = &fd_start.next;
 	while (*pprev != NULL)
 		pprev = &(*pprev)->next;
 
@@ -195,7 +194,7 @@ static inline struct td_state *get_state(int cookie)
 {
 	fd_list_entry_t *ptr;
 
-	ptr = fd_start;
+	ptr = fd_start.next;
 	while (ptr != NULL) {
 		if (ptr->cookie == cookie) return ptr->s;
 		ptr = ptr->next;
@@ -249,7 +248,6 @@ static void free_state(struct td_state *s)
 {
 	if (!s)
 		return;
-	free(s->fd_entry);
 	free(s->blkif);
 	free(s->lock_uuid);
 	free(s->ring_info);
@@ -291,7 +289,7 @@ static void free_driver(struct disk_driver *d)
 
 static int map_new_dev(struct td_state *s, int minor)
 {
-	int tap_fd;
+	int tap_fd = -1;
 	tapdev_info_t *info = s->ring_info;
 	char *devname;
 	fd_list_entry_t *ptr;
@@ -330,7 +328,7 @@ static int map_new_dev(struct td_state *s, int minor)
 	free(devname);
 
 	/*Update the fd entry*/
-	ptr = fd_start;
+	ptr = fd_start.next;
 	while (ptr != NULL) {
 		if (s == ptr->s) {
 			ptr->tap_fd = tap_fd;
@@ -338,10 +336,13 @@ static int map_new_dev(struct td_state *s, int minor)
 		}
 		ptr = ptr->next;
 	}	
+	++connected_disks;
 
 	return minor;
 
  fail:
+	if (tap_fd != -1)
+		close(tap_fd);
 	free(devname);
 	return -1;
 }
@@ -380,6 +381,7 @@ static void unmap_disk(struct td_state *s)
 		entry->next->pprev = entry->pprev;
 
 	close(info->fd);
+	--connected_disks;
 
 	return;
 }
@@ -518,6 +520,14 @@ static int reopen_disks(struct td_state *s)
 	return -1;
 }
 
+static void shutdown_disk(struct td_state *s)
+{
+	unmap_disk(s);
+	free(s->fd_entry);
+	free_state(s);
+	sig_handler(SIGINT);
+}
+
 static int write_checkpoint_rsp(int err)
 {
 	char buf[50];
@@ -566,23 +576,6 @@ static inline void kill_queue(struct td_state *s)
 static inline int queue_closed(struct td_state *s)
 {
 	return (s->flags & TD_CLOSED || s->flags & TD_DEAD);
-}
-
-static int shutdown(struct td_state *s)
-{
-	struct disk_driver *dd;
-
-	if (s->flags & TD_SHUTDOWN)
-		return 0;
-
-	if (drain_queue(s))
-		return 0;
-
-	s->flags |= TD_SHUTDOWN;
-	td_for_each_disk(s, dd)
-		DPRINTF("shutting down %s\n", dd->name);
-
-	return (--connected_disks == 0);
 }
 
 static inline int check_locks(struct timeval *tv)
@@ -640,7 +633,7 @@ static void assert_locks(struct timeval *tv)
 	if (!check_locks(tv))
 		return;
 
-	ptr = fd_start;
+	ptr = fd_start.next;
 	while (ptr) {
 		s = ptr->s;
 		if (s->received &&
@@ -833,7 +826,10 @@ static int read_msg(char *buf)
 				msglen = sizeof(msg_hdr_t);
 				msg->type = CTLMSG_IMG_FAIL;
 				msg->len = msglen;
-				free_state(s);
+				if (s) {
+					free(s->fd_entry);
+					free_state(s);
+				}
 			}
 
 			len = write(fds[WRITE], buf, msglen);
@@ -849,8 +845,6 @@ static int read_msg(char *buf)
 			if (s != NULL) {
 				ret = ((map_new_dev(s, msg_dev->devnum) 
 					== msg_dev->devnum ? 0: -1));
-				if (!ret)
-					connected_disks++;
 			}	
 
 			memset(buf, 0x00, MSG_SIZE); 
@@ -865,14 +859,15 @@ static int read_msg(char *buf)
 		case CTLMSG_CLOSE:
 			s = get_state(msg->cookie);
 			if (s) {
-				unmap_disk(s);
-				free_state(s);
-				connected_disks--;
+				s->flags |= TD_SHUTDOWN_REQUESTED;
+				if (drain_queue(s) == 0)
+					shutdown_disk(s);
+				else
+					DPRINTF("close: pending aio;"
+						" draining queue\n");
 			}
 
-			sig_handler(SIGINT);
-
-			return 1;			
+			return 1;
 
 		case CTLMSG_PID:
 			memset(buf, 0x00, MSG_SIZE);
@@ -1401,7 +1396,7 @@ static inline void set_retry_timeout(struct timeval *tv)
 {
 	fd_list_entry_t *ptr;
 
-	ptr = fd_start;
+	ptr = fd_start.next;
 	while (ptr) {
 		if (ptr->s->flags & TD_RETRY_NEEDED) {
 			tv->tv_sec  = (tv->tv_sec < TD_RETRY_INTERVAL ?
@@ -1425,7 +1420,7 @@ static void check_progress(struct timeval *tv)
 	fd_list_entry_t *ptr;
 	int TO = 10;
 
-	ptr = fd_start;
+	ptr = fd_start.next;
 	gettimeofday(&time, NULL);
 
 	while (ptr) {
@@ -1449,7 +1444,7 @@ int main(int argc, char *argv[])
 	int len, msglen, ret;
 	char *p, *buf;
 	fd_set readfds, writefds;
-	fd_list_entry_t *ptr;
+	fd_list_entry_t *ptr, *next;
 	struct td_state *s;
 	char openlogbuf[128];
 	struct timeval timeout = { .tv_sec = ONE_DAY, .tv_usec = 0 };
@@ -1518,16 +1513,14 @@ int main(int argc, char *argv[])
                              (fd_set *) 0, &timeout);
 		DBG("%s: select returned %d (%d)\n", __func__, ret, errno);
 
-		if (ret >= 0 || shutdown_requested) {
-			ptr = fd_start;
+		if (ret >= 0) {
+			ptr = fd_start.next;
 			while (ptr != NULL) {
 				int progress_made = 0;
 				struct disk_driver *dd;
 				tapdev_info_t *info = ptr->s->ring_info;
 
-				if (shutdown_requested)
-					if (shutdown(ptr->s))
-						run = 0;
+				next = ptr->next;
 
 				DBG("%s: flags: %u, %d reqs pending, "
 				    "received: %lu, returned: %lu, "
@@ -1559,7 +1552,11 @@ int main(int argc, char *argv[])
 						start_queue(ptr->s);
 					}
 
-				ptr = ptr->next;
+				if (ptr->s->flags & TD_SHUTDOWN_REQUESTED)
+					if (drain_queue(ptr->s) == 0)
+						shutdown_disk(ptr->s);
+
+				ptr = next;
 			}
 
 			if (FD_ISSET(fds[READ], &readfds))
@@ -1570,14 +1567,15 @@ int main(int argc, char *argv[])
 	close(fds[READ]);
 	close(fds[WRITE]);
 
-	ptr = fd_start;
+	ptr = fd_start.next;
 	while (ptr != NULL) {
+		next = ptr->next;
 		s = ptr->s;
 
 		unmap_disk(s);
 		free_state(s);
-		close(ptr->tap_fd);
-		ptr = ptr->next;
+		free(ptr);
+		ptr = next;
 	}
 	closelog();
 
