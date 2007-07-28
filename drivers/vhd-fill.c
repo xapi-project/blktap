@@ -143,6 +143,9 @@ vhd_fill(char *path)
 	struct td_state s;
 	struct vhd_context ctx;
 	struct disk_driver dd;
+	struct disk_id id;
+
+	memset(&ctx, 0, sizeof(struct vhd_context));
 
 	dd.td_state = &s;
 	dd.name     = path;
@@ -156,6 +159,17 @@ vhd_fill(char *path)
 		printf("error opening %s: %d\n", path, err);
 		free(dd.private);
 		return err;
+	}
+
+	err = dd.drv->td_get_parent_id(&dd, &id);
+	if (err != TD_NO_PARENT) {
+		if (!err) {
+			printf("filling CoW VHDs not supported\n");
+			free(id.name);
+			ctx.error = -EINVAL;
+		} else
+			ctx.error = err;
+		goto done;
 	}
 
 	init_vhd_context(&ctx, &dd);
