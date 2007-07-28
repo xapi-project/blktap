@@ -36,7 +36,8 @@ typedef enum {
 	TD_CMD_QUERY     = 3,
 	TD_CMD_SET       = 4,
 	TD_CMD_REPAIR    = 5,
-	TD_CMD_INVALID   = 6
+	TD_CMD_FILL      = 6,
+	TD_CMD_INVALID   = 7
 } td_command_t;
 
 struct command {
@@ -52,9 +53,10 @@ struct command commands[TD_CMD_INVALID] = {
 	{ .id =	TD_CMD_QUERY,    .name = "query",    .needs_type = 1 },
 	{ .id = TD_CMD_SET,      .name = "set",      .needs_type = 1 },
 	{ .id = TD_CMD_REPAIR,   .name = "repair",   .needs_type = 1 },
+	{ .id = TD_CMD_FILL,     .name = "fill",     .needs_type = 1 },
 };
 
-#define COMMAND_NAMES "{ create | snapshot | coalesce | query | set | repair }"
+#define COMMAND_NAMES "{ create | snapshot | coalesce | query | set | repair | fill }"
 #define PLUGIN_TYPES  "{ aio | qcow | ram | vhd | vmdk }"
 
 #define print_field_names()                                           \
@@ -672,6 +674,51 @@ td_repair(int type, int argc, char *argv[])
 }
 
 int
+td_fill(int type, int argc, char *argv[])
+{
+	int c, ret;
+	char *name;
+
+	if (type != DISK_TYPE_VHD) {
+		fprintf(stderr, "Cannot fill images of type %s\n",
+			dtypes[type]->handle);
+		return EINVAL;
+	}
+
+	while ((c = getopt(argc, argv, "h")) != -1) {
+		switch(c) {
+		default:
+			fprintf(stderr, "Unknown option %c\n", (char)c);
+		case 'h':
+			goto usage;
+		}
+	}
+
+	if (optind != (argc - 1))
+		goto usage;
+
+	name = argv[optind++];
+
+	if (strnlen(name, MAX_NAME_LEN) == MAX_NAME_LEN) {
+		fprintf(stderr, "Device name too long\n");
+		return ENAMETOOLONG;
+	}
+
+	ret = vhd_fill(name);
+	if (!ret)
+		printf("%s successfully filled\n", name);
+	else
+		printf("failed to fill %s: %d\n", name, ret);
+
+	return ret;
+
+ usage:
+	fprintf(stderr, "usage: td-util fill %s [-h help] "
+		"<FILENAME>\n", dtypes[type]->handle);
+	return EINVAL;
+}
+
+int
 main(int argc, char *argv[])
 {
 	char **cargv;
@@ -729,6 +776,9 @@ main(int argc, char *argv[])
 		break;
 	case TD_CMD_REPAIR:
 		ret = td_repair(type, cargc, cargv);
+		break;
+	case TD_CMD_FILL:
+		ret = td_fill(type, cargc, cargv);
 		break;
 	case TD_CMD_INVALID:
 		ret = EINVAL;
