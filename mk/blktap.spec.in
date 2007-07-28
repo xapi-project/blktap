@@ -11,6 +11,7 @@ Source1: block-vhd.o
 Source2: io-optimize.o
 Source3: td.o
 Source4: vhd-coalesce.o
+Source5: vhd-fill.o
 Patch0: %{name}-development.patch
 BuildRoot: %{_tmppath}/%{name}-%{version}-%{release}-buildroot
 Obsoletes: xen-blktap
@@ -34,6 +35,7 @@ cp %{SOURCE1} drivers
 cp %{SOURCE2} drivers
 cp %{SOURCE3} drivers
 cp %{SOURCE4} drivers
+cp %{SOURCE5} drivers
 
 %build
 %{__make} XEN_ROOT=%{xen_root} USE_SYSTEM_LIBRARIES=y
