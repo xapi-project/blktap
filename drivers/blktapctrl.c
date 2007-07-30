@@ -42,6 +42,7 @@
 #include <errno.h>
 #include <sys/types.h>
 #include <linux/types.h>
+#include <sys/wait.h>
 #include <signal.h>
 #include <fcntl.h>
 #include <sys/poll.h>
@@ -644,11 +645,38 @@ static int read_msg(int fd, int msgtype, void *ptr)
 
 }
 
+int launch_tapdisk(char *wrctldev, char *rdctldev)
+{
+	char *argv[] = { "tapdisk", wrctldev, rdctldev, NULL };
+	pid_t child;
+
+	if ((child = fork()) < 0)
+		return -1;
+
+	if (!child) {
+		int i;
+		for (i = 0 ; i < sysconf(_SC_OPEN_MAX) ; i++)
+			if (i != STDIN_FILENO &&
+			    i != STDOUT_FILENO &&
+			    i != STDERR_FILENO)
+				close(i);
+
+		execvp("tapdisk", argv);
+		_exit(1);
+	} else {
+		pid_t got;
+		do {
+			got = waitpid(child, NULL, 0);
+		} while (got != child);
+	}
+	return 0;
+}
+
 int blktapctrl_new_blkif(blkif_t *blkif)
 {
 	blkif_info_t *blk;
-	int major, minor, fd_read, fd_write, type, new;
-	char *rdctldev, *wrctldev, *cmd, *ptr;
+	int major, minor, type, new;
+	char *rdctldev, *wrctldev, *ptr;
 	image_t *image;
 	blkif_t *exist = NULL;
 	static uint16_t next_cookie = 0;
@@ -685,26 +713,34 @@ int blktapctrl_new_blkif(blkif_t *blkif)
 			    blkif->fds[WRITE] == -1) {
 				EPRINTF("new blkif: socket failed %d %d\n",
 					blkif->fds[READ], blkif->fds[WRITE]);
+				if (blkif->fds[READ] != -1) {
+					close(blkif->fds[READ]);
+					blkif->fds[READ] = -1;
+				}
+				if (blkif->fds[WRITE] != -1) {
+					close(blkif->fds[WRITE]);
+					blkif->fds[READ] = -1;
+				}
 				free(rdctldev);
 				free(wrctldev);
 				goto fail;
 			}
 
 			/*launch the new process*/
-			ret = asprintf(&cmd, "tapdisk %s %s", wrctldev,
-				       rdctldev);
+			DPRINTF("Launching process, [wr rd] = [%s %s]\n", 
+				wrctldev, rdctldev);
+			if (launch_tapdisk(wrctldev, rdctldev) == -1) {
+				EPRINTF("Unable to launch tapdisk, [wr rd] = "
+					"[%s %s]\n", wrctldev, rdctldev);
+				close(blkif->fds[READ]);
+				close(blkif->fds[WRITE]);
+				free(rdctldev);
+				free(wrctldev);
+				goto fail;
+			}
+			DPRINTF("process launched\n");
 			free(rdctldev);
 			free(wrctldev);
-			if (ret < 0)				
-				goto fail;
-			DPRINTF("Launching process, CMDLINE [%s]\n",cmd);
-			if (system(cmd) == -1) {
-				EPRINTF("Unable to fork, cmdline: [%s]\n",
-					cmd);
-				free(cmd);
-				return -1;
-			}
-			free(cmd);
 		} else {
 			DPRINTF("Process exists!\n");
 			blkif->fds[READ] = exist->fds[READ];
@@ -868,7 +904,6 @@ int open_ctrl_socket(char *devname)
 {
 	int ret;
 	int ipc_fd;
-	char *cmd;
 	fd_set socks;
 	struct timeval timeout;
 
