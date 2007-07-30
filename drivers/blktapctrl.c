@@ -690,7 +690,7 @@ int blktapctrl_new_blkif(blkif_t *blkif)
 		if (test_path(blk->params, &ptr, &type, &exist) != 0) {
                         DPRINTF("Error in blktap device string(%s).\n",
                                 blk->params);
-                        return -1;
+			goto fail;
                 }
 		blkif->drivertype = type;
 		blkif->cookie = next_cookie++;
