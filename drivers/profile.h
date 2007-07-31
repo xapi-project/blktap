@@ -213,4 +213,76 @@ do {                                                                           \
 	close(fd);                                                             \
 } while (0)
 
+#define MAX_ERROR_MESSAGES 16
+
+struct error {
+	int          cnt;
+	int          err;
+	char        *func;
+	char         msg[MAX_ENTRY_LEN];
+};
+
+struct ehandle {
+	int          cnt;
+	int          dropped;
+	struct error errors[MAX_ERROR_MESSAGES];
+};
+
+#define LOG_ERROR(h, _err, _f, _a...)                                          \
+do {                                                                           \
+	struct error *e;                                                       \
+	struct timeval t;                                                      \
+	int i, __err, done = 0;                                                \
+                                                                               \
+	__err = ((_err) > 0 ? (_err) : -(_err));                               \
+                                                                               \
+	for (i = 0; i < h.cnt; i++) {                                          \
+		e = &h.errors[i];                                              \
+		if (e->err == __err && e->func == __func__) {                  \
+			e->cnt++;                                              \
+			done = 1;                                              \
+			break;                                                 \
+		}                                                              \
+	}                                                                      \
+                                                                               \
+	if (done)                                                              \
+		break;                                                         \
+                                                                               \
+	if (h.cnt >= MAX_ERROR_MESSAGES) {                                     \
+		h.dropped++;                                                   \
+		break;                                                         \
+	}                                                                      \
+	                                                                       \
+	gettimeofday(&t, NULL);                                                \
+	e = &h.errors[h.cnt];                                                  \
+                                                                               \
+	if (snprintf(e->msg, MAX_ENTRY_LEN, "%ld.%ld: "                        \
+		     _f, t.tv_sec, t.tv_usec, ##_a) > 0) {                     \
+		h.cnt++;                                                       \
+		e->cnt++;                                                      \
+		e->err  = __err;                                               \
+		e->func = (char *)__func__;                                    \
+	}                                                                      \
+} while (0)
+
+#define PRINT_ERRORS(h)                                                        \
+do {                                                                           \
+	int i;                                                                 \
+	struct error *e;                                                       \
+                                                                               \
+	for (i = 0; i < h.cnt; i++) {                                          \
+		e = &h.errors[i];                                              \
+		syslog(LOG_INFO, "TAPDISK ERROR: errno %d: at %s "             \
+		       "(cnt = %d): %s\n", e->err, e->func, e->cnt, e->msg);   \
+	}                                                                      \
+                                                                               \
+	if (h.dropped)                                                         \
+		syslog(LOG_INFO, "TAPDISK ERROR: %d other error messages "     \
+		       "dropped\n", h.dropped);                                \
+} while (0)
+
+static struct ehandle tap_errors;
+#define TAP_ERROR(_err, _f, _a...) LOG_ERROR(tap_errors, _err, _f, ##_a)
+#define TAP_PRINT_ERRORS()         PRINT_ERRORS(tap_errors)
+
 #endif

@@ -383,6 +383,8 @@ static void unmap_disk(struct td_state *s)
 	close(info->fd);
 	--connected_disks;
 
+	TAP_PRINT_ERRORS();
+
 	return;
 }
 
@@ -1016,6 +1018,9 @@ static void make_response(struct td_state *s, pending_req_t *preq)
 	DBG("%s: writing req %d, sec %llu, res %d to ring\n",
 	    __func__, (int)tmp.id, tmp.sector_number, preq->status);
 
+	if (rsp->status != BLKIF_RSP_OKAY)
+		TAP_ERROR(EIO, "returning BLKIF_RSP %d", rsp->status);
+
 	write_rsp_to_ring(s, rsp);
 	s->returned++;
 	init_preq(preq);
@@ -1081,15 +1086,21 @@ int send_responses(struct disk_driver *dd, int res,
 	}
 
 	preq->secs_pending  -= secs_done;
-	if (res)
+	if (res) {
 		preq->status = BLKIF_RSP_ERROR;
+		if (res != -EBUSY)
+			TAP_ERROR(res, "req %d: %s %d secs to %llu", idx,
+				  (req->operation == BLKIF_OP_WRITE ?
+				   "write" : "read"), nr_secs, sector);
+	}
 
 	if (preq->status == BLKIF_RSP_ERROR &&
 	    preq->num_retries < TD_MAX_RETRIES) {
 		if (!(s->flags & TD_DEAD)) {
 			gettimeofday(&preq->last_try, NULL);
 			s->flags |= TD_RETRY_NEEDED;
-			DBG("%s: retry needed: %d, %llu\n", __func__, idx, sector);
+			DBG("%s: retry needed: %d, %llu\n",
+			    __func__, idx, sector);
 			return res;
 		}
 	}

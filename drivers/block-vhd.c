@@ -2614,6 +2614,7 @@ allocate_block(struct vhd_state *s, uint32_t blk)
 
 	if (lseek(s->fd, offset, SEEK_SET) == (off_t)-1) {
 		DBG("%s: lseek failed: %d\n", __func__, errno);
+		TAP_ERROR(errno, "lseek failed");
 		return -errno;
 	}
 
@@ -2625,8 +2626,10 @@ allocate_block(struct vhd_state *s, uint32_t blk)
 	}
 
 	if ((err = write(s->fd, s->zeros, size)) != size) {
-		DBG("%s: write failed: %d\n", __func__, errno);
-		return (err == -1 ? -errno : -EIO);
+		err = (err == -1 ? -errno : -EIO);
+		DBG("%s: write failed: %d\n", __func__, err);
+		TAP_ERROR(err, "write failed");
+		return err;
 	}
 
 	/* empty bitmap could already be in
@@ -3581,6 +3584,8 @@ vhd_submit(struct disk_driver *dd)
 		int i, rval, failed;
 		struct vhd_request *req;
 
+		TAP_ERROR(err, "io_submit(%d) returned %d", queued, ret);
+
 		failed = io_expand_iocbs(&s->opioctx, 
 					 s->iocb_queue, ret, queued);
 		
@@ -3639,6 +3644,12 @@ vhd_do_callbacks(struct disk_driver *dd, int sid)
 			    io->u.c.nbytes, req->lsec / s->spb,
 			    bat_entry(s, req->lsec / s->spb));
 			TRACE(s);
+			TAP_ERROR(req->error, "%s: aio failed: op: %u, "
+				  "lsec: %llu, nr_secs: %u, nbytes: %lu, "
+				  "blk: %llu, blk_offset: %u", s->name, 
+				  req->op, req->lsec, req->nr_secs, 
+				  io->u.c.nbytes, req->lsec / s->spb,
+				  bat_entry(s, req->lsec / s->spb));
 		}
 
 		switch (req->op) {
