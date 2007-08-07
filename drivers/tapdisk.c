@@ -868,6 +868,7 @@ static int read_msg(char *buf)
 					DPRINTF("close: pending aio;"
 						" draining queue\n");
 			}
+			sig_handler(SIGINT);
 
 			return 1;
 
