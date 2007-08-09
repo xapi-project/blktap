@@ -164,8 +164,8 @@ __tp_log(struct profile_info *prof, u64 id, const char *func, int direction)
 #define BSHIFT          9
 #define BALIGN          (1 << BSHIFT)
 #define BUF_PAD         (BALIGN << 1)
-#define BUF_SIZE        (1 << 20)
-#define MAX_ENTRY_LEN   256
+#define BUF_SIZE        (20 << 20)
+#define MAX_ENTRY_LEN   512
 
 struct bhandle {
 	char          *p;

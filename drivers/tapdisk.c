@@ -131,7 +131,7 @@ void debug(int sig)
 {
 	fd_list_entry_t *ptr;
 
-	BDUMP("/tmp/tapdisk.log", tbhandle);
+	BDUMP("/var/log/tapdisk/tapdisk.log", tbhandle);
 
 	ptr = fd_start.next;
 	while (ptr != NULL) {
@@ -389,6 +389,7 @@ static void unmap_disk(struct td_state *s)
 	--connected_disks;
 
 	TAP_PRINT_ERRORS();
+	debug(SIGUSR1);
 
 	return;
 }
