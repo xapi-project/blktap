@@ -63,7 +63,7 @@
 
 #define NUM_POLL_FDS 2
 #define MSG_SIZE 4096
-#define MAX_TIMEOUT 10
+#define MAX_TIMEOUT 20
 #define MAX_RAND_VAL 0xFFFF
 #define MAX_ATTEMPTS 10
 
