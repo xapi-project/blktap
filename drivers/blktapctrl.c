@@ -1017,8 +1017,6 @@ int main(int argc, char *argv[])
 	register_new_checkpoint_hook(blktapctrl_checkpoint);
 	register_new_lock_hook(blktapctrl_lock);
 
-	mkdir("/var/log/tapdisk", 0755);
-
 	/* Attach to blktap0 */
 	ret = asprintf(&devname,"%s/%s0", BLKTAP_DEV_DIR, BLKTAP_DEV_NAME);
 	if (ret < 0)

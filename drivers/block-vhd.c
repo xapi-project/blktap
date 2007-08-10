@@ -84,7 +84,7 @@ if ( !(_p) ) {                                                                 \
 #elif (DEBUGGING == 2)
   static struct bhandle bhandle;
   #define DBG(_f, _a...)             BLOG(bhandle, _f, ##_a)
-  #define DBGDUMP()                  BDUMP("/var/log/tapdisk/vhd.log", bhandle)
+  #define DBGDUMP()                  BDUMP("/tmp/vhd.log", bhandle)
   #define TRACE(s)                   __TRACE(s)
 #else
   #define DBG(_f, _a...)             ((void)0)
@@ -1185,10 +1185,7 @@ vhd_close(struct disk_driver *dd)
 		io_destroy(s->aio_ctx);
 
 	tp_close(&s->tp);
-
-	if (test_vhd_flag(s->flags, VHD_FLAG_OPEN_STRICT))
-		DBGDUMP();
-
+	
 	return 0;
 }
 
