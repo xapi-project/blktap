@@ -259,7 +259,7 @@ expand_event(struct opioctx *ctx,
 		next    = op->next;
 		ep      = &queue[idx++];
 		ep->obj = op->iocb;
-		ep->res = (err ? 0 : op->nbytes);
+		ep->res = (err ? err : op->nbytes);
 		restore_iocb(op);
 		free_opio(ctx, op);
 		op      = next;

@@ -3631,7 +3631,12 @@ vhd_do_callbacks(struct disk_driver *dd, int sid)
 		struct iocb *io = ep->obj;
 		struct vhd_request *req = (struct vhd_request *)io->data;
 
-		req->error = (ep->res == io->u.c.nbytes ? 0 : (int)ep->res);
+		if (ep->res == io->u.c.nbytes)
+			req->error = 0;
+		else if (ep->res)
+			req->error = (int)ep->res;
+		else
+			req->error = -EIO;
 
 		if (req->error) {
 			DBG("%s: %s: ERROR: %d: op: %u, lsec: %llu, "
