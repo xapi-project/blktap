@@ -111,10 +111,15 @@ void register_new_lock_hook(int (*fn)(blkif_t *blkif, char *lock, int enforce))
 
 int blkif_connected(blkif_t *blkif)
 {
+	int err = 0;
+
 	if (connected_blkif_hook)
-		connected_blkif_hook(blkif);
-	blkif->state = CONNECTED;
-	return 0;
+		err = connected_blkif_hook(blkif);
+
+	if (!err)
+		blkif->state = CONNECTED;
+
+	return err;
 }
 
 void blkif_unmap(blkif_t *blkif)

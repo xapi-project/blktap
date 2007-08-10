@@ -266,6 +266,9 @@ static void handle_shutdown_request(struct xs_handle *h,
 /* Supply the information about the device to xenstore */
 static int tapdisk_connect(struct xs_handle *h, struct backend_info *be)
 {
+	int err;
+	char *path;
+
 	if (!xs_printf(h, be->backpath, "sectors", "%llu",
 		       be->blkif->ops->get_size(be->blkif))) {
 		DPRINTF("ERROR: Failed writing sectors");
@@ -284,8 +287,32 @@ static int tapdisk_connect(struct xs_handle *h, struct backend_info *be)
 		return -1;
 	}
 
-	blkif_connected(be->blkif);
+	err = blkif_connected(be->blkif);
+	if (err)
+		goto clean;
+
 	return 0;
+
+ clean:
+	if (asprintf(&path, "%s/info", be->backpath) == -1)
+		return err;
+	if (!xs_rm(h, XBT_NULL, path))
+		goto clean_out;
+	free(path);
+
+	if (asprintf(&path, "%s/sector-size", be->backpath) == -1)
+		return err;
+	if (!xs_rm(h, XBT_NULL, path))
+		goto clean_out;
+	free(path);
+
+	if (asprintf(&path, "%s/sectors", be->backpath) == -1)
+		return err;
+	xs_rm(h, XBT_NULL, path);
+
+ clean_out:
+	free(path);
+	return err;
 }
 
 static void ueblktap_setup(struct xs_handle *h, struct backend_info *be)
