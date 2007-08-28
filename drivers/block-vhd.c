@@ -287,6 +287,7 @@ struct vhd_state {
 #define secs_round_up(bytes) \
               (((bytes) + (VHD_SECTOR_SIZE - 1)) >> VHD_SECTOR_SHIFT)
 
+int vhd_submit(struct disk_driver *);
 static int finish_data_transaction(struct disk_driver *, struct vhd_bitmap *);
 
 static inline int
@@ -3548,22 +3549,54 @@ fail_vhd_request(struct disk_driver *dd, struct vhd_request *r, int err)
 	}
 }
 
-int
-vhd_cancel_requests(struct disk_driver *dd)
+static int
+__vhd_cancel_requests(struct disk_driver *dd, int err)
 {
-	int i, ret, rsp = 0;
+	struct iocb *io;
+	struct vhd_request *req;
+	int i, ret, queued, rsp = 0;
 	struct vhd_state *s = (struct vhd_state *)dd->private;
 	
-	for (i = 0; i < s->iocb_queued; i++) {
-		struct iocb *io = s->iocb_queue[i];
-		struct vhd_request *req = (struct vhd_request *)io->data;
-		ret = fail_vhd_request(dd, req, -EIO);
+	queued = s->iocb_queued;
+	s->iocb_queued = 0;
+
+	for (i = 0; i < queued; i++) {
+		io  = s->iocb_queue[i];
+		req = (struct vhd_request *)io->data;
+		ret = fail_vhd_request(dd, req, err);
 		if (ret > 0)
 			rsp += ret;
 	}
 
-	s->iocb_queued = 0;
+	if (s->iocb_queued) {
+		ret = vhd_submit(dd);
+		if (ret > 0)
+			rsp += ret;
+	}
+
 	return rsp;
+}
+
+int
+vhd_cancel_requests(struct disk_driver *dd)
+{
+	return __vhd_cancel_requests(dd, -EIO);
+}
+
+static int
+vhd_submit_fail(struct disk_driver *dd, int succeeded, int submitted, int err)
+{
+	struct vhd_state *s = (struct vhd_state *)dd->private;
+
+	TAP_ERROR(err, "io_submit error: %d of %d failed", 
+		  submitted - succeeded, submitted);
+
+	/* take any non-submitted iocbs off of the
+	 * merged queue, split them, and fail them */
+	s->iocb_queued = io_expand_iocbs(&s->opioctx,
+					 s->iocb_queue, succeeded, submitted);
+
+	return __vhd_cancel_requests(dd, err);
 }
 
 int
@@ -3583,39 +3616,22 @@ vhd_submit(struct disk_driver *dd)
         DBG("%s: %s: submitting %d, merged to %d, ret: %d\n", 
 	    __func__, s->name, s->iocb_queued, queued, ret);
 
-	s->submits++;
-	s->to_aio    += queued;
-	s->submitted += s->iocb_queued;
-	TRACE(s);
-
 	/* io_submit returns an error, or the number of iocbs submitted. */
 	if (ret < 0) {
-		DBG("%s: io_submit returned %d", __func__, ret);
+		DBG("%s: io_submit returned %d\n", __func__, ret);
 		err = ret;
 		ret = 0;
 	} else if (ret < queued)
 		err = -EIO;
 
-	if (err) {
-		struct iocb *io;
-		int i, rval, failed;
-		struct vhd_request *req;
-
-		TAP_ERROR(err, "io_submit(%d) returned %d", queued, ret);
-
-		failed = io_expand_iocbs(&s->opioctx, 
-					 s->iocb_queue, ret, queued);
-		
-		for (i = ret; i < failed; i++) {
-			io   = s->iocb_queue[i];
-			req  = (struct vhd_request *)io->data;
-			rval = fail_vhd_request(dd, req, err);
-			if (rval > 0)
-				rsp += rval;
-		}
-	}
-
+	s->submits++;
+	s->to_aio     += ret;
+	s->submitted  += s->iocb_queued;
 	s->iocb_queued = 0;
+	TRACE(s);
+
+	if (err)
+		rsp = vhd_submit_fail(dd, ret, queued, err);
 
 	tp_out(&s->tp);
 

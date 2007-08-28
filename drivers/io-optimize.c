@@ -238,7 +238,7 @@ io_expand_iocbs(struct opioctx *ctx, struct iocb **queue, int idx, int num)
 			on_queue += expand_iocb(ctx, queue + on_queue, io);
 	}
 
-	return idx;
+	return on_queue;
 }
 
 static int
