@@ -2591,6 +2591,8 @@ allocate_block(struct vhd_state *s, uint32_t blk)
 
 	if (bat_locked(s)) {
 		ASSERT(s->bat.pbw_blk == blk);
+		if (s->bat.req.error)
+			return -EBUSY;
 		return 0;
 	}
 
@@ -2837,7 +2839,7 @@ schedule_bitmap_write(struct vhd_state *s, uint32_t blk)
 	       !test_vhd_flag(bm->status, VHD_FLAG_BM_WRITE_PENDING));
 
 	if (offset == DD_BLK_UNUSED) {
-		ASSERT(s->bat.pbw_blk == blk);
+		ASSERT(bat_locked(s) && s->bat.pbw_blk == blk);
 		offset = s->bat.pbw_offset;
 	}
 	
@@ -3134,7 +3136,6 @@ start_new_bitmap_transaction(struct disk_driver *dd, struct vhd_bitmap *bm)
 {
 	int i, error = 0, rsp = 0;
 	struct vhd_request *r, *next;
-	struct vhd_req_list completed;
 	struct vhd_transaction *tx;
 	struct vhd_state *s = (struct vhd_state *)dd->private;
 
@@ -3146,24 +3147,18 @@ start_new_bitmap_transaction(struct disk_driver *dd, struct vhd_bitmap *bm)
 	r  = bm->queue.head;
 	tx = &bm->tx;
 	clear_req_list(&bm->queue);
-	clear_req_list(&completed);
 
-	if (bat_entry(s, bm->blk) == DD_BLK_UNUSED) {
-		error = -EIO;
-		completed.head = r;
-		goto done;
-	}
+	if (r && bat_entry(s, bm->blk) == DD_BLK_UNUSED)
+		tx->error = -EIO;
 
 	while (r) {
 		next    = r->next;
 		r->next = NULL;
 		clear_vhd_flag(r->flags, VHD_FLAG_REQ_QUEUED);
 
-		if (r->error) 
-			add_to_tail(&completed, r);
-		else {
-			add_to_transaction(tx, r);
-			if (test_vhd_flag(r->flags, VHD_FLAG_REQ_FINISHED)) {
+		add_to_transaction(tx, r);
+		if (test_vhd_flag(r->flags, VHD_FLAG_REQ_FINISHED)) {
+			if (!r->error) {
 				u32 sec = r->lsec % s->spb;
 				for (i = 0; i < r->nr_secs; i++)
 					set_bit(sec + i, (void *)bm->shadow);
@@ -3174,12 +3169,36 @@ start_new_bitmap_transaction(struct disk_driver *dd, struct vhd_bitmap *bm)
 	}
 
 	/* perhaps all the queued writes already completed? */
-	if (transaction_completed(tx))
+	if (tx->started && transaction_completed(tx))
 		rsp += finish_data_transaction(dd, bm);
 
- done:
-	rsp += signal_completion(dd, completed.head, error);
 	return rsp;
+}
+
+static void
+finish_bat_transaction(struct vhd_state *s, struct vhd_bitmap *bm)
+{
+	struct vhd_transaction *tx = &bm->tx;
+
+	if (!bat_locked(s))
+		return;
+
+	if (s->bat.pbw_blk != bm->blk)
+		return;
+
+	if (!s->bat.req.error)
+		goto release;
+
+	if (!test_vhd_flag(tx->status, VHD_FLAG_TX_LIVE))
+		goto release;
+
+	tx->closed = 1;
+	return;
+
+ release:
+	DBG("%s: blk: %u\n", __func__, bm->blk);
+	unlock_bat(s);
+	init_bat(s);
 }
 
 static int
@@ -3220,6 +3239,8 @@ finish_bitmap_transaction(struct disk_driver *dd,
 
 	if (!bitmap_in_use(bm))
 		unlock_bitmap(bm);
+
+	finish_bat_transaction(s, bm);
 
 	return rsp;
 }
@@ -3288,8 +3309,7 @@ finish_bat_write(struct disk_driver *dd, struct vhd_request *req)
 		rsp += finish_bitmap_transaction(dd, bm, req->error);
 #endif
 
-	unlock_bat(s);
-	init_bat(s);
+	finish_bat_transaction(s, bm);
 
 	tp_log(&s->tp, req->lsec, TAPPROF_OUT);
 
