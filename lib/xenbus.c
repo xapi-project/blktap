@@ -185,7 +185,7 @@ static void handle_checkpoint_request(struct xs_handle *h,
 	int err;
 	char *cp_uuid, *cpp, *rsp, *bepath = binfo->backpath;
 
-	if (strcmp(node, "checkpoint"))
+	if (strcmp(node, "checkpoint/cp_uuid"))
 		return;
 
 	if (asprintf(&cpp, "%s/checkpoint", bepath) == -1)
