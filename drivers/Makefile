@@ -38,6 +38,7 @@ BLK-OBJS  += atomicio.o
 BLK-OBJS  += io-optimize.o
 BLK-OBJS  += vhd-coalesce.o
 BLK-OBJS  += vhd-fill.o
+BLK-OBJS  += vhd-read.o
 
 all: $(IBIN) lock-util
 

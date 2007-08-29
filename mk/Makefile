@@ -48,6 +48,7 @@ PROPRIETARY_SOURCE += drivers/td.c
 PROPRIETARY_SOURCE += drivers/vhd.h
 PROPRIETARY_SOURCE += drivers/vhd-coalesce.c
 PROPRIETARY_SOURCE += drivers/vhd-fill.c
+PROPRIETARY_SOURCE += drivers/vhd-read.c
 
 PROPRIETARY_C += $(filter drivers/%.c,$(PROPRIETARY_SOURCE))
 SOURCES += $(patsubst drivers/%.c,$(RPM_SOURCESDIR)/%.o,$(PROPRIETARY_C))

@@ -37,7 +37,8 @@ typedef enum {
 	TD_CMD_SET       = 4,
 	TD_CMD_REPAIR    = 5,
 	TD_CMD_FILL      = 6,
-	TD_CMD_INVALID   = 7
+	TD_CMD_READ      = 7,
+	TD_CMD_INVALID   = 8
 } td_command_t;
 
 struct command {
@@ -54,9 +55,10 @@ struct command commands[TD_CMD_INVALID] = {
 	{ .id = TD_CMD_SET,      .name = "set",      .needs_type = 1 },
 	{ .id = TD_CMD_REPAIR,   .name = "repair",   .needs_type = 1 },
 	{ .id = TD_CMD_FILL,     .name = "fill",     .needs_type = 1 },
+	{ .id = TD_CMD_READ,     .name = "read",     .needs_type = 1 },
 };
 
-#define COMMAND_NAMES "{ create | snapshot | coalesce | query | set | repair | fill }"
+#define COMMAND_NAMES "{ create | snapshot | coalesce | query | set | repair | fill | read }"
 #define PLUGIN_TYPES  "{ aio | qcow | ram | vhd | vmdk }"
 
 #define print_field_names()                                           \
@@ -719,6 +721,43 @@ td_fill(int type, int argc, char *argv[])
 }
 
 int
+td_read(int type, int argc, char *argv[])
+{
+	int err = 0;
+	char *name;
+	struct disk_driver dd;
+
+	if (type != DISK_TYPE_VHD) {
+		fprintf(stderr, "Cannot read %s images\n",
+			dtypes[type]->handle);
+		return EINVAL;
+	}
+
+	name = argv[1];
+	if (strnlen(name, MAX_NAME_LEN) == MAX_NAME_LEN) {
+		fprintf(stderr, "Device name too long\n");
+		err = ENAMETOOLONG;
+		goto usage;
+	}
+
+	err = init_disk_driver(&dd, type, name, TD_RDONLY | TD_QUIET);
+	if (err) {
+		DFPRINTF("Failed opening %s\n", name);
+		goto usage;
+	}
+
+	err = vhd_read(&dd, argc, argv);
+	free_disk_driver(&dd);
+
+	return err;
+
+ usage:
+	fprintf(stderr, "usage: td-util read %s <FILENAME> "
+		"[image-specific options]\n", dtypes[type]->handle);
+	return err;
+}
+
+int
 main(int argc, char *argv[])
 {
 	char **cargv;
@@ -779,6 +818,9 @@ main(int argc, char *argv[])
 		break;
 	case TD_CMD_FILL:
 		ret = td_fill(type, cargc, cargv);
+		break;
+	case TD_CMD_READ:
+		ret = td_read(type, cargc, cargv);
 		break;
 	case TD_CMD_INVALID:
 		ret = EINVAL;

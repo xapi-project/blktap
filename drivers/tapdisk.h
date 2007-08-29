@@ -370,5 +370,6 @@ int vhd_coalesce(char *name);
 int vhd_fill(char *name);
 void vhd_debug(struct disk_driver *dd);
 int vhd_repair(struct disk_driver *dd);
+int vhd_read(struct disk_driver *dd, int argc, char *argv[]);
 
 #endif /*TAPDISK_H_*/
