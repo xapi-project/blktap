@@ -1919,6 +1919,7 @@ init_bat(struct vhd_state *s)
 {
 	s->bat.req.tx     = NULL;
 	s->bat.req.next   = NULL;
+	s->bat.req.error  = 0;
 	s->bat.pbw_blk    = 0;
 	s->bat.pbw_offset = 0;
 	s->bat.status     = 0;
