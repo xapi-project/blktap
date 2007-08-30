@@ -1,3 +1,10 @@
+/* Copyright (c) 2007, XenSource Inc.
+ * All rights reserved.
+ *
+ * XenSource proprietary code.
+ */
+
+
 #include <stdio.h>
 #include <fcntl.h>
 #include <stdlib.h>
