@@ -1021,7 +1021,7 @@ static void make_response(struct td_state *s, pending_req_t *preq)
 	rsp->operation = tmp.operation;
 	rsp->status = preq->status;
 
-	DBG("%s: writing req %d, sec %llu, res %d to ring\n",
+	DBG("%s: writing req %d, sec %" PRIu64 ", res %d to ring\n",
 	    __func__, (int)tmp.id, tmp.sector_number, preq->status);
 
 	if (rsp->status != BLKIF_RSP_OKAY)
@@ -1074,7 +1074,7 @@ int send_responses(struct disk_driver *dd, int res,
 	req  = &preq->req;
 	gettimeofday(&s->ts, NULL);
 
-	DBG("%s: req %d, sec %llu (%d secs) returned %d, pending: %d\n",
+	DBG("%s: req %d, sec %" PRIu64 " (%d secs) returned %d, pending: %d\n",
 	    __func__, idx, req->sector_number, nr_secs, res, 
 	    preq->secs_pending);
 
@@ -1095,7 +1095,7 @@ int send_responses(struct disk_driver *dd, int res,
 	if (res) {
 		preq->status = BLKIF_RSP_ERROR;
 		if (res != -EBUSY)
-			TAP_ERROR(res, "req %d: %s %d secs to %llu", idx,
+			TAP_ERROR(res, "req %d: %s %d secs to %" PRIu64, idx,
 				  (req->operation == BLKIF_OP_WRITE ?
 				   "write" : "read"), nr_secs, sector);
 	}
@@ -1105,7 +1105,7 @@ int send_responses(struct disk_driver *dd, int res,
 		if (!(s->flags & TD_DEAD)) {
 			gettimeofday(&preq->last_try, NULL);
 			s->flags |= TD_RETRY_NEEDED;
-			DBG("%s: retry needed: %d, %llu\n",
+			DBG("%s: retry needed: %d, %" PRIu64 "\n",
 			    __func__, idx, sector);
 			return res;
 		}
@@ -1144,13 +1144,13 @@ int do_cow_read(struct disk_driver *dd, blkif_request_t *req,
 
 	if (!parent) {
 		memset(page, 0, nr_secs << SECTOR_SHIFT);
-		DBG("%s: memset for %d, sec %llu, nr_secs: %d\n",
+		DBG("%s: memset for %d, sec %" PRIu64 ", nr_secs: %d\n",
 		    __func__, sidx, sector, nr_secs);
 		return nr_secs;
 	}
 
 	/* reissue request to backing file */
-	DBG("%s: submitting %d, %llu (%d secs) to parent\n",
+	DBG("%s: submitting %d, %" PRIu64 " (%d secs) to parent\n",
 	    __func__, sidx, sector, nr_secs);
 
 	preq->submitting++;
@@ -1337,8 +1337,8 @@ static void retry_requests(struct td_state *s)
 
 		preq->num_retries++;
 		preq->status = BLKIF_RSP_OKAY;
-		DBG("%s: retry #%d of req %llu, sec %llu, nr_segs: %d\n", 
-		    __func__, preq->num_retries, preq->req.id, 
+		DBG("%s: retry #%d of req %" PRIu64 ", sec %" PRIu64 ", nr_segs: %d\n",
+		    __func__, preq->num_retries, preq->req.id,
 		    preq->req.sector_number, preq->req.nr_segments);
 
 		if (queue_request(s, &preq->req))
@@ -1400,7 +1400,7 @@ static void get_io_request(struct td_state *s)
 		blkif->pending_list[idx].status = BLKIF_RSP_OKAY;
 		s->received++;
 
-		DBG("%s: queueing request %d, sec %llu, nr_segs: %d\n", 
+		DBG("%s: queueing request %d, sec %" PRIu64 ", nr_segs: %d\n", 
 		    __func__, idx, req->sector_number, req->nr_segments);
 
 		queue_request(s, req);

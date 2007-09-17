@@ -9,6 +9,7 @@
 #include <fcntl.h>
 #include <stdlib.h>
 #include <unistd.h>
+#include <inttypes.h>
 
 #define TAPDISK
 #include "tapdisk.h"
@@ -29,14 +30,14 @@ test_bit (int nr, volatile u32 *addr)
 static inline char *
 __xconv(uint64_t num)
 {
-	snprintf(nbuf, nsize, "%#llx", num);
+	snprintf(nbuf, nsize, "%#" PRIx64 , num);
 	return nbuf;
 }
 
 static inline char *
 __dconv(uint64_t num)
 {
-	snprintf(nbuf, nsize, "%llu", num);
+	snprintf(nbuf, nsize, "%" PRIu64, num);
 	return nbuf;
 }
 
@@ -224,7 +225,7 @@ vhd_read(struct disk_driver *dd, int argc, char *argv[])
 	}
 
 	if (optind != (argc - 1) || block == -1) {
-		printf("optind: %d, argc: %d, block: %llu\n",
+		printf("optind: %d, argc: %d, block: %" PRIu64 "\n",
 		       optind, argc, block);
 		goto usage;
 	}

@@ -15,6 +15,7 @@
 #include <sys/time.h>
 #include <time.h>
 #include <fcntl.h>
+#include <inttypes.h>
 
 //#define PROFILING
 //#define LOGGING
@@ -185,7 +186,7 @@ do {                                                                           \
 		h.p = B_ALIGN(h.buf);                                          \
                                                                                \
 	gettimeofday(&t, NULL);                                                \
-	_len = snprintf(h.p, MAX_ENTRY_LEN - 2, "%llu:%ld.%ld: "               \
+	_len = snprintf(h.p, MAX_ENTRY_LEN - 2, "%"PRIu64":%ld.%ld: "          \
 			_f, h.cnt, t.tv_sec, t.tv_usec, ##_a);                 \
 	_len = (_len < MAX_ENTRY_LEN ? _len : MAX_ENTRY_LEN - 1);              \
 	h.p[_len] = '\0';                                                      \

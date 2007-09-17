@@ -42,6 +42,7 @@
 #include <libgen.h>
 #include <endian.h>
 #include <byteswap.h>
+#include <inttypes.h>
 
 #include "tapdisk.h"
 #include "vhd.h"
@@ -61,10 +62,10 @@ unsigned int SPB;
 
 #define __TRACE(s)                                                             \
 do {                                                                           \
-	BLOG(bhandle, "%s: %s: QUEUED: %llu, SUBMITTED: %llu, "                \
-	     "RETURNED: %llu, TO_AIO: %llu, FROM_AIO: %llu, "                  \
-	     "DATA_ALLOCATED: %lu, BBLK: %u\n", __func__,                      \
-	     s->name, s->queued, s->submitted, s->returned,                    \
+	BLOG(bhandle, "%s: %s: QUEUED: %" PRIu64 ", SUBMITTED: %" PRIu64 ", "  \
+	     "RETURNED: %" PRIu64 ", TO_AIO: %" PRIu64 ", "                    \
+	     "FROM_AIO: %" PRIu64 ", DATA_ALLOCATED: %lu, BBLK: %u\n",         \
+	     __func__, s->name, s->queued, s->submitted, s->returned,          \
 	     s->to_aio, s->from_aio, VHD_REQS_DATA - s->vreq_free_count,       \
 	     s->bat.pbw_blk);                                                  \
 } while(0)
@@ -1119,11 +1120,11 @@ vhd_close(struct disk_driver *dd)
 	struct vhd_bitmap *bm;
 	struct vhd_state  *s = (struct vhd_state *)dd->private;
 	
-        DBG("vhd_close\n");
-	DBG("%s: %s: QUEUED: %llu, SUBMITTED: %llu, RETURNED: %llu, "
-	    "WRITES: %llu, READS: %llu, AVG_WRITE_SIZE: %f, "
+	DBG("vhd_close\n");
+	DBG("%s: %s: QUEUED: %" PRIu64 ", SUBMITTED: %" PRIu64 ", RETURNED: %" PRIu64 ", "
+	    "WRITES: %" PRIu64 ", READS: %" PRIu64 ", AVG_WRITE_SIZE: %f, "
 	    "AVG_READ_SIZE: %f, AVG_SUBMIT_BATCH: %f, "
-	    "CALLBACKS: %llu, AVG_CALLBACK_BATCH: %f\n", __func__, 
+	    "CALLBACKS: %" PRIu64 ", AVG_CALLBACK_BATCH: %f\n", __func__, 
 	    s->name, s->queued, s->submitted, s->returned, s->writes, 
 	    s->reads, 
 	    ((s->writes) ? ((float)s->write_size / s->writes) : 0.0),
@@ -1801,7 +1802,7 @@ __vhd_create(const char *name, uint64_t total_size,
 
 	/* finished */
 		
-	DPRINTF("%s: size: %llu, blk_size: %llu, blks: %llu\n",	
+	DPRINTF("%s: size: %llu, blk_size: %" PRIu64 ", blks: %" PRIu64 "\n",
 		__func__, ftr->orig_size, (uint64_t)1 << BLK_SHIFT, blks);
 
 	err = 0;
@@ -1898,7 +1899,7 @@ add_to_transaction(struct vhd_transaction *tx, struct vhd_request *r)
 {
 	ASSERT(!tx->closed);
 
-	DBG("%s: blk: %llu, lsec: %llu, tx: %p, started: %d, finished: %d, "
+	DBG("%s: blk: %" PRIu64 ", lsec: %" PRIu64 ", tx: %p, started: %d, finished: %d, "
 	    "status: %u\n", __func__, r->lsec / SPB, r->lsec, tx, 
 	    tx->started, tx->finished, tx->status);
 
@@ -2289,15 +2290,15 @@ int vhd_sync_read(struct disk_driver *dd, uint64_t sector,
 	int i, err, secs, bytes, ret, rsp = 0;
 	struct vhd_state *s = (struct vhd_state *)dd->private;
 
-	DBG("%s: %s: sector: %llu, nb_sectors: %d (seg: %d), buf: %p\n",
-	    __func__, s->name, sector, nb_sectors, (int)private, buf);
+	DBG("%s: %s: sector: %" PRIu64 ", nb_sectors: %d (seg: %ld), buf: %p\n",
+	    __func__, s->name, sector, nb_sectors, (unsigned long)private, buf);
 
 	for (i = 0; i < nb_sectors; i += secs) {
 		err  = -EIO;
 		secs = nb_sectors - i;
 		ret  = get_sector_offset(s, sector + i, &off, &secs, 0);
 
-		DBG("get_sector_offset returned: %d, off: %llu, secs: %d\n",
+		DBG("get_sector_offset returned: %d, off: %" PRIu64 ", secs: %d\n",
 		    ret, off, secs);
 
 		if (ret < 0)
@@ -2332,8 +2333,8 @@ int vhd_sync_write(struct disk_driver *dd, uint64_t sector,
 	int i, err, secs, bytes, ret;
 	struct vhd_state *s = (struct vhd_state *)dd->private;
 
-	DBG("%s: %s: sector: %llu, nb_sectors: %d (seg: %d), buf: %p\n",
-	    __func__, s->name, sector, nb_sectors, (int)private, buf);
+	DBG("%s: %s: sector: %" PRIu64 ", nb_sectors: %d (seg: %ld), buf: %p\n",
+	    __func__, s->name, sector, nb_sectors, (unsigned long)private, buf);
 
 	err = -EIO;
 
@@ -2341,7 +2342,7 @@ int vhd_sync_write(struct disk_driver *dd, uint64_t sector,
 		secs = nb_sectors - i;
 		ret = get_sector_offset(s, sector + i, &off, &secs, 1);
 
-		DBG("get_sector_offset returned: %d, off: %llu, secs: %d\n",
+		DBG("get_sector_offset returned: %d, off: %" PRIu64 ", secs: %d\n",
 		    ret, off, secs);
 
 		if (ret != 1)
@@ -2379,7 +2380,7 @@ read_bitmap_cache(struct vhd_state *s, uint64_t sector, uint8_t op)
 	sec = sector % s->spb;
 
 	if (blk > s->hdr.max_bat_size) {
-		DPRINTF("ERROR: sec %llu out of range, op = %d\n", sector, op);
+		DPRINTF("ERROR: sec %" PRIu64 " out of range, op = %d\n", sector, op);
 		return -EINVAL;
 	}
 
@@ -2522,7 +2523,7 @@ schedule_bat_write(struct vhd_state *s)
 	aio_write(s, req, offset);
 	set_vhd_flag(s->bat.status, VHD_FLAG_BAT_WRITE_STARTED);
 
-	DBG("bat write scheduled: blk: %u, pbwo: %llu, table_offset: %llu\n",
+	DBG("bat write scheduled: blk: %u, pbwo: %" PRIu64 ", table_offset: %llu\n",
 		blk, s->bat.pbw_offset, offset);
 
 	tp_log(&s->tp, blk, TAPPROF_OUT);
@@ -2541,7 +2542,7 @@ schedule_zero_bm_write(struct vhd_state *s, struct vhd_bitmap *bm)
 	req->lsec    = s->bat.pbw_blk * s->spb;
 	req->nr_secs = s->bm_secs;
 
-	DBG("%s: blk: %u, writing zero bitmap at %llu\n", 
+	DBG("%s: blk: %u, writing zero bitmap at %" PRIu64 "\n", 
 	    __func__, s->bat.pbw_blk, offset);
 
 	lock_bitmap(bm);
@@ -2610,7 +2611,7 @@ allocate_block(struct vhd_state *s, uint32_t blk)
 
 	s->bat.pbw_offset = s->next_db;
 
-	DBG("%s: blk: %u, pbwo: %llu\n",
+	DBG("%s: blk: %u, pbwo: %" PRIu64 "\n",
 		__func__, blk, s->bat.pbw_offset);
 
 	if (lseek(s->fd, offset, SEEK_SET) == (off_t)-1) {
@@ -2621,7 +2622,7 @@ allocate_block(struct vhd_state *s, uint32_t blk)
 
 	size = ((u64)(s->spb + s->bm_secs + gap)) << VHD_SECTOR_SHIFT;
 	if (size > s->zsize) {
-		DPRINTF("ERROR: size: %llx, zsize: %x, gap: %d\n", 
+		DPRINTF("ERROR: size: %" PRIx64 ", zsize: %x, gap: %d\n",
 			size, s->zsize, gap);
 		size = s->zsize;
 	}
@@ -2698,7 +2699,7 @@ schedule_data_read(struct vhd_state *s, uint64_t sector,
 
 	aio_read(s, req, offset);
 
-	DBG("data read scheduled: %s: lsec: %llu, blk: %u, sec: %u, "
+	DBG("data read scheduled: %s: lsec: %" PRIu64 ", blk: %u, sec: %u, "
 	    "nr_secs: %u, offset: %llu, flags: %u, buf: %p\n", s->name,
 	    req->lsec, blk, sec, req->nr_secs, offset, req->flags, buf);
 
@@ -2772,7 +2773,7 @@ schedule_data_write(struct vhd_state *s, uint64_t sector,
 
 	aio_write(s, req, offset);
 
-	DBG("data write scheduled: %s: lsec: %llu, blk: %u, sec: %u, "
+	DBG("data write scheduled: %s: lsec: %" PRIu64 ", blk: %u, sec: %u, "
 	    "nr_secs: %u, offset: %llu, flags: %u\n", s->name, 
 	    req->lsec, blk, sec, req->nr_secs, offset, req->flags);
 
@@ -2815,8 +2816,8 @@ schedule_bitmap_read(struct vhd_state *s, uint32_t blk)
 	install_bitmap(s, bm);
 	set_vhd_flag(bm->status, VHD_FLAG_BM_READ_PENDING);
 
-	DBG("bitmap read scheduled: %s: lsec: %llu, blk: %u, "
-	    "nr_secs: %u, offset: %llu.\n", 
+	DBG("bitmap read scheduled: %s: lsec: %" PRIu64 ", blk: %u, "
+	    "nr_secs: %u, offset: %llu.\n",
 	    s->name, req->lsec, blk, req->nr_secs, offset);
 
 	tp_log(&s->tp, blk, TAPPROF_OUT);
@@ -2858,7 +2859,7 @@ schedule_bitmap_write(struct vhd_state *s, uint32_t blk)
 	touch_bitmap(s, bm);     /* bump lru count */
 	set_vhd_flag(bm->status, VHD_FLAG_BM_WRITE_PENDING);
 
-	DBG("bitmap write scheduled: %s: blk: %u, sec: %llu, "
+	DBG("bitmap write scheduled: %s: blk: %u, sec: %" PRIu64 ", "
 	    "nr_secs: %u, offset: %llu\n", s->name, blk, req->lsec,
 	    req->nr_secs, offset);
 
@@ -2904,7 +2905,7 @@ __vhd_queue_request(struct vhd_state *s, uint8_t op,
 	add_to_tail(&bm->waiting, req);
 	lock_bitmap(bm);
 
-	DBG("data request queued: %s: lsec: %llu, blk: %u nr_secs: %u, "
+	DBG("data request queued: %s: lsec: %" PRIu64 ", blk: %u nr_secs: %u, "
 	    "op: %u\n", s->name, req->lsec, blk, req->nr_secs, op);
 
 	TRACE(s);
@@ -2928,8 +2929,8 @@ vhd_queue_read(struct disk_driver *dd, uint64_t sector,
 
 	tp_log(&s->tp, sector, TAPPROF_IN);
 
-	DBG("%s: %s: sector: %llu, nb_sectors: %d (seg: %d), buf: %p\n",
-	    __func__, s->name, sector, nr_sectors, (int)private, buf);
+	DBG("%s: %s: sector: %" PRIu64 ", nb_sectors: %d (seg: %ld), buf: %p\n",
+	    __func__, s->name, sector, nr_sectors, (unsigned long)private, buf);
 
 	sec = sector;
 	end = sector + nr_sectors;
@@ -3022,8 +3023,8 @@ vhd_queue_write(struct disk_driver *dd, uint64_t sector,
 
 	tp_log(&s->tp, sector, TAPPROF_IN);
 
-	DBG("%s: %s: sector: %llu, nb_sectors: %d, (seg: %d)\n",
-	    __func__, s->name, sector, nr_sectors, (int)private);
+	DBG("%s: %s: sector: %" PRIu64 ", nb_sectors: %d, (seg: %ld)\n",
+	    __func__, s->name, sector, nr_sectors, (unsigned long)private);
 
 	sec = sector;
 	end = sector + nr_sectors;
@@ -3121,7 +3122,7 @@ signal_completion(struct disk_driver *dd, struct vhd_request *list, int error)
 		err  = (error ? error : r->error);
 		next = r->next;
 		rsp += r->cb(dd, err, r->lsec, r->nr_secs, r->id, r->private);
-		DBG("%s: lsec: %llu, blk: %llu, err: %d\n", 
+		DBG("%s: lsec: %" PRIu64 ", blk: %" PRIu64 ", err: %d\n", 
 		    __func__, r->lsec, r->lsec / s->spb, err);
 		free_vhd_request(s, r);
 		r    = next;
@@ -3279,7 +3280,7 @@ finish_bat_write(struct disk_driver *dd, struct vhd_request *req)
 
 	bm = get_bitmap(s, s->bat.pbw_blk);
 	
-	DBG("%s: blk %u, pbwo: %llu, err %d\n", 
+	DBG("%s: blk %u, pbwo: %" PRIu64 ", err %d\n", 
 	    __func__, s->bat.pbw_blk, s->bat.pbw_offset, req->error);
 	ASSERT(bm && bitmap_valid(bm));
 	ASSERT(bat_locked(s) &&
@@ -3459,7 +3460,7 @@ finish_data_read(struct disk_driver *dd, struct vhd_request *req)
 
 	tp_log(&s->tp, req->lsec, TAPPROF_IN);
 
-	DBG("%s: lsec %llu, blk %llu\n", 
+	DBG("%s: lsec %" PRIu64 ", blk %" PRIu64 "\n", 
 	    __func__, req->lsec, req->lsec / s->spb);
 	rsp = signal_completion(dd, req, 0);
 
@@ -3491,7 +3492,7 @@ finish_data_write(struct disk_driver *dd, struct vhd_request *req)
 
 		tx->finished++;
 
-		DBG("%s: lsec: %llu, blk: %llu, tx->started: %d, "
+		DBG("%s: lsec: %" PRIu64 ", blk: %" PRIu64 ", tx->started: %d, "
 		    "tx->finished: %d\n", __func__, req->lsec, 
 		    req->lsec / s->spb, tx->started, tx->finished);
 
@@ -3504,7 +3505,7 @@ finish_data_write(struct disk_driver *dd, struct vhd_request *req)
 
 	} else if (!test_vhd_flag(req->flags, VHD_FLAG_REQ_QUEUED)) {
 		ASSERT(!req->next);
-		DBG("%s: lsec: %llu, blk: %llu\n", 
+		DBG("%s: lsec: %" PRIu64 ", blk: %" PRIu64 "\n", 
 		    __func__, req->lsec, req->lsec / s->spb);
 		rsp += signal_completion(dd, req, 0);
 	}
@@ -3519,7 +3520,7 @@ fail_vhd_request(struct disk_driver *dd, struct vhd_request *r, int err)
 {
 	struct vhd_state *s = (struct vhd_state *)dd->private;
 
-	DBG("ERROR: %s to %llu failed: %d\n", 
+	DBG("ERROR: %s to %" PRIu64 " failed: %d\n", 
 	    (r->op == VHD_OP_DATA_READ || r->op == VHD_OP_BITMAP_READ) ?
 	    "read" : "write", r->lsec, err);
 
@@ -3676,16 +3677,16 @@ vhd_do_callbacks(struct disk_driver *dd, int sid)
 			req->error = -EIO;
 
 		if (req->error) {
-			DBG("%s: %s: ERROR: %d: op: %u, lsec: %llu, "
-			    "nr_secs: %u, nbytes: %lu, blk: %llu, "
+			DBG("%s: %s: ERROR: %d: op: %u, lsec: %" PRIu64 ", "
+			    "nr_secs: %u, nbytes: %lu, blk: %" PRIu64 ", "
 			    "blk_offset: %u\n", __func__, s->name, 
 			    req->error, req->op, req->lsec, req->nr_secs, 
 			    io->u.c.nbytes, req->lsec / s->spb,
 			    bat_entry(s, req->lsec / s->spb));
 			TRACE(s);
 			TAP_ERROR(req->error, "%s: aio failed: op: %u, "
-				  "lsec: %llu, nr_secs: %u, nbytes: %lu, "
-				  "blk: %llu, blk_offset: %u", s->name, 
+				  "lsec: %" PRIu64 ", nr_secs: %u, nbytes: %lu, "
+				  "blk: %" PRIu64 ", blk_offset: %u", s->name, 
 				  req->op, req->lsec, req->nr_secs, 
 				  io->u.c.nbytes, req->lsec / s->spb,
 				  bat_entry(s, req->lsec / s->spb));
@@ -3744,7 +3745,7 @@ vhd_debug(struct disk_driver *dd)
 	for (i = 0; i < VHD_REQS_DATA; i++) {
 		struct vhd_request *r = &s->vreq_list[i];
 		if (r->lsec)
-			DBG("%d: id: %d, err: %d, op: %d, lsec: %llu, "
+			DBG("%d: id: %d, err: %d, op: %d, lsec: %" PRIu64 ", "
 			    "flags: %d, this: %p, next: %p, tx: %p\n", 
 			    i, r->id, r->error, r->op, r->lsec, r->flags, 
 			    r, r->next, r->tx);
@@ -3787,7 +3788,7 @@ vhd_debug(struct disk_driver *dd)
 		    tx->started, tx->finished, tx->status, tx->requests.head, rnum);
 	}
 
-	DBG("BAT: status: %u, pbw_blk: %u, pbw_off: %llu, tx: %p\n",
+	DBG("BAT: status: %u, pbw_blk: %u, pbw_off: %" PRIu64 ", tx: %p\n",
 	    s->bat.status, s->bat.pbw_blk, s->bat.pbw_offset, s->bat.req.tx);
 
 	DBGDUMP();

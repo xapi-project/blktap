@@ -9,6 +9,7 @@
 #include <stdlib.h>
 #include <unistd.h>
 #include <string.h>
+#include <inttypes.h>
 
 #define TAPDISK
 #include "tapdisk.h"
@@ -192,7 +193,7 @@ process_write(struct disk_driver *parent, int res,
 	put_buffer(ctx, buf);
 
 	if (res) {
-		DFPRINTF("ERROR writing sector %llu, res %d\n", sec, res);
+		DFPRINTF("ERROR writing sector %" PRIu64 ", res %d\n", sec, res);
 		ctx->error = res;
 	}
 
@@ -207,7 +208,7 @@ process_read(struct disk_driver *child, int res,
 	char *buf = idx_to_buffer(ctx, idx);
 
 	if (res) {
-		DFPRINTF("ERROR reading sector %llu, res: %d\n", sec, res);
+		DFPRINTF("ERROR reading sector %" PRIu64 ", res: %d\n", sec, res);
 		ctx->error = res;
 		--ctx->preqs;
 		put_buffer(ctx, buf);
@@ -222,7 +223,7 @@ process_read(struct disk_driver *child, int res,
 		preq->buf = buf;
 		preq->sec = sec;
 	} else if (res < 0) {
-		DFPRINTF("ERROR writing sector %llu\n", sec);
+		DFPRINTF("ERROR writing sector %" PRIu64 "\n", sec);
 		ctx->error = res;
 		--ctx->preqs;
 		put_buffer(ctx, buf);
@@ -249,7 +250,7 @@ flush_write_queue(struct vhd_context *ctx)
 			ctx->write_queue_cnt++;
 			return;
 		} else if (ret < 0) {
-			DFPRINTF("ERROR writing sector %llu\n", preq->sec);
+			DFPRINTF("ERROR writing sector %" PRIu64 "\n", preq->sec);
 			ctx->error = ret;
 			--ctx->preqs;
 			put_buffer(ctx, preq->buf);
@@ -361,7 +362,7 @@ process(struct vhd_context *ctx)
 				if (ret == -EBUSY)
 					return 0;
 
-				DFPRINTF("ERROR reading %llu\n", ctx->cur_sec);
+				DFPRINTF("ERROR reading %" PRIu64 "\n", ctx->cur_sec);
 				ctx->error = ret;
 				return ret;
 			}
