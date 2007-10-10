@@ -727,6 +727,9 @@ td_read(int type, int argc, char *argv[])
 	char *name;
 	struct disk_driver dd;
 
+	if (argc <= 1)
+		goto usage;
+
 	if (type != DISK_TYPE_VHD) {
 		fprintf(stderr, "Cannot read %s images\n",
 			dtypes[type]->handle);
@@ -767,7 +770,7 @@ main(int argc, char *argv[])
 	if (argc < 2)
 		help();
 
-	cargc = argc -1;
+	cargc = argc - 1;
 	cmd   = get_command(argv[1]);
 	if (!cmd) {
 		fprintf(stderr, "invalid COMMAND %s\n", argv[1]);
@@ -794,8 +797,9 @@ main(int argc, char *argv[])
 	if (!cargv)
 		exit(ENOMEM);
 
-	for (i = argc - cargc; i < argc; i++)
-		cargv[i - (argc - cargc)] = argv[i];
+	cargv[0] = cmd->name;
+	for (i = 1; i < cargc; i++)
+		cargv[i] = argv[i + (argc - cargc)];
 
 	switch(cmd->id) {
 	case TD_CMD_CREATE:
