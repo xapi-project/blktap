@@ -181,23 +181,24 @@ int
 io_merge(struct opioctx *ctx, struct iocb **queue, int num)
 {
 	int i, on_queue;
-	struct iocb *io;
+	struct iocb *io, **q;
 	struct opio *ophead;
 	
 	if (!num)
 		return 0;
 
 	on_queue = 0;
-	ctx->iocb_queue[0] = queue[0];
+	q = ctx->iocb_queue;
+	memcpy(q, queue, num * sizeof(struct iocb *));
 
 	for (i = 1; i < num; i++) {
-		io = queue[i];
-		if (merge(ctx, ctx->iocb_queue[on_queue], io) != 0)
-			ctx->iocb_queue[++on_queue] = io;
+		io = q[i];
+		if (merge(ctx, queue[on_queue], io) != 0)
+			queue[++on_queue] = io;
 	}
 
 #if (defined(TEST) || IO_TRACE == 1)
-	print_merged_iocbs(ctx, ctx->iocb_queue, on_queue + 1);
+	print_merged_iocbs(ctx, queue, on_queue + 1);
 #endif
 
 	return ++on_queue;
@@ -226,12 +227,17 @@ int
 io_expand_iocbs(struct opioctx *ctx, struct iocb **queue, int idx, int num)
 {
 	int i, on_queue;
-	struct iocb *io;
+	struct iocb *io, **q;
+
+	if (!num)
+		return 0;
 
 	on_queue = 0;
+	q = ctx->iocb_queue;
+	memcpy(q, queue, num * sizeof(struct iocb *));
 
 	for (i = idx; i < num; i++) {
-		io = ctx->iocb_queue[i];
+		io = q[i];
 		if (!iocb_optimized(ctx, io))
 			queue[on_queue++] = io;
 		else
@@ -273,20 +279,21 @@ io_split(struct opioctx *ctx, struct io_event *events, int num)
 {
 	int on_queue;
 	struct iocb *io;
-	struct io_event *ep;
+	struct io_event *ep, *q;
 	
 	if (!num)
 		return 0;
 
 	on_queue = 0;
+	q = ctx->event_queue;
+	memcpy(q, events, num * sizeof(struct io_event));
 
-	for (ep = events; num-- > 0; ep++) {
+	for (ep = q; num-- > 0; ep++) {
 		io = ep->obj;
 		if (!iocb_optimized(ctx, io))
-			ctx->event_queue[on_queue++] = *ep;
+			events[on_queue++] = *ep;
 		else
-			on_queue = expand_event(ctx, ep, 
-						ctx->event_queue, on_queue);
+			on_queue = expand_event(ctx, ep, events, on_queue);
 	}
 
 	return on_queue;
@@ -590,31 +597,32 @@ main(int argc, char **argv)
 		op_done  = 0;
 		num_done = 0;
 		op_rem   = io_merge(&ctx, ioqueue, num_iocbs);
-		print_iocbs(&ctx, ctx.iocb_queue, op_rem);
-		print_merged_iocbs(&ctx, ctx.iocb_queue, op_rem);
+		print_iocbs(&ctx, ioqueue, op_rem);
+		print_merged_iocbs(&ctx, ioqueue, op_rem);
 		
 		while (num_done < num_iocbs) {
 			DBG(&ctx, "optimized remaining: %d\n", op_rem);
 
 			DBG(&ctx, "simulating\n");
-			num_events = simulate_io(ctx.iocb_queue + op_done, events, op_rem);
+			num_events = simulate_io(ioqueue + op_done, events, op_rem);
 			print_events(&ctx, events, num_events);
 
 			DBG(&ctx, "splitting %d\n", num_events);
 			num_split = io_split(&ctx, events, num_events);
-			print_events(&ctx, ctx.event_queue, num_split);
+			print_events(&ctx, events, num_split);
 
 			DBG(&ctx, "processing %d\n", num_split);
-			process_events(&ctx, iocb_list, ctx.event_queue, num_split);
+			process_events(&ctx, iocb_list, events, num_split);
 
 			op_rem   -= num_events;
 			op_done  += num_events;
-			ioqueue  += num_events;
 			num_done += num_split;
 		}
 
 		DBG(&ctx, "run %d: processed: %d, xallocs: %d, xfrees: %d\n", 
 		    i, num_done, xalloc_cnt, xfree_cnt);
+		if (xalloc_cnt != xfree_cnt)
+			exit(-1);
 		xalloc_cnt = xfree_cnt = 0;
 	}
 

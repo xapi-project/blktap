@@ -3613,7 +3613,7 @@ vhd_submit(struct disk_driver *dd)
 	tp_in(&s->tp);
 
 	queued = io_merge(&s->opioctx, s->iocb_queue, s->iocb_queued);
-	ret    = io_submit(s->aio_ctx, queued, s->opioctx.iocb_queue);
+	ret    = io_submit(s->aio_ctx, queued, s->iocb_queue);
 
         DBG("%s: %s: submitting %d, merged to %d, ret: %d\n", 
 	    __func__, s->name, s->iocb_queued, queued, ret);
@@ -3665,7 +3665,7 @@ vhd_do_callbacks(struct disk_driver *dd, int sid)
 	s->callback_sum += split;
 	TRACE(s);
 
-	for (ep = s->opioctx.event_queue; split-- > 0; ep++) {
+	for (ep = s->aio_events; split-- > 0; ep++) {
 		struct iocb *io = ep->obj;
 		struct vhd_request *req = (struct vhd_request *)io->data;
 
