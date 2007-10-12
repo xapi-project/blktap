@@ -11,6 +11,7 @@
 
 #include "io-optimize.h"
 
+struct tlog;
 struct tfilter;
 struct disk_driver;
 
@@ -47,6 +48,9 @@ struct tqueue {
 
 	/* optional tapdisk filter */
 	struct tfilter       *filter;
+
+	/* optional log handle */
+	struct tlog          *log;
 };
 
 /*
@@ -61,8 +65,10 @@ struct tqueue {
 #define tapdisk_queue_count(q) ((q)->queued)
 #define tapdisk_queue_empty(q) ((q)->queued == 0)
 #define tapdisk_queue_full(q)  (((q)->pending + (q)->queued) >= (q)->size)
-int tapdisk_init_queue(struct tqueue *, int size, int sync, struct tfilter *);
+int tapdisk_init_queue(struct tqueue *, int size, int sync,
+		       struct tlog *, struct tfilter *);
 void tapdisk_free_queue(struct tqueue *);
+void tapdisk_debug_queue(struct tqueue *);
 void tapdisk_queue_tiocb(struct tqueue *, struct tiocb *);
 int tapdisk_submit_tiocbs(struct tqueue *);
 int tapdisk_submit_all_tiocbs(struct tqueue *);

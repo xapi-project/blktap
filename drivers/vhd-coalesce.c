@@ -124,7 +124,8 @@ init_ctx(struct vhd_context *ctx,
 	ctx->error = tapdisk_init_queue(queue,
 					MAX_AIO_REQUESTS + 
 					child->drv->private_iocbs +
-					parent->drv->private_iocbs, 0, NULL);
+					parent->drv->private_iocbs,
+					0, NULL, NULL);
 	if (ctx->error)
 		return ctx->error;
 

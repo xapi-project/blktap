@@ -14,8 +14,8 @@
 #include "io-optimize.h"
 #include "profile.h"
 
-#if (!defined(TEST) && IO_TRACE == 1)
-#define DBG(ctx, f, a...) BLOG((ctx)->ihandle, f, ##a)
+#if (!defined(TEST) && defined(DEBUG))
+#define DBG(ctx, f, a...) tlog_write((ctx)->log, f, ##a)
 #elif defined(TEST)
 #define DBG(ctx, f, a...) printf(f, ##a)
 #else
@@ -35,7 +35,7 @@ opio_free(struct opioctx *ctx)
 }
 
 int
-opio_init(struct opioctx *ctx, int num_iocbs)
+opio_init(struct opioctx *ctx, int num_iocbs, struct tlog *log)
 {
 	int i;
 
@@ -43,6 +43,7 @@ opio_init(struct opioctx *ctx, int num_iocbs)
 
 	ctx->num_opios     = num_iocbs;
 	ctx->free_opio_cnt = num_iocbs;
+	ctx->log           = log;
 	ctx->opios         = calloc(1, sizeof(struct opio) * num_iocbs);
 	ctx->free_opios    = calloc(1, sizeof(struct opio *) * num_iocbs);
 	ctx->iocb_queue    = calloc(1, sizeof(struct iocb *) * num_iocbs);
@@ -205,7 +206,7 @@ io_merge(struct opioctx *ctx, struct iocb **queue, int num)
 			queue[++on_queue] = io;
 	}
 
-#if (defined(TEST) || IO_TRACE == 1)
+#if (defined(TEST) || defined(DEBUG))
 	print_merged_iocbs(ctx, queue, on_queue + 1);
 #endif
 
@@ -305,14 +306,6 @@ io_split(struct opioctx *ctx, struct io_event *events, int num)
 	}
 
 	return on_queue;
-}
-
-void
-io_debug(struct opioctx *ctx)
-{
-#if (IO_TRACE == 1)
-	BDUMP("/tmp/io-optimize.log", ctx->ihandle);
-#endif
 }
 
 /******************************************************************************

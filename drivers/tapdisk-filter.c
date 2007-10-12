@@ -10,6 +10,7 @@
 #include <syslog.h>
 #include <sys/time.h>
 
+#include "profile.h"
 #include "tapdisk-filter.h"
 
 #define RSEED      7
@@ -18,6 +19,9 @@
 
 #define WRITE_INTEGRITY   "buffer integrity failure after write"
 #define READ_INTEGRITY    "disk integrity failure after read"
+
+static struct tlog *log;
+#define DBG(f, a...) tlog_write(log, f, ##a)
 
 /*
  * simulate IO errors by knocking request size to zero before
@@ -88,11 +92,10 @@ check_hash(struct tfilter *filter, uint64_t sec, char *buf, char *type)
 	if (hash->hash != chksum(buf)) {
 		struct timeval now;
 		gettimeofday(&now, NULL);
-		syslog(LOG_WARNING, "%s: "
-		       "in hash table: 0x%020" PRIx64 " at %012lu.%06lu, "
-		       "from disk: 0x%020" PRIx64 " at %012lu.%06lu\n",
-		       type, hash->hash, hash->time.tv_sec,
-		       hash->time.tv_usec, sum, now.tv_sec, now.tv_usec);
+		DBG("%s: hash table: 0x%020" PRIx64 " at %012lu.%06lu, "
+		    "from disk: 0x%020" PRIx64 " at %012lu.%06lu\n",
+		    type, hash->hash, hash->time.tv_sec,
+		    hash->time.tv_usec, sum, now.tv_sec, now.tv_usec);
 	}
 }
 
@@ -143,7 +146,7 @@ check_data(struct tfilter *filter, int type, struct iocb *io)
 }
 
 struct tfilter *
-tapdisk_init_tfilter(int mode, int iocbs, uint64_t secs)
+tapdisk_init_tfilter(int mode, int iocbs, uint64_t secs, struct tlog *log)
 {
 	int i;
 	struct tfilter *filter = NULL;

@@ -11,6 +11,7 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <unistd.h>
 #include <syslog.h>
 #include <sys/time.h>
 #include <time.h>
@@ -168,51 +169,83 @@ __tp_log(struct profile_info *prof, u64 id, const char *func, int direction)
 #define BUF_SIZE        (1 << 20)
 #define MAX_ENTRY_LEN   256
 
-struct bhandle {
+struct tlog {
 	char          *p;
 	uint64_t       cnt;
-	char           buf[BUF_SIZE + BUF_PAD];
+	char          *buf;
 };
 
 #define B_ALIGN(buf) (char *)((((long)buf + (BALIGN - 1)) >> BSHIFT) << BSHIFT)
 #define B_END(buf)   (char *)((long)B_ALIGN(buf) + BUF_SIZE)
 
-#define BLOG(h, _f, _a...)                                                     \
+static inline struct tlog *
+alloc_tlog(int megs)
+{
+	struct tlog *log = calloc(1, sizeof(struct tlog));
+	if (!log)
+		return NULL;
+
+	log->buf = calloc(1, ((megs << 20) + BUF_PAD));
+	if (!log->buf) {
+		free(log);
+		return NULL;
+	}
+
+	return log;
+}
+
+static inline void
+free_tlog(struct tlog *log)
+{
+	if (log) {
+		free(log->buf);
+		free(log);
+	}
+}
+
+#define tlog_write(log, _f, _a...)                                             \
 do {                                                                           \
 	int _len;                                                              \
 	struct timeval t;                                                      \
                                                                                \
-	if (!h.p || (h.p + MAX_ENTRY_LEN) > B_END(h.buf))                      \
-		h.p = B_ALIGN(h.buf);                                          \
+	if (!log)                                                              \
+		break;                                                         \
+                                                                               \
+	if (!log->p || (log->p + MAX_ENTRY_LEN) > B_END(log->buf))             \
+		log->p = B_ALIGN(log->buf);                                    \
                                                                                \
 	gettimeofday(&t, NULL);                                                \
-	_len = snprintf(h.p, MAX_ENTRY_LEN - 2, "%"PRIu64":%ld.%ld: "          \
-			_f, h.cnt, t.tv_sec, t.tv_usec, ##_a);                 \
+	_len = snprintf(log->p, MAX_ENTRY_LEN - 2, "%"PRIu64":%ld.%ld:%s "     \
+			_f, log->cnt, t.tv_sec, t.tv_usec, __func__, ##_a);    \
 	_len = (_len < MAX_ENTRY_LEN ? _len : MAX_ENTRY_LEN - 1);              \
-	h.p[_len] = '\0';                                                      \
+	log->p[_len] = '\0';                                                   \
                                                                                \
-	h.cnt++;                                                               \
-	h.p += _len;                                                           \
+	log->cnt++;                                                            \
+	log->p += _len;                                                        \
 } while (0)
 
-#define BDUMP(file, h)                                                         \
-do {                                                                           \
-	int fd;                                                                \
-	char *name;                                                            \
-                                                                               \
-	if (asprintf(&name, "%s.%d", file, getpid()) == -1)                    \
-		break;                                                         \
-                                                                               \
-	fd = open(name, O_CREAT | O_TRUNC |                                    \
-		  O_WRONLY | O_DIRECT | O_NONBLOCK, 0644);                     \
-                                                                               \
-	free(name);                                                            \
-	if (fd == -1)                                                          \
-		break;                                                         \
-                                                                               \
-	write(fd, B_ALIGN(h.buf), BUF_SIZE);                                   \
-	close(fd);                                                             \
-} while (0)
+static inline void
+tlog_flush(char *file, struct tlog *log)
+{
+	int fd;
+	char *name;
+
+	if (!log)
+		return;
+
+	if (asprintf(&name, "%s.%d", file, getpid()) == -1)
+		return;
+
+	fd = open(name, O_CREAT | O_TRUNC |
+		  O_WRONLY | O_DIRECT | O_NONBLOCK, 0644);
+
+	free(name);
+	if (fd == -1)
+		return;
+
+	write(fd, B_ALIGN(log->buf), BUF_SIZE);
+	close(fd);
+}
 
 #define MAX_ERROR_MESSAGES 16
 

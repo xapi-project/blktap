@@ -19,6 +19,9 @@
 #define DPRINTF(_f, _a...) ((void)0)
 #endif
 
+static struct tlog *log;
+#define DBG(_f, _a...) tlog_write(log, _f, ##_a)
+
 /*
  * We used a kernel patch to return an fd associated with the AIO context
  * so that we can concurrently poll on synchronous and async descriptors.
@@ -195,8 +198,8 @@ io_synchronous_rw(struct tqueue *queue)
 }
 
 int
-tapdisk_init_queue(struct tqueue *queue,
-		   int size, int sync, struct tfilter *filter)
+tapdisk_init_queue(struct tqueue *queue, int size, int sync,
+		   struct tlog *tlog, struct tfilter *filter)
 {
 	int i, err;
 
@@ -205,6 +208,7 @@ tapdisk_init_queue(struct tqueue *queue,
 	queue->size   = size;
 	queue->sync   = sync;
 	queue->filter = filter;
+	queue->log    = log = tlog;
 
 	if (sync) {
 		/* set up a pipe so we can return
@@ -240,7 +244,7 @@ tapdisk_init_queue(struct tqueue *queue,
 	if (!queue->iocbs || !queue->aio_events)
 		goto fail;
 
-	err = opio_init(&queue->opioctx, size);
+	err = opio_init(&queue->opioctx, size, tlog);
 	if (err)
 		goto fail;
 
@@ -263,6 +267,27 @@ tapdisk_free_queue(struct tqueue *queue)
 	free(queue->iocbs);
 	free(queue->aio_events);
 	opio_free(&queue->opioctx);
+}
+
+void 
+tapdisk_debug_queue(struct tqueue *queue)
+{
+	struct tiocb *tiocb = queue->deferred.head;
+
+	DBG("TAPDISK QUEUE:\n");
+	DBG("size: %d, sync: %d, queued: %d, pending: %d\n",
+	    queue->size, queue->sync, queue->queued, queue->pending);
+
+	if (tiocb) {
+		DBG("deferred:\n");
+		for (; tiocb != NULL; tiocb = tiocb->next) {
+			struct iocb *io = &tiocb->iocb;
+			DBG("%s of %lu bytes at %lld\n",
+			    (io->aio_lio_opcode == IO_CMD_PWRITE ?
+			     "write" : "read"),
+			    io->u.c.nbytes, io->u.c.offset);
+		}
+	}
 }
 
 void

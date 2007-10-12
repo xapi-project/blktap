@@ -60,6 +60,7 @@
 #include <time.h>
 #include <stdint.h>
 
+#include "profile.h"
 #include "blktaplib.h"
 #include "tapdisk-queue.h"
 #include "tapdisk-filter.h"
@@ -137,6 +138,7 @@ struct disk_driver {
 	struct tap_disk *drv;
 	struct td_state *td_state;
 	struct disk_driver *next;
+	struct tlog *log;
 };
 
 /* This structure represents the state of an active virtual disk.           */
