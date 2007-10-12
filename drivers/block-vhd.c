@@ -2802,11 +2802,11 @@ start_new_bitmap_transaction(struct disk_driver *dd, struct vhd_bitmap *bm)
 
 		add_to_transaction(tx, r);
 		if (test_vhd_flag(r->flags, VHD_FLAG_REQ_FINISHED)) {
+			tx->finished++;
 			if (!r->error) {
 				u32 sec = r->lsec % s->spb;
 				for (i = 0; i < r->nr_secs; i++)
 					set_bit(sec + i, (void *)bm->shadow);
-				tx->finished++;
 			}
 		}
 		r = next;
