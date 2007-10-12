@@ -35,9 +35,19 @@ struct vhd_context {
 	struct disk_driver  *dd;
 };
 
+static void
+free_vhd_context(struct vhd_context *ctx)
+{
+	free(ctx->buf);
+	free(ctx->info.bat);
+	tapdisk_free_queue(&ctx->dd->td_state->queue);
+}
+
 static int
 init_vhd_context(struct vhd_context *ctx, struct disk_driver *dd)
 {
+	struct tqueue *queue = &dd->td_state->queue;
+
 	memset(ctx, 0, sizeof(struct vhd_context));
 
 	ctx->dd       = dd;
@@ -45,18 +55,23 @@ init_vhd_context(struct vhd_context *ctx, struct disk_driver *dd)
 	if (ctx->error)
 		return ctx->error;
 
+	ctx->error    = tapdisk_init_queue(queue,
+					   TAPDISK_DATA_REQUESTS + 
+					   dd->drv->private_iocbs, 0, NULL);
+	if (ctx->error)
+		goto fail;
+
 	ctx->blk_size = (ctx->info.spb << SECTOR_SHIFT);
 	ctx->error    = posix_memalign((void **)&ctx->buf, 512, ctx->blk_size);
-	if (!ctx->error)
-		memset(ctx->buf, 0, ctx->blk_size);
+	if (ctx->error)
+		goto fail;
 
+	memset(ctx->buf, 0, ctx->blk_size);
+	return 0;
+
+ fail:
+	free_vhd_context(ctx);
 	return ctx->error;
-}
-
-static void
-free_vhd_context(struct vhd_context *ctx)
-{
-	free(ctx->buf);
 }
 
 static inline unsigned long
@@ -71,17 +86,18 @@ wait_for_responses(struct vhd_context *ctx)
 	int ret;
 	fd_set readfds;
 	struct disk_driver *dd = ctx->dd;
+	struct tqueue *queue   = &dd->td_state->queue;
 
 	if (!ctx->request_pending || ctx->error)
 		return;
 
 	FD_ZERO(&readfds);
-	FD_SET(dd->io_fd[READ], &readfds);
-	ret = select(dd->io_fd[READ] + 1, &readfds, NULL, NULL, NULL);
+	FD_SET(queue->poll_fd, &readfds);
+	ret = select(queue->poll_fd + 1, &readfds, NULL, NULL, NULL);
 
 	if (ret > 0)
-		if (FD_ISSET(dd->io_fd[READ], &readfds))
-			dd->drv->td_do_callbacks(dd, 0);
+		if (FD_ISSET(queue->poll_fd, &readfds))
+			tapdisk_complete_tiocbs(queue);
 }
 
 static int
@@ -103,6 +119,7 @@ fill_block(struct vhd_context *ctx, unsigned long blk)
 	unsigned long secs;
 	unsigned long long sec;
 	struct disk_driver *dd;
+	struct tqueue *queue;
 
 	/*
 	 * presently, vhd preallocates entire 2MB blocks,
@@ -113,9 +130,10 @@ fill_block(struct vhd_context *ctx, unsigned long blk)
 		return 0;
 	
  again:
-	dd   = ctx->dd;
-	sec  = blk_to_sec(ctx, blk);
-	secs = ctx->blk_size >> SECTOR_SHIFT;
+	dd    = ctx->dd;
+	sec   = blk_to_sec(ctx, blk);
+	secs  = ctx->blk_size >> SECTOR_SHIFT;
+	queue = &dd->td_state->queue;
 	ctx->request_pending = 1;
 	ctx->error = 0;
 
@@ -123,10 +141,10 @@ fill_block(struct vhd_context *ctx, unsigned long blk)
 					     finish_write, 0, (void *)ctx);
 
 	if (!ctx->error) {
-		dd->drv->td_submit(dd);
-
-		while (ctx->request_pending)
+		do {
+			tapdisk_submit_all_tiocbs(queue);
 			wait_for_responses(ctx);
+		} while (ctx->request_pending);
 	}
 
 	if (ctx->error == -EBUSY)
@@ -145,6 +163,7 @@ vhd_fill(char *path)
 	struct disk_driver dd;
 	struct disk_id id;
 
+	memset(&s,   0, sizeof(struct td_state));
 	memset(&ctx, 0, sizeof(struct vhd_context));
 
 	dd.td_state = &s;
