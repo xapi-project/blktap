@@ -202,8 +202,6 @@ typedef struct disk_info {
 #endif
 } disk_info_t;
 
-void debug_fe_ring(struct td_state *s);
-
 extern struct tap_disk tapdisk_aio;
 /* extern struct tap_disk tapdisk_sync;    */
 /* extern struct tap_disk tapdisk_vmdk;    */
@@ -314,18 +312,6 @@ static disk_info_t *dtypes[] = {
 	&ram_disk,
 	&null_disk, /* &qcow_disk, */
 };
-
-typedef struct driver_list_entry {
-	struct blkif *blkif;
-	struct driver_list_entry **pprev, *next;
-} driver_list_entry_t;
-
-typedef struct fd_list_entry {
-	int cookie;
-	int  tap_fd;
-	struct td_state *s;
-	struct fd_list_entry **pprev, *next;
-} fd_list_entry_t;
 
 int qcow_create(const char *filename, uint64_t total_size,
 		const char *backing_file, int flags);

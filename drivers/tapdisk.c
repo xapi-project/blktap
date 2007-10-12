@@ -64,6 +64,13 @@
 #define ASSERT(_p) ((void)0)
 #endif 
 
+typedef struct fd_list_entry {
+	int cookie;
+	int  tap_fd;
+	struct td_state *s;
+	struct fd_list_entry **pprev, *next;
+} fd_list_entry_t;
+
 static struct bhandle tbhandle;
 #define DBG(_f, _a...) BLOG(tbhandle, _f, ##_a)
 
