@@ -1719,22 +1719,7 @@ out:
 }
 
 int
-vhd_create(const char *name, uint64_t total_size,
-           const char *backing_file, int sparse)
-{
-        struct disk_id id, *idp = NULL;
-        vhd_flag_t flags = ((sparse) ? VHD_FLAG_CR_SPARSE : 0);
-
-        if (backing_file) {
-                id.name = (char *)backing_file;
-                idp     = &id;
-        }
-
-        return __vhd_create(name, total_size, idp, flags);
-}
-
-int
-_vhd_create(const char *name, uint64_t total_size, td_flag_t td_flags)
+vhd_create(const char *name, uint64_t total_size, td_flag_t td_flags)
 {
 	vhd_flag_t vhd_flags = 0;
 
@@ -3330,5 +3315,5 @@ struct tap_disk tapdisk_vhd = {
 	.td_get_parent_id   = vhd_get_parent_id,
 	.td_validate_parent = vhd_validate_parent,
 	.td_snapshot        = vhd_snapshot,
-	.td_create          = _vhd_create
+	.td_create          = vhd_create
 };

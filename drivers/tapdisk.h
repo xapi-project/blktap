@@ -313,11 +313,6 @@ static disk_info_t *dtypes[] = {
 	&null_disk, /* &qcow_disk, */
 };
 
-int qcow_create(const char *filename, uint64_t total_size,
-		const char *backing_file, int flags);
-int vhd_create(const char *filename, uint64_t total_size,
-		const char *backing_file, int flags);
-
 struct qcow_info {
         int       l1_size;
         int       l2_size;
@@ -326,6 +321,8 @@ struct qcow_info {
 	int       valid_td_fields;
 	long      td_fields[TD_FIELD_INVALID];
 };
+int qcow_create(const char *filename, uint64_t total_size,
+		const char *backing_file, int flags);
 int qcow_set_field(struct disk_driver *dd, td_field_t field, long value);
 int qcow_get_info(struct disk_driver *dd, struct qcow_info *info);
 int qcow_coalesce(char *name);
