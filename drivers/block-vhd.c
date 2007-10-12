@@ -264,7 +264,6 @@ struct vhd_state {
 #define secs_round_up(bytes) \
               (((bytes) + (VHD_SECTOR_SIZE - 1)) >> VHD_SECTOR_SHIFT)
 
-int vhd_submit(struct disk_driver *);
 static int finish_data_transaction(struct disk_driver *, struct vhd_bitmap *);
 
 static inline int
