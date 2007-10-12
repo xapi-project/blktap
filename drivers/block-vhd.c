@@ -267,24 +267,21 @@ struct vhd_state {
 static int finish_data_transaction(struct disk_driver *, struct vhd_bitmap *);
 
 static inline int
-test_bit (int nr, volatile void * addr)
+test_bit (int nr, volatile u32 *addr)
 {
-	return (((unsigned long*)addr)[nr/(sizeof(unsigned long)*8)] >>
-		(nr % (sizeof(unsigned long)*8))) & 1;
+	return (((u32 *)addr)[nr >> 5] >> (nr & 31)) & 1;
 }
 
 static inline void
-clear_bit (int nr, volatile void * addr)
+clear_bit (int nr, volatile u32 *addr)
 {
-	((unsigned long*)addr)[nr/(sizeof(unsigned long)*8)] &=
-		~(1 << (nr % (sizeof(unsigned long)*8)));
+	((u32 *)addr)[nr >> 5] &= ~(1 << (nr & 31));
 }
 
 static inline void
-set_bit (int nr, volatile void * addr)
+set_bit (int nr, volatile u32 *addr)
 {
-	((unsigned long*)addr)[nr/(sizeof(unsigned long)*8)] |=
-		(1 << (nr % (sizeof(unsigned long)*8)));
+	((u32 *)addr)[nr >> 5] |= (1 << (nr & 31));
 }
 
 /* Debug print functions: */
@@ -2038,7 +2035,7 @@ read_bitmap_cache(struct vhd_state *s, uint64_t sector, uint8_t op)
 	if (test_vhd_flag(bm->status, VHD_FLAG_BM_READ_PENDING))
 		return VHD_BM_READ_PENDING;
 
-	return ((test_bit(sec, (void *)bm->map)) ? 
+	return ((test_bit(sec, (u32 *)bm->map)) ? 
 		VHD_BM_BIT_SET : VHD_BM_BIT_CLEAR);
 }
 
@@ -2061,7 +2058,7 @@ read_bitmap_cache_span(struct vhd_state *s,
 	ASSERT(bm && bitmap_valid(bm));
 
 	for (ret = 0; sec < s->spb && ret < nr_secs; sec++, ret++)
-		if (test_bit(sec, (void *)bm->map) != value)
+		if (test_bit(sec, (u32 *)bm->map) != value)
 			break;
 
 	return ret;
@@ -2790,7 +2787,7 @@ start_new_bitmap_transaction(struct disk_driver *dd, struct vhd_bitmap *bm)
 			if (!r->error) {
 				u32 sec = r->lsec % s->spb;
 				for (i = 0; i < r->nr_secs; i++)
-					set_bit(sec + i, (void *)bm->shadow);
+					set_bit(sec + i, (u32 *)bm->shadow);
 			}
 		}
 		r = next;
@@ -3123,7 +3120,7 @@ finish_data_write(struct disk_driver *dd, struct vhd_request *req)
 
 		if (!req->error)
 			for (i = 0; i < req->nr_secs; i++)
-				set_bit(sec + i, (void *)bm->shadow);
+				set_bit(sec + i, (u32 *)bm->shadow);
 
 		if (transaction_completed(tx))
 			rsp += finish_data_transaction(dd, bm);

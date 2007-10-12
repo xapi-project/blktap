@@ -56,10 +56,9 @@ struct vhd_context {
 };
 
 static inline int
-test_bit (int nr, volatile void * addr)
+test_bit (int nr, volatile u32 *addr)
 {
-	return (((unsigned long*)addr)[nr/(sizeof(unsigned long)*8)] >>
-		(nr % (sizeof(unsigned long)*8))) & 1;
+	return (((u32 *)addr)[nr >> 5] >> (nr & 31)) & 1;
 }
 
 static int
@@ -366,11 +365,11 @@ process(struct vhd_context *ctx)
 				return 0;
 
 		while (ctx->bm_idx < ctx->info.spb &&
-		       !test_bit(ctx->bm_idx, (void *)ctx->bm)) 
+		       !test_bit(ctx->bm_idx, (u32 *)ctx->bm)) 
 			ctx_inc_bm(ctx);
 
 		if (ctx->bm_idx < ctx->info.spb &&
-		    test_bit(ctx->bm_idx, (void *)ctx->bm)) {
+		    test_bit(ctx->bm_idx, (u32 *)ctx->bm)) {
 			buf = get_buffer(ctx);
 			ret = ctx->child->drv->td_queue_read(ctx->child,
 							     ctx->cur_sec, 1, 
