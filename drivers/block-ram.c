@@ -46,7 +46,6 @@ static int connections = 0;
 
 struct tdram_state {
         int fd;
-	int poll_pipe[2]; /* dummy fd for polling on */
 };
 
 /*Get Image size, secsize*/
@@ -118,17 +117,6 @@ static int get_image_info(struct td_state *s, int fd)
 	return 0;
 }
 
-static inline void init_fds(struct disk_driver *dd)
-{
-        int i;
-	struct tdram_state *prv = (struct tdram_state *)dd->private;
-
-        for(i =0 ; i < MAX_IOFD; i++)
-		dd->io_fd[i] = 0;
-
-        dd->io_fd[0] = prv->poll_pipe[0];
-}
-
 /* Open the disk file and initialize ram state. */
 int tdram_open (struct disk_driver *dd, const char *name, td_flag_t flags)
 {
@@ -139,11 +127,6 @@ int tdram_open (struct disk_driver *dd, const char *name, td_flag_t flags)
 	struct tdram_state *prv   = (struct tdram_state *)dd->private;
 
 	connections++;
-	
-	/* set up a pipe so that we can hand back a poll fd that won't fire.*/
-	ret = pipe(prv->poll_pipe);
-	if (ret != 0)
-		return (0 - errno);
 
 	if (connections > 1) {
 		s->sector_size = disksector_size;
@@ -218,9 +201,8 @@ int tdram_open (struct disk_driver *dd, const char *name, td_flag_t flags)
 		ret = -1;
 	} else {
 		ret = 0;
-	} 
+	}
 
-	init_fds(dd);
 done:
 	return ret;
 }
@@ -254,11 +236,6 @@ int tdram_queue_write(struct disk_driver *dd, uint64_t sector,
 
 	return cb(dd, 0, sector, nb_sectors, id, private);
 }
- 		
-int tdram_submit(struct disk_driver *dd)
-{
-	return 0;	
-}
 
 int tdram_close(struct disk_driver *dd)
 {
@@ -267,12 +244,6 @@ int tdram_close(struct disk_driver *dd)
 	connections--;
 	
 	return 0;
-}
-
-int tdram_do_callbacks(struct disk_driver *dd, int sid)
-{
-	/* always ask for a kick */
-	return 1;
 }
 
 int tdram_get_parent_id(struct disk_driver *dd, struct disk_id *id)
@@ -289,12 +260,12 @@ int tdram_validate_parent(struct disk_driver *dd,
 struct tap_disk tapdisk_ram = {
 	.disk_type          = "tapdisk_ram",
 	.private_data_size  = sizeof(struct tdram_state),
+	.private_iocbs      = 0,
 	.td_open            = tdram_open,
+	.td_close           = tdram_close,
 	.td_queue_read      = tdram_queue_read,
 	.td_queue_write     = tdram_queue_write,
-	.td_submit          = tdram_submit,
-	.td_close           = tdram_close,
-	.td_do_callbacks    = tdram_do_callbacks,
+	.td_complete        = NULL,
 	.td_get_parent_id   = tdram_get_parent_id,
 	.td_validate_parent = tdram_validate_parent,
 	.td_snapshot        = NULL,

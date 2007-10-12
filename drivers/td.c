@@ -14,6 +14,7 @@
 #include <stdlib.h>
 #include <sys/types.h>
 #include <sys/stat.h>
+#include <sys/resource.h>
 #include <unistd.h>
 #include <string.h>
 
@@ -386,7 +387,7 @@ int
 td_coalesce(int type, int argc, char *argv[])
 {
 	char *name;
-	int c, pid, ret;
+	int c, ret;
 	struct disk_id id;
 	struct disk_driver dd;
 
@@ -431,27 +432,20 @@ td_coalesce(int type, int argc, char *argv[])
 		return EIO;
 	}
 
-	pid = fork();
-	if (pid == -1) {
-		printf("Error forking coalesce process: %d\n", errno);
-		return errno;
-	} if (pid == 0) {
-		switch (type) {
-		case DISK_TYPE_QCOW:
-			/* ret = qcow_coalesce(name); */
-			break;
-		case DISK_TYPE_VHD:
-			ret = vhd_coalesce(name);
-			break;
-		default:
-			ret = -EINVAL;
-		}
-		printf("Coalesce returned with %d\n", -ret);
-		exit(ret);
+	switch (type) {
+	case DISK_TYPE_VHD:
+		ret = vhd_coalesce(name);
+		break;
+	case DISK_TYPE_QCOW:
+		/* ret = qcow_coalesce(name); */
+	default:
+		ret = -EINVAL;
 	}
 
-	printf("Started coalesce, pid = %d\n", pid);
-	return 0;
+	if (ret)
+		printf("coalesce failed: %d\n", -ret);
+
+	return ret;
 
  usage:
 	fprintf(stderr, "usage: td-util coalesce %s [-h help] "
@@ -766,6 +760,14 @@ main(int argc, char *argv[])
 	char **cargv;
 	struct command *cmd;
 	int cargc, i, type = -1, ret = 0;
+
+#ifdef CORE_DUMP
+	struct rlimit rlim;
+	rlim.rlim_cur = RLIM_INFINITY;
+	rlim.rlim_max = RLIM_INFINITY;
+	if (setrlimit(RLIMIT_CORE, &rlim) < 0)
+		fprintf(stderr, "setrlimit failed: %d\n", errno);
+#endif
 
 	if (argc < 2)
 		help();

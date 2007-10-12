@@ -109,6 +109,14 @@ contiguous_buffers(struct iocb *l, struct iocb *r)
 	return (l->u.c.buf + l->u.c.nbytes == r->u.c.buf);
 }
 
+static inline int
+contiguous_iocbs(struct iocb *l, struct iocb *r)
+{
+	return ((l->aio_fildes == r->aio_fildes) &&
+		contiguous_sectors(l, r) &&
+		contiguous_buffers(l, r));
+}
+
 static inline void
 init_opio_list(struct opio *op)
 {
@@ -171,7 +179,7 @@ merge(struct opioctx *ctx, struct iocb *head, struct iocb *io)
 	if (head->aio_lio_opcode != io->aio_lio_opcode)
 		return -EINVAL;
 
-	if (!contiguous_sectors(head, io) || !contiguous_buffers(head, io))
+	if (!contiguous_iocbs(head, io))
 		return -EINVAL;
 
 	return merge_tail(ctx, head, io);		

@@ -56,18 +56,12 @@ unsigned int SPB;
 #define ASSERTING   1
 #define PREALLOCATE_BLOCKS 1
 
-/* SYCHRONOUS can be set to 1 to force the synchronous IO path.
- * The synchronous path will also be used by default if io_setup fails. */
-#define SYNCHRONOUS 0
-
 #define __TRACE(s)                                                             \
 do {                                                                           \
-	BLOG(bhandle, "%s: %s: QUEUED: %" PRIu64 ", SUBMITTED: %" PRIu64 ", "  \
-	     "RETURNED: %" PRIu64 ", TO_AIO: %" PRIu64 ", "                    \
-	     "FROM_AIO: %" PRIu64 ", DATA_ALLOCATED: %lu, BBLK: %u\n",         \
-	     __func__, s->name, s->queued, s->submitted, s->returned,          \
-	     s->to_aio, s->from_aio, VHD_REQS_DATA - s->vreq_free_count,       \
-	     s->bat.pbw_blk);                                                  \
+	BLOG(bhandle, "%s: %s: QUEUED: %" PRIu64 ", COMPLETED: %" PRIu64 ", "  \
+	     "RETURNED: %" PRIu64 ", DATA_ALLOCATED: %lu, BBLK: %u\n",         \
+	     __func__, s->name, s->queued, s->completed, s->returned,          \
+	     VHD_REQS_DATA - s->vreq_free_count, s->bat.pbw_blk);              \
 } while(0)
 
 #define __ASSERT(_p)                                                           \
@@ -99,16 +93,12 @@ if ( !(_p) ) {                                                                 \
   #define ASSERT(_p)                 ((void)0)
 #endif
 
-/******AIO DEFINES******/
-#define REQUEST_ASYNC_FD             1
-#define MAX_AIO_REQS                 (MAX_REQUESTS * MAX_SEGMENTS_PER_REQ)
-
 /******VHD DEFINES******/
 #define VHD_CACHE_SIZE               32
 
-#define VHD_REQS_DATA                MAX_AIO_REQS
-#define VHD_REQS_META                VHD_CACHE_SIZE
-#define VHD_REQS_TOTAL               (VHD_REQS_DATA + VHD_REQS_META + 2)
+#define VHD_REQS_DATA                TAPDISK_DATA_REQUESTS
+#define VHD_REQS_META                (VHD_CACHE_SIZE + 2)
+#define VHD_REQS_TOTAL               (VHD_REQS_DATA + VHD_REQS_META)
 
 #define VHD_OP_BAT_WRITE             0
 #define VHD_OP_DATA_READ             1
@@ -175,7 +165,7 @@ struct vhd_request {
 	void *private;
 	vhd_flag_t flags;
 	td_callback_t cb;
-	struct iocb iocb;
+	struct tiocb tiocb;
 	struct vhd_request *next;
 	struct vhd_transaction *tx;
 };
@@ -215,10 +205,6 @@ struct vhd_state {
 	int                   fd;
 	vhd_flag_t            flags;
 
-	/* synchronous state */
-	int                   sync;
-	int                   dummy_pipe[2];
-
         /* VHD stuff */
         struct hd_ftr         ftr;
         struct dd_hdr         hdr;
@@ -240,16 +226,10 @@ struct vhd_state {
 	int                   vreq_free_count;
 	struct vhd_request   *vreq_free[VHD_REQS_DATA];
 	struct vhd_request    vreq_list[VHD_REQS_DATA];
-	
-	int                   iocb_queued;
-	struct iocb          *iocb_queue[VHD_REQS_TOTAL];
-	struct io_event       aio_events[VHD_REQS_TOTAL];
-	io_context_t          aio_ctx;
-	int                   poll_fd;         /* requires aio_poll support */
-
-	struct opioctx        opioctx;
 
 	char                 *name;
+
+	struct disk_driver   *dd;
 
 #if (PREALLOCATE_BLOCKS == 1)
 	char                 *zeros;
@@ -258,10 +238,8 @@ struct vhd_state {
 
 	/* debug info */
 	struct profile_info   tp;
-	uint64_t to_aio, from_aio;
-	uint64_t queued, submitted, returned;
+	uint64_t queued, completed, returned;
 	uint64_t writes, reads, write_size, read_size;
-	uint64_t submits, callback_sum, callbacks;
 };
 
 /* Helpers: */
@@ -841,52 +819,6 @@ vhd_read_bat(int fd, struct vhd_state *s)
 	return err;
 }
 
-static int
-init_aio_state(struct vhd_state *s)
-{
-	int i, ret;
-
-	/* initialize aio */
-#if (SYNCHRONOUS == 1)
-	s->poll_fd = -1;
-#else
-	s->aio_ctx = (io_context_t)REQUEST_ASYNC_FD;
-	s->poll_fd = io_setup(VHD_REQS_TOTAL, &s->aio_ctx);
-#endif
-
-	if (s->poll_fd < 0) {
-                if (s->poll_fd == -EAGAIN) {
-                        DPRINTF("Couldn't setup AIO context.  If you are "
-				"trying to concurrently use a large number "
-				"of blktap-based disks, you may need to "
-				"increase the system-wide aio request limit. "
-				"(e.g. 'echo 1048576 > /proc/sys/fs/"
-				"aio-max-nr')\n");
-			return s->poll_fd;
-                } else {
-                        DPRINTF("Couldn't get fd for AIO poll support.  This "
-				"is probably because your kernel does not "
-				"have the aio-poll patch applied.\n");
-			ret = pipe(s->dummy_pipe);
-			if (ret)
-				return -errno;
-			s->poll_fd = s->dummy_pipe[0];
-			s->sync    = 1;
-                }
-	}
-
-	s->vreq_free_count     = VHD_REQS_DATA;
-	s->iocb_queued         = 0;
-
-	memset(s->vreq_list,   0, sizeof(struct vhd_request) * VHD_REQS_DATA);
-	memset(s->aio_events,  0, sizeof(struct io_event)    * VHD_REQS_TOTAL);
-	
-	for (i = 0; i < VHD_REQS_DATA; i++)
-		s->vreq_free[i] = &s->vreq_list[i];
-
-	return 0;
-}
-
 static void
 free_bat(struct vhd_state *s)
 {
@@ -933,18 +865,6 @@ alloc_bat(struct vhd_state *s)
 	}
 
 	return 0;
-}
-
-static inline void
-init_fds(struct disk_driver *dd)
-{
-	int i;
-	struct vhd_state *s = (struct vhd_state *)dd->private;
-
-	for(i = 0; i < MAX_IOFD; i++) 
-		dd->io_fd[i] = 0;
-
-	dd->io_fd[0] = s->poll_fd;
 }
 
 static int
@@ -1052,18 +972,13 @@ __vhd_open(struct disk_driver *dd, const char *name, vhd_flag_t flags)
 		}
         }
 
-	ret = opio_init(&s->opioctx, VHD_REQS_TOTAL);
-	if (ret)
-		goto fail;
-
  out:
-	ret = init_aio_state(s);
-	if (ret)
-		goto fail;
-
-	init_fds(dd);
+	s->vreq_free_count = VHD_REQS_DATA;
+	for (i = 0; i < VHD_REQS_DATA; i++)
+		s->vreq_free[i] = s->vreq_list + i;
 
 	s->name          = strdup(name);
+	s->dd            = dd;
 	s->fd            = fd;
 	s->flags         = flags;
         tds->size        = s->ftr.curr_size >> VHD_SECTOR_SHIFT;
@@ -1121,18 +1036,13 @@ vhd_close(struct disk_driver *dd)
 	struct vhd_state  *s = (struct vhd_state *)dd->private;
 	
 	DBG("vhd_close\n");
-	DBG("%s: %s: QUEUED: %" PRIu64 ", SUBMITTED: %" PRIu64 ", RETURNED: %" PRIu64 ", "
-	    "WRITES: %" PRIu64 ", READS: %" PRIu64 ", AVG_WRITE_SIZE: %f, "
-	    "AVG_READ_SIZE: %f, AVG_SUBMIT_BATCH: %f, "
-	    "CALLBACKS: %" PRIu64 ", AVG_CALLBACK_BATCH: %f\n", __func__, 
-	    s->name, s->queued, s->submitted, s->returned, s->writes, 
-	    s->reads, 
-	    ((s->writes) ? ((float)s->write_size / s->writes) : 0.0),
-	    ((s->reads) ? ((float)s->read_size / s->reads) : 0.0), 
-	    ((s->submits) ? ((float)s->submitted / s->submits) : 0.0),
-	    s->callbacks,
-	    ((s->callbacks) ? 
-	     ((float)s->callback_sum / s->callbacks) : 0.0));
+	DBG("%s: %s: QUEUED: %" PRIu64 ", COMPLETED: %" PRIu64 ", "
+	    "RETURNED: %" PRIu64 "\n", __func__, s->name,
+	    s->queued, s->completed, s->returned);
+	DBG("WRITES: %" PRIu64 ", AVG_WRITE_SIZE: %f" PRIu64 "\n",
+	    s->writes, (s->writes ? ((float)s->write_size / s->writes) : 0.0));
+	DBG("READS: %" PRIu64 ", AVG_READ_SIZE: %f" PRIu64 "\n",
+	    s->reads, (s->reads ? ((float)s->read_size / s->reads) : 0.0));
 
 	/* don't write footer if tapdisk is read-only */
 	if (dd->flags & TD_RDONLY)
@@ -1173,18 +1083,11 @@ vhd_close(struct disk_driver *dd)
 	}
 
 	free_bat(s);
-	opio_free(&s->opioctx);
 
 	if (fsync(s->fd) == -1)
 		DPRINTF("ERROR: syncing file: %d\n", errno);
 	if (close(s->fd) == -1)
 		DPRINTF("ERROR: closing file: %d\n", errno);
-
-	if (s->sync) {
-		close(s->dummy_pipe[0]);
-		close(s->dummy_pipe[1]);
-	} else
-		io_destroy(s->aio_ctx);
 
 	tp_close(&s->tp);
 	
@@ -1899,14 +1802,15 @@ add_to_transaction(struct vhd_transaction *tx, struct vhd_request *r)
 {
 	ASSERT(!tx->closed);
 
-	DBG("%s: blk: %" PRIu64 ", lsec: %" PRIu64 ", tx: %p, started: %d, finished: %d, "
-	    "status: %u\n", __func__, r->lsec / SPB, r->lsec, tx, 
-	    tx->started, tx->finished, tx->status);
-
 	r->tx = tx;
 	tx->started++;
 	add_to_tail(&tx->requests, r);
 	set_vhd_flag(tx->status, VHD_FLAG_TX_LIVE);
+
+	DBG("%s: blk: %" PRIu64 ", lsec: %" PRIu64 ", tx: %p, "
+	    "started: %d, finished: %d, status: %u\n",
+	    __func__, r->lsec / SPB, r->lsec, tx,
+	    tx->started, tx->finished, tx->status);
 }
 
 static inline int
@@ -2111,261 +2015,6 @@ free_vhd_bitmap(struct vhd_state *s, struct vhd_bitmap *bm)
 	s->bitmap_free[s->bm_free_count++] = bm;
 }
 
-/*---------------------------------------------------------------------------
- *  SYNCHRONOUS FUNCTIONS
- *---------------------------------------------------------------------------*/
-/* get_sector_offset returns:
- *         1 on success
- *         BLK_NOT_ALLOCATED if the sector doesn't exist in this file, 
- *         -errno on error
- *
- * The number of contiguous sectors for which the return value holds is 
- * stored in nr_secs.
- * On success, put the offset in offset.
- * allocate indicates whether a sector should be created if it doesn't exist.
- */
-static int get_sector_offset(struct vhd_state *s, uint64_t sector,
-			     uint64_t *offset, int *nr_secs, int allocate)
-{
-	u64 db_start;
-	int i, ret, bm_size, num;
-	u32 blk, sec, *bitmap;
-	struct vhd_bitmap *bm;
-
-	/* in fixed disks, every block is present */
-	if (s->ftr.type == HD_TYPE_FIXED) {
-		*offset = sector << VHD_SECTOR_SHIFT;
-		return 1;
-	}
-
-	blk = sector / s->spb;
-	sec = sector % s->spb;
-
-	*offset = 0;
-	bm_size = s->bm_secs << VHD_SECTOR_SHIFT;
-
-	if (blk > s->hdr.max_bat_size) {
-		DPRINTF("ERROR: read out of range.\n");
-		return -EINVAL;
-	}
-
-	/* Lookup data block in the BAT. */
-	if ((db_start = bat_entry(s, blk)) == DD_BLK_UNUSED) {
-		char *buf       = s->bat.req.buf;
-		int bat_idx     = blk - (blk % 128);
-		u64 bm_off      = s->next_db << VHD_SECTOR_SHIFT;
-		u64 new_ftr_pos = s->next_db + s->spb + 1;
-
-		if (!allocate) {
-			*nr_secs = MIN(*nr_secs, s->spb - sec);
-			return BLK_NOT_ALLOCATED;
-		}
-
-		/* data region of segment should begin on page boundary */
-		if ((new_ftr_pos + s->bm_secs) % s->spp)
-			new_ftr_pos += (s->spp -
-					((new_ftr_pos + s->bm_secs) % s->spp));
-
-		/* push footer forward */
-		ret = lseek(s->fd, new_ftr_pos << VHD_SECTOR_SHIFT, SEEK_SET);
-		if (ret == (off_t)-1) {
-			DPRINTF("ERROR: seeking footer extension\n");
-			return -errno;
-		}
-                        
-		ret = vhd_write_hd_ftr(s->fd, &s->ftr);
-		if (ret) {
-			DPRINTF("ERROR: writing footer\n");
-			return -errno;
-		}
-
-		/* write empty bitmap */
-		ret = lseek(s->fd, bm_off, SEEK_SET);
-		if (ret == (off_t)-1) {
-			DPRINTF("ERROR: seeking bitmap extension\n");
-			return -errno;
-		}
-
-		alloc_vhd_bitmap(s, &bm, blk);
-		install_bitmap(s, bm);
-
-		ret = atomicio(vwrite, s->fd, bm->map, bm_size);
-		if (ret != bm_size) {
-			DPRINTF("ERROR: writing bitmap: %d\n", errno);
-			return -errno;
-		}
-
-		/* update bat */
-		bat_entry(s, blk) = s->next_db;
-		memcpy(buf, &s->bat.bat[bat_idx], VHD_SECTOR_SIZE);
-		for (i = 0; i < 128; i++)
-			BE32_OUT(&((u32 *)buf)[i]);
-
-		ret = lseek(s->fd, s->hdr.table_offset + bat_idx * 4, SEEK_SET);
-		if (ret == (off_t)-1) {
-			DPRINTF("ERROR: seeking bat update\n");
-			return -errno;
-		}
-
-		ret = atomicio(vwrite, s->fd, buf, VHD_SECTOR_SIZE);
-		if (ret !=  VHD_SECTOR_SIZE) {
-			DPRINTF("ERROR: updating bat: %d\n", errno);
-			return -errno;
-		}
-
-		s->next_db = new_ftr_pos;
-		db_start   = bat_entry(s, blk);
-	}
-
-	db_start <<= SECTOR_SHIFT;
-
-	bm = get_bitmap(s, blk);
-	if (!bm) {
-		alloc_vhd_bitmap(s, &bm, blk);
-
-		/* Read the DB bitmap. */
-		ret = lseek(s->fd, db_start, SEEK_SET);
-		if (ret == (off_t)-1) {
-			DPRINTF("ERROR: seeking data block\n");
-			return -errno;
-		}
-
-		ret = atomicio(read, s->fd, bm->map, bm_size);
-		if (ret !=  bm_size) {
-			DPRINTF("ERROR: reading block bitmap: %d\n", errno);
-			return -errno;
-		}
-
-		install_bitmap(s, bm);
-	}
-
-	if (!test_bit(sec, (void *)bm->map) && !allocate) {
-		/* not allocating: return number of contiguous zeros */
-		for (num = 0; sec + num < s->spb && num < *nr_secs; num++)
-			if (test_bit(sec + num, (void *)bm->map))
-				break;
-
-		*nr_secs = num;
-		return BLK_NOT_ALLOCATED;
-	}
-
-	if (!test_bit(sec, (void *)bm->map) && allocate) {
-		/* allocate sectors and write bitmap */
-		memcpy(bm->shadow, bm->map, bm_size);
-		for (num = 0; sec + num < s->spb && num < *nr_secs; num++)
-			set_bit(sec + num, (void *)bm->shadow);
-
-		ret = lseek(s->fd, db_start, SEEK_SET);
-		if (ret == (off_t)-1) {
-			DPRINTF("ERROR: seeking data block\n");
-			return -errno;
-		}
-
-		ret = atomicio(vwrite, s->fd, bm->shadow, bm_size);
-		if (ret !=  bm_size) {
-			DPRINTF("ERROR: writing bitmap: %d\n", errno);
-			return -errno;
-		}
-
-		memcpy(bm->map, bm->shadow, bm_size);
-		*nr_secs = num;
-	} else {
-		/* count number of contiguously allocated sectors */
-		for (num = 0; sec + num < s->spb && num < *nr_secs; num++)
-			if (!test_bit(sec + num, (void *)bm->map))
-				break;
-
-		*nr_secs = num;
-	}
-
-	*offset = db_start + ((s->bm_secs + sec) << VHD_SECTOR_SHIFT);
-	return 1;
-}
-
-int vhd_sync_read(struct disk_driver *dd, uint64_t sector,
-		  int nb_sectors, char *buf, td_callback_t cb,
-		  int id, void *private)
-{
-	uint64_t off;
-	int i, err, secs, bytes, ret, rsp = 0;
-	struct vhd_state *s = (struct vhd_state *)dd->private;
-
-	DBG("%s: %s: sector: %" PRIu64 ", nb_sectors: %d (seg: %ld), buf: %p\n",
-	    __func__, s->name, sector, nb_sectors, (unsigned long)private, buf);
-
-	for (i = 0; i < nb_sectors; i += secs) {
-		err  = -EIO;
-		secs = nb_sectors - i;
-		ret  = get_sector_offset(s, sector + i, &off, &secs, 0);
-
-		DBG("get_sector_offset returned: %d, off: %" PRIu64 ", secs: %d\n",
-		    ret, off, secs);
-
-		if (ret < 0)
-			goto cb;
-
-		if (ret == BLK_NOT_ALLOCATED) {
-			err = BLK_NOT_ALLOCATED;
-			goto cb;
-		}
-
-		if (lseek(s->fd, off, SEEK_SET) == (off_t)-1)
-			goto cb;
-
-		bytes = secs << VHD_SECTOR_SHIFT;
-		if (atomicio(read, s->fd, 
-			     buf + (i << VHD_SECTOR_SHIFT), bytes) != bytes)
-			goto cb;
-
-		err = 0;
-	cb:
-		rsp += cb(dd, err, sector + i, secs, id, private);
-	}
-
-	return rsp;
-}
-
-int vhd_sync_write(struct disk_driver *dd, uint64_t sector,
-		   int nb_sectors, char *buf, td_callback_t cb,
-		   int id, void *private)
-{
-	uint64_t off;
-	int i, err, secs, bytes, ret;
-	struct vhd_state *s = (struct vhd_state *)dd->private;
-
-	DBG("%s: %s: sector: %" PRIu64 ", nb_sectors: %d (seg: %ld), buf: %p\n",
-	    __func__, s->name, sector, nb_sectors, (unsigned long)private, buf);
-
-	err = -EIO;
-
-	for (i = 0; i < nb_sectors; i += secs) {
-		secs = nb_sectors - i;
-		ret = get_sector_offset(s, sector + i, &off, &secs, 1);
-
-		DBG("get_sector_offset returned: %d, off: %" PRIu64 ", secs: %d\n",
-		    ret, off, secs);
-
-		if (ret != 1)
-			goto done;
-
-		if (lseek(s->fd, off, SEEK_SET) == (off_t)-1)
-			goto done;
-
-		bytes = secs << VHD_SECTOR_SHIFT;
-		if (atomicio(vwrite, s->fd, 
-			     buf + (i << VHD_SECTOR_SHIFT), bytes) != bytes)
-			goto done;
-	}
-
-	err = 0;
-
- done:
-	return cb(dd, err, sector, nb_sectors, id, private);
-}
-/*---------------------------------------------------------------------------
- * END SYNCHRONOUS FUNCTIONS
- *---------------------------------------------------------------------------*/
-
 static int
 read_bitmap_cache(struct vhd_state *s, uint64_t sector, uint8_t op)
 {
@@ -2455,11 +2104,11 @@ free_vhd_request(struct vhd_state *s, struct vhd_request *req)
 static inline void
 aio_read(struct vhd_state *s, struct vhd_request *req, uint64_t offset)
 {
-	struct iocb *io = &req->iocb;
-	io_prep_pread(io, s->fd, req->buf, 
-		      req->nr_secs << VHD_SECTOR_SHIFT, offset);
-	io->data = (void *)req;
-	s->iocb_queue[s->iocb_queued++] = io;
+	struct tiocb *tiocb = &req->tiocb;
+
+	td_prep_read(tiocb, s->dd, s->fd, req->buf,
+		     req->nr_secs << VHD_SECTOR_SHIFT, offset, (void *)req);
+	td_queue_tiocb(s->dd, tiocb);
 
 	s->queued++; 
 	s->reads++; 
@@ -2470,11 +2119,11 @@ aio_read(struct vhd_state *s, struct vhd_request *req, uint64_t offset)
 static inline void
 aio_write(struct vhd_state *s, struct vhd_request *req, uint64_t offset)
 {
-	struct iocb *io = &req->iocb;
-	io_prep_pwrite(io, s->fd, req->buf,
-		       req->nr_secs << VHD_SECTOR_SHIFT, offset);
-	io->data = (void *)req;
-	s->iocb_queue[s->iocb_queued++] = io;
+	struct tiocb *tiocb = &req->tiocb;
+
+	td_prep_write(tiocb, s->dd, s->fd, req->buf,
+		      req->nr_secs << VHD_SECTOR_SHIFT, offset, (void *)req);
+	td_queue_tiocb(s->dd, tiocb);
 
 	s->queued++;
 	s->writes++;
@@ -2923,10 +2572,6 @@ vhd_queue_read(struct disk_driver *dd, uint64_t sector,
 	uint64_t sec, end;
 	struct vhd_state *s = (struct vhd_state *)dd->private;
 
-	if (s->sync)
-		return vhd_sync_read(dd, sector, nr_sectors, 
-				     buf, cb, id, private);
-
 	tp_log(&s->tp, sector, TAPPROF_IN);
 
 	DBG("%s: %s: sector: %" PRIu64 ", nb_sectors: %d (seg: %ld), buf: %p\n",
@@ -3016,10 +2661,6 @@ vhd_queue_write(struct disk_driver *dd, uint64_t sector,
 {
 	uint64_t sec, end;
 	struct vhd_state *s = (struct vhd_state *)dd->private;
-
-	if (s->sync)
-		return vhd_sync_write(dd, sector, nr_sectors,
-				      buf, cb, id, private);
 
 	tp_log(&s->tp, sector, TAPPROF_IN);
 
@@ -3254,7 +2895,7 @@ finish_data_transaction(struct disk_driver *dd, struct vhd_bitmap *bm)
 	struct vhd_transaction *tx = &bm->tx;
 	struct vhd_state *s = (struct vhd_state *)dd->private;
 
-	DBG("%s: blk %u\n", __func__, bm->blk);
+	DBG("%s: blk: %u\n", __func__, bm->blk);
 
 	tx->closed = 1;
 
@@ -3334,7 +2975,7 @@ finish_zero_bm_write(struct disk_driver *dd, struct vhd_request *req)
 	blk = req->lsec / s->spb;
 	bm  = get_bitmap(s, blk);
 
-	DBG("%s: blk %u\n", __func__, blk);
+	DBG("%s: blk: %u\n", __func__, blk);
 	ASSERT(bat_locked(s));
 	ASSERT(s->bat.pbw_blk == blk);
 	ASSERT(bm && bitmap_valid(bm) && bitmap_locked(bm));
@@ -3372,7 +3013,7 @@ finish_bitmap_read(struct disk_driver *dd, struct vhd_request *req)
 	blk = req->lsec / s->spb;
 	bm  = get_bitmap(s, blk);
 
-	DBG("%s: blk %u\n", __func__, blk);
+	DBG("%s: blk: %u\n", __func__, blk);
 	ASSERT(bm && test_vhd_flag(bm->status, VHD_FLAG_BM_READ_PENDING));
 
 	r = bm->waiting.head;
@@ -3437,7 +3078,7 @@ finish_bitmap_write(struct disk_driver *dd, struct vhd_request *req)
 	bm  = get_bitmap(s, blk);
 	tx  = &bm->tx;
 
-	DBG("%s: blk %u, started: %d, finished: %d\n", 
+	DBG("%s: blk: %u, started: %d, finished: %d\n", 
 	    __func__, blk, tx->started, tx->finished);
 	ASSERT(tx->closed);
 	ASSERT(bm && bitmap_valid(bm));
@@ -3460,7 +3101,7 @@ finish_data_read(struct disk_driver *dd, struct vhd_request *req)
 
 	tp_log(&s->tp, req->lsec, TAPPROF_IN);
 
-	DBG("%s: lsec %" PRIu64 ", blk %" PRIu64 "\n", 
+	DBG("%s: lsec %" PRIu64 ", blk: %" PRIu64 "\n", 
 	    __func__, req->lsec, req->lsec / s->spb);
 	rsp = signal_completion(dd, req, 0);
 
@@ -3515,224 +3156,68 @@ finish_data_write(struct disk_driver *dd, struct vhd_request *req)
 	return rsp;
 }
 
-static inline int
-fail_vhd_request(struct disk_driver *dd, struct vhd_request *r, int err)
+int
+vhd_complete(struct disk_driver *dd, struct tiocb *tiocb, int err)
 {
 	struct vhd_state *s = (struct vhd_state *)dd->private;
+	struct vhd_request *req = tiocb->data;
+	struct iocb *io = &tiocb->iocb;
 
-	DBG("ERROR: %s to %" PRIu64 " failed: %d\n", 
-	    (r->op == VHD_OP_DATA_READ || r->op == VHD_OP_BITMAP_READ) ?
-	    "read" : "write", r->lsec, err);
+	tp_in(&s->tp);
 
-	r->error = err;
+	s->completed++;
+	TRACE(s);
 
-	switch(r->op) {
+	req->error = err;
+
+	if (req->error) {
+		DBG("%s: %s: ERROR: %d: op: %u, lsec: %" PRIu64 ", "
+		    "nr_secs: %u, nbytes: %lu, blk: %" PRIu64 ", "
+		    "blk_offset: %u\n", __func__, s->name, 
+		    req->error, req->op, req->lsec, req->nr_secs, 
+		    io->u.c.nbytes, req->lsec / s->spb,
+		    bat_entry(s, req->lsec / s->spb));
+		TAP_ERROR(req->error, "%s: aio failed: op: %u, "
+			  "lsec: %" PRIu64 ", nr_secs: %u, nbytes: %lu, "
+			  "blk: %" PRIu64 ", blk_offset: %u", s->name, 
+			  req->op, req->lsec, req->nr_secs, 
+			  io->u.c.nbytes, req->lsec / s->spb,
+			  bat_entry(s, req->lsec / s->spb));
+	}
+
+	switch (req->op) {
 	case VHD_OP_DATA_READ:
-		return finish_data_read(dd, r);
+		finish_data_read(dd, req);
+		break;
 
 	case VHD_OP_DATA_WRITE:
-		return finish_data_write(dd, r);
+		finish_data_write(dd, req);
+		break;
 
 	case VHD_OP_BITMAP_READ:
-		return finish_bitmap_read(dd, r);
+		finish_bitmap_read(dd, req);
+		break;
 
 	case VHD_OP_BITMAP_WRITE:
-		return finish_bitmap_write(dd, r);
+		finish_bitmap_write(dd, req);
+		break;
 
 	case VHD_OP_ZERO_BM_WRITE:
-		return finish_zero_bm_write(dd, r);
+		finish_zero_bm_write(dd, req);
+		break;
 
 	case VHD_OP_BAT_WRITE:
-		return finish_bat_write(dd, r);
+		finish_bat_write(dd, req);
+		break;
 
 	default:
 		ASSERT(0);
-		return 0;
-	}
-}
-
-static int
-__vhd_cancel_requests(struct disk_driver *dd, int err)
-{
-	struct iocb *io;
-	struct vhd_request *req;
-	int i, ret, queued, rsp = 0;
-	struct vhd_state *s = (struct vhd_state *)dd->private;
-	
-	queued = s->iocb_queued;
-	s->iocb_queued = 0;
-
-	for (i = 0; i < queued; i++) {
-		io  = s->iocb_queue[i];
-		req = (struct vhd_request *)io->data;
-		ret = fail_vhd_request(dd, req, err);
-		if (ret > 0)
-			rsp += ret;
-	}
-
-	if (s->iocb_queued) {
-		ret = vhd_submit(dd);
-		if (ret > 0)
-			rsp += ret;
-	}
-
-	return rsp;
-}
-
-int
-vhd_cancel_requests(struct disk_driver *dd)
-{
-	return __vhd_cancel_requests(dd, -EIO);
-}
-
-static int
-vhd_submit_fail(struct disk_driver *dd, int succeeded, int submitted, int err)
-{
-	struct vhd_state *s = (struct vhd_state *)dd->private;
-
-	TAP_ERROR(err, "io_submit error: %d of %d failed", 
-		  submitted - succeeded, submitted);
-
-	/* take any non-submitted iocbs off of the
-	 * merged queue, split them, and fail them */
-	s->iocb_queued = io_expand_iocbs(&s->opioctx,
-					 s->iocb_queue, succeeded, submitted);
-
-	return __vhd_cancel_requests(dd, err);
-}
-
-int
-vhd_submit(struct disk_driver *dd)
-{
-	int ret, queued, err = 0, rsp = 0;
-	struct vhd_state *s = (struct vhd_state *)dd->private;
-
-	if (!s->iocb_queued)
-		return 0;
-
-	tp_in(&s->tp);
-
-	queued = io_merge(&s->opioctx, s->iocb_queue, s->iocb_queued);
-	ret    = io_submit(s->aio_ctx, queued, s->iocb_queue);
-
-        DBG("%s: %s: submitting %d, merged to %d, ret: %d\n", 
-	    __func__, s->name, s->iocb_queued, queued, ret);
-
-	/* io_submit returns an error, or the number of iocbs submitted. */
-	if (ret < 0) {
-		DBG("%s: io_submit returned %d\n", __func__, ret);
-		err = ret;
-		ret = 0;
-	} else if (ret < queued)
-		err = -EIO;
-
-	s->submits++;
-	s->to_aio     += ret;
-	s->submitted  += s->iocb_queued;
-	s->iocb_queued = 0;
-	TRACE(s);
-
-	if (err)
-		rsp = vhd_submit_fail(dd, ret, queued, err);
-
-	tp_out(&s->tp);
-
-	return rsp;
-}
-
-int
-vhd_do_callbacks(struct disk_driver *dd, int sid)
-{
-	struct io_event   *ep;
-	struct vhd_bitmap *bm;
-	int ret, split, nr_iocbs, rsp = 0;
-	struct vhd_state *s = (struct vhd_state *)dd->private;
-
-	if (sid > MAX_IOFD)
-		return 1;
-
-	tp_in(&s->tp);
-
-	nr_iocbs = s->iocb_queued;
-
-	/* non-blocking test for completed io */
-	ret   = io_getevents(s->aio_ctx, 0, VHD_REQS_TOTAL, s->aio_events, NULL);
-	split = io_split(&s->opioctx, s->aio_events, ret);
-	DBG("%s: got %d events, expanded to %d\n", __func__, ret, split);
-
-	s->callbacks++;
-	s->from_aio     += ret;
-	s->callback_sum += split;
-	TRACE(s);
-
-	for (ep = s->aio_events; split-- > 0; ep++) {
-		struct iocb *io = ep->obj;
-		struct vhd_request *req = (struct vhd_request *)io->data;
-
-		if (ep->res == io->u.c.nbytes)
-			req->error = 0;
-		else if (ep->res)
-			req->error = (int)ep->res;
-		else
-			req->error = -EIO;
-
-		if (req->error) {
-			DBG("%s: %s: ERROR: %d: op: %u, lsec: %" PRIu64 ", "
-			    "nr_secs: %u, nbytes: %lu, blk: %" PRIu64 ", "
-			    "blk_offset: %u\n", __func__, s->name, 
-			    req->error, req->op, req->lsec, req->nr_secs, 
-			    io->u.c.nbytes, req->lsec / s->spb,
-			    bat_entry(s, req->lsec / s->spb));
-			TRACE(s);
-			TAP_ERROR(req->error, "%s: aio failed: op: %u, "
-				  "lsec: %" PRIu64 ", nr_secs: %u, nbytes: %lu, "
-				  "blk: %" PRIu64 ", blk_offset: %u", s->name, 
-				  req->op, req->lsec, req->nr_secs, 
-				  io->u.c.nbytes, req->lsec / s->spb,
-				  bat_entry(s, req->lsec / s->spb));
-		}
-
-		switch (req->op) {
-		case VHD_OP_DATA_READ:
-			rsp += finish_data_read(dd, req);
-			break;
-
-		case VHD_OP_DATA_WRITE:
-			rsp += finish_data_write(dd, req);
-			break;
-
-		case VHD_OP_BITMAP_READ:
-			rsp += finish_bitmap_read(dd, req);
-			break;
-
-		case VHD_OP_BITMAP_WRITE:
-			rsp += finish_bitmap_write(dd, req);
-			break;
-
-		case VHD_OP_ZERO_BM_WRITE:
-			rsp += finish_zero_bm_write(dd, req);
-			break;
-
-		case VHD_OP_BAT_WRITE:
-			rsp += finish_bat_write(dd, req);
-			break;
-			
-		default:
-			ASSERT(0);
-			break;
-		}
-	}
-
-	if (s->iocb_queued != nr_iocbs) {
-		/* additional requests were queued.  submit them. */
-		DBG("%s: %s: more requests enqueued; submitting\n", 
-		    __func__, s->name);
-		vhd_submit(dd);
+		break;
 	}
 
 	tp_out(&s->tp);
 
-	return rsp;
+	return 0;
 }
 
 void 
@@ -3793,7 +3278,6 @@ vhd_debug(struct disk_driver *dd)
 
 	DBGDUMP();
 
-	io_debug(&s->opioctx);
 /*
 	for (i = 0; i < s->hdr.max_bat_size; i++)
 		DPRINTF("%d: %u\n", i, s->bat.bat[i]);
@@ -3837,13 +3321,12 @@ vhd_repair(struct disk_driver *dd)
 struct tap_disk tapdisk_vhd = {
 	.disk_type          = "tapdisk_vhd",
 	.private_data_size  = sizeof(struct vhd_state),
+	.private_iocbs      = VHD_REQS_META,
 	.td_open            = vhd_open,
+	.td_close           = vhd_close,
 	.td_queue_read      = vhd_queue_read,
 	.td_queue_write     = vhd_queue_write,
-	.td_cancel_requests = vhd_cancel_requests,
-	.td_submit          = vhd_submit,
-	.td_close           = vhd_close,
-	.td_do_callbacks    = vhd_do_callbacks,
+	.td_complete        = vhd_complete,
 	.td_get_parent_id   = vhd_get_parent_id,
 	.td_validate_parent = vhd_validate_parent,
 	.td_snapshot        = vhd_snapshot,
