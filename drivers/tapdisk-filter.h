@@ -1,7 +1,5 @@
 /* Copyright (c) 2007, XenSource Inc.
  * All rights reserved.
- *
- * XenSource proprietary code.
  */
 
 #ifndef TAPDISK_FILTER_H
