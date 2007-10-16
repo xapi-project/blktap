@@ -78,6 +78,11 @@ struct lock_request {
 	char     *lock_uuid;
 };
 
+typedef struct driver_list_entry {
+	struct blkif *blkif;
+	struct driver_list_entry **pprev, *next;
+} driver_list_entry_t;
+
 int run = 1;
 int max_timeout = MAX_TIMEOUT;
 int ctlfd = 0;

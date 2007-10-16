@@ -16,12 +16,12 @@
 #include "vhd.h"
 
 #if 1
-#define DFPRINTF(_f, _a...) fprintf ( stdout, _f , ## _a )
+#define DFPRINTF(_f, _a...) fprintf (stdout, _f , ## _a)
 #else
 #define DFPRINTF(_f, _a...) ((void)0)
 #endif
 
-#define MAX_AIO_REQUESTS (MAX_REQUESTS * MAX_SEGMENTS_PER_REQ)
+#define MAX_AIO_REQUESTS  TAPDISK_DATA_REQUESTS
 
 struct preq {
 	char         *buf;
@@ -56,10 +56,9 @@ struct vhd_context {
 };
 
 static inline int
-test_bit (int nr, volatile void * addr)
+test_bit (int nr, volatile u32 *addr)
 {
-	return (((unsigned long*)addr)[nr/(sizeof(unsigned long)*8)] >>
-		(nr % (sizeof(unsigned long)*8))) & 1;
+	return (((u32 *)addr)[nr >> 5] >> (nr & 31)) & 1;
 }
 
 static int
@@ -115,24 +114,40 @@ static int
 init_ctx(struct vhd_context *ctx, 
 	 struct disk_driver *child, struct disk_driver *parent)
 {
+	struct tqueue *queue = &child->td_state->queue;
+
 	memset(ctx, 0, sizeof(struct vhd_context));
 	ctx->child  = child;
 	ctx->parent = parent;
 
-	if (vhd_get_info(child, &ctx->info))
-		return -1;
+	ctx->error = tapdisk_init_queue(queue,
+					MAX_AIO_REQUESTS + 
+					child->drv->private_iocbs +
+					parent->drv->private_iocbs,
+					0, NULL, NULL);
+	if (ctx->error)
+		return ctx->error;
+
+	ctx->error = vhd_get_info(child, &ctx->info);
+	if (ctx->error)
+		return ctx->error;
 
 	ctx->child_fd = open(child->name, O_RDWR);
-	if (ctx->child_fd == -1)
-		return -1;
+	if (ctx->child_fd == -1) {
+		ctx->error = -errno;
+		return ctx->error;
+	}
 
 	ctx->running = 1;
 	ctx->bm = malloc(ctx->info.spb >> 3);
-	if (!ctx->bm)
-		return -1;
+	if (!ctx->bm) {
+		ctx->error = -ENOMEM;
+		return ctx->error;
+	}
 
-	if (init_buffers(ctx))
-		return -1;
+	ctx->error = init_buffers(ctx);
+	if (ctx->error)
+		return ctx->error;
 
 	return 0;
 }
@@ -140,14 +155,15 @@ init_ctx(struct vhd_context *ctx,
 static int
 open_images(char *path, struct disk_driver *child, struct disk_driver *parent)
 {
+	int err;
 	struct disk_id id;
 
-	if (child->drv->td_open(child, path, TD_RDONLY)) {
+	if ((err = child->drv->td_open(child, path, TD_RDONLY))) {
 		DFPRINTF("error opening %s\n", path);
-		return -1;
+		return -err;
 	}
 
-	if (child->drv->td_get_parent_id(child, &id)) {
+	if ((err = child->drv->td_get_parent_id(child, &id))) {
 		DFPRINTF("%s does not have a parent\n", path);
 		goto fail_child;
 	}
@@ -155,17 +171,20 @@ open_images(char *path, struct disk_driver *child, struct disk_driver *parent)
 	if (id.drivertype > MAX_DISK_TYPES ||
 	    !dtypes[id.drivertype]->drv || !id.name) {
 		DFPRINTF("error getting parent id for %s\n", path);
+		err = -EINVAL;
 		goto fail_child;
 	}
 	
 	parent->drv     = dtypes[id.drivertype]->drv;
 	parent->private = malloc(parent->drv->private_data_size);
-	if (!parent->private)
+	if (!parent->private) {
+		err = -ENOMEM;
 		goto fail_child;
+	}
 
-	if (parent->drv->td_open(parent, id.name, 0)) {
+	if ((err = parent->drv->td_open(parent, id.name, 0))) {
 		DFPRINTF("error opening parent %s\n", id.name);
-		goto fail_child;
+		goto fail_parent;
 	}
 
 	free(id.name);
@@ -173,10 +192,10 @@ open_images(char *path, struct disk_driver *child, struct disk_driver *parent)
 	return 0;
 
  fail_parent:
-	parent->drv->td_close(parent);
+	free(parent->private);
  fail_child:
 	child->drv->td_close(child);
-	return -1;
+	return err;
 }
 
 static int
@@ -346,11 +365,11 @@ process(struct vhd_context *ctx)
 				return 0;
 
 		while (ctx->bm_idx < ctx->info.spb &&
-		       !test_bit(ctx->bm_idx, (void *)ctx->bm)) 
+		       !test_bit(ctx->bm_idx, (u32 *)ctx->bm)) 
 			ctx_inc_bm(ctx);
 
 		if (ctx->bm_idx < ctx->info.spb &&
-		    test_bit(ctx->bm_idx, (void *)ctx->bm)) {
+		    test_bit(ctx->bm_idx, (u32 *)ctx->bm)) {
 			buf = get_buffer(ctx);
 			ret = ctx->child->drv->td_queue_read(ctx->child,
 							     ctx->cur_sec, 1, 
@@ -379,12 +398,16 @@ process(struct vhd_context *ctx)
 int
 vhd_coalesce(char *path)
 {
+	int    ret;
 	fd_set readfds;
-	int    maxfds, ret;
 	struct td_state s;
+	struct tqueue *queue;
 	struct vhd_context ctx;
 	struct disk_driver child, parent;
 
+	memset(&s, 0, sizeof(struct td_state));
+
+	queue           = &s.queue;
 	child.td_state  = &s;
 	child.name      = path;
 	child.drv       = dtypes[DISK_TYPE_VHD]->drv;
@@ -395,39 +418,31 @@ vhd_coalesce(char *path)
 	parent.td_state = &s;
 	parent.private  = NULL;
 
-	if (open_images(path, &child, &parent))
-		return -1;
+	ctx.error = open_images(path, &child, &parent);
+	if (ctx.error)
+		return ctx.error;
 
-	if (init_ctx(&ctx, &child, &parent)) {
-		ctx.error = -EIO;
+	if (init_ctx(&ctx, &child, &parent))
 		goto done;
-	}
-
-	maxfds = (child.io_fd[READ] > parent.io_fd[READ] ?
-		  child.io_fd[READ] : parent.io_fd[READ]);
 
 	ctx.bat_idx = -1;
 	read_next_bitmap(&ctx);
 	process(&ctx);
-	child.drv->td_submit(&child);
+	tapdisk_submit_all_tiocbs(queue);
 
 	while (ctx.running || ctx.preqs) {
 		FD_ZERO(&readfds);
-		FD_SET(child.io_fd[READ], &readfds);
-		FD_SET(parent.io_fd[READ], &readfds);
-		ret = select(maxfds + 1, &readfds, NULL, NULL, NULL);
+		FD_SET(queue->poll_fd, &readfds);
+		ret = select(queue->poll_fd + 1,
+			     &readfds, NULL, NULL, NULL);
 
 		if (ret > 0) {
-			if (FD_ISSET(child.io_fd[READ], &readfds))
-				child.drv->td_do_callbacks(&child, 0);
-			if (FD_ISSET(parent.io_fd[READ], &readfds))
-				parent.drv->td_do_callbacks(&parent, 0);
+			if (FD_ISSET(queue->poll_fd, &readfds))
+				tapdisk_complete_tiocbs(queue);
 
 			flush_write_queue(&ctx);
-			
 			process(&ctx);
-			child.drv->td_submit(&child);
-			parent.drv->td_submit(&parent);
+			tapdisk_submit_all_tiocbs(queue);
 		}
 
 		if (ctx.error && !ctx.preqs)
@@ -438,6 +453,7 @@ vhd_coalesce(char *path)
 	close(ctx.child_fd);
 	child.drv->td_close(&child);
 	parent.drv->td_close(&parent);
+	tapdisk_free_queue(queue);
 	free(child.private);
 	free(parent.private);
 	free(ctx.info.bat);
