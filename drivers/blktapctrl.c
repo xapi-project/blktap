@@ -57,7 +57,14 @@
                                                                      
 #include "blktaplib.h"
 #include "blktapctrl.h"
-#include "tapdisk.h"
+#include "disktypes.h"
+
+#if 1
+#include <syslog.h>
+#define DPRINTF(_f, _a...) syslog(LOG_INFO, _f, ##_a)
+#else
+#define DPRINTF(_f, _a...) ((void)0)
+#endif
 
 #define PIDFILE "/var/run/blktapctrl.pid"
 
