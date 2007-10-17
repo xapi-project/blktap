@@ -66,6 +66,7 @@ $(MY_OBJ_DIR)/proprietary.code.check.stamp:
 	touch $@
 
 $(RPM_SOURCESDIR)/%.o:
+	rm -f $(REPO)/drivers/.$*.o.d $(REPO)/drivers/$*.o
 	make -C $(REPO)/drivers/ USE_SYSTEM_LIBRARIES=y XEN_ROOT=$(XEN_ROOT) $*.o
 	mv $(REPO)/drivers/$*.o $(RPM_SOURCESDIR)/$*.o
 
