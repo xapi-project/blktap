@@ -57,14 +57,7 @@
                                                                      
 #include "blktaplib.h"
 #include "blktapctrl.h"
-#include "disktypes.h"
-
-#if 1
-#include <syslog.h>
-#define DPRINTF(_f, _a...) syslog(LOG_INFO, _f, ##_a)
-#else
-#define DPRINTF(_f, _a...) ((void)0)
-#endif
+#include "tapdisk.h"
 
 #define PIDFILE "/var/run/blktapctrl.pid"
 
@@ -84,11 +77,6 @@ struct lock_request {
 	int       enforce;
 	char     *lock_uuid;
 };
-
-typedef struct driver_list_entry {
-	struct blkif *blkif;
-	struct driver_list_entry **pprev, *next;
-} driver_list_entry_t;
 
 int run = 1;
 int max_timeout = MAX_TIMEOUT;

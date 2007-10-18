@@ -39,10 +39,30 @@
  *    td_queue_[read,write]()
  * 
  * and passing in a completion callback, which the disk is responsible for 
- * tracking.  Disks should transform these requests as necessary and return
- * the resulting iocbs to tapdisk using td_prep_[read,write]() and 
- * td_queue_tiocb().  tapdisk will submit iocbs in batches and signal
- * completions via td_complete().
+ * tracking.  The end of a back is marked with a call to:
+ * 
+ *    td_submit()
+ * 
+ * The disk implementation must provide a file handle, which is used to 
+ * indicate that it needs to do work.  tapdisk will add this file handle 
+ * (returned from td_get_fd()) to it's poll set, and will call into the disk
+ * using td_do_callbacks() whenever there is data pending.
+ * 
+ * Two disk implementations demonstrate how this interface may be used to 
+ * implement disks with both asynchronous and synchronous calls.  block-aio.c
+ * maps this interface down onto the linux libaio calls, while block-sync uses 
+ * normal posix read/write.
+ * 
+ * A few things to realize about the sync case, which doesn't need to defer 
+ * io completions:
+ * 
+ *   - td_queue_[read,write]() call read/write directly, and then call the 
+ *     callback immediately.  The MUST then return a value greater than 0
+ *     in order to tell tapdisk that requests have finished early, and to 
+ *     force responses to be kicked to the clents.
+ * 
+ *   - The fd used for poll is an otherwise unused pipe, which allows poll to 
+ *     be safely called without ever returning anything.
  *
  * NOTE: tapdisk uses the number of sectors submitted per request as a 
  * ref count.  Plugins must use the callback function to communicate the
@@ -59,12 +79,7 @@
 
 #include <time.h>
 #include <stdint.h>
-
-#include "profile.h"
 #include "blktaplib.h"
-#include "tapdisk-queue.h"
-#include "tapdisk-filter.h"
-#include "disktypes.h"
 
 /*If enabled, log all debug messages to syslog*/
 #if 1
@@ -76,21 +91,19 @@
 
 /* Things disks need to know about, these should probably be in a higher-level
  * header. */
-#define MAX_SEGMENTS_PER_REQ     11
+#define MAX_SEGMENTS_PER_REQ    11
 #define SECTOR_SHIFT             9
-#define DEFAULT_SECTOR_SIZE      512
+#define DEFAULT_SECTOR_SIZE    512
 
-#define TD_MAX_RETRIES           100
+#define TD_MAX_RETRIES         100
 #define TD_RETRY_INTERVAL        1
 
 #define MAX_IOFD                 2
 
-#define BLK_NOT_ALLOCATED        (-99)
+#define BLK_NOT_ALLOCATED    (-99)
 #define TD_NO_PARENT             1
 
-#define TAPDISK_DATA_REQUESTS    (MAX_REQUESTS * MAX_SEGMENTS_PER_REQ)
-
-#define MAX_RAMDISK_SIZE          1024000 /*500MB disk limit*/
+#define MAX_RAMDISK_SIZE   1024000 /*500MB disk limit*/
 
 typedef uint32_t td_flag_t;
 
@@ -139,11 +152,11 @@ struct disk_driver {
 	struct tap_disk *drv;
 	struct td_state *td_state;
 	struct disk_driver *next;
-	struct tlog *log;
 };
 
 /* This structure represents the state of an active virtual disk.           */
 struct td_state {
+	struct disk_driver *disks;
 	void *blkif;
 	void *image;
 	void *ring_info;
@@ -159,9 +172,6 @@ struct td_state {
 	unsigned long received, returned, kicked;
 	struct timeval ts;
 	int dumped_log;
-
-	struct tqueue queue;
-	struct disk_driver *disks;
 };
 
 /* Prototype of the callback to activate as requests complete.              */
@@ -173,18 +183,18 @@ typedef int (*td_callback_t)(struct disk_driver *dd, int res, uint64_t sector,
 struct tap_disk {
 	const char *disk_type;
 	int private_data_size;
-	int private_iocbs;
 	int (*td_open)           (struct disk_driver *dd, 
 				  const char *name, td_flag_t flags);
-	int (*td_close)          (struct disk_driver *dd);
 	int (*td_queue_read)     (struct disk_driver *dd, uint64_t sector,
 				  int nb_sectors, char *buf, td_callback_t cb,
 				  int id, void *prv);
 	int (*td_queue_write)    (struct disk_driver *dd, uint64_t sector,
 				  int nb_sectors, char *buf, td_callback_t cb, 
 				  int id, void *prv);
-	int (*td_complete)       (struct disk_driver *dd,
-				  struct tiocb *tiocb, int err);
+	int (*td_cancel_requests)(struct disk_driver *dd);
+	int (*td_submit)         (struct disk_driver *dd);
+	int (*td_close)          (struct disk_driver *dd);
+	int (*td_do_callbacks)   (struct disk_driver *dd, int sid);
 	int (*td_get_parent_id)  (struct disk_driver *dd, struct disk_id *id);
 	int (*td_validate_parent)(struct disk_driver *dd, 
 				  struct disk_driver *p, td_flag_t flags);
@@ -194,6 +204,147 @@ struct tap_disk {
 				  uint64_t size, td_flag_t flags);
 };
 
+typedef struct disk_info {
+	int  idnum;
+	char name[50];       /* e.g. "RAMDISK" */
+	char handle[10];     /* xend handle, e.g. 'ram' */
+	int  single_handler; /* is there a single controller for all */
+	                     /* instances of disk type? */
+#ifdef TAPDISK
+	struct tap_disk *drv;	
+#endif
+} disk_info_t;
+
+void debug_fe_ring(struct td_state *s);
+
+extern struct tap_disk tapdisk_aio;
+/* extern struct tap_disk tapdisk_sync;    */
+/* extern struct tap_disk tapdisk_vmdk;    */
+/* extern struct tap_disk tapdisk_vhdsync; */
+extern struct tap_disk tapdisk_vhd;
+extern struct tap_disk tapdisk_ram;
+/* extern struct tap_disk tapdisk_qcow;    */
+
+#define MAX_DISK_TYPES     20
+
+#define DISK_TYPE_AIO      0
+#define DISK_TYPE_SYNC     1
+#define DISK_TYPE_VMDK     2
+#define DISK_TYPE_VHDSYNC  3
+#define DISK_TYPE_VHD      4
+#define DISK_TYPE_RAM      5
+#define DISK_TYPE_QCOW     6
+
+
+/*Define Individual Disk Parameters here */
+static disk_info_t null_disk = {
+	-1,
+	"null disk",
+	"null",
+	0,
+#ifdef TAPDISK
+	0,
+#endif
+};
+
+static disk_info_t aio_disk = {
+	DISK_TYPE_AIO,
+	"raw image (aio)",
+	"aio",
+	0,
+#ifdef TAPDISK
+	&tapdisk_aio,
+#endif
+};
+/*
+static disk_info_t sync_disk = {
+	DISK_TYPE_SYNC,
+	"raw image (sync)",
+	"sync",
+	0,
+#ifdef TAPDISK
+	&tapdisk_sync,
+#endif
+};
+
+static disk_info_t vmdk_disk = {
+	DISK_TYPE_VMDK,
+	"vmware image (vmdk)",
+	"vmdk",
+	1,
+#ifdef TAPDISK
+	&tapdisk_vmdk,
+#endif
+};
+
+static disk_info_t vhdsync_disk = {
+	DISK_TYPE_VHDSYNC,
+	"virtual server image (vhd) - synchronous",
+	"vhdsync",
+	1,
+#ifdef TAPDISK
+	&tapdisk_vhdsync,
+#endif
+};
+*/
+static disk_info_t vhd_disk = {
+	DISK_TYPE_VHD,
+	"virtual server image (vhd)",
+	"vhd",
+	0,
+#ifdef TAPDISK
+	&tapdisk_vhd,
+#endif
+};
+
+static disk_info_t ram_disk = {
+	DISK_TYPE_RAM,
+	"ramdisk image (ram)",
+	"ram",
+	1,
+#ifdef TAPDISK
+	&tapdisk_ram,
+#endif
+};
+/*
+static disk_info_t qcow_disk = {
+	DISK_TYPE_QCOW,
+	"qcow disk (qcow)",
+	"qcow",
+	0,
+#ifdef TAPDISK
+	&tapdisk_qcow,
+#endif
+};
+*/
+/*Main disk info array */
+static disk_info_t *dtypes[] = {
+	&aio_disk,
+	&null_disk, /* &sync_disk, */
+	&null_disk, /* &vmdk_disk, */
+        &null_disk, /* &vhdsync_disk, */
+	&vhd_disk,
+	&ram_disk,
+	&null_disk, /* &qcow_disk, */
+};
+
+typedef struct driver_list_entry {
+	struct blkif *blkif;
+	struct driver_list_entry **pprev, *next;
+} driver_list_entry_t;
+
+typedef struct fd_list_entry {
+	int cookie;
+	int  tap_fd;
+	struct td_state *s;
+	struct fd_list_entry **pprev, *next;
+} fd_list_entry_t;
+
+int qcow_create(const char *filename, uint64_t total_size,
+		const char *backing_file, int flags);
+int vhd_create(const char *filename, uint64_t total_size,
+		const char *backing_file, int flags);
+
 struct qcow_info {
         int       l1_size;
         int       l2_size;
@@ -202,8 +353,6 @@ struct qcow_info {
 	int       valid_td_fields;
 	long      td_fields[TD_FIELD_INVALID];
 };
-int qcow_create(const char *filename, uint64_t total_size,
-		const char *backing_file, int flags);
 int qcow_set_field(struct disk_driver *dd, td_field_t field, long value);
 int qcow_get_info(struct disk_driver *dd, struct qcow_info *info);
 int qcow_coalesce(char *name);

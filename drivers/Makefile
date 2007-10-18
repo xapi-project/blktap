@@ -39,8 +39,6 @@ BLK-OBJS  += io-optimize.o
 BLK-OBJS  += vhd-coalesce.o
 BLK-OBJS  += vhd-fill.o
 BLK-OBJS  += vhd-read.o
-BLK-OBJS  += tapdisk-queue.o
-BLK-OBJS  += tapdisk-filter.o
 
 all: $(IBIN) lock-util
 

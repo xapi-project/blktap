@@ -1,14 +1,18 @@
 /* Copyright (c) 2007, XenSource Inc.
  * All rights reserved.
+ *
+ * XenSource proprietary code.
  */
 
 #ifndef __IO_OPTIMIZE_H__
 #define __IO_OPTIMIZE_H__
 
 #include <libaio.h>
+#include "profile.h"
+
+#define IO_TRACE 0
 
 struct opio;
-struct tlog;
 
 struct opio_list {
 	struct opio        *head;
@@ -34,15 +38,16 @@ struct opioctx {
 	struct opio       **free_opios;
 	struct iocb       **iocb_queue;
 	struct io_event    *event_queue;
-
-	/* optional log handle */
-	struct tlog        *log;
+#if (IO_TRACE == 1)
+	struct bhandle      ihandle;
+#endif
 };
 
-int opio_init(struct opioctx *ctx, int num_iocbs, struct tlog *log);
+int opio_init(struct opioctx *ctx, int num_iocbs);
 void opio_free(struct opioctx *ctx);
 int io_merge(struct opioctx *ctx, struct iocb **queue, int num);
 int io_split(struct opioctx *ctx, struct io_event *events, int num);
 int io_expand_iocbs(struct opioctx *ctx, struct iocb **queue, int idx, int num);
+void io_debug(struct opioctx *ctx);
 
 #endif
