@@ -1594,6 +1594,7 @@ __vhd_create(const char *name, uint64_t total_size,
 			if (test_vhd_flag(flags, VHD_FLAG_CR_IGNORE_PARENT))
 				goto set_parent;
 
+			memset(&parent, 0, sizeof(struct disk_driver));
 			parent.td_state = &tds;
 			parent.private  = malloc(sizeof(struct vhd_state));
 			if (!parent.private) {

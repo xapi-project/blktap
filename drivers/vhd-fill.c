@@ -165,6 +165,7 @@ vhd_fill(char *path)
 	struct disk_id id;
 
 	memset(&s,   0, sizeof(struct td_state));
+	memset(&dd,  0, sizeof(struct disk_driver));
 	memset(&ctx, 0, sizeof(struct vhd_context));
 
 	dd.td_state = &s;

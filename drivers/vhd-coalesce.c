@@ -405,7 +405,9 @@ vhd_coalesce(char *path)
 	struct vhd_context ctx;
 	struct disk_driver child, parent;
 
-	memset(&s, 0, sizeof(struct td_state));
+	memset(&s,      0, sizeof(struct td_state));
+	memset(&child,  0, sizeof(struct disk_driver));
+	memset(&parent, 0, sizeof(struct disk_driver));
 
 	queue           = &s.queue;
 	child.td_state  = &s;
