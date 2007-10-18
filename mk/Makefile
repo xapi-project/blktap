@@ -43,12 +43,13 @@ PROPRIETARY_SOURCE += mk/Makefile
 PROPRIETARY_SOURCE += mk/blktap.spec.in
 PROPRIETARY_SOURCE += drivers/block-vhd.c
 PROPRIETARY_SOURCE += drivers/io-optimize.c
-PROPRIETARY_SOURCE += drivers/io-optimize.h
 PROPRIETARY_SOURCE += drivers/td.c
 PROPRIETARY_SOURCE += drivers/vhd.h
 PROPRIETARY_SOURCE += drivers/vhd-coalesce.c
 PROPRIETARY_SOURCE += drivers/vhd-fill.c
 PROPRIETARY_SOURCE += drivers/vhd-read.c
+PROPRIETARY_SOURCE += drivers/tapdisk-queue.c
+PROPRIETARY_SOURCE += drivers/tapdisk-filter.c
 
 PROPRIETARY_C += $(filter drivers/%.c,$(PROPRIETARY_SOURCE))
 SOURCES += $(patsubst drivers/%.c,$(RPM_SOURCESDIR)/%.o,$(PROPRIETARY_C))
@@ -105,7 +106,7 @@ $(RPM_SPECSDIR)/blktap.spec: blktap.spec.in $(RPM_SPECSDIR)/.dirstamp
 	-rm changelog.tmp
 
 $(RPM_BUILD_COOKIE): $(RPM_DIRECTORIES) $(SOURCES)
-	$(RPMBUILD) --target i686 -ba $(RPM_SPECSDIR)/blktap.spec
+	$(RPMBUILD) --target $(DOMAIN0_ARCH_OPTIMIZED) -ba $(RPM_SPECSDIR)/blktap.spec
 	@touch $@
 
 $(MY_SOURCES)/MANIFEST: $(MY_SOURCES_DIRSTAMP)
