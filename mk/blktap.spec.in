@@ -13,8 +13,6 @@ Source3: td.o
 Source4: vhd-coalesce.o
 Source5: vhd-fill.o
 Source6: vhd-read.o
-Source7: tapdisk-queue.o
-Source8: tapdisk-filter.o
 Patch0: %{name}-development.patch
 BuildRoot: %{_tmppath}/%{name}-%{version}-%{release}-buildroot
 Obsoletes: xen-blktap
@@ -40,8 +38,6 @@ cp %{SOURCE3} drivers
 cp %{SOURCE4} drivers
 cp %{SOURCE5} drivers
 cp %{SOURCE6} drivers
-cp %{SOURCE7} drivers
-cp %{SOURCE8} drivers
 
 %build
 %{__make} XEN_ROOT=%{xen_root} USE_SYSTEM_LIBRARIES=y
