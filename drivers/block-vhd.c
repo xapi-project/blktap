@@ -374,8 +374,8 @@ chs(uint64_t size)
 	return GEOM_ENCODE(cylinders, heads, spt);
 }
 
-static u32
-f_checksum( struct hd_ftr *f )
+uint32_t
+vhd_footer_checksum( struct hd_ftr *f )
 {
 	int i;
 	u32 cksm = 0;
@@ -450,7 +450,7 @@ debug_print_footer( struct hd_ftr *f )
 		f->type <= HD_TYPE_MAX ? 
 		HD_TYPE_STR[f->type] : "Unknown type!\n");
 
-	cksm = f_checksum(f);
+	cksm = vhd_footer_checksum(f);
 	DPRINTF("Checksum            : 0x%x|0x%x (%s)\n", f->checksum, cksm,
 		f->checksum == cksm ? "Good!" : "Bad!" );
 
@@ -460,8 +460,8 @@ debug_print_footer( struct hd_ftr *f )
 	DPRINTF("Saved state         : %s\n", f->saved == 0 ? "No" : "Yes" );
 }
 
-static u32
-h_checksum( struct dd_hdr *h )
+uint32_t
+vhd_header_checksum( struct dd_hdr *h )
 {
 	int i;
 	u32 cksm = 0;
@@ -499,7 +499,7 @@ debug_print_header( struct dd_hdr *h )
 	vhd_time_to_s(h->prt_ts, time_str);
 	DPRINTF("Parent timestamp    : %s\n", time_str);
 
-	cksm = h_checksum(h);
+	cksm = vhd_header_checksum(h);
 	DPRINTF("Checksum            : 0x%x|0x%x (%s)\n", h->checksum, cksm,
 		h->checksum == cksm ? "Good!" : "Bad!" );
 
@@ -821,10 +821,11 @@ free_bat(struct vhd_state *s)
 	free(s->bat.req.buf);
 #if (PREALLOCATE_BLOCKS == 1)
 	free(s->zeros);
+	s->zeros = NULL;
 #else
 	free(s->bat.zero_req.buf);
 #endif
-
+	memset(&s->bat, 0, sizeof(struct vhd_bat));
 }
 
 static int
@@ -936,6 +937,9 @@ __vhd_open(struct disk_driver *dd, const char *name, vhd_flag_t flags)
 
 		SPB = s->spb;
 
+		if (test_vhd_flag(flags, VHD_FLAG_OPEN_NO_CACHE))
+			goto out;
+
                 /* Allocate and read the Block Allocation Table. */
 		if (alloc_bat(s)) {
                         DPRINTF("Error allocating BAT.\n");
@@ -946,9 +950,6 @@ __vhd_open(struct disk_driver *dd, const char *name, vhd_flag_t flags)
                         DPRINTF("Error reading BAT.\n");
 			goto fail;
                 }
-
-		if (test_vhd_flag(flags, VHD_FLAG_OPEN_NO_CACHE))
-			goto out;
 
 		/* Allocate bitmap cache */
 		s->bm_lru        = 0;
@@ -1345,15 +1346,11 @@ vhd_get_info(struct disk_driver *dd, struct vhd_info *info)
 	int err;
 	char *buf = NULL;
 	struct hd_ftr ftr;
-        struct vhd_state *s = (struct vhd_state *)dd->private;
+	struct vhd_state *s = (struct vhd_state *)dd->private;
 
-        info->spb         = s->spb;
-        info->secs        = dd->td_state->size;
-        info->bat_entries = s->hdr.max_bat_size;
-        info->bat         = malloc(sizeof(uint32_t) * info->bat_entries);
-        if (!info->bat)
-                return -ENOMEM;
-        memcpy(info->bat, s->bat.bat, sizeof(uint32_t) * info->bat_entries);
+	info->spb         = s->spb;
+	info->secs        = dd->td_state->size;
+	info->bat_entries = s->hdr.max_bat_size;
 
 	if (s->ftr.type != HD_TYPE_FIXED) {
 		if (posix_memalign((void **)&buf, 512, 512)) {
@@ -1377,13 +1374,61 @@ vhd_get_info(struct disk_driver *dd, struct vhd_info *info)
 		info->td_fields[TD_FIELD_HIDDEN] = (long)s->ftr.hidden;
 	}
 
-        return 0;
+	return 0;
 
  fail:
 	free(buf);
-	free(info->bat);
-	info->bat = NULL;
 	return err;
+}
+
+int
+vhd_get_bat(struct disk_driver *dd, struct vhd_info *info)
+{
+	int err;
+	struct vhd_state *s = (struct vhd_state *)dd->private;
+
+	if (!s->bat.bat) {
+		if ((err = alloc_bat(s)) != 0) {
+			DPRINTF("Error allocating BAT: %d\n", err);
+			return -err;
+		}
+
+		if ((err = vhd_read_bat(s->fd, s)) != 0) {
+			DPRINTF("Error reading BAT: %d\n", err);
+			free_bat(s);
+			return -err;
+		}
+	}
+
+	info->spb         = s->spb;
+	info->secs        = dd->td_state->size;
+	info->bat_entries = s->hdr.max_bat_size;
+	info->bat         = malloc(sizeof(uint32_t) * info->bat_entries);
+	if (!info->bat)
+		return -ENOMEM;
+
+	memcpy(info->bat, s->bat.bat, sizeof(uint32_t) * info->bat_entries);
+	return 0;
+}
+
+int
+vhd_get_header(struct disk_driver *dd, struct dd_hdr *header)
+{
+	struct vhd_state *s = (struct vhd_state *)dd->private;
+	if (s->ftr.type == HD_TYPE_DYNAMIC || s->ftr.type == HD_TYPE_DIFF) {
+		memcpy(header, &s->hdr, sizeof(struct dd_hdr));
+		return 0;
+	} else {
+		memset(header, 0, sizeof(struct dd_hdr));
+		return -EINVAL;
+	}
+}
+
+void
+vhd_get_footer(struct disk_driver *dd, struct hd_ftr *footer)
+{
+	struct vhd_state *s = (struct vhd_state *)dd->private;
+	memcpy(footer, &s->ftr, sizeof(struct hd_ftr));
 }
 
 int
@@ -1577,7 +1622,7 @@ __vhd_create(const char *name, uint64_t total_size,
 	ftr->data_offset  = ((sparse) ? VHD_SECTOR_SIZE : 0xFFFFFFFFFFFFFFFF);
 	strcpy(ftr->crtr_app, "tap");
 	uuid_generate(ftr->uuid);
-	ftr->checksum = f_checksum(ftr);
+	ftr->checksum = vhd_footer_checksum(ftr);
 
 	if (sparse) {
 		int bat_secs;
@@ -1623,7 +1668,7 @@ __vhd_create(const char *name, uint64_t total_size,
 			ftr->orig_size    = p->ftr.curr_size;
 			ftr->curr_size    = p->ftr.curr_size;
 			ftr->geometry     = chs(ftr->orig_size);
-			ftr->checksum     = f_checksum(ftr);
+			ftr->checksum     = vhd_footer_checksum(ftr);
 			hdr->max_bat_size = blks;
 
 		set_parent:
@@ -1639,7 +1684,7 @@ __vhd_create(const char *name, uint64_t total_size,
 			}
 		}
 
-		hdr->checksum = h_checksum(hdr);
+		hdr->checksum = vhd_header_checksum(hdr);
 #if (DEBUGGING == 1)
 		debug_print_footer(ftr);
 		debug_print_header(hdr);

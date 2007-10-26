@@ -4,8 +4,13 @@
  * XenSource proprietary code.
  */
 
+#ifndef __VHD_H__
+#define __VHD_H__
+
 #include <asm/types.h>
 #include <uuid/uuid.h>
+#include <inttypes.h>
+#include "disktypes.h"
 
 typedef __u32 u32;
 typedef __u64 u64;
@@ -57,6 +62,8 @@ static const char HD_COOKIE[9]  =  "conectix";
 /* Known creator OS type fields in hd_ftr.crtr_os */
 #define HD_CR_OS_WINDOWS   0x5769326B /* (Wi2k) */
 #define HD_CR_OS_MACINTOSH 0x4D616320 /* (Mac ) */
+
+#define VHD_CREATOR_VERSION 0x00010001
 
 /* Disk geometry accessor macros. */
 /* Geometry is a triple of (cylinders (2 bytes), tracks (1 byte), and 
@@ -168,3 +175,26 @@ static const char DD_COOKIE[9]  =  "cxsparse";
  * | HD Footer (511 bytes)                           |
  * +-------------------------------------------------+
  */
+
+struct disk_driver;
+
+struct vhd_info {
+        int       spb;
+        int       bat_entries;
+        uint32_t *bat;
+        uint64_t  secs;
+	long      td_fields[TD_FIELD_INVALID];
+};
+uint32_t vhd_footer_checksum(struct hd_ftr *footer);
+uint32_t vhd_header_checksum(struct dd_hdr *header);
+void vhd_get_footer(struct disk_driver *dd, struct hd_ftr *footer);
+int vhd_get_header(struct disk_driver *dd, struct dd_hdr *header);
+int vhd_get_info(struct disk_driver *dd, struct vhd_info *info);
+int vhd_get_bat(struct disk_driver *dd, struct vhd_info *info);
+int vhd_set_field(struct disk_driver *dd, td_field_t field, long value);
+int vhd_coalesce(char *name);
+int vhd_fill(char *name);
+int vhd_repair(struct disk_driver *dd);
+int vhd_read(struct disk_driver *dd, int argc, char *argv[]);
+
+#endif

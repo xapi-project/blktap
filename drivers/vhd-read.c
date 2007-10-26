@@ -233,7 +233,7 @@ vhd_read(struct disk_driver *dd, int argc, char *argv[])
 	if (!bitmap && !data && !num && test == -1)
 		bat = 1;
 
-	err = vhd_get_info(dd, &info);
+	err = vhd_get_bat(dd, &info);
 	if (err) {
 		printf("Failed to get info for %s\n", dd->name);
 		goto out;

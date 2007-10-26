@@ -26,6 +26,23 @@
  * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
+#ifndef __DISKTYPES_H__
+#define __DISKTYPES_H__
+
+typedef enum {
+	TD_FIELD_HIDDEN  = 0,
+	TD_FIELD_INVALID = 1
+} td_field_t;
+
+struct vdi_field {
+	char       *name;
+	td_field_t  id;
+};
+
+static struct vdi_field td_vdi_fields[TD_FIELD_INVALID] = {
+	{ .id = TD_FIELD_HIDDEN, .name = "hidden" }
+};
+
 typedef struct disk_info {
        int  idnum;
        char name[50];       /* e.g. "RAMDISK" */
@@ -147,3 +164,5 @@ static disk_info_t *dtypes[] = {
        &ram_disk,
        &null_disk, /* &qcow_disk, */
 };
+
+#endif

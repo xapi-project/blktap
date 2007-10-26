@@ -51,7 +51,7 @@ init_vhd_context(struct vhd_context *ctx, struct disk_driver *dd)
 	memset(ctx, 0, sizeof(struct vhd_context));
 
 	ctx->dd       = dd;
-	ctx->error    = vhd_get_info(dd, &(ctx->info));
+	ctx->error    = vhd_get_bat(dd, &(ctx->info));
 	if (ctx->error)
 		return ctx->error;
 

@@ -303,7 +303,7 @@ get_non_zero_image(char **image, int type, char *backing)
 			return err;
 		}
 
-		err = vhd_get_info(&dd, &info);
+		err = vhd_get_bat(&dd, &info);
 		if (err) {
 			free_disk_driver(&dd);
 			free(pid.name);
@@ -523,7 +523,6 @@ td_query(int type, int argc, char *argv[])
 		case DISK_TYPE_VHD:
 			err = vhd_get_info(&dd, &vinfo);
 			values = vinfo.td_fields;
-			free(vinfo.bat);
 			break;
 		case DISK_TYPE_QCOW:
 			/*

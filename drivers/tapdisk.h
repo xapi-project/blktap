@@ -111,20 +111,6 @@ typedef uint32_t td_flag_t;
 #define TD_SHUTDOWN_REQUESTED        0x00040
 #define TD_LOCK_ENFORCE              0x00080
 
-typedef enum {
-	TD_FIELD_HIDDEN  = 0,
-	TD_FIELD_INVALID = 1
-} td_field_t;
-
-struct vdi_field {
-	char       *name;
-	td_field_t  id;
-};
-
-static struct vdi_field td_vdi_fields[TD_FIELD_INVALID] = {
-	{ .id = TD_FIELD_HIDDEN, .name = "hidden" }
-};
-
 struct td_state;
 struct tap_disk;
 
@@ -211,19 +197,6 @@ int qcow_set_field(struct disk_driver *dd, td_field_t field, long value);
 int qcow_get_info(struct disk_driver *dd, struct qcow_info *info);
 int qcow_coalesce(char *name);
 
-struct vhd_info {
-        int       spb;
-        int       bat_entries;
-        uint32_t *bat;
-        uint64_t  secs;
-	long      td_fields[TD_FIELD_INVALID];
-};
-int vhd_set_field(struct disk_driver *dd, td_field_t field, long value);
-int vhd_get_info(struct disk_driver *dd, struct vhd_info *info);
-int vhd_coalesce(char *name);
-int vhd_fill(char *name);
 void vhd_debug(struct disk_driver *dd);
-int vhd_repair(struct disk_driver *dd);
-int vhd_read(struct disk_driver *dd, int argc, char *argv[]);
 
 #endif /*TAPDISK_H_*/

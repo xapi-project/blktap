@@ -128,7 +128,7 @@ init_ctx(struct vhd_context *ctx,
 	if (ctx->error)
 		return ctx->error;
 
-	ctx->error = vhd_get_info(child, &ctx->info);
+	ctx->error = vhd_get_bat(child, &ctx->info);
 	if (ctx->error)
 		return ctx->error;
 
