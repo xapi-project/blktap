@@ -91,6 +91,7 @@
 #define TAPDISK_DATA_REQUESTS    (MAX_REQUESTS * MAX_SEGMENTS_PER_REQ)
 
 #define MAX_RAMDISK_SIZE          1024000 /*500MB disk limit*/
+#define MAX_NAME_LEN              1000
 
 typedef uint32_t td_flag_t;
 

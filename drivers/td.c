@@ -28,8 +28,6 @@
 #define DFPRINTF(_f, _a...) ((void)0)
 #endif
 
-#define MAX_NAME_LEN 1000
-
 typedef enum {
 	TD_CMD_CREATE    = 0,
 	TD_CMD_SNAPSHOT  = 1,
