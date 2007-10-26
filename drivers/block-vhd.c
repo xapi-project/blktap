@@ -116,6 +116,7 @@ static struct tlog *log;
 #define VHD_FLAG_OPEN_NO_CACHE       2
 #define VHD_FLAG_OPEN_QUIET          4
 #define VHD_FLAG_OPEN_STRICT         8
+#define VHD_FLAG_OPEN_QUERY          16
 
 #define VHD_FLAG_BAT_LOCKED          1
 #define VHD_FLAG_BAT_WRITE_STARTED   2
@@ -922,7 +923,8 @@ __vhd_open(struct disk_driver *dd, const char *name, vhd_flag_t flags)
                 if (s->hdr.hdr_ver != 0x00010000) {
                         DPRINTF("DANGER: unsupported hdr version! (0x%x)\n",
 				 s->hdr.hdr_ver);
-                        return -EINVAL;
+			if (!test_vhd_flag(flags, VHD_FLAG_OPEN_QUERY))
+				return -EINVAL;
                 }
 #if (DEBUGGING == 1)
                 debug_print_header(&s->hdr);
@@ -1016,12 +1018,17 @@ vhd_open (struct disk_driver *dd, const char *name, td_flag_t flags)
 {
 	vhd_flag_t vhd_flags = 0;
 
-	if (flags & TD_RDONLY)
+	if (flags & TD_OPEN_RDONLY)
 		vhd_flags |= VHD_FLAG_OPEN_RDONLY;
-	if (flags & TD_QUIET)
+	if (flags & TD_OPEN_QUIET)
 		vhd_flags |= VHD_FLAG_OPEN_QUIET;
-	if (flags & TD_STRICT)
+	if (flags & TD_OPEN_STRICT)
 		vhd_flags |= VHD_FLAG_OPEN_STRICT;
+	if (flags & TD_OPEN_QUERY)
+		vhd_flags |= (VHD_FLAG_OPEN_QUERY  |
+			      VHD_FLAG_OPEN_QUIET  |
+			      VHD_FLAG_OPEN_RDONLY |
+			      VHD_FLAG_OPEN_NO_CACHE);
 
 	return __vhd_open(dd, name, vhd_flags);
 }
@@ -1044,7 +1051,7 @@ vhd_close(struct disk_driver *dd)
 	    s->reads, (s->reads ? ((float)s->read_size / s->reads) : 0.0));
 
 	/* don't write footer if tapdisk is read-only */
-	if (dd->flags & TD_RDONLY)
+	if (dd->flags & TD_OPEN_RDONLY)
 		goto free;
 	
 	/* write footer if:
@@ -1723,7 +1730,7 @@ vhd_create(const char *name, uint64_t total_size, td_flag_t td_flags)
 {
 	vhd_flag_t vhd_flags = 0;
 
-	if (td_flags & TD_SPARSE)
+	if (td_flags & TD_CREATE_SPARSE)
 		vhd_flags |= VHD_FLAG_CR_SPARSE;
 
 	return __vhd_create(name, total_size, NULL, vhd_flags);
@@ -1734,7 +1741,7 @@ vhd_snapshot(struct disk_id *parent_id, char *child_name, td_flag_t td_flags)
 {
 	vhd_flag_t vhd_flags = VHD_FLAG_CR_SPARSE;
 
-	if (td_flags & TD_MULTITYPE_CP)
+	if (td_flags & TD_CREATE_MULTITYPE)
 		return -EINVAL; /* multitype snapshots not yet supported */
 
 	return __vhd_create(child_name, 0, parent_id, vhd_flags);

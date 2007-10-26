@@ -138,7 +138,7 @@ int tdaio_open (struct disk_driver *dd, const char *name, td_flag_t flags)
 
 	/* Open the file */
 	o_flags = O_DIRECT | O_LARGEFILE | 
-		((flags & TD_RDONLY) ? O_RDONLY : O_RDWR);
+		((flags & TD_OPEN_RDONLY) ? O_RDONLY : O_RDWR);
         fd = open(name, o_flags);
 
         if ( (fd == -1) && (errno == EINVAL) ) {

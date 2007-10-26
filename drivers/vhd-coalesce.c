@@ -158,7 +158,7 @@ open_images(char *path, struct disk_driver *child, struct disk_driver *parent)
 	int err;
 	struct disk_id id;
 
-	if ((err = child->drv->td_open(child, path, TD_RDONLY))) {
+	if ((err = child->drv->td_open(child, path, TD_OPEN_RDONLY))) {
 		DFPRINTF("error opening %s\n", path);
 		return -err;
 	}

@@ -220,7 +220,7 @@ td_create(int type, int argc, char *argv[])
 
 	/* image-specific create */
 	if (dtypes[type]->drv->td_create) {
-		td_flag_t flags = (sparse ? TD_SPARSE : 0);
+		td_flag_t flags = (sparse ? TD_CREATE_SPARSE : 0);
 		return dtypes[type]->drv->td_create(name, size, flags);
 	}
 
@@ -287,7 +287,7 @@ get_non_zero_image(char **image, int type, char *backing)
 	pid.drivertype = type;
 
 	do {
-		err = init_disk_driver(&dd, type, name, TD_RDONLY);
+		err = init_disk_driver(&dd, type, name, TD_OPEN_RDONLY);
 
 		if (name != backing)
 			free(name);
@@ -416,7 +416,7 @@ td_coalesce(int type, int argc, char *argv[])
 		return ENAMETOOLONG;
 	}
 
-	ret = init_disk_driver(&dd, type, name, TD_RDONLY);
+	ret = init_disk_driver(&dd, type, name, TD_OPEN_RDONLY);
 	if (ret) {
 		DFPRINTF("Failed opening %s\n", name);
 		return ret;
@@ -493,7 +493,7 @@ td_query(int type, int argc, char *argv[])
 		return ENAMETOOLONG;
 	}
 
-	err = init_disk_driver(&dd, type, name, TD_RDONLY | TD_QUIET);
+	err = init_disk_driver(&dd, type, name, TD_OPEN_QUERY);
 	if (err) {
 		DFPRINTF("Failed opening %s\n", name);
 		return err;
@@ -737,7 +737,7 @@ td_read(int type, int argc, char *argv[])
 		goto usage;
 	}
 
-	err = init_disk_driver(&dd, type, name, TD_RDONLY | TD_QUIET);
+	err = init_disk_driver(&dd, type, name, TD_OPEN_QUERY);
 	if (err) {
 		DFPRINTF("Failed opening %s\n", name);
 		goto usage;

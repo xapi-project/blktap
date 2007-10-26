@@ -427,7 +427,7 @@ static int open_disk(struct td_state *s,
 		return err;
 	}
 	iocbs  = TAPDISK_DATA_REQUESTS;
-	pflags = flags | TD_RDONLY;
+	pflags = flags | TD_OPEN_RDONLY;
 
 	/* load backing files as necessary */
 	while ((err = d->drv->td_get_parent_id(d, &id)) == 0) {
@@ -462,7 +462,7 @@ static int open_disk(struct td_state *s,
 		free(id.name);
 	}
 
-	s->info |= ((flags & TD_RDONLY) ? VDISK_READONLY : 0);
+	s->info |= ((flags & TD_OPEN_RDONLY) ? VDISK_READONLY : 0);
 
 	if (err >= 0) {
 		struct tfilter *filter = NULL;
@@ -500,7 +500,7 @@ static int reopen_disks(struct td_state *s)
 
 	td_for_each_disk(s, dd) {
 		dd->drv->td_close(dd);
-		dd->flags |= TD_STRICT;
+		dd->flags |= TD_OPEN_STRICT;
 
 		for (i = 0; i < EIO_RETRIES; i++) {
 			err = dd->drv->td_open(dd, dd->name, dd->flags);
@@ -596,7 +596,7 @@ static inline void kill_queue(struct td_state *s)
 
 	s->flags |= TD_DEAD;
 	td_for_each_disk(s, dd)
-		dd->flags |= TD_RDONLY;
+		dd->flags |= TD_OPEN_RDONLY;
 }
 
 static inline int queue_closed(struct td_state *s)
@@ -719,11 +719,8 @@ static int checkpoint(struct td_state *s)
 	stat(orig, &stats);
 	orig_mode = stats.st_mode;
 
-	drv = get_driver(s->cp_drivertype);
-	if (drv != parent->drv)
-		flags |= TD_MULTITYPE_CP;
-
 	err   = -ENOMEM;
+	drv   = get_driver(s->cp_drivertype);
 	child = disk_init(s, drv, NULL, 0);
 	if (!child)
 		goto out;
@@ -752,8 +749,8 @@ static int checkpoint(struct td_state *s)
 	if (err)
 		goto fail_chmod;
 
-	parent->flags |= TD_RDONLY;
-	err = parent->drv->td_open(parent, parent->name, TD_RDONLY);
+	parent->flags |= TD_OPEN_RDONLY;
+	err = parent->drv->td_open(parent, parent->name, TD_OPEN_RDONLY);
 	if (err)
 		goto fail_parent;
 
@@ -830,7 +827,8 @@ static int read_msg(char *buf)
 
 			/*Open file*/
 			ret = open_disk(s, drv, path, 
-					((msg_p->readonly) ? TD_RDONLY : 0));
+					((msg_p->readonly) ?
+					 TD_OPEN_RDONLY : 0));
 			if (ret)
 				goto params_done;
 
@@ -1197,7 +1195,8 @@ static int queue_request(struct td_state *s, blkif_request_t *req)
 		goto send_response;
 	}
 	
-	if ((dd->flags & TD_RDONLY) && (req->operation == BLKIF_OP_WRITE)) {
+	if ((dd->flags & TD_OPEN_RDONLY) &&
+	    (req->operation == BLKIF_OP_WRITE)) {
 		err = -EINVAL;
 		goto send_response;
 	}
