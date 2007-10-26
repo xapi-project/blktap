@@ -12,6 +12,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
+#include <string.h>
 #include <syslog.h>
 #include <sys/time.h>
 #include <time.h>
@@ -163,20 +164,14 @@ __tp_log(struct profile_info *prof, u64 id, const char *func, int direction)
 #define tp_log(prof, sec, direction)       ((void)0)
 #endif
 
-#define BSHIFT          9
-#define BALIGN          (1 << BSHIFT)
-#define BUF_PAD         (BALIGN << 1)
-#define BUF_SIZE        (1 << 20)
 #define MAX_ENTRY_LEN   256
 
 struct tlog {
 	char          *p;
+	int            size;
 	uint64_t       cnt;
 	char          *buf;
 };
-
-#define B_ALIGN(buf) (char *)((((long)buf + (BALIGN - 1)) >> BSHIFT) << BSHIFT)
-#define B_END(buf)   (char *)((long)B_ALIGN(buf) + BUF_SIZE)
 
 static inline struct tlog *
 alloc_tlog(int megs)
@@ -185,11 +180,13 @@ alloc_tlog(int megs)
 	if (!log)
 		return NULL;
 
-	log->buf = calloc(1, ((megs << 20) + BUF_PAD));
-	if (!log->buf) {
+	log->size = megs << 20;
+	if (posix_memalign((void **)&log->buf, 512, log->size)) {
 		free(log);
 		return NULL;
 	}
+
+	memset(log->buf, 0, log->size);
 
 	return log;
 }
@@ -211,8 +208,8 @@ do {                                                                           \
 	if (!log)                                                              \
 		break;                                                         \
                                                                                \
-	if (!log->p || (log->p + MAX_ENTRY_LEN) > B_END(log->buf))             \
-		log->p = B_ALIGN(log->buf);                                    \
+	if (!log->p || log->size - (log->p - log->buf) < MAX_ENTRY_LEN)        \
+		log->p = log->buf;                                             \
                                                                                \
 	gettimeofday(&t, NULL);                                                \
 	_len = snprintf(log->p, MAX_ENTRY_LEN - 2, "%"PRIu64":%ld.%ld:%s "     \
@@ -243,7 +240,7 @@ tlog_flush(char *file, struct tlog *log)
 	if (fd == -1)
 		return;
 
-	write(fd, B_ALIGN(log->buf), BUF_SIZE);
+	write(fd, log->buf, log->size);
 	close(fd);
 }
 
