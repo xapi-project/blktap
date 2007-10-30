@@ -203,6 +203,7 @@ struct vhd_bitmap {
 struct vhd_state {
 	int                   fd;
 	vhd_flag_t            flags;
+	int                   bitmap_format;
 
         /* VHD stuff */
         struct hd_ftr         ftr;
@@ -268,22 +269,54 @@ struct vhd_state {
 static int finish_data_transaction(struct disk_driver *, struct vhd_bitmap *);
 
 static inline int
-test_bit (int nr, volatile u32 *addr)
+le_test_bit (int nr, volatile u32 *addr)
 {
 	return (((u32 *)addr)[nr >> 5] >> (nr & 31)) & 1;
 }
 
 static inline void
-clear_bit (int nr, volatile u32 *addr)
+le_clear_bit (int nr, volatile u32 *addr)
 {
 	((u32 *)addr)[nr >> 5] &= ~(1 << (nr & 31));
 }
 
 static inline void
-set_bit (int nr, volatile u32 *addr)
+le_set_bit (int nr, volatile u32 *addr)
 {
 	((u32 *)addr)[nr >> 5] |= (1 << (nr & 31));
 }
+
+#define BIT_MASK 0x80
+
+static inline int
+be_test_bit (int nr, volatile char *addr)
+{
+	return ((addr[nr >> 3] << (nr & 7)) & BIT_MASK) != 0;
+}
+
+static inline void
+be_clear_bit (int nr, volatile char *addr)
+{
+	addr[nr >> 3] &= ~(BIT_MASK >> (nr & 7));
+}
+
+static inline void
+be_set_bit (int nr, volatile char *addr)
+{
+	addr[nr >> 3] |= (BIT_MASK >> (nr & 7));
+}
+
+#define test_bit(s, nr, addr)                                             \
+	((s)->bitmap_format == LITTLE_ENDIAN ?                            \
+	 le_test_bit(nr, (uint32_t *)(addr)) : be_test_bit(nr, addr))
+
+#define clear_bit(s, nr, addr)                                            \
+	((s)->bitmap_format == LITTLE_ENDIAN ?                            \
+	 le_clear_bit(nr, (uint32_t *)(addr)) : be_clear_bit(nr, addr))
+
+#define set_bit(s, nr, addr)                                              \
+	((s)->bitmap_format == LITTLE_ENDIAN ?                            \
+	 le_set_bit(nr, (uint32_t *)(addr)) : be_set_bit(nr, addr))
 
 /* Debug print functions: */
 
@@ -864,6 +897,22 @@ alloc_bat(struct vhd_state *s)
 }
 
 static int
+bitmap_format(struct vhd_state *s)
+{
+	int format = BIG_ENDIAN;
+
+	if (!strncmp(s->ftr.crtr_app, "tap", 4) &&
+	    s->ftr.crtr_ver == 0x00000001)
+		format = LITTLE_ENDIAN;
+
+	if (!test_vhd_flag(s->flags, VHD_FLAG_OPEN_QUIET))
+		DPRINTF("%s VHD bitmap format: %s_ENDIAN\n",
+			s->name, (format == BIG_ENDIAN ? "BIG" : "LITTLE"));
+
+	return format;
+}
+
+static int
 __vhd_open(struct disk_driver *dd, const char *name, vhd_flag_t flags)
 {
 	char *tmp;
@@ -982,6 +1031,7 @@ __vhd_open(struct disk_driver *dd, const char *name, vhd_flag_t flags)
 	s->dd            = dd;
 	s->fd            = fd;
 	s->flags         = flags;
+	s->bitmap_format = bitmap_format(s);
         tds->size        = s->ftr.curr_size >> VHD_SECTOR_SHIFT;
         tds->sector_size = VHD_SECTOR_SIZE;
         tds->info        = 0;
@@ -1612,7 +1662,7 @@ __vhd_create(const char *name, uint64_t total_size,
 	ftr->features     = HD_RESERVED;
 	ftr->ff_version   = HD_FF_VERSION;
 	ftr->timestamp    = vhd_time(time(NULL));
-	ftr->crtr_ver     = 0x00000001;
+	ftr->crtr_ver     = VHD_CREATOR_VERSION;
 	ftr->crtr_os      = 0x00000000;
 	ftr->orig_size    = size;
 	ftr->curr_size    = size;
@@ -2088,7 +2138,7 @@ read_bitmap_cache(struct vhd_state *s, uint64_t sector, uint8_t op)
 	if (test_vhd_flag(bm->status, VHD_FLAG_BM_READ_PENDING))
 		return VHD_BM_READ_PENDING;
 
-	return ((test_bit(sec, (u32 *)bm->map)) ? 
+	return ((test_bit(s, sec, bm->map)) ? 
 		VHD_BM_BIT_SET : VHD_BM_BIT_CLEAR);
 }
 
@@ -2111,7 +2161,7 @@ read_bitmap_cache_span(struct vhd_state *s,
 	ASSERT(bm && bitmap_valid(bm));
 
 	for (ret = 0; sec < s->spb && ret < nr_secs; sec++, ret++)
-		if (test_bit(sec, (u32 *)bm->map) != value)
+		if (test_bit(s, sec, bm->map) != value)
 			break;
 
 	return ret;
@@ -2840,7 +2890,7 @@ start_new_bitmap_transaction(struct disk_driver *dd, struct vhd_bitmap *bm)
 			if (!r->error) {
 				u32 sec = r->lsec % s->spb;
 				for (i = 0; i < r->nr_secs; i++)
-					set_bit(sec + i, (u32 *)bm->shadow);
+					set_bit(s, sec + i, bm->shadow);
 			}
 		}
 		r = next;
@@ -3173,7 +3223,7 @@ finish_data_write(struct disk_driver *dd, struct vhd_request *req)
 
 		if (!req->error)
 			for (i = 0; i < req->nr_secs; i++)
-				set_bit(sec + i, (u32 *)bm->shadow);
+				set_bit(s, sec + i, bm->shadow);
 
 		if (transaction_completed(tx))
 			rsp += finish_data_transaction(dd, bm);
