@@ -49,6 +49,7 @@
 #include <poll.h>
 #include <time.h>
 #include <sys/time.h>
+#include <xen/io/xenbus.h>
 #include "blktaplib.h"
 #include "list.h"
 #include "xs_api.h"
@@ -405,7 +406,7 @@ close:
 /* don't service requests if we've already shut down */
 static int backend_ready(struct xs_handle *h, char *bepath)
 {
-	int ret = 0;
+	int state, ret = 0;
 	char *path = NULL;
 
 	if (asprintf(&path, "%s/shutdown-request", bepath) == -1) {
@@ -443,7 +444,17 @@ static int backend_ready(struct xs_handle *h, char *bepath)
 
 static int valid_start_request(struct xs_handle *h, char *bepath, char *node)
 {
-	if (strcmp(node, "frontend-id") && strcmp(node, "restart-tapdisk"))
+	int state;
+
+	if (strcmp(node, "state"))
+		return 0;
+
+	if (xs_gather(h, bepath, "state", "%d", &state, NULL)) {
+		DPRINTF("%s: could not find state for %s\n", __func__, bepath);
+		return 0;
+	}
+
+	if (state != XenbusStateInitWait)
 		return 0;
 
 	if (!backend_ready(h, bepath)) {
