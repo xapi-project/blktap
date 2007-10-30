@@ -1,9 +1,10 @@
 XEN_ROOT = ../../..
 include $(XEN_ROOT)/tools/Rules.mk
 
-IBIN         = blktapctrl tapdisk td-util
-LOCK_UTIL    = lock-util
-INST_DIR     = /usr/sbin
+IBIN            = blktapctrl tapdisk td-util
+LOCK_UTIL       = lock-util
+VHD_UPDATE_UTIL = vhd-update
+INST_DIR        = /usr/sbin
 
 CFLAGS   += -Werror -g
 CFLAGS   += -Wno-unused
@@ -19,15 +20,15 @@ DEPS      = .*.d
 blktapctrl:      LIBS += -L../lib
 blktapctrl:      LIBS += -lblktap -lxenctrl
 blktapctrl:      LIBS += -lxenstore
-tapdisk td-util: LIBS += -luuid
+tapdisk td-util vhd-update: LIBS += -luuid
 
 ifneq ($(USE_SYSTEM_LIBRARIES),y)
 LIBAIO_DIR = $(XEN_ROOT)/tools/libaio/src
-tapdisk td-util: AIOLIBS := $(LIBAIO_DIR)/libaio.a
+tapdisk td-util vhd-update: AIOLIBS := $(LIBAIO_DIR)/libaio.a
 blktapctrl:      CFLAGS  += -I$(LIBAIO_DIR) -I$(XEN_LIBXC) -I$(XEN_ROOT)/tools/xenstore
 blktapctrl:      LIBS    += -L$(XEN_LIBXC) -L$(XEN_XENSTORE)
 else
-tapdisk td-util: AIOLIBS := -laio
+tapdisk td-util vhd-update: AIOLIBS := -laio
 endif
 
 BLK-OBJS  := block-aio.o
@@ -42,7 +43,7 @@ BLK-OBJS  += vhd-read.o
 BLK-OBJS  += tapdisk-queue.o
 BLK-OBJS  += tapdisk-filter.o
 
-all: $(IBIN) lock-util
+all: $(IBIN) lock-util $(VHD_UPDATE_UTIL)
 
 LINUX_ROOT := $(wildcard $(XEN_ROOT)/linux-2.6.*-xen-sparse)
 
@@ -59,13 +60,15 @@ td-util: $(BLK-OBJS) td.o
 lock-util: lock.c
 	$(CC) $(CFLAGS) -DUTIL -o lock-util lock.c $(LIBS)
 
+vhd-update: $(BLK-OBJS) vhd-update.o
+	$(CC) $(CFLAGS) -o vhd-update $(BLK-OBJS) vhd-update.o $(LIBS) $(AIOLIBS)
 
 install: all
 	$(INSTALL_DIR) -p $(DESTDIR)$(INST_DIR)
-	$(INSTALL_PROG) $(IBIN) $(LOCK_UTIL) $(DESTDIR)$(INST_DIR)
+	$(INSTALL_PROG) $(IBIN) $(LOCK_UTIL) $(VHD_UPDATE_UTIL) $(DESTDIR)$(INST_DIR)
 
 clean:
-	rm -rf *.o *~ $(DEPS) xen TAGS $(IBIN) $(LIB) $(LOCK_UTIL) 
+	rm -rf *.o *~ $(DEPS) xen TAGS $(IBIN) $(LIB) $(LOCK_UTIL) $(VHD_UPDATE_UTIL)
 
 .PHONY: clean install
 
