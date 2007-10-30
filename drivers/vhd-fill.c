@@ -76,7 +76,7 @@ init_vhd_context(struct vhd_context *ctx, struct disk_driver *dd)
 }
 
 static inline unsigned long
-blk_to_sec(struct vhd_context *ctx, unsigned long blk)
+blk_to_sec(struct vhd_context *ctx, unsigned long long blk)
 {
 	return blk * ctx->info.spb;
 }
@@ -114,7 +114,7 @@ finish_write(struct disk_driver *dd, int res,
 }
 
 static int
-fill_block(struct vhd_context *ctx, unsigned long blk)
+fill_block(struct vhd_context *ctx, unsigned long long blk)
 {
 	int ret;
 	unsigned long secs;
@@ -158,7 +158,7 @@ int
 vhd_fill(char *path)
 {
 	int err;
-	unsigned long i;
+	unsigned long long i;
 	struct td_state s;
 	struct vhd_context ctx;
 	struct disk_driver dd;
