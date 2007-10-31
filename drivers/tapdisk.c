@@ -1070,7 +1070,7 @@ int send_responses(struct disk_driver *dd, int res,
 	int sidx = (int)(long)private, secs_done = nr_secs;
 
 	if (idx > MAX_REQUESTS - 1) {
-		DPRINTF("invalid index returned(%u)!\n", idx);
+		TAP_ERROR(-EINVAL, "invalid index returned(%u)!\n", idx);
 		return -EINVAL;
 	}
 	preq = &blkif->pending_list[idx];
@@ -1189,6 +1189,9 @@ static int queue_request(struct td_state *s, blkif_request_t *req)
 		kick_responses(s);
 		return 0;
 	}
+	
+	preq->submitting = 1;
+	gettimeofday(&s->ts, NULL);
 
 	if (queue_closed(s)) {
 		err = -EIO;
@@ -1200,9 +1203,6 @@ static int queue_request(struct td_state *s, blkif_request_t *req)
 		err = -EINVAL;
 		goto send_response;
 	}
-	
-	preq->submitting = 1;
-	gettimeofday(&s->ts, NULL);
 
 	for (i = 0; i < req->nr_segments; i++) {
 		nsects = req->seg[i].last_sect - req->seg[i].first_sect + 1;
@@ -1213,14 +1213,14 @@ static int queue_request(struct td_state *s, blkif_request_t *req)
 		}
 		
 		if (sector_nr >= s->size) {
-			DPRINTF("Sector request failed:\n");
-			DPRINTF("%s request, idx [%d,%d] size [%llu], "
-				"sector [%llu,%llu]\n",
-				(req->operation == BLKIF_OP_WRITE ? 
-				 "WRITE" : "READ"), idx, i,
-				(long long unsigned)nsects << SECTOR_SHIFT,
-				(long long unsigned)sector_nr << SECTOR_SHIFT,
-				(long long unsigned)sector_nr);
+			TAP_ERROR(-EINVAL, "Sector request failed: "
+				  "%s request, idx [%d,%d] size [%llu], "
+				  "sector [%llu,%llu]\n",
+				  (req->operation == BLKIF_OP_WRITE ? 
+				   "WRITE" : "READ"), idx, i,
+				  (long long unsigned)nsects << SECTOR_SHIFT,
+				  (long long unsigned)sector_nr << SECTOR_SHIFT,
+				  (long long unsigned)sector_nr);
 			err = -EINVAL;
 			goto send_response;
 		}
@@ -1260,10 +1260,9 @@ static int queue_request(struct td_state *s, blkif_request_t *req)
 		sector_nr += nsects;
 	}
 
-	preq->submitting--;
-
  send_response:
 	/* force write_rsp_to_ring for synchronous case */
+	preq->submitting--;
 	if (preq->secs_pending == 0)
 		return send_responses(dd, err, 0, 0, idx, (void *)(long)0);
 
