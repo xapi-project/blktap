@@ -14,7 +14,7 @@ struct tlog;
 #define TD_INJECT_FAULTS     0x00001  /* simulate random IO failures */
 #define TD_CHECK_INTEGRITY   0x00002  /* check data integrity */
 
-#define TD_FAULT_RATE        20
+#define TD_FAULT_RATE        5
 
 struct dhash {
 	uint64_t             hash;
