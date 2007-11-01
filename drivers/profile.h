@@ -166,27 +166,33 @@ __tp_log(struct profile_info *prof, u64 id, const char *func, int direction)
 
 #define MAX_ENTRY_LEN   256
 
+#define TLOG_WARN       0
+#define TLOG_INFO       1
+#define TLOG_DBG        2
+
 struct tlog {
 	char          *p;
 	int            size;
 	uint64_t       cnt;
 	char          *buf;
+	int            level;
 };
 
 static inline struct tlog *
-alloc_tlog(int megs)
+alloc_tlog(size_t bytes, int level)
 {
 	struct tlog *log = calloc(1, sizeof(struct tlog));
 	if (!log)
 		return NULL;
 
-	log->size = megs << 20;
+	log->size = ((bytes + 511) & (~511));
 	if (posix_memalign((void **)&log->buf, 512, log->size)) {
 		free(log);
 		return NULL;
 	}
 
 	memset(log->buf, 0, log->size);
+	log->level = level;
 
 	return log;
 }
@@ -200,12 +206,15 @@ free_tlog(struct tlog *log)
 	}
 }
 
-#define tlog_write(log, _f, _a...)                                             \
+#define tlog_write(log, _level, _f, _a...)                                     \
 do {                                                                           \
 	int _len;                                                              \
 	struct timeval t;                                                      \
                                                                                \
 	if (!log)                                                              \
+		break;                                                         \
+                                                                               \
+	if (_level > log->level)                                               \
 		break;                                                         \
                                                                                \
 	if (!log->p || log->size - (log->p - log->buf) < MAX_ENTRY_LEN)        \

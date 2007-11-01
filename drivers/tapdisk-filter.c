@@ -21,7 +21,7 @@
 #define READ_INTEGRITY    "disk integrity failure after read"
 
 static struct tlog *log;
-#define DBG(f, a...) tlog_write(log, f, ##a)
+#define DBG(f, a...) tlog_write(log, TLOG_WARN, f, ##a)
 
 /*
  * simulate IO errors by knocking request size to zero before

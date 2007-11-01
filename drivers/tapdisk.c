@@ -72,7 +72,7 @@ typedef struct fd_list_entry {
 } fd_list_entry_t;
 
 static struct tlog *log;
-#define DBG(_f, _a...) tlog_write(log, _f, ##_a)
+#define DBG(level, _f, _a...) tlog_write(log, level, _f, ##_a)
 
 #define INPUT 0
 #define OUTPUT 1
@@ -128,6 +128,11 @@ void sig_handler(int sig)
 void inline debug_disks(struct td_state *s)
 {
 	struct disk_driver *dd;
+
+	DBG(TLOG_WARN, "flags: 0x%08x, %lu reqs pending, "
+	    "received: %lu, returned: %lu, kicked: %lu\n",
+	    s->flags, (s->received - s->kicked),
+	    s->received, s->returned, s->kicked);
 
 	tapdisk_debug_queue(&s->queue);
 	td_for_each_disk(s, dd)
@@ -638,12 +643,13 @@ static int lock_disk(struct disk_driver *dd)
 		kill_queue(s);
 		lease = ONE_DAY;
 	} else if (ret < 0) {
-		DBG("Failed to get lock for %s, err: %d\n", dd->name, ret);
+		DBG(TLOG_WARN, "Failed to get lock for %s, err: %d\n",
+		    dd->name, ret);
 		s->flags |= TD_CLOSED;
 		lease = 1;  /* retry in one second */
 	} else {
 		if (s->flags & TD_CLOSED)
-			DBG("Reacquired lock for %s\n", dd->name);
+			DBG(TLOG_WARN, "Reacquired lock for %s\n", dd->name);
 		s->flags &= ~TD_CLOSED;
 	}
 
@@ -1017,7 +1023,7 @@ static inline void kick_responses(struct td_state *s)
 		int n      = (info->fe_ring.rsp_prod_pvt - 
 			      info->fe_ring.sring->rsp_prod);
 		s->kicked += n;
-		DBG("kicking %d, rec: %lu, ret: %lu, kicked: %lu\n",
+		DBG(TLOG_INFO, "kicking %d, rec: %lu, ret: %lu, kicked: %lu\n",
 		    n, s->received, s->returned, s->kicked);
 
 		RING_PUSH_RESPONSES(&info->fe_ring);
@@ -1037,7 +1043,7 @@ static void make_response(struct td_state *s, pending_req_t *preq)
 	rsp->operation = tmp.operation;
 	rsp->status = preq->status;
 
-	DBG("writing req %d, sec %" PRIu64 ", res %d to ring\n",
+	DBG(TLOG_DBG, "writing req %d, sec %" PRIu64 ", res %d to ring\n",
 	    (int)tmp.id, tmp.sector_number, preq->status);
 
 	if (rsp->status != BLKIF_RSP_OKAY)
@@ -1077,8 +1083,8 @@ int send_responses(struct disk_driver *dd, int res,
 	req  = &preq->req;
 	gettimeofday(&s->ts, NULL);
 
-	DBG("req %d, sec %" PRIu64 " (%d secs) returned %d, pending: %d\n",
-	    idx, req->sector_number, nr_secs, res, 
+	DBG(TLOG_DBG, "req %d, sec %" PRIu64 " (%d secs) returned %d, "
+	    "pending: %d\n", idx, req->sector_number, nr_secs, res,
 	    preq->secs_pending);
 
 	if (res == BLK_NOT_ALLOCATED) {
@@ -1107,7 +1113,7 @@ int send_responses(struct disk_driver *dd, int res,
 	    preq->num_retries < TD_MAX_RETRIES) {
 		if (!preq->secs_pending && !(s->flags & TD_DEAD)) {
 			gettimeofday(&preq->last_try, NULL);
-			DBG("retry needed: %d, %" PRIu64 "\n",
+			DBG(TLOG_INFO, "retry needed: %d, %" PRIu64 "\n",
 			    idx, req->sector_number);
 		}
 		s->flags |= TD_RETRY_NEEDED;
@@ -1146,13 +1152,13 @@ int do_cow_read(struct disk_driver *dd, blkif_request_t *req,
 
 	if (!parent) {
 		memset(page, 0, nr_secs << SECTOR_SHIFT);
-		DBG("memset for %d, sec %" PRIu64 ", nr_secs: %d\n",
-		    sidx, sector, nr_secs);
+		DBG(TLOG_DBG, "memset for %d, sec %" PRIu64 ", "
+		    "nr_secs: %d\n", sidx, sector, nr_secs);
 		return nr_secs;
 	}
 
 	/* reissue request to backing file */
-	DBG("submitting %d, %" PRIu64 " (%d secs) to parent\n",
+	DBG(TLOG_DBG, "submitting %d, %" PRIu64 " (%d secs) to parent\n",
 	    sidx, sector, nr_secs);
 
 	preq->submitting++;
@@ -1274,7 +1280,7 @@ static inline void submit_requests(struct td_state *s)
 	int ret;
 	struct disk_driver *dd;
 
-	DBG("flags: 0x%08x, queued: %d\n",
+	DBG(TLOG_DBG, "flags: 0x%08x, queued: %d\n",
 	    s->flags, tapdisk_queue_count(&s->queue));
 
 	if (s->flags & TD_DEAD)
@@ -1310,9 +1316,10 @@ static void retry_requests(struct td_state *s)
 
 		preq->num_retries++;
 		preq->status = BLKIF_RSP_OKAY;
-		DBG("retry #%d of req %" PRIu64 ", sec %" PRIu64 ", "
-		    "nr_segs: %d\n", preq->num_retries, preq->req.id,
-		    preq->req.sector_number, preq->req.nr_segments);
+		DBG(TLOG_DBG, "retry #%d of req %" PRIu64 ", "
+		    "sec %" PRIu64 ", nr_segs: %d\n", preq->num_retries,
+		    preq->req.id, preq->req.sector_number,
+		    preq->req.nr_segments);
 
 		if (queue_request(s, &preq->req))
 			return;
@@ -1333,7 +1340,7 @@ static void issue_requests(struct td_state *s)
 	blkif = s->blkif;
 	info  = s->ring_info;
 
-	DBG("req_prod: %u, req_cons: %u\n",
+	DBG(TLOG_DBG, "req_prod: %u, req_cons: %u\n",
 	    info->fe_ring.sring->req_prod,
 	    info->fe_ring.req_cons);
 
@@ -1370,8 +1377,9 @@ static void issue_requests(struct td_state *s)
 		blkif->pending_list[idx].status = BLKIF_RSP_OKAY;
 		s->received++;
 
-		DBG("queueing request %d, sec %" PRIu64 ", nr_segs: %d\n", 
-		    idx, req->sector_number, req->nr_segments);
+		DBG(TLOG_DBG, "queueing request %d, sec %" PRIu64 ", "
+		    "nr_segs: %d\n", idx, req->sector_number,
+		    req->nr_segments);
 
 		queue_request(s, req);
 	}
@@ -1412,7 +1420,7 @@ static void check_progress(struct timeval *tv)
 		s = ptr->s;
 		if (!queue_closed(s) && requests_pending(s)) {
 			if (time.tv_sec - s->ts.tv_sec > TO && !s->dumped_log) {
-				DBG("time: %ld.%ld, ts: %ld.%ld\n", 
+				DBG(TLOG_WARN, "time: %ld.%ld, ts: %ld.%ld\n", 
 				    time.tv_sec, time.tv_usec,
 				    s->ts.tv_sec, s->ts.tv_usec);
 				debug(SIGUSR1);
@@ -1440,7 +1448,7 @@ int main(int argc, char *argv[])
 
 	snprintf(openlogbuf, sizeof(openlogbuf), "TAPDISK[%d]", getpid());
 	openlog(openlogbuf, LOG_CONS|LOG_ODELAY, LOG_DAEMON);
-	log = alloc_tlog(1);
+	log = alloc_tlog((256 << 10), TLOG_DBG);
 
 #if defined(CORE_DUMP)
 	{
@@ -1492,11 +1500,11 @@ int main(int argc, char *argv[])
 		check_progress(&timeout);
 
 		/*Wait for incoming messages*/
-		DBG("selecting with timeout %ld.%ld\n", 
+		DBG(TLOG_DBG, "selecting with timeout %ld.%ld\n", 
 		    timeout.tv_sec, timeout.tv_usec);
 		ret = select(maxfds + 1, &readfds, (fd_set *) 0, 
                              (fd_set *) 0, &timeout);
-		DBG("select returned %d (%d)\n", ret, errno);
+		DBG(TLOG_DBG, "select returned %d (%d)\n", ret, errno);
 
 		if (ret < 0)
 			continue;
@@ -1509,7 +1517,7 @@ int main(int argc, char *argv[])
 			if (!ptr->tap_fd)
 				goto next;
 
-			DBG("flags: 0x%08x, %d reqs pending, "
+			DBG(TLOG_INFO, "flags: 0x%08x, %d reqs pending, "
 			    "received: %lu, returned: %lu, kicked: %lu\n",
 			    s->flags, requests_pending(s),
 			    s->received, s->returned, s->kicked);

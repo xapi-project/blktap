@@ -20,7 +20,7 @@
 #endif
 
 static struct tlog *log;
-#define DBG(_f, _a...) tlog_write(log, _f, ##_a)
+#define DBG(_f, _a...) tlog_write(log, TLOG_WARN, _f, ##_a)
 
 /*
  * We used a kernel patch to return an fd associated with the AIO context

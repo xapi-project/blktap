@@ -15,7 +15,7 @@
 #include "profile.h"
 
 #if (!defined(TEST) && defined(DEBUG))
-#define DBG(ctx, f, a...) tlog_write((ctx)->log, f, ##a)
+#define DBG(ctx, f, a...) tlog_write((ctx)->log, TLOG_DBG, f, ##a)
 #elif defined(TEST)
 #define DBG(ctx, f, a...) printf(f, ##a)
 #else
