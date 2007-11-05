@@ -257,6 +257,7 @@ struct vhd_state {
 #endif
 
 #define MIN(a, b)                  (((a) < (b)) ? (a) : (b))
+#define MAX(a, b)                  (((a) > (b)) ? (a) : (b))
 
 #define test_vhd_flag(word, flag)  ((word) & (flag))
 #define set_vhd_flag(word, flag)   ((word) |= (flag))
@@ -266,6 +267,8 @@ struct vhd_state {
 
 #define secs_round_up(bytes) \
               (((bytes) + (VHD_SECTOR_SIZE - 1)) >> VHD_SECTOR_SHIFT)
+#define secs_round_up_no_zero(bytes) \
+              (secs_round_up(bytes) ? : 1)
 
 static int finish_data_transaction(struct disk_driver *, struct vhd_bitmap *);
 
@@ -373,7 +376,7 @@ chs(uint64_t size)
 {
 	u32 secs, cylinders, heads, spt, cth;
 
-	secs = secs_round_up(size);
+	secs = secs_round_up_no_zero(size);
 
 	if (secs > 65535 * 16 * 255)
 		secs = 65535 * 16 * 255;
@@ -406,6 +409,44 @@ chs(uint64_t size)
 	cylinders = cth / heads;
 
 	return GEOM_ENCODE(cylinders, heads, spt);
+}
+
+/*
+ * returns absolute offset of the first 
+ * byte of the file which is not vhd metadata
+ */
+static off64_t
+end_of_vhd_headers(struct vhd_state *s)
+{
+	off64_t eom;
+	struct prt_loc *loc;
+	int i, n, bat_secs, bat_bytes;
+
+	if (s->ftr.type == HD_TYPE_FIXED)
+		return 0;
+
+	eom = 3 << VHD_SECTOR_SHIFT; /* copy of footer and header */
+
+	bat_bytes = s->hdr.max_bat_size * sizeof(u32);
+	bat_secs  = secs_round_up_no_zero(bat_bytes);
+	eom      += bat_secs << VHD_SECTOR_SHIFT; /* bat table */
+
+	/* parent locators */
+	n = sizeof(s->hdr.loc) / sizeof(struct prt_loc);
+	for (i = 0; i < n; i++) {
+		off64_t loc_end;
+
+		loc = &s->hdr.loc[i];
+		if (loc->code == PLAT_CODE_NONE)
+			continue;
+
+		loc_end = loc->data_offset +
+			(loc->data_space << VHD_SECTOR_SHIFT);
+
+		eom = MAX(eom, loc_end);
+	}
+
+	return eom;
 }
 
 uint32_t
@@ -796,11 +837,12 @@ static int
 vhd_read_bat(int fd, struct vhd_state *s)
 {
 	char *buf;
+	off64_t eom;
 	int i, secs, count = 0, err = 0;
 
 	u32 entries  = s->hdr.max_bat_size;
 	u64 location = s->hdr.table_offset;
-	secs         = secs_round_up(entries * sizeof(u32));
+	secs         = secs_round_up_no_zero(entries * sizeof(u32));
 
 	if (posix_memalign((void **)&buf, 512, (secs << VHD_SECTOR_SHIFT)))
 		return -ENOMEM;
@@ -818,8 +860,9 @@ vhd_read_bat(int fd, struct vhd_state *s)
 	}
 
 	memcpy(s->bat.bat, buf, entries * sizeof(u32));
-	s->next_db  = location >> VHD_SECTOR_SHIFT; /* BAT is sector aligned. */
-	s->next_db += secs_round_up(sizeof(u32) * entries);
+
+	eom        = end_of_vhd_headers(s);
+	s->next_db = secs_round_up(eom);
 
 	DBG(TLOG_DBG, "FirstDB: %llu\n", s->next_db);
 
@@ -986,7 +1029,7 @@ __vhd_open(struct disk_driver *dd, const char *name, vhd_flag_t flags)
 
 		s->spp     = getpagesize() >> VHD_SECTOR_SHIFT;
                 s->spb     = s->hdr.block_size >> VHD_SECTOR_SHIFT;
-		s->bm_secs = secs_round_up(s->spb >> 3);
+		s->bm_secs = secs_round_up_no_zero(s->spb >> 3);
 
 		SPB = s->spb;
 
@@ -1516,10 +1559,6 @@ vhd_set_field(struct disk_driver *dd, td_field_t field, long value)
 	return vhd_write_hd_ftr(s->fd, &s->ftr);
 }
 
-/* 
- * inserts file locator between header and bat,
- * and adjusts hdr.table_offset as necessary.
- */
 static int
 write_locator_entry(struct vhd_state *s, int idx,
 		    char *entry, int len, int type)
@@ -1528,13 +1567,12 @@ write_locator_entry(struct vhd_state *s, int idx,
 
 	if (idx < 0 || idx > sizeof(s->hdr.loc) / sizeof(struct prt_loc))
 		return -EINVAL;
-	
-	loc                  = &s->hdr.loc[idx];
-	loc->code            = type;
-	loc->data_len        = len;
-	loc->data_space      = secs_round_up(len);
-	loc->data_offset     = s->hdr.table_offset;
-	s->hdr.table_offset += (loc->data_space << VHD_SECTOR_SHIFT);
+
+	loc              = &s->hdr.loc[idx];
+	loc->code        = type;
+	loc->data_len    = len;
+	loc->data_space  = secs_round_up_no_zero(len);
+	loc->data_offset = end_of_vhd_headers(s);
 
 	if (lseek64(s->fd, loc->data_offset, SEEK_SET) == (off64_t)-1)
 		return -errno;
@@ -1568,10 +1606,6 @@ set_parent_name(struct vhd_state *child, char *pname)
 	return ret;
 }
 
-/*
- * set_parent may adjust hdr.table_offset.
- * call set_parent before writing the bat.
- */
 static int
 set_parent(struct vhd_state *child, struct vhd_state *parent, 
 	   struct disk_id *parent_id, vhd_flag_t flags)
@@ -1762,7 +1796,7 @@ __vhd_create(const char *name, uint64_t total_size,
 		if ((err = vhd_write_dd_hdr(fd, hdr)))
 			goto out;
 
-		bat_secs = secs_round_up(blks * sizeof(u32));
+		bat_secs = secs_round_up_no_zero(blks * sizeof(u32));
 		bat = calloc(1, bat_secs << VHD_SECTOR_SHIFT);
 		if (!bat) {
 			err = -ENOMEM;
@@ -1805,6 +1839,9 @@ __vhd_create(const char *name, uint64_t total_size,
 			}
 		free(buf);
 	}
+
+	if (lseek64(fd, end_of_vhd_headers(&s), SEEK_SET) == (off64_t)-1)
+		goto out;
 
 	if ((err = vhd_write_hd_ftr(fd, ftr)))
 		goto out;
