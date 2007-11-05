@@ -54,7 +54,7 @@ unsigned int SPB;
 
 #define DEBUGGING   2
 #define ASSERTING   1
-#define PREALLOCATE_BLOCKS 1
+#define PREALLOCATE_BLOCKS 0
 
 #define __TRACE(s)                                                             \
 do {                                                                           \
@@ -2223,12 +2223,16 @@ aio_write(struct vhd_state *s, struct vhd_request *req, uint64_t offset)
 static inline uint64_t
 reserve_new_block(struct vhd_state *s, uint32_t blk)
 {
-	ASSERT(!bat_locked(s) &&
-	       !test_vhd_flag(s->bat.status, VHD_FLAG_BAT_WRITE_STARTED));
+	int gap = 0;
+
+	ASSERT(!test_vhd_flag(s->bat.status, VHD_FLAG_BAT_WRITE_STARTED));
+
+	/* data region of segment should begin on page boundary */
+	if ((s->next_db + s->bm_secs) % s->spp)
+		gap = (s->spp - ((s->next_db + s->bm_secs) % s->spp));
 
 	s->bat.pbw_blk    = blk;
-	s->bat.pbw_offset = s->next_db;
-	lock_bat(s);
+	s->bat.pbw_offset = s->next_db + gap;
 
 	return s->next_db;
 }
@@ -2270,15 +2274,16 @@ schedule_bat_write(struct vhd_state *s)
 }
 
 static void
-schedule_zero_bm_write(struct vhd_state *s, struct vhd_bitmap *bm)
+schedule_zero_bm_write(struct vhd_state *s,
+		       struct vhd_bitmap *bm, uint64_t lb_end)
 {
 	uint64_t offset;
 	struct vhd_request *req = &s->bat.zero_req;
 
-	offset       = s->bat.pbw_offset << VHD_SECTOR_SHIFT;
+	offset       = lb_end << VHD_SECTOR_SHIFT;
 	req->op      = VHD_OP_ZERO_BM_WRITE;
 	req->lsec    = s->bat.pbw_blk * s->spb;
-	req->nr_secs = s->bm_secs;
+	req->nr_secs = (s->bat.pbw_offset - lb_end) + s->bm_secs;
 
 	DBG(TLOG_DBG, "blk: %u, writing zero bitmap at %" PRIu64 "\n",
 	    s->bat.pbw_blk, offset);
@@ -2292,6 +2297,7 @@ static int
 update_bat(struct vhd_state *s, uint32_t blk)
 {
 	int err;
+	uint64_t lb_end;
 	struct vhd_bitmap *bm;
 
 	ASSERT(bat_entry(s, blk) == DD_BLK_UNUSED);
@@ -2313,8 +2319,9 @@ update_bat(struct vhd_state *s, uint32_t blk)
 		install_bitmap(s, bm);
 	}
 
-	reserve_new_block(s, blk);
-	schedule_zero_bm_write(s, bm);
+	lock_bat(s);
+	lb_end = reserve_new_block(s, blk);
+	schedule_zero_bm_write(s, bm, lb_end);
 	set_vhd_flag(bm->tx.status, VHD_FLAG_TX_UPDATE_BAT);
 
 	return 0;
@@ -3019,13 +3026,7 @@ finish_bat_write(struct disk_driver *dd, struct vhd_request *req)
 
 	if (!req->error) {
 		bat_entry(s, s->bat.pbw_blk) = s->bat.pbw_offset;
-		s->next_db += s->spb + s->bm_secs;
-#if (PREALLOCATE_BLOCKS != 1)
-		/* data region of segment should begin on page boundary */
-		if ((s->next_db + s->bm_secs) % s->spp)
-			s->next_db += (s->spp - 
-				       ((s->next_db + s->bm_secs) % s->spp));
-#endif
+		s->next_db = s->bat.pbw_offset + s->spb + s->bm_secs;
 	} else
 		tx->error = req->error;
 
