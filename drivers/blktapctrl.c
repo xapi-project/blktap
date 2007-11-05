@@ -773,13 +773,12 @@ int blktapctrl_new_blkif(blkif_t *blkif)
 			goto fail;
 		}
 
-		/* exempt tapdisk from flushing when attached to dom0 */
-		if (blkif->domid == 0)
-			if (setpriority(PRIO_PROCESS,
-					blkif->tappid, PRIO_SPECIAL_IO)) {
-				EPRINTF("Unable to prioritize tapdisk proc\n");
-				goto fail;
-			} 
+		/* exempt tapdisk from flushing */
+		if (setpriority(PRIO_PROCESS,
+				blkif->tappid, PRIO_SPECIAL_IO)) {
+			EPRINTF("Unable to prioritize tapdisk proc\n");
+			goto fail;
+		} 
 
 		/* Both of the following read and write calls will block up to 
 		 * max_timeout val*/
