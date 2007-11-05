@@ -866,6 +866,8 @@ free_bat(struct vhd_state *s)
 static int
 alloc_bat(struct vhd_state *s)
 {
+	int psize = getpagesize();
+
 	memset(&s->bat, 0, sizeof(struct vhd_bat));
 	s->bat.bat = calloc(1, s->hdr.max_bat_size * sizeof(u32));
 	if (!s->bat.bat)
@@ -882,11 +884,11 @@ alloc_bat(struct vhd_state *s)
 	memset(s->zeros, 0, getpagesize());
 #else
 	if (posix_memalign((void **)&s->bat.zero_req.buf,
-			   VHD_SECTOR_SIZE, s->bm_secs << VHD_SECTOR_SHIFT)) {
+			   VHD_SECTOR_SIZE, psize)) {
 		free_bat(s);
 		return -ENOMEM;
 	}
-	memset(s->bat.zero_req.buf, 0, s->bm_secs << VHD_SECTOR_SHIFT);
+	memset(s->bat.zero_req.buf, 0, psize);
 #endif
 
 	if (posix_memalign((void **)&s->bat.req.buf, 
