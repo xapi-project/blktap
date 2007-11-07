@@ -22,10 +22,22 @@
 static char nbuf[nsize];
 
 static inline int
-test_bit (int nr, volatile u32 *addr)
+le_test_bit (int nr, volatile u32 *addr)
 {
 	return (((u32 *)addr)[nr >> 5] >> (nr & 31)) & 1;
 }
+
+#define BIT_MASK 0x80
+
+static inline int
+be_test_bit (int nr, volatile char *addr)
+{
+	return ((addr[nr >> 3] << (nr & 7)) & BIT_MASK) != 0;
+}
+
+#define test_bit(ctx, nr, addr)                                             \
+	((info)->bitmap_format == LITTLE_ENDIAN ?                           \
+	 le_test_bit(nr, (uint32_t *)(addr)) : be_test_bit(nr, addr))
 
 static inline char *
 __xconv(uint64_t num)
@@ -136,7 +148,7 @@ vhd_print(struct disk_driver *dd, struct vhd_info *info,
 						       conv(hex, sec), info->spb);
 					else
 						printf("sec %s: %d\n", conv(hex, sec),
-						       test_bit(sec, (void *)mbuf));
+						       test_bit(info, sec, mbuf));
 				}
 				goto out;
 			}
