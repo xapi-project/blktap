@@ -1445,9 +1445,10 @@ vhd_get_info(struct disk_driver *dd, struct vhd_info *info)
 	struct hd_ftr ftr;
 	struct vhd_state *s = (struct vhd_state *)dd->private;
 
-	info->spb         = s->spb;
-	info->secs        = dd->td_state->size;
-	info->bat_entries = s->hdr.max_bat_size;
+	info->spb           = s->spb;
+	info->secs          = dd->td_state->size;
+	info->bat_entries   = s->hdr.max_bat_size;
+	info->bitmap_format = s->bitmap_format;
 
 	if (s->ftr.type != HD_TYPE_FIXED) {
 		if (posix_memalign((void **)&buf, 512, 512)) {
@@ -1497,10 +1498,11 @@ vhd_get_bat(struct disk_driver *dd, struct vhd_info *info)
 		}
 	}
 
-	info->spb         = s->spb;
-	info->secs        = dd->td_state->size;
-	info->bat_entries = s->hdr.max_bat_size;
-	info->bat         = malloc(sizeof(uint32_t) * info->bat_entries);
+	info->spb           = s->spb;
+	info->secs          = dd->td_state->size;
+	info->bat_entries   = s->hdr.max_bat_size;
+	info->bitmap_format = s->bitmap_format;
+	info->bat           = malloc(sizeof(uint32_t) * info->bat_entries);
 	if (!info->bat)
 		return -ENOMEM;
 

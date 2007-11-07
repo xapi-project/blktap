@@ -56,10 +56,22 @@ struct vhd_context {
 };
 
 static inline int
-test_bit (int nr, volatile u32 *addr)
+le_test_bit (int nr, volatile u32 *addr)
 {
 	return (((u32 *)addr)[nr >> 5] >> (nr & 31)) & 1;
 }
+
+#define BIT_MASK 0x80
+
+static inline int
+be_test_bit (int nr, volatile char *addr)
+{
+	return ((addr[nr >> 3] << (nr & 7)) & BIT_MASK) != 0;
+}
+
+#define test_bit(ctx, nr, addr)                                             \
+	((ctx)->info.bitmap_format == LITTLE_ENDIAN ?                       \
+	 le_test_bit(nr, (uint32_t *)(addr)) : be_test_bit(nr, addr))
 
 static int
 init_buffers(struct vhd_context *ctx)
@@ -365,11 +377,11 @@ process(struct vhd_context *ctx)
 				return 0;
 
 		while (ctx->bm_idx < ctx->info.spb &&
-		       !test_bit(ctx->bm_idx, (u32 *)ctx->bm)) 
+		       !test_bit(ctx, ctx->bm_idx, ctx->bm)) 
 			ctx_inc_bm(ctx);
 
 		if (ctx->bm_idx < ctx->info.spb &&
-		    test_bit(ctx->bm_idx, (u32 *)ctx->bm)) {
+		    test_bit(ctx, ctx->bm_idx, ctx->bm)) {
 			buf = get_buffer(ctx);
 			ret = ctx->child->drv->td_queue_read(ctx->child,
 							     ctx->cur_sec, 1, 

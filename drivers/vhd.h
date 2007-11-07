@@ -179,10 +179,11 @@ static const char DD_COOKIE[9]  =  "cxsparse";
 struct disk_driver;
 
 struct vhd_info {
-        int       spb;
-        int       bat_entries;
-        uint32_t *bat;
-        uint64_t  secs;
+	int       spb;
+	int       bat_entries;
+	uint32_t *bat;
+	uint64_t  secs;
+	int       bitmap_format;
 	long      td_fields[TD_FIELD_INVALID];
 };
 uint32_t vhd_footer_checksum(struct hd_ftr *footer);
