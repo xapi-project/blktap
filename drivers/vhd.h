@@ -142,6 +142,17 @@ static const char DD_COOKIE[9]  =  "cxsparse";
 
 #define DD_BLK_UNUSED 0xFFFFFFFF
 
+struct dd_batmap_hdr {
+  char   cookie[8];       /* should contain "tdbatmap"                    */
+  u64    batmap_offset;   /* byte offset to batmap                        */
+  u32    batmap_size;     /* batmap size in sectors                       */
+  u32    batmap_version;  /* version of batmap                            */
+  u32    checksum;        /* batmap checksum -- 1's complement of batmap  */
+};
+
+static const char VHD_BATMAP_COOKIE[9] = "tdbatmap";
+#define VHD_BATMAP_VERSION 0x00010001
+
 /* Layout of a dynamic disk:
  *
  * +-------------------------------------------------+

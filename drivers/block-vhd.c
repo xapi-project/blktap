@@ -172,6 +172,7 @@ struct vhd_request {
 
 struct vhd_bat {
 	uint32_t  *bat;
+	char      *batmap;                     /* tracks full segments */
 	vhd_flag_t status;
 	uint32_t   pbw_blk;                    /* blk num of pending write */
 	uint64_t   pbw_offset;                 /* file offset of same */
@@ -209,6 +210,7 @@ struct vhd_state {
         /* VHD stuff */
         struct hd_ftr         ftr;
         struct dd_hdr         hdr;
+	struct dd_batmap_hdr  batmap_hdr;
 	u32                   spp;             /* sectors per page */
         u32                   spb;             /* sectors per block */
         u64                   next_db;         /* pointer to the next 
@@ -270,6 +272,12 @@ struct vhd_state {
 #define secs_round_up_no_zero(bytes) \
               (secs_round_up(bytes) ? : 1)
 
+/* tapdisk batmaps, if present, immediately follow the bat */
+#define batmap_hdr_offset(s)                                               \
+      ((s)->hdr.table_offset +                                             \
+       (secs_round_up_no_zero((s)->hdr.max_bat_size * sizeof(u32)) <<      \
+	VHD_SECTOR_SHIFT))
+
 static int finish_data_transaction(struct disk_driver *, struct vhd_bitmap *);
 
 static inline int
@@ -321,6 +329,23 @@ be_set_bit (int nr, volatile char *addr)
 #define set_bit(s, nr, addr)                                              \
 	((s)->bitmap_format == LITTLE_ENDIAN ?                            \
 	 le_set_bit(nr, (uint32_t *)(addr)) : be_set_bit(nr, addr))
+
+static inline void
+set_batmap(struct vhd_state *s, uint32_t blk)
+{
+	if (s->bat.batmap) {
+		set_bit(s, blk, s->bat.batmap);
+		DBG(TLOG_DBG, "block 0x%x completely full\n", blk);
+	}
+}
+
+static inline int
+test_batmap(struct vhd_state *s, uint32_t blk)
+{
+	if (!s->bat.batmap)
+		return 0;
+	return test_bit(s, blk, s->bat.batmap);
+}
 
 /* Debug print functions: */
 
@@ -430,6 +455,20 @@ end_of_vhd_headers(struct vhd_state *s)
 	bat_bytes = s->hdr.max_bat_size * sizeof(u32);
 	bat_secs  = secs_round_up_no_zero(bat_bytes);
 	eom      += bat_secs << VHD_SECTOR_SHIFT; /* bat table */
+
+	if (s->bat.batmap) {
+		off64_t hdr_end, hdr_secs, map_end, map_secs;
+
+		hdr_secs = secs_round_up_no_zero(sizeof(struct dd_batmap_hdr));
+		hdr_end  = (batmap_hdr_offset(s) +
+			    (hdr_secs << VHD_SECTOR_SHIFT));
+		eom      = MAX(eom, hdr_end);
+
+		map_secs = s->batmap_hdr.batmap_size;
+		map_end  = (s->batmap_hdr.batmap_offset +
+			    (map_secs << VHD_SECTOR_SHIFT));
+		eom      = MAX(eom, map_end);
+	}
 
 	/* parent locators */
 	n = sizeof(s->hdr.loc) / sizeof(struct prt_loc);
@@ -833,16 +872,169 @@ vhd_read_dd_hdr(int fd, struct dd_hdr *hdr, u64 location)
 	return err;
 }
 
+static uint32_t
+vhd_batmap_checksum(struct dd_batmap_hdr *batmap_header, char *batmap)
+{
+	uint32_t cksm;
+	int i, batmap_bytes;
+
+	cksm         = 0;
+	batmap_bytes = batmap_header->batmap_size << VHD_SECTOR_SHIFT;
+
+	for (i = 0; i < batmap_bytes; i++)
+		cksm += (u32)(batmap[i]);
+
+	return ~cksm;
+}
+
+static int
+vhd_read_batmap(int fd, struct vhd_state *s)
+{
+	u32 cksm;
+	char *buf;
+	int err, header_bytes, batmap_bytes;
+	uint64_t header_offset, batmap_offset;
+
+	s->bat.batmap = NULL;
+
+	if (strncmp(s->ftr.crtr_app, "tap", 4) ||
+	    s->ftr.crtr_ver < 0x00010001)
+		return 0;
+				      
+	header_offset = batmap_hdr_offset(s);
+	if (lseek64(fd, header_offset, SEEK_SET) == (off64_t)-1) {
+		err = -errno;
+		DPRINTF("lseek failed: %d\n", err);
+		goto fail;
+	}
+
+	header_bytes = secs_round_up_no_zero(sizeof(struct dd_batmap_hdr)) <<
+		VHD_SECTOR_SHIFT;
+	if (posix_memalign((void **)&buf, 512, header_bytes)) {
+		err = -ENOMEM;
+		goto fail;
+	}
+
+	if (read(fd, buf, header_bytes) != header_bytes) {
+		err = (errno ? -errno : -EIO);
+		free(buf);
+		DPRINTF("reading batmap header failed: %d\n", errno);
+		goto fail;
+	}
+
+	memcpy(&s->batmap_hdr, buf, sizeof(struct dd_batmap_hdr));
+	free(buf);
+
+	BE64_IN(&s->batmap_hdr.batmap_offset);
+	BE32_IN(&s->batmap_hdr.batmap_size);
+	BE32_IN(&s->batmap_hdr.batmap_version);
+	BE32_IN(&s->batmap_hdr.checksum);
+
+	if (memcmp(s->batmap_hdr.cookie, VHD_BATMAP_COOKIE, 8)) {
+		DPRINTF("unrecognized batmap cookie\n");
+		return 0;
+	}
+
+	batmap_bytes = s->batmap_hdr.batmap_size << VHD_SECTOR_SHIFT;
+	if (posix_memalign((void **)&s->bat.batmap, 512, batmap_bytes)) {
+		err = -ENOMEM;
+		s->bat.batmap = NULL;
+		goto fail;
+	}
+
+	batmap_offset = s->batmap_hdr.batmap_offset;
+	if (lseek64(fd, batmap_offset, SEEK_SET) == (off64_t)-1) {
+		err = -errno;
+		goto fail;
+	}
+
+	if (read(fd, s->bat.batmap, batmap_bytes) != batmap_bytes) {
+		err = (errno ? -errno : -EIO);
+		DPRINTF("readint batmap failed: %d\n", err);
+		goto fail;
+	}
+
+	cksm = vhd_batmap_checksum(&s->batmap_hdr, s->bat.batmap);
+	if (cksm != s->batmap_hdr.checksum) {
+		DPRINTF("invalid batmap checksum\n");
+		err = -EINVAL;
+		goto fail;
+	}
+
+	return 0;
+
+ fail:
+	free(s->bat.batmap);
+	s->bat.batmap = NULL;
+	return err;
+}
+
+static void
+vhd_write_batmap(struct vhd_state *s)
+{
+	char *buf;
+	int header_bytes, batmap_bytes;
+	off64_t header_offset, batmap_offset;
+	struct dd_batmap_hdr *hdr;
+
+	if (!s->bat.batmap)
+		return;
+
+	batmap_offset = s->batmap_hdr.batmap_offset;
+	batmap_bytes  = s->batmap_hdr.batmap_size << VHD_SECTOR_SHIFT;
+	s->batmap_hdr.checksum = vhd_batmap_checksum(&s->batmap_hdr,
+						     s->bat.batmap);
+
+	if (lseek64(s->fd, batmap_offset, SEEK_SET) == (off64_t)-1)
+		return;
+
+	if (write(s->fd, s->bat.batmap, batmap_bytes) != batmap_bytes) {
+		DPRINTF("batmap write failed: %d\n", errno);
+		return;
+	}
+
+	header_offset = batmap_hdr_offset(s);
+	if (lseek64(s->fd, header_offset, SEEK_SET) == (off64_t)-1)
+		return;
+
+	header_bytes = secs_round_up_no_zero(sizeof(struct dd_batmap_hdr)) << 
+		VHD_SECTOR_SHIFT;
+	if (posix_memalign((void **)&buf, 512, header_bytes)) {
+		DPRINTF("batmap_hdr write failed: %d\n", -ENOMEM);
+		return;
+	}
+
+	memset(buf, 0, header_bytes);
+	memcpy(buf, &s->batmap_hdr, sizeof(struct dd_batmap_hdr));
+	hdr = (struct dd_batmap_hdr *)buf;
+
+	BE64_OUT(&hdr->batmap_offset);
+	BE32_OUT(&hdr->batmap_size);
+	BE32_OUT(&hdr->batmap_version);
+	BE32_OUT(&hdr->checksum);
+
+	if (write(s->fd, buf, header_bytes) != header_bytes)
+		DPRINTF("batmap_hdr write failed: %d\n", errno);
+
+	free(buf);
+}
+
 static int
 vhd_read_bat(int fd, struct vhd_state *s)
 {
 	char *buf;
 	off64_t eom;
-	int i, secs, count = 0, err = 0;
+	uint32_t count, full;
+	int i, secs, err = 0;
 
 	u32 entries  = s->hdr.max_bat_size;
 	u64 location = s->hdr.table_offset;
 	secs         = secs_round_up_no_zero(entries * sizeof(u32));
+
+	if (vhd_read_batmap(fd, s)) {
+		DPRINTF("Error reading batmap\n");
+		s->bat.batmap = NULL;
+	}
 
 	if (posix_memalign((void **)&buf, 512, (secs << VHD_SECTOR_SHIFT)))
 		return -ENOMEM;
@@ -863,6 +1055,8 @@ vhd_read_bat(int fd, struct vhd_state *s)
 
 	eom        = end_of_vhd_headers(s);
 	s->next_db = secs_round_up(eom);
+	count      = 0;
+	full       = 0;
 
 	DBG(TLOG_DBG, "FirstDB: %llu\n", s->next_db);
 
@@ -876,16 +1070,17 @@ vhd_read_bat(int fd, struct vhd_state *s)
 			    s->next_db);
 		}
 
-		if (bat_entry(s, i) != DD_BLK_UNUSED) count++;
+		if (bat_entry(s, i) != DD_BLK_UNUSED) {
+			count++;
+			if (test_batmap(s, i))
+				full++;
+		} else
+			ASSERT(!test_batmap(s, i));
 	}
 
-	/* ensure that data region of segment begins on page boundary */
-	if ((s->next_db + s->bm_secs) % s->spp)
-		s->next_db += (s->spp - ((s->next_db + s->bm_secs) % s->spp));
-    
-	DBG(TLOG_DBG, "NextDB: %llu\n", s->next_db);
-	DBG(TLOG_INFO, "Read BAT.  This vhd has %d full and %d unfilled data "
-	    "blocks.\n", count, entries - count);
+	if (!test_vhd_flag(s->flags, VHD_FLAG_OPEN_QUIET))
+		DPRINTF("%s: block summary: total: %u, allocated: %u, full: "
+			"%u\n", __func__, s->hdr.max_bat_size, count, full);
 
  out:
 	free(buf);
@@ -897,6 +1092,7 @@ free_bat(struct vhd_state *s)
 {
 	free(s->bat.bat);
 	free(s->bat.req.buf);
+	free(s->bat.batmap);
 #if (PREALLOCATE_BLOCKS == 1)
 	free(s->zeros);
 	s->zeros = NULL;
@@ -1158,7 +1354,18 @@ vhd_close(struct disk_driver *dd)
 	 */
 	if (test_vhd_flag(s->flags, VHD_FLAG_OPEN_STRICT) || s->writes) {
 		if (s->ftr.type != HD_TYPE_FIXED) {
-			off = s->next_db << VHD_SECTOR_SHIFT;
+			uint64_t i, blk, max;
+
+			max = end_of_vhd_headers(s) >> VHD_SECTOR_SHIFT;
+			for (i = 0; i < s->hdr.max_bat_size; i++) {
+				blk = bat_entry(s, i);
+				if (blk != DD_BLK_UNUSED) {
+					blk += s->spb + s->bm_secs;
+					max  = MAX(blk, max);
+				}
+			}
+			off = max << VHD_SECTOR_SHIFT;
+
 			if (lseek64(s->fd, off, SEEK_SET) == (off64_t)-1) {
 				DPRINTF("ERROR: seeking footer extension.\n");
 				goto free;
@@ -1177,6 +1384,8 @@ vhd_close(struct disk_driver *dd)
 		}
 		if (vhd_write_hd_ftr(s->fd, &s->ftr))
 			DPRINTF("ERROR: writing footer. %d\n", errno);
+
+		vhd_write_batmap(s);
 	}
 
  free:
@@ -1562,6 +1771,72 @@ vhd_set_field(struct disk_driver *dd, td_field_t field, long value)
 }
 
 static int
+add_batmap(struct vhd_state *s)
+{
+	char *buf;
+	uint64_t header_off, batmap_off;
+	int err, header_secs, header_bytes, batmap_secs, batmap_bytes;
+	struct dd_batmap_hdr *hdr;
+
+	s->bat.batmap = NULL;
+
+	if (s->ftr.type == HD_TYPE_FIXED)
+		return 0;
+
+	header_off    = batmap_hdr_offset(s);
+	header_secs   = secs_round_up_no_zero(sizeof(struct dd_batmap_hdr));
+	header_bytes  = header_secs << VHD_SECTOR_SHIFT;
+	batmap_off    = header_off + header_bytes;
+	batmap_secs   = secs_round_up_no_zero(s->hdr.max_bat_size >> 3);
+	batmap_bytes  = batmap_secs << VHD_SECTOR_SHIFT;
+
+	if (posix_memalign((void **)&buf, 512, batmap_bytes))
+		return -ENOMEM;
+
+	memset(buf, 0, batmap_bytes);
+	memcpy(s->batmap_hdr.cookie, VHD_BATMAP_COOKIE, 8);
+	s->batmap_hdr.batmap_size    = batmap_secs;
+	s->batmap_hdr.batmap_offset  = batmap_off;
+	s->batmap_hdr.batmap_version = VHD_BATMAP_VERSION;
+	s->batmap_hdr.checksum       = vhd_batmap_checksum(&s->batmap_hdr, buf);
+	memcpy(buf, &s->batmap_hdr, sizeof(struct dd_batmap_hdr));
+	hdr = (struct dd_batmap_hdr *)buf;
+
+	BE64_OUT(&hdr->batmap_offset);
+	BE32_OUT(&hdr->batmap_size);
+	BE32_OUT(&hdr->batmap_version);
+	BE32_OUT(&hdr->checksum);
+
+	if (lseek64(s->fd, header_off, SEEK_SET) == (off64_t)-1) {
+		err = -errno;
+		goto fail;
+	}
+
+	if (write(s->fd, buf, header_bytes) != header_bytes) {
+		err = (errno ? -errno : -EIO);
+		goto fail;
+	}
+
+	if (lseek64(s->fd, batmap_off, SEEK_SET) == (off64_t)-1) {
+		err = -errno;
+		goto fail;
+	}
+
+	memset(buf, 0, batmap_bytes);
+	if (write(s->fd, buf, batmap_bytes) != batmap_bytes) {
+		err = (errno ? -errno : -EIO);
+		goto fail;
+	}
+
+	s->bat.batmap = buf;
+	return 0;
+	
+ fail:
+	free(buf);
+	return err;
+}
+
+static int
 write_locator_entry(struct vhd_state *s, int idx,
 		    char *entry, int len, int type)
 {
@@ -1712,7 +1987,6 @@ __vhd_create(const char *name, uint64_t total_size,
 	ftr->data_offset  = ((sparse) ? VHD_SECTOR_SIZE : 0xFFFFFFFFFFFFFFFF);
 	strcpy(ftr->crtr_app, "tap");
 	uuid_generate(ftr->uuid);
-	ftr->checksum = vhd_footer_checksum(ftr);
 
 	if (sparse) {
 		int bat_secs;
@@ -1758,10 +2032,14 @@ __vhd_create(const char *name, uint64_t total_size,
 			ftr->orig_size    = p->ftr.curr_size;
 			ftr->curr_size    = p->ftr.curr_size;
 			ftr->geometry     = chs(ftr->orig_size);
-			ftr->checksum     = vhd_footer_checksum(ftr);
 			hdr->max_bat_size = blks;
 
 		set_parent:
+			/* add batmap before any parent locators */
+			ret = add_batmap(&s);
+			if (ret)
+				return ret;
+
 			err = set_parent(&s, p, backing_file, flags);
 			if (p) {
 				vhd_close(&parent);
@@ -1772,9 +2050,15 @@ __vhd_create(const char *name, uint64_t total_size,
 					backing_file->name, err);
 				goto out;
 			}
+		} else {
+			ret = add_batmap(&s);
+			if (ret)
+				return ret;
 		}
 
+		ftr->checksum = vhd_footer_checksum(ftr);
 		hdr->checksum = vhd_header_checksum(hdr);
+
 #if (DEBUGGING == 1)
 		debug_print_footer(ftr);
 		debug_print_header(hdr);
@@ -2040,6 +2324,20 @@ bitmap_in_use(struct vhd_bitmap *bm)
 		bm->waiting.head || bm->tx.requests.head || bm->queue.head);
 }
 
+static inline int
+bitmap_full(struct vhd_state *s, struct vhd_bitmap *bm)
+{
+	int i, n;
+
+	n = s->spb >> 3;
+	for (i = 0; i < n; i++)
+		if (bm->map[i] != (char)0xFF)
+			return 0;
+
+	DBG(TLOG_DBG, "bitmap 0x%08x full\n", bm->blk);
+	return 1;
+}
+
 static struct vhd_bitmap*
 remove_lru_bitmap(struct vhd_state *s)
 {
@@ -2171,6 +2469,11 @@ read_bitmap_cache(struct vhd_state *s, uint64_t sector, uint8_t op)
 		return VHD_BM_BAT_CLEAR;
 	}
 
+	if (test_batmap(s, blk)) {
+		DBG(TLOG_DBG, "batmap set for %u\n", blk);
+		return VHD_BM_BIT_SET;
+	}
+
 	bm = get_bitmap(s, blk);
 	if (!bm)
 		return VHD_BM_NOT_CACHED;
@@ -2199,6 +2502,10 @@ read_bitmap_cache_span(struct vhd_state *s,
 
 	sec = sector % s->spb;
 	blk = sector / s->spb;
+
+	if (test_batmap(s, blk))
+		return MIN(nr_secs, s->spb - sec);
+
 	bm  = get_bitmap(s, blk);
 	
 	ASSERT(bm && bitmap_valid(bm));
@@ -2463,7 +2770,7 @@ schedule_data_read(struct vhd_state *s, uint64_t sector,
 	offset = bat_entry(s, blk);
 	
 	ASSERT(offset != DD_BLK_UNUSED);
-	ASSERT(bm && bitmap_valid(bm));
+	ASSERT(test_batmap(s, blk) || (bm && bitmap_valid(bm)));
 	
 	offset  += s->bm_secs + sec;
 	offset <<= VHD_SECTOR_SHIFT;
@@ -3009,6 +3316,8 @@ finish_bitmap_transaction(struct disk_driver *dd,
 	} else {
 		/* complete atomic write */
 		memcpy(bm->map, bm->shadow, map_size);
+		if (!test_batmap(s, bm->blk) && bitmap_full(s, bm))
+			set_batmap(s, bm->blk);
 	}
 
 	/* transaction done; signal completions */
