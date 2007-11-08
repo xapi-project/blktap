@@ -1987,6 +1987,7 @@ __vhd_create(const char *name, uint64_t total_size,
 	ftr->data_offset  = ((sparse) ? VHD_SECTOR_SIZE : 0xFFFFFFFFFFFFFFFF);
 	strcpy(ftr->crtr_app, "tap");
 	uuid_generate(ftr->uuid);
+	ftr->checksum = vhd_footer_checksum(ftr);
 
 	if (sparse) {
 		int bat_secs;
@@ -2126,8 +2127,10 @@ __vhd_create(const char *name, uint64_t total_size,
 		free(buf);
 	}
 
-	if (lseek64(fd, end_of_vhd_headers(&s), SEEK_SET) == (off64_t)-1)
-		goto out;
+	if (ftr->type != HD_TYPE_FIXED)
+		if (lseek64(fd, end_of_vhd_headers(&s),
+			    SEEK_SET) == (off64_t)-1)
+			goto out;
 
 	if ((err = vhd_write_hd_ftr(fd, ftr)))
 		goto out;
