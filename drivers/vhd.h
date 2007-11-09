@@ -199,8 +199,10 @@ struct vhd_info {
 };
 uint32_t vhd_footer_checksum(struct hd_ftr *footer);
 uint32_t vhd_header_checksum(struct dd_hdr *header);
+uint32_t vhd_batmap_checksum(struct dd_batmap_hdr *header, char *map);
 void vhd_get_footer(struct disk_driver *dd, struct hd_ftr *footer);
 int vhd_get_header(struct disk_driver *dd, struct dd_hdr *header);
+int vhd_get_batmap_header(struct disk_driver *dd, struct dd_batmap_hdr *hdr);
 int vhd_get_info(struct disk_driver *dd, struct vhd_info *info);
 int vhd_get_bat(struct disk_driver *dd, struct vhd_info *info);
 int vhd_set_field(struct disk_driver *dd, td_field_t field, long value);

@@ -872,7 +872,7 @@ vhd_read_dd_hdr(int fd, struct dd_hdr *hdr, u64 location)
 	return err;
 }
 
-static uint32_t
+uint32_t
 vhd_batmap_checksum(struct dd_batmap_hdr *batmap_header, char *batmap)
 {
 	uint32_t cksm;
@@ -1737,6 +1737,28 @@ vhd_get_footer(struct disk_driver *dd, struct hd_ftr *footer)
 {
 	struct vhd_state *s = (struct vhd_state *)dd->private;
 	memcpy(footer, &s->ftr, sizeof(struct hd_ftr));
+}
+
+int
+vhd_get_batmap_header(struct disk_driver *dd, struct dd_batmap_hdr *hdr)
+{
+	struct vhd_state *s = (struct vhd_state *)dd->private;
+
+	memset(hdr, 0, sizeof(struct dd_batmap_hdr));
+
+	if (s->ftr.type != HD_TYPE_DYNAMIC && s->ftr.type != HD_TYPE_DIFF)
+		return -EINVAL;
+
+	if (!s->bat.batmap) {
+		int err;
+		if ((err = vhd_read_batmap(s->fd, s)) != 0) {
+			DPRINTF("error reading batmap: %d\n", err);
+			return err;
+		}
+	}
+
+	memcpy(hdr, &s->batmap_hdr, sizeof(struct dd_batmap_hdr));
+	return 0;
 }
 
 int
