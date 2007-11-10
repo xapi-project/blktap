@@ -1450,6 +1450,7 @@ int main(int argc, char *argv[])
 	openlog(openlogbuf, LOG_CONS|LOG_ODELAY, LOG_DAEMON);
 	log = alloc_tlog((256 << 10), TLOG_DBG);
 
+#define CORE_DUMP
 #if defined(CORE_DUMP)
 	{
 		/* set up core-dumps*/

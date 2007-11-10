@@ -2214,14 +2214,21 @@ remove_from_req_list(struct vhd_req_list *list, struct vhd_request *e)
 {
 	struct vhd_request *i = list->head;
 
-	if (i == e) {
-		list->head = list->head->next;
+	if (list->head == e) {
+		if (list->tail == e)
+			clear_req_list(list);
+		else
+			list->head = list->head->next;
 		return 0;
 	}
 
 	while (i->next) {
 		if (i->next == e) {
-			i->next = i->next->next;
+			if (list->tail == e) {
+				i->next = NULL;
+				list->tail = i;
+			} else
+				i->next = i->next->next;
 			return 0;
 		}
 		i = i->next;
@@ -2634,6 +2641,7 @@ schedule_bat_write(struct vhd_state *s)
 	offset       = s->hdr.table_offset + (blk - (blk % 128)) * 4;
 	req->nr_secs = 1;
 	req->op      = VHD_OP_BAT_WRITE;
+	req->next    = NULL;
 
 	aio_write(s, req, offset);
 	set_vhd_flag(s->bat.status, VHD_FLAG_BAT_WRITE_STARTED);
@@ -2657,6 +2665,7 @@ schedule_zero_bm_write(struct vhd_state *s,
 	req->op      = VHD_OP_ZERO_BM_WRITE;
 	req->lsec    = s->bat.pbw_blk * s->spb;
 	req->nr_secs = (s->bat.pbw_offset - lb_end) + s->bm_secs;
+	req->next    = NULL;
 
 	DBG(TLOG_DBG, "blk: %u, writing zero bitmap at %" PRIu64 "\n",
 	    s->bat.pbw_blk, offset);
@@ -2813,6 +2822,7 @@ schedule_data_read(struct vhd_state *s, uint64_t sector,
 	req->id      = id;
 	req->private = private;
 	req->op      = VHD_OP_DATA_READ;
+	req->next    = NULL;
 
 	aio_read(s, req, offset);
 
@@ -2875,6 +2885,7 @@ schedule_data_write(struct vhd_state *s, uint64_t sector,
 	req->id      = id;
 	req->private = private;
 	req->op      = VHD_OP_DATA_WRITE;
+	req->next    = NULL;
 
 	if (test_vhd_flag(flags, VHD_FLAG_REQ_UPDATE_BITMAP)) {
 		bm = get_bitmap(s, blk);
@@ -2927,6 +2938,7 @@ schedule_bitmap_read(struct vhd_state *s, uint32_t blk)
 	req->nr_secs = s->bm_secs;
 	req->buf     = bm->map;
 	req->op      = VHD_OP_BITMAP_READ;
+	req->next    = NULL;
 
 	aio_read(s, req, offset);
 	lock_bitmap(bm);
@@ -2969,6 +2981,7 @@ schedule_bitmap_write(struct vhd_state *s, uint32_t blk)
 	req->nr_secs = s->bm_secs;
 	req->buf     = bm->shadow;
 	req->op      = VHD_OP_BITMAP_WRITE;
+	req->next    = NULL;
 
 	aio_write(s, req, offset);
 	lock_bitmap(bm);
@@ -3016,6 +3029,7 @@ __vhd_queue_request(struct vhd_state *s, uint8_t op,
 	req->id      = id;
 	req->private = private;
 	req->op      = op;
+	req->next    = NULL;
 
 	add_to_tail(&bm->waiting, req);
 	lock_bitmap(bm);
