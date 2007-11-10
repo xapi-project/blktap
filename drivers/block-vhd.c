@@ -54,7 +54,7 @@ unsigned int SPB;
 
 #define DEBUGGING   2
 #define ASSERTING   1
-#define PREALLOCATE_BLOCKS 0
+#define PREALLOCATE_BLOCKS 1
 
 #define __TRACE(s)                                                             \
 do {                                                                           \
