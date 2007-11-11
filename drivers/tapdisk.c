@@ -376,7 +376,7 @@ static void unmap_disk(struct td_state *s)
 	if (s->received != s->kicked)
 		DPRINTF("%s: received %lu, kicked %lu\n",
 			__func__, s->received, s->kicked);
-	if (info && 
+	if (info && info->fe_ring.sring &&
 	    (info->fe_ring.sring->req_prod != info->fe_ring.req_cons))
 		DPRINTF("%s: req_prod: %u, req_cons: %u\n", __func__,
 			info->fe_ring.sring->req_prod,
