@@ -1267,9 +1267,11 @@ __vhd_open(struct disk_driver *dd, const char *name, vhd_flag_t flags)
 	for (i = 0; i < VHD_REQS_DATA; i++)
 		s->vreq_free[i] = s->vreq_list + i;
 
-	tmp = rindex(name, '/');
-	if (tmp)
-		s->name  = strdup(++tmp);
+	s->name = strdup(name);
+	if (!s->name) {
+		ret = -ENOMEM;
+		goto fail;
+	}
 
 	s->dd            = dd;
 	s->fd            = fd;
@@ -1442,6 +1444,44 @@ vhd_validate_parent(struct disk_driver *child_dd,
 	/* TODO: compare sizes */
 	
 	return 0;
+}
+
+static char *
+find_parent(char *child, char *parent)
+{
+	int err;
+	struct stat stats;
+	char *location, *tmp;
+
+	if (!child || !parent)
+		return NULL;
+
+	if (!stat(parent, &stats))
+		return strdup(parent);
+
+	if (parent[0] == '/')
+		return NULL;
+
+	/*
+	 * if parent path is relative, check relative to the
+	 * child's directory rather than the current working directory
+	 */
+	tmp = strrchr(child, '/');
+	if (!tmp)
+		return NULL;
+
+	*tmp = '\0';
+	err  = asprintf(&location, "%s/%s", child, parent);
+	*tmp = '/';
+
+	if (err == -1)
+		return NULL;
+
+	if (!stat(location, &stats))
+		return location;
+
+	free(location);
+	return NULL;
 }
 
 static int 
@@ -1626,12 +1666,17 @@ vhd_get_parent_id(struct disk_driver *child_dd, struct disk_id *id)
 		}
 
 		if (name) {
-			if (stat(name, &stats) == -1) {
+			char *location;
+
+			location = find_parent(child_dd->name, name);
+			free(name);
+
+			if (!location) {
 				err    = -EINVAL;
 				goto next;
 			}
 
-			id->name       = name;
+			id->name       = location;
 			id->drivertype = DISK_TYPE_VHD;
 			err            = 0;
 		} else
@@ -1911,7 +1956,10 @@ set_parent(struct vhd_state *child, struct vhd_state *parent,
 {
 	struct stat stats;
 	int len, err = 0, lidx = 0;
-	char *loc, *file, *parent_path, *absolute_path = NULL;
+	char *loc, *file, *parent_path, *absolute_path, *relative_path;
+
+	absolute_path = NULL;
+	relative_path = NULL;
 
 	parent_path = parent_id->name;
 	file = basename(parent_path); /* (using GNU, not POSIX, basename) */
@@ -1929,6 +1977,16 @@ set_parent(struct vhd_state *child, struct vhd_state *parent,
 		goto out;
 	}
 
+	if (parent_path[0] != '/')
+		relative_path = parent_path;
+	else {
+		/*
+		 * if we're given an absolute parent path, store a
+		 * relative path relative to the directory of the parent
+		 */
+		relative_path = strrchr(absolute_path, '/') + 1;
+	}
+
 	child->hdr.prt_ts = vhd_time(stats.st_mtime);
 	if (parent)
 		uuid_copy(child->hdr.prt_uuid, parent->ftr.uuid);
@@ -1939,9 +1997,10 @@ set_parent(struct vhd_state *child, struct vhd_state *parent,
 	if ((err = set_parent_name(child, file)) != 0)
 		goto out;
 
-	if (parent_path[0] != '/') {
+	if (relative_path) {
 		/* relative path */
-		if ((err = macx_encode_location(parent_path, &loc, &len)) != 0)
+		err = macx_encode_location(relative_path, &loc, &len);
+		if (err)
 			goto out;
 
 		err = write_locator_entry(child, lidx++, 
