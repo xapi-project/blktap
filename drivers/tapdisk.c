@@ -431,8 +431,8 @@ static int open_disk(struct td_state *s,
 		s->disks = NULL;
 		return err;
 	}
-	iocbs  = TAPDISK_DATA_REQUESTS;
 	pflags = flags | TD_OPEN_RDONLY;
+	iocbs  = TAPDISK_DATA_REQUESTS + d->drv->private_iocbs;
 
 	/* load backing files as necessary */
 	while ((err = d->drv->td_get_parent_id(d, &id)) == 0) {
