@@ -128,7 +128,7 @@ cancel_tiocbs(struct tqueue *queue, int err)
 	return queued;
 }
 
-static void
+static int
 fail_tiocbs(struct tqueue *queue, int succeeded, int total, int err)
 {
 	TAP_ERROR(err, "io_submit error: %d of %d failed",
@@ -138,7 +138,8 @@ fail_tiocbs(struct tqueue *queue, int succeeded, int total, int err)
 	 * off of the queue, split them, and fail them */
 	queue->queued = io_expand_iocbs(&queue->opioctx,
 					queue->iocbs, succeeded, total);
-	cancel_tiocbs(queue, err);
+
+	return cancel_tiocbs(queue, err);
 }
 
 static inline ssize_t
@@ -275,8 +276,10 @@ tapdisk_debug_queue(struct tqueue *queue)
 	struct tiocb *tiocb = queue->deferred.head;
 
 	DBG("TAPDISK QUEUE:\n");
-	DBG("size: %d, sync: %d, queued: %d, pending: %d\n",
-	    queue->size, queue->sync, queue->queued, queue->pending);
+	DBG("size: %d, sync: %d, queued: %d, iocbs_pending: %d, "
+	    "tiocbs_pending: %d\n",
+	    queue->size, queue->sync, queue->queued, queue->iocbs_pending,
+	    queue->tiocbs_pending);
 
 	if (tiocb) {
 		DBG("deferred:\n");
@@ -341,11 +344,13 @@ tapdisk_submit_tiocbs(struct tqueue *queue)
 	} else if (submitted < merged)
 		err = -EIO;
 
-	queue->queued   = 0;
-	queue->pending += submitted;
+	queue->iocbs_pending  += submitted;
+	queue->tiocbs_pending += queue->queued;
+	queue->queued          = 0;
 
 	if (err)
-		fail_tiocbs(queue, submitted, merged, err);
+		queue->tiocbs_pending -= 
+			fail_tiocbs(queue, submitted, merged, err);
 
 	return submitted;
 }
@@ -375,7 +380,9 @@ tapdisk_complete_tiocbs(struct tqueue *queue)
 	split = io_split(&queue->opioctx, queue->aio_events, ret);
 	tapdisk_filter_events(queue->filter, queue->aio_events, split);
 
-	queue->pending -= ret;
+	queue->iocbs_pending  -= ret;
+	queue->tiocbs_pending -= split;
+
 	for (i = split, ep = queue->aio_events; i-- > 0; ep++) {
 		iocb  = ep->obj;
 		tiocb = (struct tiocb *)iocb->data;

@@ -35,9 +35,16 @@ struct tqueue {
 	int                   dummy_pipe[2];
 
 	int                   queued;
-	int                   pending;
 	struct iocb         **iocbs;
 	struct io_event      *aio_events;
+
+	/* number of iocbs pending in the aio layer */
+	int                   iocbs_pending;
+
+	/* number of tiocbs pending in the queue -- 
+	 * this is likely to be larger than iocbs_pending 
+	 * due to request coalescing */
+	int                   tiocbs_pending;
 
 	/* iocbs may be deferred if the aio ring is full.
 	 * tapdisk_queue_complete will ensure deferred
@@ -62,7 +69,8 @@ struct tqueue {
  */
 #define tapdisk_queue_count(q) ((q)->queued)
 #define tapdisk_queue_empty(q) ((q)->queued == 0)
-#define tapdisk_queue_full(q)  (((q)->pending + (q)->queued) >= (q)->size)
+#define tapdisk_queue_full(q)  \
+	(((q)->tiocbs_pending + (q)->queued) >= (q)->size)
 int tapdisk_init_queue(struct tqueue *, int size, int sync,
 		       struct tlog *, struct tfilter *);
 void tapdisk_free_queue(struct tqueue *);
