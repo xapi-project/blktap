@@ -268,7 +268,13 @@ expand_event(struct opioctx *ctx,
 	io     = event->obj;
 	ophead = (struct opio *)io->data;
 	op     = ophead;
-	err    = (event->res == io->u.c.nbytes ? 0 : -EIO);
+
+	if (event->res == io->u.c.nbytes)
+		err = 0;
+	else if ((int)event->res < 0)
+		err = (int)event->res;
+	else
+		err = -EIO;
 
 	while (op) {
 		next    = op->next;
