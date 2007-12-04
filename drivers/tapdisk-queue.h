@@ -50,6 +50,7 @@ struct tqueue {
 	 * tapdisk_queue_complete will ensure deferred
 	 * iocbs are queued as slots become available. */
 	struct tlist          deferred;
+	int                   tiocbs_deferred;
 
 	/* optional tapdisk filter */
 	struct tfilter       *filter;

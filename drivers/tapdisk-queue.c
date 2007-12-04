@@ -58,6 +58,8 @@ defer_tiocb(struct tqueue *queue, struct tiocb *tiocb)
 		list->head = list->tail = tiocb;
 	else
 		list->tail = list->tail->next = tiocb;
+
+	queue->tiocbs_deferred++;
 }
 
 static inline void
@@ -73,6 +75,7 @@ queue_deferred_tiocb(struct tqueue *queue)
 			list->tail = NULL;
 
 		queue_tiocb(queue, tiocb);
+		queue->tiocbs_deferred--;
 	}
 }
 
@@ -277,9 +280,9 @@ tapdisk_debug_queue(struct tqueue *queue)
 
 	DBG("TAPDISK QUEUE:\n");
 	DBG("size: %d, sync: %d, queued: %d, iocbs_pending: %d, "
-	    "tiocbs_pending: %d\n",
+	    "tiocbs_pending: %d, tiocbs_deferred: %d\n",
 	    queue->size, queue->sync, queue->queued, queue->iocbs_pending,
-	    queue->tiocbs_pending);
+	    queue->tiocbs_pending, queue->tiocbs_deferred);
 
 	if (tiocb) {
 		DBG("deferred:\n");
