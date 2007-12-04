@@ -1500,10 +1500,13 @@ macx_encode_location(char *name, char **out, int *outlen)
 	ret     = NULL;
 	*out    = NULL;
 	*outlen = 0;
-	len     = strlen(name) + strlen("file://") + 1;
+	len     = strlen(name) + strlen("file://");
 
-	uri = urip = malloc(len);
-	uri_utf8 = uri_utf8p = malloc(len * 2);
+	ibl     = len;
+	obl     = len;
+
+	uri = urip = malloc(ibl + 1);
+	uri_utf8 = uri_utf8p = malloc(obl);
 
 	if (!uri || !uri_utf8)
 		return -ENOMEM;
@@ -1514,16 +1517,14 @@ macx_encode_location(char *name, char **out, int *outlen)
 		goto out;
 	}
 
-	ibl = len;
-	obl = len * 2;
 	sprintf(uri, "file://%s", name);
 
-	if (iconv(cd, &urip, &ibl, &uri_utf8p, &obl) == (size_t)-1 || ibl) {
+	if (iconv(cd, &urip, &ibl, &uri_utf8p, &obl) == (size_t)-1 ||
+	    ibl || obl) {
 		err = (errno ? -errno : -EIO);
 		goto out;
 	}
 
-	len = (len * 2) - obl;
 	ret = malloc(len);
 	if (!ret) {
 		err = -ENOMEM;
