@@ -1681,9 +1681,11 @@ w2u_decode_location(char *in, char *out, int len)
 	*out = '\0';
 
 	/* TODO: spaces */
-	while (tmp++ != out)
+	while (tmp != out) {
 		if (*tmp == '\\')
 			*tmp = '/';
+		tmp++;
+	}
 
 	if (strstr(name, "C:") == name || strstr(name, "c:") == name)
 		name += strlen("c:");
