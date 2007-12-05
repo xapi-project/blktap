@@ -48,7 +48,6 @@
 #include "vhd.h"
 #include "profile.h"
 #include "atomicio.h"
-#include "io-optimize.h"
 #include "relative-path.h"
 
 unsigned int SPB;
