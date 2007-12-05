@@ -1544,6 +1544,93 @@ macx_encode_location(char *name, char **out, int *outlen)
 	return err;
 }
 
+static int
+w2u_encode_location(char *name, char **out, int *outlen)
+{
+	iconv_t cd;
+	int len, err;
+	size_t ibl, obl;
+	char *uri, *urip, *uri_utf16, *uri_utf16p, *tmp, *ret;
+
+	err     = 0;
+	ret     = NULL;
+	*out    = NULL;
+	*outlen = 0;
+	cd      = (iconv_t) -1;
+
+	/* 
+	 * MICROSOFT_COMPAT
+	 * relative paths must start with ".\" 
+	 */
+	if (name[0] != '/') {
+		tmp = strstr(name, "./");
+		if (tmp == name)
+			tmp += strlen("./");
+		else
+			tmp = name;
+
+		err = asprintf(&uri, ".\\%s", tmp);
+	} else
+		err = asprintf(&uri, "%s", name);
+
+	if (err == -1)
+		return -ENOMEM;
+
+	tmp = uri;
+	while (*tmp != '\0') {
+		if (*tmp == '/')
+			*tmp = '\\';
+		tmp++;
+	}
+
+	len  = strlen(uri);
+	ibl  = len;
+	obl  = len * 2;
+	urip = uri;
+
+	uri_utf16 = uri_utf16p = malloc(obl);
+	if (!uri_utf16) {
+		err = -ENOMEM;
+		goto out;
+	}
+
+	/* 
+	 * MICROSOFT_COMPAT
+	 * little endian unicode here 
+	 */
+	cd = iconv_open("UTF-16LE", "ASCII");
+	if (cd == (iconv_t)-1) {
+		err = -errno;
+		goto out;
+	}
+
+	if (iconv(cd, &urip, &ibl, &uri_utf16p, &obl) == (size_t)-1 ||
+	    ibl || obl) {
+		err = (errno ? -errno : -EIO);
+		goto out;
+	}
+
+	len = len * 2;
+	ret = malloc(len);
+	if (!ret) {
+		err = -ENOMEM;
+		goto out;
+	}
+
+	memcpy(ret, uri_utf16, len);
+	*outlen = len;
+	*out    = ret;
+	err     = 0;
+
+ out:
+	free(uri);
+	free(uri_utf16);
+	if (cd != (iconv_t)-1)
+		iconv_close(cd);
+
+	return err;
+}
+
 static char *
 macx_decode_location(char *in, char *out, int len)
 {
@@ -1625,7 +1712,8 @@ vhd_get_parent_id(struct disk_driver *child_dd, struct disk_id *id)
 
 		loc = &child->hdr.loc[i];
 		if (loc->code != PLAT_CODE_MACX && 
-		    loc->code != PLAT_CODE_W2KU)
+		    loc->code != PLAT_CODE_W2KU &&
+		    loc->code != PLAT_CODE_W2RU)
 			continue;
 
 		if (lseek64(child->fd, loc->data_offset, 
@@ -1634,8 +1722,11 @@ vhd_get_parent_id(struct disk_driver *child_dd, struct disk_id *id)
 			continue;
 		}
 
-		/* data_space *should* be in sectors, 
-		 * but sometimes we find it in bytes */
+		/* 
+		 * MICROSOFT_COMPAT
+		 * data_space *should* be in sectors, 
+		 * but sometimes we find it in bytes 
+		 */
 		if (loc->data_space < 512)
 			size = loc->data_space << VHD_SECTOR_SHIFT;
 		else if (loc->data_space % 512 == 0)
@@ -1660,12 +1751,13 @@ vhd_get_parent_id(struct disk_driver *child_dd, struct disk_id *id)
 			err = -errno;
 			goto next;
 		}
-		
+
 		switch(loc->code) {
 		case PLAT_CODE_MACX:
 			name = macx_decode_location(raw, out, loc->data_len);
 			break;
 		case PLAT_CODE_W2KU:
+		case PLAT_CODE_W2RU:
 			name = w2u_decode_location(raw, out, loc->data_len);
 			break;
 		}
@@ -1997,12 +2089,23 @@ set_parent(struct vhd_state *child, struct vhd_state *parent,
 	if ((err = set_parent_name(child, file)) != 0)
 		goto out;
 
-	/* relative path */
+	/* relative path -- macx format */
 	err = macx_encode_location(relative_path, &loc, &len);
 	if (err)
 		goto out;
 
 	err = write_locator_entry(child, lidx++, loc, len, PLAT_CODE_MACX);
+	free(loc);
+
+	if (err)
+		goto out;
+
+	/* relative path -- w2ru format */
+	err = w2u_encode_location(relative_path, &loc, &len);
+	if (err)
+		goto out;
+
+	err = write_locator_entry(child, lidx++, loc, len, PLAT_CODE_W2RU);
 	free(loc);
 
 	if (err)
