@@ -211,4 +211,11 @@ int vhd_fill(char *name);
 int vhd_repair(struct disk_driver *dd);
 int vhd_read(struct disk_driver *dd, int argc, char *argv[]);
 
+#define UTF_16   "UTF-16"
+#define UTF_16LE "UTF-16LE"
+#define UTF_16BE "UTF-16BE"
+
+char *macx_decode_location(char *in, char *out, int len);
+char *w2u_decode_location(char *in, char *out, int len, char *utf_type);
+
 #endif

@@ -90,17 +90,24 @@ vhd_time_to_s(uint32_t timestamp, char *target)
 static void
 vhd_print_header(struct dd_hdr *h, int hex)
 {
-	char      uuid[37];
-	char      time_str[26];
 	uint32_t  cksm;
+	char      uuid[37], time_str[26], cookie[9], out[512], *name;
 
 	printf("VHD Header Summary:\n-------------------\n");
+
+	snprintf(cookie, 9, "%s", h->cookie);
+	printf("Cookie              : %s\n", cookie);
+
 	printf("Data offset (unusd) : %s\n", conv(hex, h->data_offset));
 	printf("Table offset        : %s\n", conv(hex, h->table_offset));
 	printf("Header version      : 0x%08x\n", h->hdr_ver);
 	printf("Max BAT size        : %s\n", conv(hex, h->max_bat_size));
 	printf("Block size          : %s ", conv(hex, h->block_size));
 	printf("(%s MB)\n", conv(hex, h->block_size >> 20));
+
+	name = w2u_decode_location(h->prt_name, out, 512, UTF_16BE);
+	printf("Parent name         : %s\n", (name ? : "failed to read name"));
+	free(name);
 
 	uuid_unparse(h->prt_uuid, uuid);
 	printf("Parent UUID         : %s\n", uuid);
@@ -116,15 +123,15 @@ vhd_print_header(struct dd_hdr *h, int hex)
 static void
 vhd_print_footer(struct hd_ftr *f, int hex)
 {
-	uint32_t  ff_maj, ff_min;
-	char      time_str[26];
-	char      creator[5];
-	uint32_t  cr_maj, cr_min;
 	uint64_t  c, h, s;
-	uint32_t  cksm, cksm_save;
-	char      uuid[37];
+	uint32_t  ff_maj, ff_min, cr_maj, cr_min, cksm, cksm_save;
+	char      time_str[26], creator[5], uuid[37], cookie[9];
 
 	printf("VHD Footer Summary:\n-------------------\n");
+
+	snprintf(cookie, 9, "%s", f->cookie);
+	printf("Cookie              : %s\n", cookie);
+
 	printf("Features            : (0x%08x) %s%s\n", f->features,
 		(f->features & HD_TEMPORARY) ? "<TEMP>" : "",
 		(f->features & HD_RESERVED)  ? "<RESV>" : "");
@@ -180,6 +187,126 @@ vhd_print_footer(struct hd_ftr *f, int hex)
 	printf("UUID                : %s\n", uuid);
 
 	printf("Saved state         : %s\n", f->saved == 0 ? "No" : "Yes");
+}
+
+static inline char *
+code_name(uint32_t code)
+{
+	switch(code) {
+	case PLAT_CODE_NONE:
+		return "PLAT_CODE_NONE";
+	case PLAT_CODE_WI2R:
+		return "PLAT_CODE_WI2R";
+	case PLAT_CODE_WI2K:
+		return "PLAT_CODE_WI2K";
+	case PLAT_CODE_W2RU:
+		return "PLAT_CODE_W2RU";
+	case PLAT_CODE_W2KU:
+		return "PLAT_CODE_W2KU";
+	case PLAT_CODE_MAC:
+		return "PLAT_CODE_MAC";
+	case PLAT_CODE_MACX:
+		return "PLAT_CODE_MACX";
+	default:
+		return "UNKOWN";
+	}
+}
+
+static void
+vhd_print_parent(int fd, struct prt_loc *loc)
+{
+	int i, size;
+	char *raw, *out, *name;
+
+	if (loc->code != PLAT_CODE_MACX &&
+	    loc->code != PLAT_CODE_W2RU &&
+	    loc->code != PLAT_CODE_W2KU)
+		return;
+
+	raw  = NULL;
+	out  = NULL;
+	name = NULL;
+
+	/* data_space *should* be in sectors,
+	 * but sometimes we find it in bytes */
+	if (loc->data_space < 512)
+		size = loc->data_space << VHD_SECTOR_SHIFT;
+	else if (loc->data_space % 512 == 0)
+		size = loc->data_space;
+	else {
+		printf("invalid data_space\n");
+		return;
+	}
+
+	if (lseek64(fd, loc->data_offset, SEEK_SET) == (off64_t)-1) {
+		printf("seek to %llu failed: %d\n", loc->data_offset, errno);
+		return;
+	}
+
+	if (posix_memalign((void **)&raw, 512, size)) {
+		printf("out of memory\n");
+		return;
+	}
+
+	if (read(fd, raw, size) != size) {
+		printf("read of parent name failed\n");
+		goto done;
+	}
+
+	out = malloc(loc->data_len + 1);
+	if (!out) {
+		printf("out of memory\n");
+		goto done;
+	}
+
+	switch(loc->code) {
+	case PLAT_CODE_MACX:
+		name = macx_decode_location(raw, out, loc->data_len);
+		break;
+	case PLAT_CODE_W2RU:
+	case PLAT_CODE_W2KU:
+		name = w2u_decode_location(raw, out, loc->data_len, UTF_16LE);
+		break;
+	}
+
+	if (name)
+		printf("       decoded name : %s\n", out);
+	else
+		printf("       decoding name failed\n");
+
+done:
+	free(raw);
+	free(out);
+	free(name);
+}
+
+static void
+vhd_print_parent_locators(int fd, struct dd_hdr *hdr, int hex)
+{
+	int i, n;
+	struct prt_loc *loc;
+
+	printf("VHD Parent Locators:\n--------------------\n");
+
+	n = sizeof(hdr->loc) / sizeof(struct prt_loc);
+	for (i = 0; i < n; i++) {
+		loc = &hdr->loc[i];
+
+		if (loc->code == PLAT_CODE_NONE)
+			continue;
+
+		printf("locator:            : %d\n", i);
+		printf("       code         : %s\n",
+		       code_name(loc->code));
+		printf("       data_space   : %s\n",
+		       conv(hex, loc->data_space));
+		printf("       data_length  : %s\n",
+		       conv(hex, loc->data_len));
+		printf("       data_offset  : %s\n",
+		       conv(hex, loc->data_offset));
+		vhd_print_parent(fd, loc);
+		printf("\n");
+	}
 }
 
 static void
@@ -332,6 +459,20 @@ vhd_print_headers(struct disk_driver *dd, struct vhd_info *info, int hex)
 		}
 		vhd_print_header(&header, hex);
 		printf("\n");
+
+		if (footer.type == HD_TYPE_DIFF) {
+			int fd;
+
+			fd = open(dd->name, O_RDONLY | O_LARGEFILE);
+			if (fd == -1) {
+				printf("failed to read parent locators\n");
+				return -errno;
+			}
+
+			vhd_print_parent_locators(fd, &header, hex);
+			printf("\n");
+			close(fd);
+		}
 
 		err = vhd_read_batmap(dd, &map_header, &map);
 		if (err) {

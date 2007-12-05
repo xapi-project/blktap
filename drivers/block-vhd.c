@@ -1631,7 +1631,7 @@ w2u_encode_location(char *name, char **out, int *outlen)
 	return err;
 }
 
-static char *
+char *
 macx_decode_location(char *in, char *out, int len)
 {
 	iconv_t cd;
@@ -1660,8 +1660,8 @@ macx_decode_location(char *in, char *out, int len)
 	return strdup(name);
 }
 
-static char *
-w2u_decode_location(char *in, char *out, int len)
+char *
+w2u_decode_location(char *in, char *out, int len, char *utf_type)
 {
 	iconv_t cd;
 	char *name, *tmp;
@@ -1670,7 +1670,7 @@ w2u_decode_location(char *in, char *out, int len)
 	tmp = name = out;
 	ibl = obl  = len;
 
-	cd = iconv_open("ASCII", "UTF-16");
+	cd = iconv_open("ASCII", utf_type);
 	if (cd == (iconv_t)-1) 
 		return NULL;
 
@@ -1760,7 +1760,8 @@ vhd_get_parent_id(struct disk_driver *child_dd, struct disk_id *id)
 			break;
 		case PLAT_CODE_W2KU:
 		case PLAT_CODE_W2RU:
-			name = w2u_decode_location(raw, out, loc->data_len);
+			name = w2u_decode_location(raw, out,
+						   loc->data_len, UTF_16LE);
 			break;
 		}
 
