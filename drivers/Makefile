@@ -42,6 +42,7 @@ BLK-OBJS  += vhd-fill.o
 BLK-OBJS  += vhd-read.o
 BLK-OBJS  += tapdisk-queue.o
 BLK-OBJS  += tapdisk-filter.o
+BLK-OBJS  += relative-path.o
 
 all: $(IBIN) lock-util $(VHD_UPDATE_UTIL)
 

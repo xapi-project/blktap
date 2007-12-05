@@ -49,6 +49,7 @@
 #include "profile.h"
 #include "atomicio.h"
 #include "io-optimize.h"
+#include "relative-path.h"
 
 unsigned int SPB;
 
@@ -1449,38 +1450,41 @@ vhd_validate_parent(struct disk_driver *child_dd,
 static char *
 find_parent(char *child, char *parent)
 {
-	int err;
 	struct stat stats;
-	char *location, *tmp;
+	char *location, *cpath, *cdir, *path;
+
+	cpath    = NULL;
+	location = NULL;
 
 	if (!child || !parent)
 		return NULL;
 
-	if (!stat(parent, &stats))
-		return strdup(parent);
-
-	if (parent[0] == '/')
+	if (parent[0] == '/') {
+		if (!stat(parent, &stats))
+			return strdup(parent);
 		return NULL;
+	}
 
-	/*
-	 * if parent path is relative, check relative to the
-	 * child's directory rather than the current working directory
-	 */
-	tmp = strrchr(child, '/');
-	if (!tmp)
-		return NULL;
+	/* check parent path relative to child's directory */
+	cpath = realpath(child, NULL);
+	if (!cpath)
+		goto out;
 
-	*tmp = '\0';
-	err  = asprintf(&location, "%s/%s", child, parent);
-	*tmp = '/';
+	cdir = dirname(cpath);
+	if (asprintf(&location, "%s/%s", cdir, parent) == -1) {
+		location = NULL;
+		goto out;
+	}
 
-	if (err == -1)
-		return NULL;
+	if (!stat(location, &stats)) {
+		path = realpath(location, NULL);
+		free(location);
+		return path;
+	}
 
-	if (!stat(location, &stats))
-		return location;
-
+out:
 	free(location);
+	free(cpath);
 	return NULL;
 }
 
@@ -1616,7 +1620,7 @@ vhd_get_parent_id(struct disk_driver *child_dd, struct disk_id *id)
 
 	n = sizeof(child->hdr.loc) / sizeof(struct prt_loc);
 	for (i = 0; i < n && !id->name; i++) {
-		raw = out = NULL;
+		raw = out = name = NULL;
 
 		loc = &child->hdr.loc[i];
 		if (loc->code != PLAT_CODE_MACX && 
@@ -1977,15 +1981,10 @@ set_parent(struct vhd_state *child, struct vhd_state *parent,
 		goto out;
 	}
 
-	if (parent_path[0] != '/')
-		relative_path = parent_path;
-	else {
-		/*
-		 * if we're given an absolute parent path, store a
-		 * relative path relative to the directory of the parent
-		 */
-		relative_path = strrchr(absolute_path, '/') + 1;
-	}
+	/* get the relative path from the child to the parent */
+	relative_path = relative_path_to(child->name, absolute_path, &err);
+	if (!relative_path || err)
+		goto out;
 
 	child->hdr.prt_ts = vhd_time(stats.st_mtime);
 	if (parent)
@@ -1997,19 +1996,16 @@ set_parent(struct vhd_state *child, struct vhd_state *parent,
 	if ((err = set_parent_name(child, file)) != 0)
 		goto out;
 
-	if (relative_path) {
-		/* relative path */
-		err = macx_encode_location(relative_path, &loc, &len);
-		if (err)
-			goto out;
+	/* relative path */
+	err = macx_encode_location(relative_path, &loc, &len);
+	if (err)
+		goto out;
 
-		err = write_locator_entry(child, lidx++, 
-					  loc, len, PLAT_CODE_MACX);
-		free(loc);
+	err = write_locator_entry(child, lidx++, loc, len, PLAT_CODE_MACX);
+	free(loc);
 
-		if (err)
-			goto out;
-	}
+	if (err)
+		goto out;
 
 	/* absolute path */
 	if ((err = macx_encode_location(absolute_path, &loc, &len)) != 0)
@@ -2020,6 +2016,7 @@ set_parent(struct vhd_state *child, struct vhd_state *parent,
 
  out:
 	free(absolute_path);
+	free(relative_path);
 	return err;
 }
 
@@ -2034,6 +2031,8 @@ __vhd_create(const char *name, uint64_t total_size,
 	u32 type, *bat = NULL;
 	int fd, spb, err, i, BLK_SHIFT, ret, sparse;
 
+	memset(&s, 0, sizeof(struct vhd_state));
+
 	sparse = test_vhd_flag(flags, VHD_FLAG_CR_SPARSE);
 	BLK_SHIFT = 21;   /* 2MB blocks */
 
@@ -2047,6 +2046,10 @@ __vhd_create(const char *name, uint64_t total_size,
 	type = ((sparse) ? HD_TYPE_DYNAMIC : HD_TYPE_FIXED);
 	if (sparse && backing_file)
 		type = HD_TYPE_DIFF;
+
+	s.name = strdup(name);
+	if (!s.name)
+		return -ENOMEM;
 
 	s.fd = fd = open(name, 
 			 O_WRONLY | O_CREAT | O_TRUNC | O_LARGEFILE, 0644);
@@ -2224,6 +2227,7 @@ __vhd_create(const char *name, uint64_t total_size,
 	err = 0;
 
 out:
+	free(s.name);
 	free(bat);
 	close(fd);
 	if (err)

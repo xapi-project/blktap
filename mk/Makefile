@@ -51,6 +51,8 @@ PROPRIETARY_SOURCE += drivers/vhd-read.c
 PROPRIETARY_SOURCE += drivers/tapdisk-queue.c
 PROPRIETARY_SOURCE += drivers/tapdisk-filter.c
 PROPRIETARY_SOURCE += drivers/vhd-update.c
+PROPRIETARY_SOURCE += drivers/relative-path.h
+PROPRIETARY_SOURCE += drivers/relative-path.c
 
 PROPRIETARY_C += $(filter drivers/%.c,$(PROPRIETARY_SOURCE))
 SOURCES += $(patsubst drivers/%.c,$(RPM_SOURCESDIR)/%.o,$(PROPRIETARY_C))
