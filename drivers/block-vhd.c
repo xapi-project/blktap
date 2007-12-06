@@ -935,6 +935,11 @@ vhd_read_batmap(int fd, struct vhd_state *s)
 		return 0;
 	}
 
+	if (s->batmap_hdr.batmap_version != VHD_BATMAP_CURRENT_VERSION) {
+		DPRINTF("unrecognized batmap version\n");
+		return 0;
+	}
+
 	batmap_bytes = s->batmap_hdr.batmap_size << VHD_SECTOR_SHIFT;
 	if (posix_memalign((void **)&s->bat.batmap, 512, batmap_bytes)) {
 		err = -ENOMEM;
@@ -1140,6 +1145,37 @@ alloc_bat(struct vhd_state *s)
 }
 
 static int
+vhd_check_version(struct vhd_state *s)
+{
+	if (!test_vhd_flag(s->flags, VHD_FLAG_OPEN_QUIET)) {
+		char buf[5];
+		snprintf(buf, sizeof(buf), "%s", s->ftr.crtr_app);
+		DPRINTF("%s version: %s 0x%08x\n",
+			s->name, buf, s->ftr.crtr_ver);
+	}
+
+	if (strncmp(s->ftr.crtr_app, "tap", 4))
+		return 0;
+
+	if (s->ftr.crtr_ver > VHD_CURRENT_VERSION) {
+		if (!test_vhd_flag(s->flags, VHD_FLAG_OPEN_QUIET))
+			DPRINTF("WARNING: %s vhd creator version 0x%08x, "
+				"but only versions up to 0x%08x are "
+				"supported for IO\n", s->name,
+				s->ftr.crtr_ver, VHD_CURRENT_VERSION);
+
+		/*
+		 * refuse to open unsupported tapdisk
+		 * versions for anything but queries 
+		 */
+		if (!test_vhd_flag(s->flags, VHD_FLAG_OPEN_QUERY))
+			return -EINVAL;
+	}
+
+	return 0;
+}
+
+static int
 bitmap_format(struct vhd_state *s)
 {
 	int format = BIG_ENDIAN;
@@ -1164,9 +1200,14 @@ __vhd_open(struct disk_driver *dd, const char *name, vhd_flag_t flags)
 	struct td_state  *tds = dd->td_state;
 	struct vhd_state *s   = (struct vhd_state *)dd->private;
 
+        DBG(TLOG_INFO, "vhd_open: %s\n", name);
+
 	memset(s, 0, sizeof(struct vhd_state));
 
-        DBG(TLOG_INFO, "vhd_open: %s\n", name);
+	s->flags = flags;
+	s->name  = strdup(name);
+	if (!s->name)
+		return -ENOMEM;
 
 	o_flags  = O_LARGEFILE | O_DIRECT;
 	o_flags |= ((test_vhd_flag(flags, VHD_FLAG_OPEN_RDONLY)) ? 
@@ -1196,9 +1237,9 @@ __vhd_open(struct disk_driver *dd, const char *name, vhd_flag_t flags)
                 return ret;
         }
 
-#if (DEBUGGING == 1)
-        debug_print_footer(&s->ftr);
-#endif
+	ret = vhd_check_version(s);
+	if (ret)
+		return ret;
 
 	s->spb = s->spp = 1;
 
@@ -1219,9 +1260,6 @@ __vhd_open(struct disk_driver *dd, const char *name, vhd_flag_t flags)
 			if (!test_vhd_flag(flags, VHD_FLAG_OPEN_QUERY))
 				return -EINVAL;
                 }
-#if (DEBUGGING == 1)
-                debug_print_header(&s->hdr);
-#endif
 
 		s->spp     = getpagesize() >> VHD_SECTOR_SHIFT;
                 s->spb     = s->hdr.block_size >> VHD_SECTOR_SHIFT;
@@ -1267,15 +1305,8 @@ __vhd_open(struct disk_driver *dd, const char *name, vhd_flag_t flags)
 	for (i = 0; i < VHD_REQS_DATA; i++)
 		s->vreq_free[i] = s->vreq_list + i;
 
-	s->name = strdup(name);
-	if (!s->name) {
-		ret = -ENOMEM;
-		goto fail;
-	}
-
 	s->dd            = dd;
 	s->fd            = fd;
-	s->flags         = flags;
 	s->bitmap_format = bitmap_format(s);
         tds->size        = s->ftr.curr_size >> VHD_SECTOR_SHIFT;
         tds->sector_size = VHD_SECTOR_SIZE;
@@ -1963,7 +1994,7 @@ add_batmap(struct vhd_state *s)
 	memcpy(s->batmap_hdr.cookie, VHD_BATMAP_COOKIE, 8);
 	s->batmap_hdr.batmap_size    = batmap_secs;
 	s->batmap_hdr.batmap_offset  = batmap_off;
-	s->batmap_hdr.batmap_version = VHD_BATMAP_VERSION;
+	s->batmap_hdr.batmap_version = VHD_BATMAP_CURRENT_VERSION;
 	s->batmap_hdr.checksum       = vhd_batmap_checksum(&s->batmap_hdr, buf);
 	memcpy(buf, &s->batmap_hdr, sizeof(struct dd_batmap_hdr));
 	hdr = (struct dd_batmap_hdr *)buf;
@@ -2167,7 +2198,7 @@ __vhd_create(const char *name, uint64_t total_size,
 	ftr->features     = HD_RESERVED;
 	ftr->ff_version   = HD_FF_VERSION;
 	ftr->timestamp    = vhd_time(time(NULL));
-	ftr->crtr_ver     = VHD_CREATOR_VERSION;
+	ftr->crtr_ver     = VHD_CURRENT_VERSION;
 	ftr->crtr_os      = 0x00000000;
 	ftr->orig_size    = size;
 	ftr->curr_size    = size;

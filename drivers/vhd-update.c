@@ -298,7 +298,7 @@ update_creator_version(struct vhd_update_ctx *ctx)
 	}
 
 	memcpy(buf, &ctx->footer, sizeof(struct hd_ftr));
-	((struct hd_ftr *)buf)->crtr_ver = VHD_CREATOR_VERSION;
+	((struct hd_ftr *)buf)->crtr_ver = VHD_VERSION_1_1;
 	vhd_footer_out((struct hd_ftr *)buf);
 
 	err = atomicio(vwrite, fd, buf, sizeof(struct hd_ftr));

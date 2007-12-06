@@ -63,7 +63,10 @@ static const char HD_COOKIE[9]  =  "conectix";
 #define HD_CR_OS_WINDOWS   0x5769326B /* (Wi2k) */
 #define HD_CR_OS_MACINTOSH 0x4D616320 /* (Mac ) */
 
-#define VHD_CREATOR_VERSION 0x00010001
+#define VHD_VERSION_0_1     0x00000001 /* little endian bitmaps */
+#define VHD_VERSION_1_1     0x00010001
+
+#define VHD_CURRENT_VERSION VHD_VERSION_1_1
 
 /* Disk geometry accessor macros. */
 /* Geometry is a triple of (cylinders (2 bytes), tracks (1 byte), and 
@@ -151,7 +154,9 @@ struct dd_batmap_hdr {
 };
 
 static const char VHD_BATMAP_COOKIE[9] = "tdbatmap";
-#define VHD_BATMAP_VERSION 0x00010001
+
+#define VHD_BATMAP_VERSION_1_1      0x00010001
+#define VHD_BATMAP_CURRENT_VERSION  VHD_BATMAP_VERSION_1_1
 
 /* Layout of a dynamic disk:
  *
