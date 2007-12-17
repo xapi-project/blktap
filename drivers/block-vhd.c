@@ -2087,11 +2087,15 @@ set_parent_name(struct vhd_state *child, char *pname)
 	int ret = 0;
 	size_t ibl, obl;
 
-	cd = iconv_open("UTF-16", "ASCII");
+	/*
+	 * MICROSOFT_COMPAT
+	 * big endian unicode here
+	 */
+	cd = iconv_open("UTF-16BE", "ASCII");
 	if (cd == (iconv_t)-1)
 		return -errno;
 
-	ibl = strlen(pname);
+	ibl = strlen(pname) + 1;
 	obl = sizeof(child->hdr.prt_name);
 	tmp = child->hdr.prt_name;
 
