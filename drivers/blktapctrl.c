@@ -551,6 +551,36 @@ static int write_msg(int fd, int msgtype, void *ptr, void *ptr2)
 	return len;
 }
 
+static int read_timeout(int fd, char *buf, size_t len, int timeout)
+{
+	fd_set readfds;
+	struct timeval tv;
+	int offset;
+	int ret;
+
+	tv.tv_sec = timeout;
+	tv.tv_usec = 0;
+
+	offset = 0;
+
+	while (offset < len) {
+		FD_ZERO(&readfds);
+		FD_SET(fd, &readfds);
+		/* we don't bother reinitializing tv. at worst, it will wait a
+		 * bit more time than expected. */
+		ret = select(fd + 1, &readfds, NULL, NULL, &tv);
+		if (ret == -1)
+			break;
+		else if (FD_ISSET(fd, &readfds)) {
+			ret = read(fd, buf + offset, len - offset);
+			if (ret <= 0) break;
+			offset += ret;
+		} else
+			break;
+	}
+	return (offset == len) ? len : 0;
+}
+
 static int read_msg(int fd, int msgtype, void *ptr)
 {
 	blkif_t *blkif;
@@ -559,8 +589,6 @@ static int read_msg(int fd, int msgtype, void *ptr)
 	msg_pid_t *msg_pid;
 	char *p, *buf;
 	int msglen = MSG_SIZE, len, ret;
-	fd_set readfds;
-	struct timeval timeout;
 	image_t *image, *img;
 
 
@@ -569,17 +597,11 @@ static int read_msg(int fd, int msgtype, void *ptr)
 	image = blkif->prv;
 
 	buf = malloc(MSG_SIZE);
+	if (!buf)
+		return -1;
 
-	ret = 0;
-	FD_ZERO(&readfds);
-	FD_SET(fd,&readfds);
-	timeout.tv_sec = max_timeout; /*Wait for up to max_timeout seconds*/ 
-	timeout.tv_usec = 0;
-	if (select(fd+1, &readfds,  (fd_set *) 0,
-		  (fd_set *) 0, &timeout) > 0) {
-		ret = read(fd, buf, msglen);
-	}			
-	if (ret > 0) {
+	ret = read_timeout(fd, buf, msglen, max_timeout);
+	if (ret == msglen) {
 		msg = (msg_hdr_t *)buf;
 		switch (msg->type)
 		{
