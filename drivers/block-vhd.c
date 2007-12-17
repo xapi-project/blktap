@@ -55,6 +55,7 @@ unsigned int SPB;
 #define DEBUGGING   2
 #define ASSERTING   1
 #define PREALLOCATE_BLOCKS 1
+#define MICROSOFT_COMPAT
 
 #define __TRACE(s)                                                             \
 do {                                                                           \
@@ -479,8 +480,20 @@ end_of_vhd_headers(struct vhd_state *s)
 		if (loc->code == PLAT_CODE_NONE)
 			continue;
 
-		loc_end = loc->data_offset +
-			(loc->data_space << VHD_SECTOR_SHIFT);
+		loc_end = loc->data_offset;
+
+		/*
+		 * MICROSOFT_COMPAT
+		 * data_space *should* be in sectors,
+		 * but sometimes we find it in bytes
+		 */
+		if (loc->data_space < 512)
+			loc_end += (loc->data_space << VHD_SECTOR_SHIFT);
+		else if (loc->data_space % 512 == 0)
+			loc_end += loc->data_space;
+		else
+			DPRINTF("invalid parent locator data_space: %u",
+				loc->data_space);
 
 		eom = MAX(eom, loc_end);
 	}
@@ -2045,7 +2058,16 @@ write_locator_entry(struct vhd_state *s, int idx,
 	loc              = &s->hdr.loc[idx];
 	loc->code        = type;
 	loc->data_len    = len;
+#ifdef MICROSOFT_COMPAT
+	/*
+	 * MICROSOFT_COMPAT
+	 * data_sace *should* be in sectors,
+	 * but viridian/virtual pc expect bytes
+	 */
+	loc->data_space  = secs_round_up_no_zero(len) << VHD_SECTOR_SHIFT;
+#else
 	loc->data_space  = secs_round_up_no_zero(len);
+#endif
 	loc->data_offset = end_of_vhd_headers(s);
 
 	if (lseek64(s->fd, loc->data_offset, SEEK_SET) == (off64_t)-1)
