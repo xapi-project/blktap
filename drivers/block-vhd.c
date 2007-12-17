@@ -2170,12 +2170,41 @@ set_parent(struct vhd_state *child, struct vhd_state *parent,
 	if (err)
 		goto out;
 
-	/* absolute path */
-	if ((err = macx_encode_location(absolute_path, &loc, &len)) != 0)
+#ifdef MICROSOFT_COMPAT
+	/*
+	 * MICROSOFT_COMPAT
+	 */
+
+	/* absolute path -- w2ku format */
+	err = w2u_encode_location(absolute_path, &loc, &len);
+	if (err)
+		goto out;
+
+	err = write_locator_entry(child, lidx++, loc, len, PLAT_CODE_W2KU);
+	free(loc);
+
+	if (err)
+		goto out;
+#endif
+
+#ifndef MICROSOFT_COMPAT
+	/*
+	 * MICROSOFT_COMPAT
+	 * viridian precludes two locators of the same type,
+	 * so we're limited to macx relative locators here
+	 */
+
+	/* absolute path -- macx format */
+	err = macx_encode_location(absolute_path, &loc, &len);
+	if (err)
 		goto out;
 
 	err = write_locator_entry(child, lidx++, loc, len, PLAT_CODE_MACX);
 	free(loc);
+
+	if (err)
+		goto out;
+#endif
 
  out:
 	free(absolute_path);
