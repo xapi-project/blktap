@@ -370,6 +370,36 @@ static int del_disktype(blkif_t *blkif)
 	return (!dtypes[type]->single_handler || (active_disks[type] == NULL));
 }
 
+static int write_timeout(int fd, char *buf, size_t len, int timeout)
+{
+	fd_set writefds;
+	struct timeval tv;
+	int offset;
+	int ret;
+
+	tv.tv_sec = timeout;
+	tv.tv_usec = 0;
+
+	offset = 0;
+
+	while (offset < len) {
+		FD_ZERO(&writefds);
+		FD_SET(fd, &writefds);
+		/* we don't bother reinitializing tv. at worst, it will wait a
+		 * bit more time than expected. */
+		ret = select(fd + 1, NULL, &writefds, NULL, &tv);
+		if (ret == -1)
+			break;
+		else if (FD_ISSET(fd, &writefds)) {
+			ret = write(fd, buf + offset, len - offset);
+			if (ret <= 0) break;
+			offset += ret;
+		} else
+			break;
+	}
+	return (offset == len) ? len : 0;
+}
+
 static int write_msg(int fd, int msgtype, void *ptr, void *ptr2)
 {
 	blkif_t *blkif;
@@ -381,8 +411,6 @@ static int write_msg(int fd, int msgtype, void *ptr, void *ptr2)
 	msg_lock_t *msg_lock;
 	char *buf, *path;
 	int msglen, len, ret;
-	fd_set writefds;
-	struct timeval timeout;
 	image_t *image, *img;
 	uint32_t seed;
 	struct cp_request *req;
@@ -535,19 +563,13 @@ static int write_msg(int fd, int msgtype, void *ptr, void *ptr2)
 	}
 
 	/*Now send the message*/
-	ret = 0;
-	FD_ZERO(&writefds);
-	FD_SET(fd,&writefds);
-	timeout.tv_sec = max_timeout; /*Wait for up to max_timeout seconds*/
-	timeout.tv_usec = 0;
-	if (select(fd+1, (fd_set *) 0, &writefds, 
-		  (fd_set *) 0, &timeout) > 0) {
-		len = write(fd, buf, msglen);
-		if (len == -1) DPRINTF("Write failed: (%d)\n",errno);
+	if (write_timeout(fd, buf, msglen, max_timeout) != msglen) {
+		DPRINTF("Write failed: (%d)\n", errno);
+		free(buf);
+		return -EIO;
 	}
 	free(buf);
-
-	return len;
+	return msglen;
 }
 
 static int read_timeout(int fd, char *buf, size_t len, int timeout)
