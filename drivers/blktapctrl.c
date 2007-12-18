@@ -412,7 +412,6 @@ static int write_msg(int fd, int msgtype, void *ptr, void *ptr2)
 		msg->len = msglen;
 		msg->drivertype = blkif->drivertype;
 
-		gettimeofday(&timeout, NULL);
 		msg->cookie = blkif->cookie;
 		DPRINTF("Generated cookie, %d\n",blkif->cookie);
 
