@@ -551,107 +551,133 @@ static int write_msg(int fd, int msgtype, void *ptr, void *ptr2)
 	return len;
 }
 
+static int read_timeout(int fd, char *buf, size_t len, int timeout)
+{
+	fd_set readfds;
+	struct timeval tv;
+	int offset;
+	int ret;
+
+	tv.tv_sec = timeout;
+	tv.tv_usec = 0;
+
+	offset = 0;
+
+	while (offset < len) {
+		FD_ZERO(&readfds);
+		FD_SET(fd, &readfds);
+		/* we don't bother reinitializing tv. at worst, it will wait a
+		 * bit more time than expected. */
+		ret = select(fd + 1, &readfds, NULL, NULL, &tv);
+		if (ret == -1)
+			break;
+		else if (FD_ISSET(fd, &readfds)) {
+			ret = read(fd, buf + offset, len - offset);
+			if (ret <= 0) break;
+			offset += ret;
+		} else
+			break;
+	}
+	return (offset == len) ? len : 0;
+}
+
 static int read_msg(int fd, int msgtype, void *ptr)
 {
 	blkif_t *blkif;
 	blkif_info_t *blk;
-	msg_hdr_t *msg;
-	msg_pid_t *msg_pid;
-	char *p, *buf;
-	int msglen = MSG_SIZE, len, ret;
-	fd_set readfds;
-	struct timeval timeout;
-	image_t *image, *img;
+	msg_hdr_t msg;
+	int ret;
+	image_t *image;
 
 
 	blkif = (blkif_t *)ptr;
 	blk = blkif->info;
 	image = blkif->prv;
 
-	buf = malloc(MSG_SIZE);
+	ret = read_timeout(fd, (char *) &msg, sizeof(msg_hdr_t), max_timeout);
+	if (ret == 0)
+		return -EIO;
 
-	ret = 0;
-	FD_ZERO(&readfds);
-	FD_SET(fd,&readfds);
-	timeout.tv_sec = max_timeout; /*Wait for up to max_timeout seconds*/ 
-	timeout.tv_usec = 0;
-	if (select(fd+1, &readfds,  (fd_set *) 0,
-		  (fd_set *) 0, &timeout) > 0) {
-		ret = read(fd, buf, msglen);
-	}			
-	if (ret > 0) {
-		msg = (msg_hdr_t *)buf;
-		switch (msg->type)
-		{
-		case CTLMSG_IMG:
-			img = (image_t *)(buf + sizeof(msg_hdr_t));
-			image->size = img->size;
-			image->secsize = img->secsize;
-			image->info = img->info;
+	switch (msg.type) {
+	case CTLMSG_IMG: {
+		image_t img;
+		ret = read_timeout(fd, (void *) &img, sizeof(image_t), max_timeout);
+		if (ret == 0)
+			return -EIO;
+		image->size = img.size;
+		image->secsize = img.secsize;
+		image->info = img.info;
 
-			DPRINTF("Received CTLMSG_IMG: %llu, %lu, %u\n",
-				image->size, image->secsize, image->info);
-			if(msgtype != CTLMSG_IMG) ret = 0;
-			break;
-			
-		case CTLMSG_IMG_FAIL:
-			DPRINTF("Received CTLMSG_IMG_FAIL, "
-				"unable to open image\n");
-			ret = 0;
-			break;
-				
-		case CTLMSG_NEWDEV_RSP:
-			DPRINTF("Received CTLMSG_NEWDEV_RSP\n");
-			if(msgtype != CTLMSG_NEWDEV_RSP) ret = 0;
-			break;
-			
-		case CTLMSG_NEWDEV_FAIL:
-			DPRINTF("Received CTLMSG_NEWDEV_FAIL\n");
-			ret = 0;
-			break;
-			
-		case CTLMSG_CLOSE_RSP:
-			DPRINTF("Received CTLMSG_CLOSE_RSP\n");
-			if (msgtype != CTLMSG_CLOSE_RSP) ret = 0;
-			break;
-
-		case CTLMSG_PID_RSP:
-			DPRINTF("Received CTLMSG_PID_RSP\n");
-			if (msgtype != CTLMSG_PID_RSP) ret = 0;
-			else {
-				msg_pid = (msg_pid_t *)
-					(buf + sizeof(msg_hdr_t));
-				blkif->tappid = msg_pid->pid;
-				DPRINTF("\tPID: [%d]\n",blkif->tappid);
-			}
-			break;
-
-		case CTLMSG_CHECKPOINT_RSP:
-			DPRINTF("Received CTLMSG_CHECKPOINT_RSP\n");
-			if (msgtype != CTLMSG_CHECKPOINT_RSP) 
-				ret = 0;
-			else
-				blkif->err = 
-					*((int *)(buf + sizeof(msg_hdr_t)));
-			break;
-
-		case CTLMSG_LOCK_RSP:
-			DPRINTF("Received CTLMSG_LOCK_RSP\n");
-			if (msgtype != CTLMSG_LOCK_RSP)
-				ret = 0;
-			else
-				blkif->err =
-					*((int *)(buf + sizeof(msg_hdr_t)));
-			break;
-
-		default:
-			DPRINTF("UNKNOWN MESSAGE TYPE RECEIVED\n");
-			ret = 0;
-			break;
+		DPRINTF("Received CTLMSG_IMG: %llu, %lu, %u\n",
+			image->size, image->secsize, image->info);
+		if(msgtype != CTLMSG_IMG) ret = 0;
+		break;
 		}
-	} 
-	
-	free(buf);
+	case CTLMSG_IMG_FAIL:
+		DPRINTF("Received CTLMSG_IMG_FAIL, "
+			"unable to open image\n");
+		ret = 0;
+		break;
+			
+	case CTLMSG_NEWDEV_RSP:
+		DPRINTF("Received CTLMSG_NEWDEV_RSP\n");
+		if(msgtype != CTLMSG_NEWDEV_RSP) ret = 0;
+		break;
+		
+	case CTLMSG_NEWDEV_FAIL:
+		DPRINTF("Received CTLMSG_NEWDEV_FAIL\n");
+		ret = 0;
+		break;
+		
+	case CTLMSG_CLOSE_RSP:
+		DPRINTF("Received CTLMSG_CLOSE_RSP\n");
+		if (msgtype != CTLMSG_CLOSE_RSP) ret = 0;
+		break;
+
+	case CTLMSG_PID_RSP:
+		DPRINTF("Received CTLMSG_PID_RSP\n");
+		if (msgtype != CTLMSG_PID_RSP) ret = 0;
+		else {
+			msg_pid_t msg_pid;
+			ret = read_timeout(fd, (char *) &msg_pid, sizeof(msg_pid_t), max_timeout);
+			if (ret == 0)
+				return -EIO;
+			blkif->tappid = msg_pid.pid;
+			DPRINTF("\tPID: [%d]\n",blkif->tappid);
+		}
+		break;
+
+	case CTLMSG_CHECKPOINT_RSP:
+		DPRINTF("Received CTLMSG_CHECKPOINT_RSP\n");
+		if (msgtype != CTLMSG_CHECKPOINT_RSP) 
+			ret = 0;
+		else {
+			int err;
+			ret = read_timeout(fd, (char *) &err, sizeof(int), max_timeout);
+			if (ret == 0)
+				return -EIO;
+			blkif->err = err;
+		}
+		break;
+
+	case CTLMSG_LOCK_RSP:
+		DPRINTF("Received CTLMSG_LOCK_RSP\n");
+		if (msgtype != CTLMSG_LOCK_RSP)
+			ret = 0;
+		else {
+			int err;
+			ret = read_timeout(fd, (char *) &err, sizeof(int), max_timeout);
+			if (ret == 0)
+				return -EIO;
+			blkif->err = err;
+		}
+		break;
+
+	default:
+		DPRINTF("UNKNOWN MESSAGE TYPE RECEIVED\n");
+		ret = 0;
+		break;
+	}
 	
 	return ret;
 
