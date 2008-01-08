@@ -240,7 +240,7 @@ int xs_fire_next_watch(struct xs_handle *h);
 
 
 /* Abitrary values, must match the underlying driver... */
-#define MAX_TAP_DEV 100
+#define MAX_TAP_DEV 256
 
 /* Accessing attached data page mappings */
 #define MMAP_PAGES                                              \
