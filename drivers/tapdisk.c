@@ -1448,7 +1448,7 @@ int main(int argc, char *argv[])
 
 	snprintf(openlogbuf, sizeof(openlogbuf), "TAPDISK[%d]", getpid());
 	openlog(openlogbuf, LOG_CONS|LOG_ODELAY, LOG_DAEMON);
-	log = alloc_tlog((256 << 10), TLOG_DBG);
+	log = alloc_tlog((64 << 10), TLOG_WARN);
 
 #define CORE_DUMP
 #if defined(CORE_DUMP)
