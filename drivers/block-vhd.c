@@ -1382,13 +1382,6 @@ vhd_close(struct disk_driver *dd)
 	struct vhd_state  *s = (struct vhd_state *)dd->private;
 	
 	DBG(TLOG_WARN, "vhd_close\n");
-	DBG(TLOG_WARN, "%s: QUEUED: %" PRIu64 ", COMPLETED: %" PRIu64 ", "
-	    "RETURNED: %" PRIu64 "\n", s->name, s->queued, s->completed,
-	    s->returned);
-	DBG(TLOG_WARN, "WRITES: %" PRIu64 ", AVG_WRITE_SIZE: %f" PRIu64 "\n",
-	    s->writes, (s->writes ? ((float)s->write_size / s->writes) : 0.0));
-	DBG(TLOG_WARN, "READS: %" PRIu64 ", AVG_READ_SIZE: %f" PRIu64 "\n",
-	    s->reads, (s->reads ? ((float)s->read_size / s->reads) : 0.0));
 
 	/* don't write footer if tapdisk is read-only */
 	if (dd->flags & TD_OPEN_RDONLY)
@@ -1447,6 +1440,8 @@ vhd_close(struct disk_driver *dd)
 		DPRINTF("ERROR: syncing file: %d\n", errno);
 	if (close(s->fd) == -1)
 		DPRINTF("ERROR: closing file: %d\n", errno);
+
+	TAP_PRINT_ERRORS();
 
 	tp_close(&s->tp);
 	
@@ -3957,6 +3952,14 @@ vhd_debug(struct disk_driver *dd)
 {
 	int i;
 	struct vhd_state *s = (struct vhd_state *)dd->private;
+
+	DBG(TLOG_WARN, "%s: QUEUED: %" PRIu64 ", COMPLETED: %" PRIu64 ", "
+	    "RETURNED: %" PRIu64 "\n", s->name, s->queued, s->completed,
+	    s->returned);
+	DBG(TLOG_WARN, "WRITES: %" PRIu64 ", AVG_WRITE_SIZE: %f\n",
+	    s->writes, (s->writes ? ((float)s->write_size / s->writes) : 0.0));
+	DBG(TLOG_WARN, "READS: %" PRIu64 ", AVG_READ_SIZE: %f\n",
+	    s->reads, (s->reads ? ((float)s->read_size / s->reads) : 0.0));
 
 	DBG(TLOG_WARN, "ALLOCATED REQUESTS: (%lu total)\n", VHD_REQS_DATA);
 	for (i = 0; i < VHD_REQS_DATA; i++) {
