@@ -32,21 +32,24 @@
 #ifndef __BLKTAPLIB_H__
 #define __BLKTAPLIB_H__
 
+#include <syslog.h>
 #include <xenctrl.h>
-#include <sys/user.h>
-#include <xen/xen.h>
 #include <xen/io/blkif.h>
-#include <xen/io/ring.h>
-#include <xs.h>
-#include <sys/types.h>
-#include <unistd.h>
+
+#if 1
+#define DPRINTF(_f, _a...) syslog(LOG_INFO, _f, ##_a)
+#else
+#define DPRINTF(_f, _a...) ((void)0)
+#endif
+
+#define EPRINTF(_f, _a...) syslog(LOG_ERR, "tap-err: " _f, ##_a)
 
 #define BLK_RING_SIZE __RING_SIZE((blkif_sring_t *)0, XC_PAGE_SIZE)
 
 /* size of the extra VMA area to map in attached pages. */
 #define BLKTAP_VMA_PAGES BLK_RING_SIZE
 
-/* blktap IOCTLs: These must correspond with the blktap driver ioctls*/
+/* blktap IOCTLs: These must correspond with the blktap driver ioctls */
 #define BLKTAP_IOCTL_KICK_FE         1
 #define BLKTAP_IOCTL_KICK_BE         2
 #define BLKTAP_IOCTL_SETMODE         3
@@ -79,13 +82,13 @@ static inline int BLKTAP_MODE_VALID(unsigned long arg)
 
 #define MAX_REQUESTS            BLK_RING_SIZE
 
-#define BLKTAP_IOCTL_KICK 1
+#define BLKTAP_IOCTL_KICK       1
 #define MAX_PENDING_REQS	BLK_RING_SIZE
-#define BLKTAP_DEV_DIR   "/dev/xen"
-#define BLKTAP_DEV_NAME  "blktap"
-#define BACKDEV_NAME     "backdev"
-#define BLKTAP_DEV_MINOR 0
-#define BLKTAP_CTRL_DIR   "/var/run/tap"
+#define BLKTAP_DEV_DIR          "/dev/xen"
+#define BLKTAP_DEV_NAME         "blktap"
+#define BACKDEV_NAME            "backdev"
+#define BLKTAP_DEV_MINOR        0
+#define BLKTAP_CTRL_DIR         "/var/run/tap"
 
 extern int blktap_major;
 
@@ -141,23 +144,6 @@ typedef struct blkif_info {
 	char *params;
 	int   readonly;
 } blkif_info_t;
-
-void register_new_devmap_hook(int (*fn)(blkif_t *blkif));
-void register_new_unmap_hook(int (*fn)(blkif_t *blkif));
-void register_new_blkif_hook(int (*fn)(blkif_t *blkif));
-void register_connected_blkif_hook(int (*fn)(blkif_t *blkif));
-void register_new_checkpoint_hook(int (*fn)(blkif_t *blkif, char *cp_uuid));
-void register_new_lock_hook(int (*fn)(blkif_t *blkif, char *lock, int enforce));
-blkif_t *blkif_find_by_handle(domid_t domid, unsigned int handle);
-blkif_t *alloc_blkif(domid_t domid);
-int blkif_init(blkif_t *blkif, long int handle, long int pdev);
-int blkif_connected(blkif_t *blkif);
-void blkif_unmap(blkif_t *blkif);
-int blkif_remap(blkif_t *blkif);
-int blkif_checkpoint(blkif_t *blkif, char *cp_uuid);
-int blkif_lock(blkif_t *blkif, char *lock, int enforce);
-void free_blkif(blkif_t *blkif);
-void __init_blkif(void);
 
 typedef struct tapdev_info {
 	int fd;
@@ -233,21 +219,15 @@ typedef struct msg_lock {
 #define CTLMSG_LOCK            13
 #define CTLMSG_LOCK_RSP        14
 
-/* xenstore/xenbus: */
-#define DOMNAME "Domain-0"
-int setup_probe_watch(struct xs_handle *h);
-int xs_fire_next_watch(struct xs_handle *h);
-
-
 /* Abitrary values, must match the underlying driver... */
 #define MAX_TAP_DEV 256
 
 /* Accessing attached data page mappings */
-#define MMAP_PAGES                                              \
+#define MMAP_PAGES                                                    \
     (MAX_PENDING_REQS * BLKIF_MAX_SEGMENTS_PER_REQUEST)
-#define MMAP_VADDR(_vstart,_req,_seg)                                   \
-    ((_vstart) +                                              \
-     ((_req) * BLKIF_MAX_SEGMENTS_PER_REQUEST * getpagesize()) +    \
+#define MMAP_VADDR(_vstart,_req,_seg)                                 \
+    ((_vstart) +                                                      \
+     ((_req) * BLKIF_MAX_SEGMENTS_PER_REQUEST * getpagesize()) +      \
      ((_seg) * getpagesize()))
 
 /* Defines that are only used by library clients */

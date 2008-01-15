@@ -1,7 +1,7 @@
 XEN_ROOT = ../../..
 include $(XEN_ROOT)/tools/Rules.mk
 
-IBIN            = blktapctrl tapdisk td-util
+IBIN            = tapdisk td-util
 LOCK_UTIL       = lock-util
 VHD_UPDATE_UTIL = vhd-update
 INST_DIR        = /usr/sbin
@@ -9,7 +9,7 @@ INST_DIR        = /usr/sbin
 CFLAGS   += -Werror -g
 CFLAGS   += -Wno-unused
 CFLAGS   += -fno-strict-aliasing
-CFLAGS   += -I../lib
+CFLAGS   += -I../include
 CFLAGS   += -D_GNU_SOURCE
 CFLAGS   += -DUSE_NFS_LOCKS
 
@@ -17,16 +17,12 @@ CFLAGS   += -DUSE_NFS_LOCKS
 CFLAGS   += -Wp,-MD,.$(@F).d
 DEPS      = .*.d
 
-blktapctrl:      LIBS += -L../lib
-blktapctrl:      LIBS += -lblktap -lxenctrl
-blktapctrl:      LIBS += -lxenstore
 tapdisk td-util vhd-update: LIBS += -luuid
 
 ifneq ($(USE_SYSTEM_LIBRARIES),y)
 LIBAIO_DIR = $(XEN_ROOT)/tools/libaio/src
 tapdisk td-util vhd-update: AIOLIBS := $(LIBAIO_DIR)/libaio.a
-blktapctrl:      CFLAGS  += -I$(LIBAIO_DIR) -I$(XEN_LIBXC) -I$(XEN_ROOT)/tools/xenstore
-blktapctrl:      LIBS    += -L$(XEN_LIBXC) -L$(XEN_XENSTORE)
+tapdisk td-util vhd-update: CFLAGS  += -I$(LIBAIO_DIR) -I$(XEN_LIBXC)
 else
 tapdisk td-util vhd-update: AIOLIBS := -laio
 endif
@@ -47,9 +43,6 @@ BLK-OBJS  += relative-path.o
 all: $(IBIN) lock-util $(VHD_UPDATE_UTIL)
 
 LINUX_ROOT := $(wildcard $(XEN_ROOT)/linux-2.6.*-xen-sparse)
-
-blktapctrl: blktapctrl.c
-	$(CC) $(CFLAGS) -o blktapctrl $(LIBS) blktapctrl.c
 
 tapdisk: $(BLK-OBJS) tapdisk.c
 	$(CC) $(CFLAGS) -o tapdisk $(BLK-OBJS) tapdisk.c \

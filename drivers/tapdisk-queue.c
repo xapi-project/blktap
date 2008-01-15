@@ -12,13 +12,6 @@
 #include "atomicio.h"
 #include "tapdisk-filter.h"
 
-#if 1
-#include <syslog.h>
-#define DPRINTF(_f, _a...) syslog(LOG_INFO, _f , ##_a)
-#else
-#define DPRINTF(_f, _a...) ((void)0)
-#endif
-
 static struct tlog *log;
 #define DBG(_f, _a...) tlog_write(log, TLOG_WARN, _f, ##_a)
 

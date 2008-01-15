@@ -66,14 +66,6 @@
 #include "tapdisk-filter.h"
 #include "disktypes.h"
 
-/*If enabled, log all debug messages to syslog*/
-#if 1
-#include <syslog.h>
-#define DPRINTF(_f, _a...) syslog(LOG_INFO, _f , ##_a)
-#else
-#define DPRINTF(_f, _a...) ((void)0)
-#endif
-
 /* Things disks need to know about, these should probably be in a higher-level
  * header. */
 #define MAX_SEGMENTS_PER_REQ     11

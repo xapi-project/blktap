@@ -1,8 +1,5 @@
 /*
- * xs_api.h
- *
  * (c) 2005 Andrew Warfield and Julian Chesterfield
- *
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License version 2
@@ -28,23 +25,57 @@
  * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS
  * IN THE SOFTWARE.
  */
+#include <errno.h>
+#include <fcntl.h>
+#include <unistd.h>
+#include <sys/stat.h>
+#include <sys/types.h>
 
-struct xenbus_watch
+#include "tapdisk-dispatch.h"
+
+int
+strsep_len(const char *str, char c, unsigned int len)
 {
-        struct list_head list;
-        char *node;
-        void (*callback)(struct xs_handle *h, 
-                         struct xenbus_watch *, 
-                         const  char *node);
-};
+	unsigned int i;
+	
+	for (i = 0; str[i]; i++)
+		if (str[i] == c) {
+			if (len == 0)
+				return i;
+			len--;
+		}
 
-int xs_gather(struct xs_handle *xs, const char *dir, ...);
-int xs_printf(struct xs_handle *h, const char *dir, const char *node, 
-	      const char *fmt, ...);
-int xs_exists(struct xs_handle *h, const char *path);
-char *get_dom_domid(struct xs_handle *h);
-int convert_dev_name_to_num(char *name);
-int register_xenbus_watch(struct xs_handle *h, struct xenbus_watch *watch);
-int unregister_xenbus_watch(struct xs_handle *h, struct xenbus_watch *watch);
-void reregister_xenbus_watches(struct xs_handle *h);
-int xs_fire_next_watch(struct xs_handle *h);
+	return (len == 0) ? i : -ERANGE;
+}
+
+void
+make_blktap_dev(char *devname, int major, int minor, int perm)
+{
+	struct stat st;
+	
+	if (lstat(devname, &st) == 0) {
+		DPRINTF("%s device already exists\n", devname);
+
+		/* it already exists, but is it the same major number */
+		if (((st.st_rdev>>8) & 0xff) == major)
+			return;
+
+		DPRINTF("%s has old major %d\n", devname,
+			(unsigned int)((st.st_rdev >> 8) & 0xff));
+
+		if (unlink(devname)) {
+			EPRINTF("unlink %s failed: %d\n", devname, errno);
+			/* only try again if we succed in deleting it */
+			return;
+		}
+	}
+
+	/* Need to create device */
+	if (mkdir(BLKTAP_DEV_DIR, 0755) == 0)
+		DPRINTF("Created %s directory\n", BLKTAP_DEV_DIR);
+
+	if (mknod(devname, perm, makedev(major, minor)) == 0)
+		DPRINTF("Created %s device\n", devname);
+	else
+		EPRINTF("mknod %s failed: %d\n", devname, errno);
+}

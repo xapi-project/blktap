@@ -62,6 +62,7 @@ rm -rf $RPM_BUILD_ROOT
 %doc
 %{_libdir}/libblktap.so.*
 %{_sbindir}/blktapctrl
+%{_sbindir}/tapdisk-control
 %{_sbindir}/tapdisk
 %{_sbindir}/td-util
 %{_sbindir}/lock-util

@@ -1,13 +1,13 @@
-XEN_ROOT = ../../..
+XEN_ROOT = ../../../..
 include $(XEN_ROOT)/tools/Rules.mk
 
-MAJOR    = 3.0
+MAJOR    = 3.1
 MINOR    = 0
 SONAME   = libblktap.so.$(MAJOR)
 
 BLKTAP_INSTALL_DIR = /usr/sbin
 
-LIBS     := -lxenstore -lz
+LIBS     := -lxenstore
 
 ifneq ($(USE_SYSTEM_LIBRARIES),y)
 INCLUDES += -I $(XEN_LIBXC) -I $(XEN_XENSTORE)
@@ -15,13 +15,15 @@ LIBS     += -L$(XEN_XENSTORE)
 endif
 
 SRCS     :=
-SRCS     += xenbus.c blkif.c xs_api.c
+SRCS     += xs_api.c
 
 CFLAGS   += -Werror
 CFLAGS   += -Wno-unused
 CFLAGS   += -fno-strict-aliasing -fPIC
 # get asprintf():
 CFLAGS   += -D _GNU_SOURCE
+CFLAGS   += -g
+CFLAGS   += -I../../include
 
 # Get gcc to generate the dependencies for us.
 CFLAGS  += -Wp,-MD,.$(@F).d
@@ -43,11 +45,9 @@ libblktap: libblktap.a
 
 install: all
 	$(INSTALL_DIR) -p $(DESTDIR)/usr/$(LIBDIR)
-	$(INSTALL_DIR) -p $(DESTDIR)/usr/include
 	$(INSTALL_PROG) $(LIB) $(DESTDIR)/usr/$(LIBDIR)
 	ln -sf libblktap.so.$(MAJOR).$(MINOR) $(DESTDIR)/usr/$(LIBDIR)/libblktap.so.$(MAJOR)
 	ln -sf libblktap.so.$(MAJOR) $(DESTDIR)/usr/$(LIBDIR)/libblktap.so
-	$(INSTALL_PROG) blktaplib.h $(DESTDIR)/usr/include
 
 clean:
 	rm -rf *.a *.so* *.o *.rpm $(LIB) *~ $(DEPS) xen TAGS

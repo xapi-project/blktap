@@ -37,17 +37,11 @@
 #include <signal.h>
 #include <sys/stat.h>
 #include <sys/types.h>
-#include <sys/poll.h>
 #include <unistd.h>
 #include <errno.h>
-#include <pthread.h>
 #include <time.h>
-#include <err.h>
-#include <poll.h>
-#include <sys/statvfs.h>
 #include <sys/ioctl.h>
 #include <linux/fs.h>
-#include <sys/resource.h>
 
 #include "blktaplib.h"
 #include "tapdisk.h"
@@ -57,9 +51,14 @@
 //#define TAPDISK_FILTER (TD_CHECK_INTEGRITY | TD_INJECT_FAULTS)
 
 #if 1                                                                        
-#define ASSERT(_p) \
-    if ( !(_p) ) { DPRINTF("Assertion '%s' failed, line %d, file %s", #_p , \
-    __LINE__, __FILE__); *(int*)0=0; }
+#define ASSERT(_p)                                                         \
+do {                                                                       \
+	if (!(_p)) {                                                       \
+		DPRINTF("Assertion '%s' failed, line %d, file %s", #_p ,   \
+			__LINE__, __FILE__);                               \
+		*(int*)0 = 0;                                              \
+	}                                                                  \
+} while (0)
 #else
 #define ASSERT(_p) ((void)0)
 #endif 
@@ -316,7 +315,7 @@ static int map_new_dev(struct td_state *s, int minor)
 	tap_fd = open(devname, O_RDWR);
 	if (tap_fd == -1) 
 	{
-		DPRINTF("open failed on dev %s!",devname);
+		EPRINTF("open failed on dev %s: %d", devname, errno);
 		goto fail;
 	} 
 	info->fd = tap_fd;
@@ -327,7 +326,7 @@ static int map_new_dev(struct td_state *s, int minor)
 			  PROT_READ | PROT_WRITE, MAP_SHARED, info->fd, 0);
 	if ((long int)info->mem == -1) 
 	{
-		DPRINTF("mmap failed on dev %s!\n",devname);
+		EPRINTF("mmap failed on dev %s!\n", devname);
 		goto fail;
 	}
 
@@ -391,9 +390,6 @@ static void unmap_disk(struct td_state *s)
 		dd = tmp;
 	}
 
-	if (info != NULL && info->mem > 0)
-	        munmap(info->mem, getpagesize() * BLKTAP_MMAP_REGION_SIZE);
-
 	entry = s->fd_entry;
 	*entry->pprev = entry->next;
 	if (entry->next)
@@ -401,6 +397,9 @@ static void unmap_disk(struct td_state *s)
 
 	close(info->fd);
 	--connected_disks;
+
+	if (info != NULL && info->mem > 0)
+	        munmap(info->mem, getpagesize() * BLKTAP_MMAP_REGION_SIZE);
 
 	TAP_PRINT_ERRORS();
 
@@ -481,7 +480,7 @@ static int open_disk(struct td_state *s,
 	}
 
  fail:
-	DPRINTF("failed opening disk\n");
+	EPRINTF("failed opening disk\n");
 	if (id.name)
 		free(id.name);
 	d = s->disks;
@@ -625,19 +624,19 @@ static int lock_disk(struct disk_driver *dd)
 
 	if (!(s->flags & TD_LOCK_ENFORCE)) {
 		if (!ret) {
-			DPRINTF("TAPDISK LOCK ERROR: lock %s did not exist "
+			EPRINTF("TAPDISK LOCK ERROR: lock %s did not exist "
 				"for %s: ret %d, err %d\n", s->lock_uuid,
 				dd->name, ret, err);
 			unlock(dd->name, s->lock_uuid, s->lock_ro, &ret);
 		} else if (ret < 0)
-			DPRINTF("TAPDISK LOCK ERROR: failed to renew lock %s "
+			EPRINTF("TAPDISK LOCK ERROR: failed to renew lock %s "
 				"for %s: ret %d, err %d\n", s->lock_uuid,
 				dd->name, ret, err);
 		return 10;
 	}
 
 	if (!ret) {
-		DPRINTF("ERROR: VDI %s has been tampered with, "
+		EPRINTF("ERROR: VDI %s has been tampered with, "
 			"closing queue! (err = %d)\n", dd->name, err);
 		unlock(dd->name, s->lock_uuid, s->lock_ro, &ret);
 		kill_queue(s);
@@ -770,11 +769,11 @@ static int checkpoint(struct td_state *s)
 	chmod(snap, orig_mode);
  fail_rename:
 	if (rename(snap, orig))
-		DPRINTF("ERROR taking checkpoint, unable to revert!\n");
+		EPRINTF("ERROR taking checkpoint, unable to revert!\n");
  fail_close:
 	free_driver(child);
 	if (parent->drv->td_open(parent, orig, 0))
-		DPRINTF("ERROR taking checkpoint, unable to revert!\n");
+		EPRINTF("ERROR taking checkpoint, unable to revert!\n");
  out:
 	free(s->cp_uuid);
 	s->cp_uuid = NULL;
@@ -920,11 +919,11 @@ static int read_msg(char *buf)
 			if (!s)
 				goto cp_fail;
 			if (s->cp_uuid) {
-				DPRINTF("concurrent checkpoints requested\n");
+				EPRINTF("concurrent checkpoints requested\n");
 				goto cp_fail;
 			}
 			if (queue_closed(s)) {
-				DPRINTF("checkpoint fail: queue closed\n");
+				EPRINTF("checkpoint fail: queue closed\n");
 				goto cp_fail;
 			}
 
@@ -960,7 +959,7 @@ static int read_msg(char *buf)
 			ret = -EINVAL;
 
 #ifndef USE_NFS_LOCKS
-			DPRINTF("locking support not enabled!\n");
+			EPRINTF("locking support not enabled!\n");
 			goto lock_out;
 #endif
 
@@ -1260,7 +1259,7 @@ static int queue_request(struct td_state *s, blkif_request_t *req)
 
 			break;
 		default:
-			DPRINTF("Unknown block operation\n");
+			EPRINTF("Unknown block operation\n");
 			break;
 		}
 		sector_nr += nsects;
@@ -1355,7 +1354,7 @@ static void issue_requests(struct td_state *s)
 
 		if (!queue_closed(s)) {
 			if (reopen_disks(s)) {
-				DPRINTF("reopening disks failed\n");
+				EPRINTF("reopening disks failed\n");
 				kill_queue(s);
 			} else 
 				DPRINTF("reopening disks succeeded\n");
@@ -1452,13 +1451,14 @@ int main(int argc, char *argv[])
 
 #define CORE_DUMP
 #if defined(CORE_DUMP)
+#include <sys/resource.h>
 	{
 		/* set up core-dumps*/
 		struct rlimit rlim;
 		rlim.rlim_cur = RLIM_INFINITY;
 		rlim.rlim_max = RLIM_INFINITY;
 		if (setrlimit(RLIMIT_CORE, &rlim) < 0)
-			DPRINTF("setrlimit failed: %d\n", errno);
+			EPRINTF("setrlimit failed: %d\n", errno);
 	}
 #endif
 
@@ -1472,14 +1472,14 @@ int main(int argc, char *argv[])
 	fds[WRITE] = open(argv[2],O_RDWR|O_NONBLOCK);
 
 	if (fds[READ] < 0 || fds[WRITE] < 0) {
-		DPRINTF("FD open failed [%d,%d]\n", fds[READ], fds[WRITE]);
+		EPRINTF("FD open failed [%d,%d]\n", fds[READ], fds[WRITE]);
 		exit(-1);
 	}
 
 	buf = calloc(MSG_SIZE, 1);
 
 	if (buf == NULL) {
-		DPRINTF("ERROR: allocating memory.\n");
+		EPRINTF("ERROR: allocating memory.\n");
 		exit(-1);
 	}
 

@@ -4,8 +4,9 @@ XEN_ROOT = ../..
 include $(XEN_ROOT)/tools/Rules.mk
 
 SUBDIRS-y :=
-SUBDIRS-y += lib
+SUBDIRS-y += include
 SUBDIRS-y += drivers
+SUBDIRS-y += daemon
 
 .PHONY: all
 all: build
