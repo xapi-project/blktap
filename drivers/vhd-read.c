@@ -509,7 +509,7 @@ vhd_print_logical_to_physical(struct disk_driver *dd, struct vhd_info *info,
 		offset = info->bat[blk];
 
 		if (offset != DD_BLK_UNUSED) {
-			offset  += lsec;
+			offset  += lsec + 1;
 			offset <<= SECTOR_SHIFT;
 		}
 
