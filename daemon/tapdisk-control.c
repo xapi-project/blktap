@@ -40,7 +40,7 @@
 #include "disktypes.h"
 
 #define MSG_SIZE     4096
-#define MAX_TIMEOUT  120
+#define MAX_TIMEOUT  300
 
 static int blktap_ctlfd;
 
