@@ -89,6 +89,21 @@ get_be_id(const char *str)
 }
 
 static void
+tapdisk_xenbus_error(struct xs_handle *h, char *path, char *message)
+{
+	char *dir;
+
+	if (asprintf(&dir, "%s/tapdisk-error", path) == -1) {
+		EPRINTF("%s: failed to write %s\n", __func__, message);
+		return;
+	}
+
+	xs_write(h, XBT_NULL, dir, message, strlen(message));
+
+	free(dir);
+}
+
+static void
 tapdisk_remove_backend(char *path)
 {
 	struct backend_info *be;
@@ -306,7 +321,8 @@ tapdisk_add_blkif(struct xs_handle *h, struct backend_info *be)
 
 	blkif = alloc_blkif(be->frontend_id);
 	if (blkif == NULL)
-		return -ENOMEM;
+		goto fail;
+
 
 	blkif->be_id        = get_be_id(bepath);
 	blkif->backend_path = bepath;
@@ -356,9 +372,11 @@ tapdisk_add_blkif(struct xs_handle *h, struct backend_info *be)
 	return 0;
 
  fail:
+	tapdisk_xenbus_error(h, bepath, "initializing tapdisk blkif");
+
 	if (be->blkif)
 		free_blkif(be->blkif);
-	else {
+	else if (blkif) {
 		if (blkif->info) {
 			free(blkif->info->params);
 			free(blkif->info);
@@ -403,6 +421,7 @@ tapdisk_add_backend(struct xs_handle *h, char *path)
 	return be;
 
 fail:
+	tapdisk_xenbus_error(h, path, "initializing tapdisk backend");
 	free(be->backpath);
 	free(be->frontpath);
 	free(be);
