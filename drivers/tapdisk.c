@@ -1016,11 +1016,29 @@ static inline int write_rsp_to_ring(struct td_state *s, blkif_response_t *rsp)
 	return 0;
 }
 
+#define NFS_WINDOW 524288 /* (16 rpc slots * 32K NFS window) */
+static inline int should_kick(struct td_state *s)
+{
+	tapdev_info_t *info = s->ring_info;
+
+	if (info->fe_ring.rsp_prod_pvt == info->fe_ring.sring->rsp_prod)
+		return 0;
+
+	if (s->disks && s->disks->storage == TAPDISK_STORAGE_TYPE_NFS) {
+		/* if we've already saturated NFS,
+		   don't kick now to improve batching */
+		if ((s->pending_data << 9) >= NFS_WINDOW)
+			return 0;
+	}
+
+	return 1;
+}
+
 static inline void kick_responses(struct td_state *s)
 {
 	tapdev_info_t *info = s->ring_info;
 
-	if (info->fe_ring.rsp_prod_pvt != info->fe_ring.sring->rsp_prod) {
+	if (should_kick(s)) {
 		int n      = (info->fe_ring.rsp_prod_pvt - 
 			      info->fe_ring.sring->rsp_prod);
 		s->kicked += n;
@@ -1101,6 +1119,7 @@ int send_responses(struct disk_driver *dd, int res,
 		}
 	}
 
+	s->pending_data     -= secs_done;
 	preq->secs_pending  -= secs_done;
 	if (res) {
 		preq->status = BLKIF_RSP_ERROR;
@@ -1236,6 +1255,7 @@ static int queue_request(struct td_state *s, blkif_request_t *req)
 					   (unsigned long)req->id, i);
 		page += (req->seg[i].first_sect << SECTOR_SHIFT);
 		preq->secs_pending += nsects;
+		s->pending_data    += nsects;
 		
 		switch (req->operation)	{
 		case BLKIF_OP_WRITE:

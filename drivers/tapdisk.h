@@ -145,6 +145,7 @@ struct td_state {
 
 	struct tqueue queue;
 	struct disk_driver *disks;
+	uint64_t pending_data;
 };
 
 /* Prototype of the callback to activate as requests complete.              */
