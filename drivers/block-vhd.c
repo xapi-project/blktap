@@ -54,7 +54,6 @@ unsigned int SPB;
 
 #define DEBUGGING   2
 #define ASSERTING   1
-#define PREALLOCATE_BLOCKS 1
 #define MICROSOFT_COMPAT
 
 #define __TRACE(s)                                                             \
@@ -119,6 +118,7 @@ static struct tlog *log;
 #define VHD_FLAG_OPEN_QUIET          4
 #define VHD_FLAG_OPEN_STRICT         8
 #define VHD_FLAG_OPEN_QUERY          16
+#define VHD_FLAG_OPEN_PREALLOCATE    32
 
 #define VHD_FLAG_BAT_LOCKED          1
 #define VHD_FLAG_BAT_WRITE_STARTED   2
@@ -235,10 +235,9 @@ struct vhd_state {
 
 	struct disk_driver   *dd;
 
-#if (PREALLOCATE_BLOCKS == 1)
+	/* used for block preallocation */
 	char                 *zeros;
 	int                   zsize;
-#endif
 
 	/* debug info */
 	struct profile_info   tp;
@@ -1111,12 +1110,13 @@ free_bat(struct vhd_state *s)
 	free(s->bat.bat);
 	free(s->bat.req.buf);
 	free(s->bat.batmap);
-#if (PREALLOCATE_BLOCKS == 1)
-	free(s->zeros);
-	s->zeros = NULL;
-#else
-	free(s->bat.zero_req.buf);
-#endif
+
+	if (test_vhd_flag(s->flags, VHD_FLAG_OPEN_PREALLOCATE)) {
+		free(s->zeros);
+		s->zeros = NULL;
+	} else
+		free(s->bat.zero_req.buf);
+
 	memset(&s->bat, 0, sizeof(struct vhd_bat));
 }
 
@@ -1130,22 +1130,23 @@ alloc_bat(struct vhd_state *s)
 	if (!s->bat.bat)
 		return -ENOMEM;
 
-#if (PREALLOCATE_BLOCKS == 1)
-	s->zsize = ((getpagesize() >> VHD_SECTOR_SHIFT) + s->spb) 
-				   << VHD_SECTOR_SHIFT;
-	if (posix_memalign((void **)&s->zeros, VHD_SECTOR_SIZE, s->zsize)) {
-		free_bat(s);
-		return -ENOMEM;
+	if (test_vhd_flag(s->flags, VHD_FLAG_OPEN_PREALLOCATE)) {
+		s->zsize = (((getpagesize() >> VHD_SECTOR_SHIFT) + s->spb) 
+			    << VHD_SECTOR_SHIFT);
+		if (posix_memalign((void **)&s->zeros,
+				   VHD_SECTOR_SIZE, s->zsize)) {
+			free_bat(s);
+			return -ENOMEM;
+		}
+		memset(s->zeros, 0, s->zsize);
+	} else {
+		if (posix_memalign((void **)&s->bat.zero_req.buf,
+				   VHD_SECTOR_SIZE, psize)) {
+			free_bat(s);
+			return -ENOMEM;
+		}
+		memset(s->bat.zero_req.buf, 0, psize);
 	}
-	memset(s->zeros, 0, s->zsize);
-#else
-	if (posix_memalign((void **)&s->bat.zero_req.buf,
-			   VHD_SECTOR_SIZE, psize)) {
-		free_bat(s);
-		return -ENOMEM;
-	}
-	memset(s->bat.zero_req.buf, 0, psize);
-#endif
 
 	if (posix_memalign((void **)&s->bat.req.buf, 
 			   VHD_SECTOR_SIZE, VHD_SECTOR_SIZE)) {
@@ -1368,6 +1369,10 @@ vhd_open (struct disk_driver *dd, const char *name, td_flag_t flags)
 			      VHD_FLAG_OPEN_QUIET  |
 			      VHD_FLAG_OPEN_RDONLY |
 			      VHD_FLAG_OPEN_NO_CACHE);
+
+	/* pre-allocate for all but NFS storage */
+	if (dd->storage != TAPDISK_STORAGE_TYPE_NFS)
+		vhd_flags |= VHD_FLAG_OPEN_PREALLOCATE;
 
 	return __vhd_open(dd, name, vhd_flags);
 }
@@ -2958,7 +2963,6 @@ update_bat(struct vhd_state *s, uint32_t blk)
 	return 0;
 }
 
-#if (PREALLOCATE_BLOCKS == 1)
 static int
 allocate_block(struct vhd_state *s, uint32_t blk)
 {
@@ -3028,7 +3032,6 @@ allocate_block(struct vhd_state *s, uint32_t blk)
 
 	return 0;
 }
-#endif
 
 static int 
 schedule_data_read(struct vhd_state *s, uint64_t sector,
@@ -3107,11 +3110,11 @@ schedule_data_write(struct vhd_state *s, uint64_t sector,
 	offset = bat_entry(s, blk);
 
 	if (test_vhd_flag(flags, VHD_FLAG_REQ_UPDATE_BAT)) {
-#if (PREALLOCATE_BLOCKS == 1)
-		err = allocate_block(s, blk);
-#else
-		err = update_bat(s, blk);
-#endif
+		if (test_vhd_flag(s->flags, VHD_FLAG_OPEN_PREALLOCATE))
+			err = allocate_block(s, blk);
+		else
+			err = update_bat(s, blk);
+
 		if (err)
 			return err;
 
@@ -3587,16 +3590,16 @@ finish_bitmap_transaction(struct disk_driver *dd,
 	tx->error = (tx->error ? tx->error : error);
 	map_size  = s->bm_secs << VHD_SECTOR_SHIFT;
 
-#if (PREALLOCATE_BLOCKS != 1)
-	if (test_vhd_flag(tx->status, VHD_FLAG_TX_UPDATE_BAT)) {
-		/* still waiting for bat write */
-		ASSERT(bm->blk == s->bat.pbw_blk);
-		ASSERT(test_vhd_flag(s->bat.status, 
-				     VHD_FLAG_BAT_WRITE_STARTED));
-		s->bat.req.tx = tx;
-		return 0;
+	if (!test_vhd_flag(s->flags, VHD_FLAG_OPEN_PREALLOCATE)) {
+		if (test_vhd_flag(tx->status, VHD_FLAG_TX_UPDATE_BAT)) {
+			/* still waiting for bat write */
+			ASSERT(bm->blk == s->bat.pbw_blk);
+			ASSERT(test_vhd_flag(s->bat.status, 
+					     VHD_FLAG_BAT_WRITE_STARTED));
+			s->bat.req.tx = tx;
+			return 0;
+		}
 	}
-#endif
 
 	if (tx->error) {
 		/* undo changes to shadow */
@@ -3668,16 +3671,16 @@ finish_bat_write(struct disk_driver *dd, struct vhd_request *req)
 	} else
 		tx->error = req->error;
 
-#if (PREALLOCATE_BLOCKS == 1)
-	tx->finished++;
-	remove_from_req_list(&tx->requests, req);
-	if (transaction_completed(tx))
-		finish_data_transaction(dd, bm);
-#else
-	clear_vhd_flag(tx->status, VHD_FLAG_TX_UPDATE_BAT);
-	if (s->bat.req.tx)
-		rsp += finish_bitmap_transaction(dd, bm, req->error);
-#endif
+	if (test_vhd_flag(s->flags, VHD_FLAG_OPEN_PREALLOCATE)) {
+		tx->finished++;
+		remove_from_req_list(&tx->requests, req);
+		if (transaction_completed(tx))
+			finish_data_transaction(dd, bm);
+	} else {
+		clear_vhd_flag(tx->status, VHD_FLAG_TX_UPDATE_BAT);
+		if (s->bat.req.tx)
+			rsp += finish_bitmap_transaction(dd, bm, req->error);
+	}
 
 	finish_bat_transaction(s, bm);
 
