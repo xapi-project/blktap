@@ -406,8 +406,8 @@ static void unmap_disk(struct td_state *s)
 	return;
 }
 
-static int open_disk(struct td_state *s, 
-		     struct tap_disk *drv, char *path, td_flag_t flags)
+static int open_disk(struct td_state *s, struct tap_disk *drv,
+		     char *path, td_flag_t flags, int storage)
 {
 	char *dup;
 	int err, iocbs;
@@ -424,6 +424,7 @@ static int open_disk(struct td_state *s,
 	if (!d)
 		return -ENOMEM;
 
+	d->storage = storage;
 	err = d->drv->td_open(d, path, flags);
 	if (err) {
 		free_driver(d);
@@ -449,6 +450,7 @@ static int open_disk(struct td_state *s,
 		if (!new)
 			goto fail;
 
+		new->storage = storage;
 		err = new->drv->td_open(new, new->name, pflags);
 		if (err) {
 			free_driver(new);
@@ -797,6 +799,7 @@ static int read_msg(char *buf)
 	int ret = -1;
 	struct td_state *s = NULL;
 	fd_list_entry_t *entry;
+	td_flag_t flags;
 
 	length = read(fds[READ], buf, MSG_SIZE);
 
@@ -831,9 +834,8 @@ static int read_msg(char *buf)
 				goto params_done;
 
 			/*Open file*/
-			ret = open_disk(s, drv, path, 
-					((msg_p->readonly) ?
-					 TD_OPEN_RDONLY : 0));
+			flags = (msg_p->readonly ? TD_OPEN_RDONLY : 0);
+			ret   = open_disk(s, drv, path, flags, msg_p->storage);
 			if (ret)
 				goto params_done;
 

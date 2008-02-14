@@ -103,6 +103,33 @@ tapdisk_xenbus_error(struct xs_handle *h, char *path, char *message)
 	free(dir);
 }
 
+static int
+get_storage_type(struct xs_handle *h, const char *bepath)
+{
+	int type;
+	unsigned int len;
+	char *path, *stype;
+
+	type = TAPDISK_STORAGE_TYPE_DEFAULT;
+
+	if (asprintf(&path, "%s/sm-data/storage-type", bepath) == -1)
+		return type;
+
+	stype = xs_read(h, XBT_NULL, path, &len);
+	if (!stype)
+		goto out;
+	else if (!strcmp(stype, "nfs"))
+		type = TAPDISK_STORAGE_TYPE_NFS;
+	else if (!strcmp(stype, "ext"))
+		type = TAPDISK_STORAGE_TYPE_EXT;
+
+out:
+	free(path);
+	free(stype);
+
+	return type;
+}
+
 static void
 tapdisk_remove_backend(char *path)
 {
@@ -344,6 +371,8 @@ tapdisk_add_blkif(struct xs_handle *h, struct backend_info *be)
 
 	if (mode == 'r')
 		blkif->info->readonly = 1;
+
+	blkif->info->storage = get_storage_type(h, bepath);
 
 	if (!be->pdev)
 		/* Dev number was not available, try to set manually */

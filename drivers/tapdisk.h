@@ -115,6 +115,7 @@ struct disk_id {
 struct disk_driver {
 	int early;
 	char *name;
+	int storage;
 	void *private;
 	td_flag_t flags;
 	int io_fd[MAX_IOFD];

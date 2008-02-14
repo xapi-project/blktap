@@ -143,6 +143,7 @@ typedef struct blkif {
 typedef struct blkif_info {
 	char *params;
 	int   readonly;
+	int   storage;
 } blkif_info_t;
 
 typedef struct tapdev_info {
@@ -176,6 +177,7 @@ typedef struct msg_params {
 	uint8_t    readonly;
 	int        path_off;
 	int        path_len;
+	int        storage;
 } msg_params_t;
 
 typedef struct msg_newdev {
@@ -218,6 +220,10 @@ typedef struct msg_lock {
 #define CTLMSG_CHECKPOINT_RSP  12
 #define CTLMSG_LOCK            13
 #define CTLMSG_LOCK_RSP        14
+
+#define TAPDISK_STORAGE_TYPE_NFS       1
+#define TAPDISK_STORAGE_TYPE_EXT       2
+#define TAPDISK_STORAGE_TYPE_DEFAULT   TAPDISK_STORAGE_TYPE_EXT
 
 /* Abitrary values, must match the underlying driver... */
 #define MAX_TAP_DEV 256
