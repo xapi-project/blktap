@@ -1124,9 +1124,10 @@ static int
 alloc_bat(struct vhd_state *s)
 {
 	int psize = getpagesize();
+	int secs  = secs_round_up(s->hdr.max_bat_size * sizeof(u32));
 
 	memset(&s->bat, 0, sizeof(struct vhd_bat));
-	s->bat.bat = calloc(1, s->hdr.max_bat_size * sizeof(u32));
+	s->bat.bat = calloc(1, secs << VHD_SECTOR_SHIFT);
 	if (!s->bat.bat)
 		return -ENOMEM;
 
