@@ -1335,6 +1335,13 @@ static void retry_requests(struct td_state *s)
 			continue;
 		}
 
+		if (preq->num_retries >= TD_MAX_RETRIES && !preq->submitting) {
+			DBG(TLOG_INFO, "req %"PRIu64" retried %d times\n",
+			    preq->req.id, preq->num_retries);
+			make_response(s, preq);
+			continue;
+		}
+
 		preq->num_retries++;
 		preq->status = BLKIF_RSP_OKAY;
 		DBG(TLOG_DBG, "retry #%d of req %" PRIu64 ", "
