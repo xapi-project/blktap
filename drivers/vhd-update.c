@@ -319,8 +319,10 @@ update_creator_version(struct vhd_update_ctx *ctx)
 	}
 
 	err = atomicio(vwrite, fd, buf, sizeof(struct hd_ftr));
-	if (err != sizeof(struct hd_ftr))
+	if (err != sizeof(struct hd_ftr)) {
 		err = -errno;
+		goto out;
+	}
 
 	err = 0;
 
