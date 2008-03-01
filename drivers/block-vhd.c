@@ -43,6 +43,7 @@
 #include <endian.h>
 #include <byteswap.h>
 #include <inttypes.h>
+#include <sys/mman.h>
 
 #include "tapdisk.h"
 #include "vhd.h"
@@ -1112,7 +1113,7 @@ free_bat(struct vhd_state *s)
 	free(s->bat.batmap);
 
 	if (test_vhd_flag(s->flags, VHD_FLAG_OPEN_PREALLOCATE)) {
-		free(s->zeros);
+		munmap(s->zeros, s->zsize);
 		s->zeros = NULL;
 	} else
 		free(s->bat.zero_req.buf);
@@ -1132,14 +1133,13 @@ alloc_bat(struct vhd_state *s)
 		return -ENOMEM;
 
 	if (test_vhd_flag(s->flags, VHD_FLAG_OPEN_PREALLOCATE)) {
-		s->zsize = (((getpagesize() >> VHD_SECTOR_SHIFT) + s->spb) 
-			    << VHD_SECTOR_SHIFT);
-		if (posix_memalign((void **)&s->zeros,
-				   VHD_SECTOR_SIZE, s->zsize)) {
+		s->zsize = (s->spb << VHD_SECTOR_SHIFT) + psize;
+		s->zeros = mmap(0, s->zsize, PROT_READ,
+				MAP_SHARED | MAP_ANONYMOUS, -1, 0);
+		if (s->zeros == MAP_FAILED) {
 			free_bat(s);
 			return -ENOMEM;
 		}
-		memset(s->zeros, 0, s->zsize);
 	} else {
 		if (posix_memalign((void **)&s->bat.zero_req.buf,
 				   VHD_SECTOR_SIZE, psize)) {
