@@ -43,8 +43,6 @@
 #include <endian.h>
 #include <byteswap.h>
 #include <inttypes.h>
-#include <sys/uio.h>
-#include <limits.h>
 
 #include "tapdisk.h"
 #include "vhd.h"
@@ -238,8 +236,8 @@ struct vhd_state {
 	struct disk_driver   *dd;
 
 	/* used for block preallocation */
-	char                 *zpage;
-	struct iovec          ziov[IOV_MAX];
+	char                 *zeros;
+	int                   zsize;
 
 	/* debug info */
 	struct profile_info   tp;
@@ -1107,83 +1105,16 @@ vhd_read_bat(int fd, struct vhd_state *s)
 }
 
 static void
-free_zeros(struct vhd_state *s)
-{
-	free(s->zpage);
-	s->zpage = NULL;
-	memset(s->ziov, 0, sizeof(s->ziov));
-}
-
-static int
-alloc_zeros(struct vhd_state *s)
-{
-	int i, psize = getpagesize();
-
-	if (posix_memalign((void **)&s->zpage, psize, psize)) {
-		s->zpage = NULL;
-		return -ENOMEM;
-	}
-
-	memset(s->zpage, 0, psize);
-
-	for (i = 0; i < IOV_MAX; i++) {
-		s->ziov[i].iov_base = s->zpage;
-		s->ziov[i].iov_len  = psize;
-	}
-
-	return 0;
-}
-
-static int
-write_zeros(struct vhd_state *s, off64_t offset, uint32_t secs)
-{
-	struct iovec *last;
-	int err, spp, psize, pages, partial;
-
-	err     = 0;
-	psize   = getpagesize();
-	spp     = psize >> VHD_SECTOR_SHIFT;
-	pages   = secs / spp;
-	partial = secs % spp;
-	last    = NULL;
-
-	if (secs > IOV_MAX * spp)
-		return -ERANGE;
-
-	if (partial) {
-		last          = &s->ziov[pages++];
-		last->iov_len = partial << VHD_SECTOR_SHIFT;
-	}
-
-	if (lseek64(s->fd, offset, SEEK_SET) == (off64_t)-1) {
-		err = -errno;
-		goto out;
-	}
-
-	if (writev(s->fd, s->ziov, pages) != secs << VHD_SECTOR_SHIFT) {
-		err = (errno ? -errno : -EIO);
-		DBG(TLOG_WARN, "writev failed: %d\n", err);
-		TAP_ERROR(err, "writev failed");
-		goto out;
-	}
-
-out:
-	if (last)
-		last->iov_len = psize;
-
-	return err;
-}
-
-static void
 free_bat(struct vhd_state *s)
 {
 	free(s->bat.bat);
 	free(s->bat.req.buf);
 	free(s->bat.batmap);
 
-	if (test_vhd_flag(s->flags, VHD_FLAG_OPEN_PREALLOCATE))
-		free_zeros(s);
-	else
+	if (test_vhd_flag(s->flags, VHD_FLAG_OPEN_PREALLOCATE)) {
+		free(s->zeros);
+		s->zeros = NULL;
+	} else
 		free(s->bat.zero_req.buf);
 
 	memset(&s->bat, 0, sizeof(struct vhd_bat));
@@ -1201,10 +1132,14 @@ alloc_bat(struct vhd_state *s)
 		return -ENOMEM;
 
 	if (test_vhd_flag(s->flags, VHD_FLAG_OPEN_PREALLOCATE)) {
-		if (alloc_zeros(s)) {
+		s->zsize = (((getpagesize() >> VHD_SECTOR_SHIFT) + s->spb) 
+			    << VHD_SECTOR_SHIFT);
+		if (posix_memalign((void **)&s->zeros,
+				   VHD_SECTOR_SIZE, s->zsize)) {
 			free_bat(s);
 			return -ENOMEM;
 		}
+		memset(s->zeros, 0, s->zsize);
 	} else {
 		if (posix_memalign((void **)&s->bat.zero_req.buf,
 				   VHD_SECTOR_SIZE, psize)) {
@@ -3032,8 +2967,8 @@ update_bat(struct vhd_state *s, uint32_t blk)
 static int
 allocate_block(struct vhd_state *s, uint32_t blk)
 {
-	off64_t offset;
-	int err, gap, secs;
+	int err, gap;
+	uint64_t offset, size;
 	struct vhd_bitmap *bm;
 
 	ASSERT(bat_entry(s, blk) == DD_BLK_UNUSED);
@@ -3059,11 +2994,23 @@ allocate_block(struct vhd_state *s, uint32_t blk)
 
 	DBG(TLOG_DBG, "blk: %u, pbwo: %" PRIu64 "\n", blk, s->bat.pbw_offset);
 
-	secs = s->spb + s->bm_secs + gap;
-	err  = write_zeros(s, offset, secs);
-	if (err) {
-		DBG(TLOG_WARN, "write_zeros failed: %d\n", err);
-		TAP_ERROR(err, "write_zeros failed");
+	if (lseek(s->fd, offset, SEEK_SET) == (off_t)-1) {
+		DBG(TLOG_WARN, "lseek failed: %d\n", errno);
+		TAP_ERROR(errno, "lseek failed");
+		return -errno;
+	}
+
+	size = ((u64)(s->spb + s->bm_secs + gap)) << VHD_SECTOR_SHIFT;
+	if (size > s->zsize) {
+		DPRINTF("ERROR: size: %" PRIx64 ", zsize: %x, gap: %d\n",
+			size, s->zsize, gap);
+		size = s->zsize;
+	}
+
+	if ((err = write(s->fd, s->zeros, size)) != size) {
+		err = (err == -1 ? -errno : -EIO);
+		DBG(TLOG_WARN, "write failed: %d\n", err);
+		TAP_ERROR(err, "write failed");
 		return err;
 	}
 
