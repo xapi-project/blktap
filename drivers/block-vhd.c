@@ -1113,7 +1113,8 @@ free_bat(struct vhd_state *s)
 	free(s->bat.batmap);
 
 	if (test_vhd_flag(s->flags, VHD_FLAG_OPEN_PREALLOCATE)) {
-		munmap(s->zeros, s->zsize);
+		if (s->zeros)
+			munmap(s->zeros, s->zsize);
 		s->zeros = NULL;
 	} else
 		free(s->bat.zero_req.buf);
@@ -1137,6 +1138,7 @@ alloc_bat(struct vhd_state *s)
 		s->zeros = mmap(0, s->zsize, PROT_READ,
 				MAP_SHARED | MAP_ANONYMOUS, -1, 0);
 		if (s->zeros == MAP_FAILED) {
+			s->zeros = NULL;
 			free_bat(s);
 			return -ENOMEM;
 		}
