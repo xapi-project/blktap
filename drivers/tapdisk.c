@@ -129,9 +129,11 @@ void inline debug_disks(struct td_state *s)
 	struct disk_driver *dd;
 
 	DBG(TLOG_WARN, "flags: 0x%08x, %lu reqs pending, "
-	    "received: %lu, returned: %lu, kicked: %lu\n",
-	    s->flags, (s->received - s->kicked),
+	    "retries: %lu, received: %lu, returned: %lu, kicked: %lu\n",
+	    s->flags, (s->received - s->kicked), s->retries,
 	    s->received, s->returned, s->kicked);
+	DBG(TLOG_WARN, "last queue activity at %010ld.%06ld\n",
+	    s->ts.tv_sec, s->ts.tv_usec);
 
 	tapdisk_debug_queue(&s->queue);
 	td_for_each_disk(s, dd)
@@ -380,6 +382,8 @@ static void unmap_disk(struct td_state *s)
 		DPRINTF("%s: req_prod: %u, req_cons: %u\n", __func__,
 			info->fe_ring.sring->req_prod,
 			info->fe_ring.req_cons);
+
+	DPRINTF("%s: %ld retries\n", __func__, s->retries);
 
 	dd = s->disks;
 	while (dd) {
@@ -1342,6 +1346,7 @@ static void retry_requests(struct td_state *s)
 			continue;
 		}
 
+		s->retries++;
 		preq->num_retries++;
 		preq->status = BLKIF_RSP_OKAY;
 		DBG(TLOG_DBG, "retry #%d of req %" PRIu64 ", "

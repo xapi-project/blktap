@@ -139,7 +139,7 @@ struct td_state {
 	unsigned long      sector_size;
 	unsigned long long size;
 	unsigned int       info;
-	unsigned long received, returned, kicked;
+	unsigned long retries, received, returned, kicked;
 	struct timeval ts;
 	int dumped_log;
 
