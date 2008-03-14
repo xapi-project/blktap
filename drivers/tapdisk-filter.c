@@ -10,7 +10,7 @@
 #include <syslog.h>
 #include <sys/time.h>
 
-#include "profile.h"
+#include "tapdisk-log.h"
 #include "tapdisk-filter.h"
 
 #define RSEED      7
@@ -20,8 +20,7 @@
 #define WRITE_INTEGRITY   "buffer integrity failure after write"
 #define READ_INTEGRITY    "disk integrity failure after read"
 
-static struct tlog *log;
-#define DBG(f, a...) tlog_write(log, TLOG_WARN, f, ##a)
+#define DBG(f, a...) tlog_write(TLOG_WARN, f, ##a)
 
 /*
  * simulate IO errors by knocking request size to zero before
@@ -146,7 +145,7 @@ check_data(struct tfilter *filter, int type, struct iocb *io)
 }
 
 struct tfilter *
-tapdisk_init_tfilter(int mode, int iocbs, uint64_t secs, struct tlog *log)
+tapdisk_init_tfilter(int mode, int iocbs, uint64_t secs)
 {
 	int i;
 	struct tfilter *filter = NULL;

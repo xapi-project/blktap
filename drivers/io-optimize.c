@@ -12,10 +12,10 @@
 #include <inttypes.h>
 
 #include "io-optimize.h"
-#include "profile.h"
+#include "tapdisk-log.h"
 
 #if (!defined(TEST) && defined(DEBUG))
-#define DBG(ctx, f, a...) tlog_write((ctx)->log, TLOG_DBG, f, ##a)
+#define DBG(ctx, f, a...) tlog_write(TLOG_DBG, f, ##a)
 #elif defined(TEST)
 #define DBG(ctx, f, a...) printf(f, ##a)
 #else
@@ -35,7 +35,7 @@ opio_free(struct opioctx *ctx)
 }
 
 int
-opio_init(struct opioctx *ctx, int num_iocbs, struct tlog *log)
+opio_init(struct opioctx *ctx, int num_iocbs)
 {
 	int i;
 
@@ -43,7 +43,6 @@ opio_init(struct opioctx *ctx, int num_iocbs, struct tlog *log)
 
 	ctx->num_opios     = num_iocbs;
 	ctx->free_opio_cnt = num_iocbs;
-	ctx->log           = log;
 	ctx->opios         = calloc(1, sizeof(struct opio) * num_iocbs);
 	ctx->free_opios    = calloc(1, sizeof(struct opio *) * num_iocbs);
 	ctx->iocb_queue    = calloc(1, sizeof(struct iocb *) * num_iocbs);

@@ -78,7 +78,7 @@ init_vhd_context(struct vhd_context *ctx, struct disk_driver *dd)
 	ctx->error    = tapdisk_init_queue(queue,
 					   TAPDISK_DATA_REQUESTS + 
 					   dd->drv->private_iocbs,
-					   0, NULL, NULL);
+					   0, NULL);
 	if (ctx->error)
 		goto fail;
 

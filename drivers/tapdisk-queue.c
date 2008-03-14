@@ -5,15 +5,15 @@
  */
 
 #include <errno.h>
+#include <stdlib.h>
+#include <unistd.h>
 #include <libaio.h>
 
 #include "tapdisk.h"
-#include "profile.h"
 #include "atomicio.h"
-#include "tapdisk-filter.h"
 
-static struct tlog *log;
-#define DBG(_f, _a...) tlog_write(log, TLOG_WARN, _f, ##_a)
+#define DBG(_f, _a...) tlog_write(TLOG_WARN, _f, ##_a)
+#define ERR(_err, _f, _a...) tlog_error(_err, _f, ##_a)
 
 /*
  * We used a kernel patch to return an fd associated with the AIO context
@@ -127,8 +127,8 @@ cancel_tiocbs(struct tqueue *queue, int err)
 static int
 fail_tiocbs(struct tqueue *queue, int succeeded, int total, int err)
 {
-	TAP_ERROR(err, "io_submit error: %d of %d failed",
-		  total - succeeded, total);
+	ERR(err, "io_submit error: %d of %d failed",
+	    total - succeeded, total);
 
 	/* take any non-submitted, merged iocbs 
 	 * off of the queue, split them, and fail them */
@@ -195,8 +195,8 @@ io_synchronous_rw(struct tqueue *queue)
 }
 
 int
-tapdisk_init_queue(struct tqueue *queue, int size, int sync,
-		   struct tlog *tlog, struct tfilter *filter)
+tapdisk_init_queue(struct tqueue *queue, int size,
+		   int sync, struct tfilter *filter)
 {
 	int i, err;
 
@@ -205,7 +205,6 @@ tapdisk_init_queue(struct tqueue *queue, int size, int sync,
 	queue->size   = size;
 	queue->sync   = sync;
 	queue->filter = filter;
-	queue->log    = log = tlog;
 
 	if (sync) {
 		/* set up a pipe so we can return
@@ -241,7 +240,7 @@ tapdisk_init_queue(struct tqueue *queue, int size, int sync,
 	if (!queue->iocbs || !queue->aio_events)
 		goto fail;
 
-	err = opio_init(&queue->opioctx, size, tlog);
+	err = opio_init(&queue->opioctx, size);
 	if (err)
 		goto fail;
 

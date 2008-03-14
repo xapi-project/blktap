@@ -60,11 +60,11 @@
 #include <time.h>
 #include <stdint.h>
 
-#include "profile.h"
+#include "disktypes.h"
 #include "blktaplib.h"
+#include "tapdisk-log.h"
 #include "tapdisk-queue.h"
 #include "tapdisk-filter.h"
-#include "disktypes.h"
 
 /* Things disks need to know about, these should probably be in a higher-level
  * header. */
@@ -122,7 +122,6 @@ struct disk_driver {
 	struct tap_disk *drv;
 	struct td_state *td_state;
 	struct disk_driver *next;
-	struct tlog *log;
 };
 
 /* This structure represents the state of an active virtual disk.           */

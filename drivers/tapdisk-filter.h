@@ -9,8 +9,6 @@
 #include <inttypes.h>
 #include <time.h>
 
-struct tlog;
-
 #define TD_INJECT_FAULTS     0x00001  /* simulate random IO failures */
 #define TD_CHECK_INTEGRITY   0x00002  /* check data integrity */
 
@@ -36,12 +34,9 @@ struct tfilter {
 	int                  ffree;
 	struct fiocb        *fiocbs;
 	struct fiocb       **flist;
-
-	struct tlog         *log;
 };
 
-struct tfilter *tapdisk_init_tfilter(int mode, int iocbs,
-				     uint64_t secs, struct tlog *);
+struct tfilter *tapdisk_init_tfilter(int mode, int iocbs, uint64_t secs);
 void tapdisk_free_tfilter(struct tfilter *);
 void tapdisk_filter_iocbs(struct tfilter *, struct iocb **, int);
 void tapdisk_filter_events(struct tfilter *, struct io_event *, int);

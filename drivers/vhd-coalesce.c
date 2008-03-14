@@ -136,7 +136,7 @@ init_ctx(struct vhd_context *ctx,
 					MAX_AIO_REQUESTS + 
 					child->drv->private_iocbs +
 					parent->drv->private_iocbs,
-					0, NULL, NULL);
+					0, NULL);
 	if (ctx->error)
 		return ctx->error;
 

@@ -43,10 +43,9 @@
 #include <sys/ioctl.h>
 #include <linux/fs.h>
 
-#include "blktaplib.h"
-#include "tapdisk.h"
 #include "lock.h"
-#include "profile.h"
+#include "tapdisk.h"
+#include "blktaplib.h"
 
 //#define TAPDISK_FILTER (TD_CHECK_INTEGRITY | TD_INJECT_FAULTS)
 
@@ -70,8 +69,8 @@ typedef struct fd_list_entry {
 	struct fd_list_entry **pprev, *next;
 } fd_list_entry_t;
 
-static struct tlog *log;
-#define DBG(level, _f, _a...) tlog_write(log, level, _f, ##_a)
+#define DBG(_level, _f, _a...) tlog_write(_level, _f, ##_a)
+#define ERR(_err, _f, _a...) tlog_error(_err, _f, ##_a)
 
 #define INPUT 0
 #define OUTPUT 1
@@ -152,7 +151,7 @@ void debug(int sig)
 		ptr = ptr->next;
 	}
 
-	tlog_flush("/tmp/tapdisk.log", log);
+	tlog_flush();
 }
 
 static inline int LOCAL_FD_SET(fd_set *readfds)
@@ -288,7 +287,6 @@ static struct disk_driver *disk_init(struct td_state *s,
 	dd->td_state = s;
 	dd->name     = name;
 	dd->flags    = flags;
-	dd->log      = log;
 
 	return dd;
 }
@@ -405,7 +403,7 @@ static void unmap_disk(struct td_state *s)
 	if (info != NULL && info->mem > 0)
 	        munmap(info->mem, getpagesize() * BLKTAP_MMAP_REGION_SIZE);
 
-	TAP_PRINT_ERRORS();
+	tlog_print_errors();
 
 	return;
 }
@@ -477,10 +475,9 @@ static int open_disk(struct td_state *s, struct tap_disk *drv,
 	if (err >= 0) {
 		struct tfilter *filter = NULL;
 #ifdef TAPDISK_FILTER
-		filter = tapdisk_init_tfilter(TAPDISK_FILTER,
-					      iocbs, s->size, log);
+		filter = tapdisk_init_tfilter(TAPDISK_FILTER, iocbs, s->size);
 #endif
-		err = tapdisk_init_queue(&s->queue, iocbs, 0, log, filter);
+		err = tapdisk_init_queue(&s->queue, iocbs, 0, filter);
 		if (!err)
 			return 0;
 	}
@@ -1070,7 +1067,7 @@ static void make_response(struct td_state *s, pending_req_t *preq)
 	    (int)tmp.id, tmp.sector_number, preq->status);
 
 	if (rsp->status != BLKIF_RSP_OKAY)
-		TAP_ERROR(EIO, "returning BLKIF_RSP %d", rsp->status);
+		ERR(EIO, "returning BLKIF_RSP %d", rsp->status);
 
 	write_rsp_to_ring(s, rsp);
 	init_preq(preq);
@@ -1099,7 +1096,7 @@ int send_responses(struct disk_driver *dd, int res,
 	int sidx = (int)(long)private, secs_done = nr_secs;
 
 	if (idx > MAX_REQUESTS - 1) {
-		TAP_ERROR(-EINVAL, "invalid index returned(%u)!\n", idx);
+		ERR(-EINVAL, "invalid index returned(%u)!\n", idx);
 		return -EINVAL;
 	}
 	preq = &blkif->pending_list[idx];
@@ -1128,9 +1125,9 @@ int send_responses(struct disk_driver *dd, int res,
 	if (res) {
 		preq->status = BLKIF_RSP_ERROR;
 		if (res != -EBUSY)
-			TAP_ERROR(res, "req %d: %s %d secs to %" PRIu64, idx,
-				  (req->operation == BLKIF_OP_WRITE ?
-				   "write" : "read"), nr_secs, sector);
+			ERR(res, "req %d: %s %d secs to %" PRIu64, idx,
+			    (req->operation == BLKIF_OP_WRITE ?
+			     "write" : "read"), nr_secs, sector);
 	}
 
 	if (preq->status == BLKIF_RSP_ERROR &&
@@ -1243,14 +1240,14 @@ static int queue_request(struct td_state *s, blkif_request_t *req)
 		}
 		
 		if (sector_nr >= s->size) {
-			TAP_ERROR(-EINVAL, "Sector request failed: "
-				  "%s request, idx [%d,%d] size [%llu], "
-				  "sector [%llu,%llu]\n",
-				  (req->operation == BLKIF_OP_WRITE ? 
-				   "WRITE" : "READ"), idx, i,
-				  (long long unsigned)nsects << SECTOR_SHIFT,
-				  (long long unsigned)sector_nr << SECTOR_SHIFT,
-				  (long long unsigned)sector_nr);
+			ERR(-EINVAL, "Sector request failed: "
+			    "%s request, idx [%d,%d] size [%llu], "
+			    "sector [%llu,%llu]\n",
+			    (req->operation == BLKIF_OP_WRITE ? 
+			     "WRITE" : "READ"), idx, i,
+			    (long long unsigned)nsects << SECTOR_SHIFT,
+			    (long long unsigned)sector_nr << SECTOR_SHIFT,
+			    (long long unsigned)sector_nr);
 			err = -EINVAL;
 			goto send_response;
 		}
@@ -1481,7 +1478,7 @@ int main(int argc, char *argv[])
 
 	snprintf(openlogbuf, sizeof(openlogbuf), "TAPDISK[%d]", getpid());
 	openlog(openlogbuf, LOG_CONS|LOG_ODELAY, LOG_DAEMON);
-	log = alloc_tlog((64 << 10), TLOG_WARN);
+	open_tlog("/tmp/tapdisk.log", (64 << 10), TLOG_WARN, 0);
 
 #if defined(CORE_DUMP)
 #include <sys/resource.h>
@@ -1599,7 +1596,7 @@ int main(int argc, char *argv[])
 		ptr = next;
 	}
 	closelog();
-	free_tlog(log);
+	close_tlog();
 
 	return 0;
 }

@@ -8,7 +8,6 @@
 #include <libaio.h>
 
 struct opio;
-struct tlog;
 
 struct opio_list {
 	struct opio        *head;
@@ -34,12 +33,9 @@ struct opioctx {
 	struct opio       **free_opios;
 	struct iocb       **iocb_queue;
 	struct io_event    *event_queue;
-
-	/* optional log handle */
-	struct tlog        *log;
 };
 
-int opio_init(struct opioctx *ctx, int num_iocbs, struct tlog *log);
+int opio_init(struct opioctx *ctx, int num_iocbs);
 void opio_free(struct opioctx *ctx);
 int io_merge(struct opioctx *ctx, struct iocb **queue, int num);
 int io_split(struct opioctx *ctx, struct io_event *events, int num);

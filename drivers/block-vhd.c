@@ -45,10 +45,9 @@
 #include <inttypes.h>
 #include <sys/mman.h>
 
-#include "tapdisk.h"
 #include "vhd.h"
+#include "tapdisk.h"
 #include "profile.h"
-#include "atomicio.h"
 #include "relative-path.h"
 
 unsigned int SPB;
@@ -57,33 +56,37 @@ unsigned int SPB;
 #define ASSERTING   1
 #define MICROSOFT_COMPAT
 
-#define __TRACE(s)                                                             \
-do {                                                                           \
-	DBG(TLOG_DBG, "%s: QUEUED: %" PRIu64 ", COMPLETED: %" PRIu64 ", "      \
-	    "RETURNED: %" PRIu64 ", DATA_ALLOCATED: %lu, BBLK: %u\n",          \
-	    s->name, s->queued, s->completed, s->returned,                     \
-	    VHD_REQS_DATA - s->vreq_free_count, s->bat.pbw_blk);               \
-} while(0)
+#define __TRACE(s)							\
+	do {								\
+		DBG(TLOG_DBG, "%s: QUEUED: %" PRIu64 ", COMPLETED: %"	\
+		    PRIu64", RETURNED: %" PRIu64 ", DATA_ALLOCATED: "	\
+		    "%lu, BBLK: %u\n",					\
+		    s->name, s->queued, s->completed, s->returned,	\
+		    VHD_REQS_DATA - s->vreq_free_count,			\
+		    s->bat.pbw_blk);					\
+	} while(0)
 
-#define __ASSERT(_p)                                                           \
-if ( !(_p) ) {                                                                 \
-	DPRINTF("%s:%d: FAILED ASSERTION: '%s'\n", __FILE__, __LINE__, #_p);   \
-	DBG(TLOG_WARN, "%s:%d: FAILED ASSERTION: '%s'\n",                      \
-	    __FILE__, __LINE__, #_p);                                          \
-	tlog_flush("tapdisk-assert", log);                                     \
-	*(int*)0 = 0;                                                          \
-}
-
-static struct tlog *log;
+#define __ASSERT(_p)							\
+	if (!(_p)) {							\
+		DPRINTF("%s:%d: FAILED ASSERTION: '%s'\n",		\
+			__FILE__, __LINE__, #_p);			\
+		DBG(TLOG_WARN, "%s:%d: FAILED ASSERTION: '%s'\n",	\
+		    __FILE__, __LINE__, #_p);				\
+		tlog_flush();						\
+		*(int*)0 = 0;						\
+	}
 
 #if (DEBUGGING == 1)
   #define DBG(level, _f, _a...)      DPRINTF(_f, ##_a)
+  #define ERR(err, _f, _a...)        DPRINTF("ERROR: %d: " _f, err, ##_a)
   #define TRACE(s)                   ((void)0)
 #elif (DEBUGGING == 2)
-  #define DBG(level, _f, _a...)      tlog_write(log, level, _f, ##_a)
+  #define DBG(level, _f, _a...)      tlog_write(level, _f, ##_a)
+  #define ERR(err, _f, _a...)	     tlog_error(err, _f, ##_a)
   #define TRACE(s)                   __TRACE(s)
 #else
   #define DBG(level, _f, _a...)      ((void)0)
+  #define ERR(err, _f, _a...)        ((void)0)
   #define TRACE(s)                   ((void)0)
 #endif
 
@@ -1327,7 +1330,6 @@ __vhd_open(struct disk_driver *dd, const char *name, vhd_flag_t flags)
         tds->size        = s->ftr.curr_size >> VHD_SECTOR_SHIFT;
         tds->sector_size = VHD_SECTOR_SIZE;
         tds->info        = 0;
-	log              = dd->log;
 
         DBG(TLOG_INFO, "vhd_open: done (sz:%llu, sct:%lu, inf:%u)\n",
 	    tds->size, tds->sector_size, tds->info);
@@ -1447,8 +1449,6 @@ vhd_close(struct disk_driver *dd)
 		DPRINTF("ERROR: syncing file: %d\n", errno);
 	if (close(s->fd) == -1)
 		DPRINTF("ERROR: closing file: %d\n", errno);
-
-	TAP_PRINT_ERRORS();
 
 	tp_close(&s->tp);
 	
@@ -2997,8 +2997,7 @@ allocate_block(struct vhd_state *s, uint32_t blk)
 	DBG(TLOG_DBG, "blk: %u, pbwo: %" PRIu64 "\n", blk, s->bat.pbw_offset);
 
 	if (lseek(s->fd, offset, SEEK_SET) == (off_t)-1) {
-		DBG(TLOG_WARN, "lseek failed: %d\n", errno);
-		TAP_ERROR(errno, "lseek failed");
+		ERR(errno, "lseek failed\n");
 		return -errno;
 	}
 
@@ -3011,8 +3010,7 @@ allocate_block(struct vhd_state *s, uint32_t blk)
 
 	if ((err = write(s->fd, s->zeros, size)) != size) {
 		err = (err == -1 ? -errno : -EIO);
-		DBG(TLOG_WARN, "write failed: %d\n", err);
-		TAP_ERROR(err, "write failed");
+		ERR(err, "write failed");
 		return err;
 	}
 
@@ -3902,20 +3900,11 @@ vhd_complete(struct disk_driver *dd, struct tiocb *tiocb, int err)
 
 	req->error = err;
 
-	if (req->error) {
-		DBG(TLOG_WARN, "%s: ERROR: %d: op: %u, lsec: %" PRIu64 ", "
-		    "nr_secs: %u, nbytes: %lu, blk: %" PRIu64 ", "
-		    "blk_offset: %u\n", s->name, req->error,
-		    req->op, req->lsec, req->nr_secs, 
-		    io->u.c.nbytes, req->lsec / s->spb,
-		    bat_entry(s, req->lsec / s->spb));
-		TAP_ERROR(req->error, "%s: aio failed: op: %u, "
-			  "lsec: %" PRIu64 ", nr_secs: %u, nbytes: %lu, "
-			  "blk: %" PRIu64 ", blk_offset: %u", s->name, 
-			  req->op, req->lsec, req->nr_secs, 
-			  io->u.c.nbytes, req->lsec / s->spb,
-			  bat_entry(s, req->lsec / s->spb));
-	}
+	if (req->error)
+		ERR(req->error, "%s: op: %u, lsec: %"PRIu64", secs: %u, "
+		    "nbytes: %lu, blk: %"PRIu64", blk_offset: %u",
+		    s->name, req->op, req->lsec, req->nr_secs, io->u.c.nbytes,
+		    req->lsec / s->spb, bat_entry(s, req->lsec / s->spb));
 
 	switch (req->op) {
 	case VHD_OP_DATA_READ:
