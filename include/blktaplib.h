@@ -220,6 +220,10 @@ typedef struct msg_lock {
 #define CTLMSG_CHECKPOINT_RSP  12
 #define CTLMSG_LOCK            13
 #define CTLMSG_LOCK_RSP        14
+#define CTLMSG_PAUSE           15
+#define CTLMSG_PAUSE_RSP       16
+#define CTLMSG_RESUME          17
+#define CTLMSG_RESUME_RSP      18
 
 #define TAPDISK_STORAGE_TYPE_NFS       1
 #define TAPDISK_STORAGE_TYPE_EXT       2

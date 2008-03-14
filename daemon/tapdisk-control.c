@@ -497,6 +497,38 @@ write_msg(int fd, int msgtype, void *ptr, void *ptr2)
 		       lock_req->lock_uuid, msg_lock->uuid_len);
 
 		break;
+
+	case CTLMSG_PAUSE:
+		DPRINTF("Write_msg called: CTLMSG_PAUSE\n");
+
+		buf = calloc(1, sizeof(msg_hdr_t));
+		if (!buf)
+			return -1;
+		
+		msglen = sizeof(msg_hdr_t);
+		msg = (msg_hdr_t *)buf;
+		msg->type = CTLMSG_PAUSE;
+		msg->len = msglen;
+		msg->drivertype = blkif->drivertype;
+		msg->cookie = blkif->cookie;
+
+		break;
+
+	case CTLMSG_RESUME:
+		DPRINTF("Write_msg called: CTLMSG_RESUME\n");
+
+		buf = calloc(1, sizeof(msg_hdr_t));
+		if (!buf)
+			return -1;
+
+		msglen = sizeof(msg_hdr_t);
+		msg = (msg_hdr_t *)buf;
+		msg->type = CTLMSG_RESUME;
+		msg->len = msglen;
+		msg->drivertype = blkif->drivertype;
+		msg->cookie = blkif->cookie;
+
+		break;
 		
 	default:
 		return -1;
@@ -631,6 +663,34 @@ read_msg(int fd, int msgtype, void *ptr)
 	case CTLMSG_LOCK_RSP:
 		DPRINTF("Received CTLMSG_LOCK_RSP\n");
 		if (msgtype != CTLMSG_LOCK_RSP)
+			ret = 0;
+		else {
+			int err;
+			ret = read_timeout(fd, (char *) &err,
+					   sizeof(int), max_timeout);
+			if (ret == 0)
+				return -EIO;
+			blkif->err = err;
+		}
+		break;
+
+	case CTLMSG_PAUSE_RSP:
+		DPRINTF("Received CTLMSG_PAUSE_RSP\n");
+		if (msgtype != CTLMSG_PAUSE_RSP)
+			ret = 0;
+		else {
+			int err;
+			ret = read_timeout(fd, (char *) &err,
+					   sizeof(int), max_timeout);
+			if (ret == 0)
+				return -EIO;
+			blkif->err = err;
+		}
+		break;
+				
+	case CTLMSG_RESUME_RSP:
+		DPRINTF("Received CTLMSG_RESUME_RSP\n");
+		if (msgtype != CTLMSG_RESUME_RSP)
 			ret = 0;
 		else {
 			int err;
@@ -963,6 +1023,36 @@ tapdisk_control_lock(blkif_t *blkif, char *lock, int enforce)
 
 	free(req.lock_uuid);
 	return (err ? err : blkif->err);
+}
+
+int tapdisk_control_pause(blkif_t *blkif)
+{
+	if (write_msg(blkif->fds[WRITE], CTLMSG_PAUSE, blkif, NULL) <= 0) {
+		DPRINTF("Write_msg failed - CTLMSG_PAUSE\n");
+		return -EIO;
+	}
+
+	if (read_msg(blkif->fds[READ], CTLMSG_PAUSE_RSP, blkif) <= 0) {
+		DPRINTF("Read_msg failed - CTLMSG_PAUSE_RSP\n");
+		return -EIO;
+	}
+
+	return blkif->err;
+}
+
+int tapdisk_control_resume(blkif_t *blkif)
+{
+	if (write_msg(blkif->fds[WRITE], CTLMSG_RESUME, blkif, NULL) <= 0) {
+		DPRINTF("Write_msg failed - CTLMSG_RESUME\n");
+		return -EIO;
+	}
+
+	if (read_msg(blkif->fds[READ], CTLMSG_RESUME_RSP, blkif) <= 0) {
+		DPRINTF("Read_msg failed - CTLMSG_RESUME_RSP\n");
+		return -EIO;
+	}
+
+	return blkif->err;
 }
 
 void

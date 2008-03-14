@@ -103,6 +103,8 @@ typedef uint32_t td_flag_t;
 #define TD_RETRY_NEEDED              0x00020
 #define TD_SHUTDOWN_REQUESTED        0x00040
 #define TD_LOCK_ENFORCE              0x00080
+#define TD_PAUSE                     0x00100
+#define TD_PAUSED                    0x00200
 
 struct td_state;
 struct tap_disk;
@@ -141,6 +143,10 @@ struct td_state {
 	unsigned long retries, received, returned, kicked;
 	struct timeval ts;
 	int dumped_log;
+
+	char *name;
+	struct tap_disk *drv;
+	int storage;
 
 	struct tqueue queue;
 	struct disk_driver *disks;

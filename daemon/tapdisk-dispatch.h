@@ -71,6 +71,8 @@ int tapdisk_control_map(struct blkif *blkif);
 int tapdisk_control_unmap(struct blkif *blkif);
 int tapdisk_control_checkpoint(struct blkif *blkif, char *request);
 int tapdisk_control_lock(struct blkif *blkif, char *request, int enforce);
+int tapdisk_control_pause(blkif_t *blkif);
+int tapdisk_control_resume(blkif_t *blkif);
 
 /* tapdisk-xenstore.c */
 int add_control_watch(struct xs_handle *h, const char *path, const char *uuid);

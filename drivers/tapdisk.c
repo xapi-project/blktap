@@ -163,7 +163,8 @@ static inline int LOCAL_FD_SET(fd_set *readfds)
 		struct td_state *s = ptr->s;
 
 		if (ptr->tap_fd) {
-			if (!(s->flags & TD_DRAIN_QUEUE)) {
+			if (!(s->flags & TD_DRAIN_QUEUE) &&
+			    !(s->flags & TD_PAUSED)) {
 				FD_SET(ptr->tap_fd, readfds);
 				maxfds = (ptr->tap_fd > maxfds ? 
 					  ptr->tap_fd : maxfds);
@@ -227,7 +228,20 @@ static inline void init_preq(pending_req_t *preq)
 	memset(preq, 0, sizeof(pending_req_t));
 }
 
-static struct td_state *state_init(void)
+static void free_state(struct td_state *s)
+{
+	if (!s)
+		return;
+
+	free(s->name);
+	free(s->blkif);
+	free(s->lock_uuid);
+	free(s->ring_info);
+	free(s);
+}
+
+static struct td_state *state_init(char *name,
+				   struct tap_disk *drv, int storage)
 {
 	int i;
 	struct td_state *s = NULL;
@@ -236,6 +250,10 @@ static struct td_state *state_init(void)
 	s = calloc(1, sizeof(struct td_state));
 	if (!s)
 		return NULL;
+
+	s->name = strdup(name);
+	if (!s->name)
+		goto fail;
 
 	blkif = s->blkif = malloc(sizeof(blkif_t));
 	if (!blkif)
@@ -248,28 +266,19 @@ static struct td_state *state_init(void)
 	for (i = 0; i < MAX_REQUESTS; i++)
 		init_preq(&blkif->pending_list[i]);
 
+	s->drv     = drv;
+	s->storage = storage;
+
 	return s;
 
  fail:
-	free(s->blkif);
-	free(s->ring_info);
-	free(s);
+	free_state(s);
 	return NULL;
-}
-
-static void free_state(struct td_state *s)
-{
-	if (!s)
-		return;
-	free(s->blkif);
-	free(s->lock_uuid);
-	free(s->ring_info);
-	free(s);
 }
 
 static struct disk_driver *disk_init(struct td_state *s, 
 				     struct tap_disk *drv, 
-				     char *name, td_flag_t flags)
+				     char *name, td_flag_t flags, int storage)
 {
 	struct disk_driver *dd;
 
@@ -287,6 +296,7 @@ static struct disk_driver *disk_init(struct td_state *s,
 	dd->td_state = s;
 	dd->name     = name;
 	dd->flags    = flags;
+	dd->storage  = storage;
 
 	return dd;
 }
@@ -360,10 +370,24 @@ static int map_new_dev(struct td_state *s, int minor)
 	return -1;
 }
 
+static void close_disk(struct td_state *s)
+{
+	struct disk_driver *dd, *tmp;
+
+	dd = s->disks;
+	while (dd) {
+		tmp = dd->next;
+		dd->drv->td_close(dd);
+		DPRINTF("closed %s\n", dd->name);
+		free_driver(dd);
+		dd = tmp;
+	}
+	s->disks = NULL;
+}
+
 static void unmap_disk(struct td_state *s)
 {
 	tapdev_info_t *info = s->ring_info;
-	struct disk_driver *dd, *tmp;
 	fd_list_entry_t *entry;
 
 	int i;
@@ -383,14 +407,8 @@ static void unmap_disk(struct td_state *s)
 
 	DPRINTF("%s: %ld retries\n", __func__, s->retries);
 
-	dd = s->disks;
-	while (dd) {
-		tmp = dd->next;
-		dd->drv->td_close(dd);
-		DPRINTF("closed %s\n", dd->name);
-		free_driver(dd);
-		dd = tmp;
-	}
+	close_disk(s);
+	tapdisk_free_queue(&s->queue);
 
 	entry = s->fd_entry;
 	*entry->pprev = entry->next;
@@ -409,7 +427,7 @@ static void unmap_disk(struct td_state *s)
 }
 
 static int open_disk(struct td_state *s, struct tap_disk *drv,
-		     char *path, td_flag_t flags, int storage)
+		     char *path, td_flag_t flags)
 {
 	char *dup;
 	int err, iocbs;
@@ -422,17 +440,17 @@ static int open_disk(struct td_state *s, struct tap_disk *drv,
 		return -ENOMEM;
 
 	memset(&id, 0, sizeof(struct disk_id));
-	s->disks = d = disk_init(s, drv, dup, flags);
+	s->disks = d = disk_init(s, drv, dup, flags, s->storage);
 	if (!d)
 		return -ENOMEM;
 
-	d->storage = storage;
 	err = d->drv->td_open(d, path, flags);
 	if (err) {
 		free_driver(d);
 		s->disks = NULL;
 		return err;
 	}
+	DPRINTF("opened %s\n", path);
 	pflags = flags | TD_OPEN_RDONLY;
 	iocbs  = TAPDISK_DATA_REQUESTS + d->drv->private_iocbs;
 
@@ -448,11 +466,11 @@ static int open_disk(struct td_state *s, struct tap_disk *drv,
 		if (!dup)
 			goto fail;
 
-		new = disk_init(s, get_driver(id.drivertype), dup, pflags);
+		new = disk_init(s, get_driver(id.drivertype),
+				dup, pflags, s->storage);
 		if (!new)
 			goto fail;
 
-		new->storage = storage;
 		err = new->drv->td_open(new, new->name, pflags);
 		if (err) {
 			free_driver(new);
@@ -465,9 +483,11 @@ static int open_disk(struct td_state *s, struct tap_disk *drv,
 			goto fail;
 		}
 
+		DPRINTF("opened %s\n", new->name);
 		iocbs += new->drv->private_iocbs;
 		d = d->next = new;
 		free(id.name);
+		memset(&id, 0, sizeof(struct disk_id));
 	}
 
 	s->info |= ((flags & TD_OPEN_RDONLY) ? VDISK_READONLY : 0);
@@ -477,13 +497,18 @@ static int open_disk(struct td_state *s, struct tap_disk *drv,
 #ifdef TAPDISK_FILTER
 		filter = tapdisk_init_tfilter(TAPDISK_FILTER, iocbs, s->size);
 #endif
-		err = tapdisk_init_queue(&s->queue, iocbs, 0, filter);
+
+		if (s->flags & TD_PAUSED)
+			err = 0;   /* queue already open */
+		else
+			err = tapdisk_init_queue(&s->queue, iocbs, 0, filter);
+
 		if (!err)
 			return 0;
 	}
 
  fail:
-	EPRINTF("failed opening disk\n");
+	EPRINTF("failed opening disk: %d\n", err);
 	if (id.name)
 		free(id.name);
 	d = s->disks;
@@ -561,7 +586,7 @@ static void shutdown_disk(struct td_state *s)
 	sig_handler(SIGINT);
 }
 
-static int write_checkpoint_rsp(int err)
+static int write_ctlmsg_rsp(int type, int err)
 {
 	char buf[50];
 	msg_hdr_t *msg;
@@ -570,7 +595,7 @@ static int write_checkpoint_rsp(int err)
 	memset(buf, 0, sizeof(buf));
 	msg = (msg_hdr_t *)buf;
 	msglen = sizeof(msg_hdr_t) + sizeof(int);
-	msg->type = CTLMSG_CHECKPOINT_RSP;
+	msg->type = type;
 	msg->len = msglen;
 	*((int *)(buf + sizeof(msg_hdr_t))) = err;
 
@@ -595,6 +620,42 @@ static inline int drain_queue(struct td_state *s)
 static inline void start_queue(struct td_state *s)
 {
 	s->flags &= ~TD_DRAIN_QUEUE;
+}
+
+static inline void td_pause(struct td_state *s)
+{
+	if (s->flags & TD_PAUSED)
+		return;
+
+	if (drain_queue(s) != 0)
+		s->flags |= TD_PAUSE;
+	else {
+		close_disk(s);
+		write_ctlmsg_rsp(CTLMSG_PAUSE_RSP, 0);
+		s->flags |= TD_PAUSED;
+	}
+}
+
+static inline void td_resume(struct td_state *s)
+{
+	int i, err = 0;
+
+	if (s->flags & TD_PAUSED) {
+		for (i = 0; i < EIO_RETRIES; i++) {
+			err = open_disk(s, s->drv, s->name, s->flags);
+			if (err != -EIO)
+				break;
+
+			sleep(EIO_SLEEP);
+		}
+	}
+
+	if (!err) {
+		s->flags &= ~(TD_PAUSE | TD_PAUSED);
+		start_queue(s);
+	}
+
+	write_ctlmsg_rsp(CTLMSG_RESUME_RSP, err);
 }
 
 static inline void kill_queue(struct td_state *s)
@@ -729,7 +790,7 @@ static int checkpoint(struct td_state *s)
 
 	err   = -ENOMEM;
 	drv   = get_driver(s->cp_drivertype);
-	child = disk_init(s, drv, NULL, 0);
+	child = disk_init(s, drv, NULL, 0, s->storage);
 	if (!child)
 		goto out;
 
@@ -780,7 +841,7 @@ static int checkpoint(struct td_state *s)
  out:
 	free(s->cp_uuid);
 	s->cp_uuid = NULL;
-	write_checkpoint_rsp(err);
+	write_ctlmsg_rsp(CTLMSG_CHECKPOINT_RSP, err);
 	s->flags &= ~TD_CHECKPOINT;
 	return 0;
 }
@@ -830,13 +891,13 @@ static int read_msg(char *buf)
 				drv->disk_type, msg->drivertype);
 
 			/* Allocate the disk structs */
-			s = state_init();
+			s = state_init(path, drv, msg_p->storage);
 			if (s == NULL)
 				goto params_done;
 
 			/*Open file*/
 			flags = (msg_p->readonly ? TD_OPEN_RDONLY : 0);
-			ret   = open_disk(s, drv, path, flags, msg_p->storage);
+			ret   = open_disk(s, drv, path, flags);
 			if (ret)
 				goto params_done;
 
@@ -954,7 +1015,7 @@ static int read_msg(char *buf)
 			return 1;
 
 		cp_fail:
-			write_checkpoint_rsp(ret);
+			write_ctlmsg_rsp(CTLMSG_CHECKPOINT_RSP, ret);
 			return 1;
 
 		case CTLMSG_LOCK:
@@ -997,6 +1058,27 @@ static int read_msg(char *buf)
 
 			len = write(fds[WRITE], buf, msglen);
 			return 1;
+
+		case CTLMSG_PAUSE:
+			s = get_state(msg->cookie);
+			if (!s)
+				write_ctlmsg_rsp(CTLMSG_PAUSE_RSP, -EINVAL);
+			else if (s->flags & TD_PAUSED)
+				write_ctlmsg_rsp(CTLMSG_PAUSE_RSP, 0);
+			else
+				td_pause(s);
+
+			return 1;
+
+		case CTLMSG_RESUME:
+			s = get_state(msg->cookie);
+			if (!s)
+				write_ctlmsg_rsp(CTLMSG_RESUME_RSP, -EINVAL);
+			else
+				td_resume(s);				
+
+			return 1;
+
 
 		default:
 			return 0;
@@ -1318,6 +1400,10 @@ static void retry_requests(struct td_state *s)
 	pending_req_t *preq;
 	struct timeval time;
 
+	if (s->flags & TD_DRAIN_QUEUE ||
+	    s->flags & TD_PAUSED)
+		return;
+
 	cnt   = 0;
 	blkif = s->blkif;
 	gettimeofday(&time, NULL);
@@ -1568,6 +1654,9 @@ int main(int argc, char *argv[])
 					checkpoint(s);
 					start_queue(s);
 				}
+
+			if (s->flags & TD_PAUSE)
+				td_pause(s);
 
 			if (s->flags & TD_SHUTDOWN_REQUESTED)
 				if (drain_queue(s) == 0)

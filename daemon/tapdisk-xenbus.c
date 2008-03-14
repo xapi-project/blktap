@@ -41,6 +41,7 @@
 
 #define CONTROL_WATCH_START         "tapdisk-watch-start"
 #define CONTROL_WATCH_CHECKPOINT    "tapdisk-watch-checkpoint"
+#define CONTROL_WATCH_PAUSE         "tapdisk-watch-pause"
 #define CONTROL_WATCH_SHUTDOWN      "tapdisk-watch-shutdown"
 
 struct backend_info {
@@ -175,7 +176,7 @@ handle_checkpoint_event(struct xs_handle *h, char *path)
 	if (!be) {
 		EPRINTF("ERROR: got checkpoint request for non-existing "
 			"backend %s\n", path);
-		return;
+		goto out;
 	}
 
 	err = xs_gather(h, cpp, "rsp", NULL, &rsp, NULL);
@@ -229,6 +230,75 @@ handle_lock_event(struct xs_handle *h, char *bepath)
 	free(lock);
 	free(lock_path);
 	return ret;
+}
+
+static void
+handle_pause_event(struct xs_handle *h, char *id)
+{
+	int err;
+	struct backend_info *be;
+	char *pause = NULL, *pause_done = NULL;
+
+	be = be_lookup_be(id);
+	if (!be) {
+		EPRINTF("got pause request for non-existing backend %s\n", id);
+		err = -EINVAL;
+		goto out;
+	}
+
+	if (asprintf(&pause, "%s/pause", id) == -1)
+		pause = NULL;
+	if (asprintf(&pause_done, "%s/pause-done", id) == -1)
+		pause_done = NULL;
+	if (!pause || !pause_done) {
+		EPRINTF("allocating xenstore strings for %s pause\n", id);
+		err = -ENOMEM;
+		goto out;
+	}
+
+	if (xs_exists(h, pause)) {
+		if (xs_exists(h, pause_done)) {
+			EPRINTF("got pause request for paused vbd %s\n", id);
+			err = -EINVAL;
+			goto out;
+		}
+
+		DPRINTF("pausing %s\n", id);
+		err = tapdisk_control_pause(be->blkif);
+		if (err) {
+			EPRINTF("failure pausing %s: %d\n", id, err);
+			goto out;
+		}
+
+		if (!xs_write(h, XBT_NULL, pause_done, "", strlen(""))) {
+			EPRINTF("writing pause_done for %s\n", id);
+			err = -EIO;
+			goto out;
+		}
+
+	} else if (xs_exists(h, pause_done)) {
+		DPRINTF("resuming %s\n", id);
+		err = tapdisk_control_resume(be->blkif);
+		if (err) {
+			EPRINTF("failure resuming %s: %d\n", id, err);
+			goto out;
+		}
+
+		if (!xs_rm(h, XBT_NULL, pause_done)) {
+			EPRINTF("removing pause_done for %s\n", id);
+			err = -EIO;
+			goto out;
+		}
+	}
+
+	err = 0;
+
+out:
+	free(pause);
+	free(pause_done);
+
+	if (err)
+		tapdisk_xenbus_error(h, id, "pause event failed");
 }
 
 static void
@@ -622,6 +692,8 @@ tapdisk_control_handle_event(struct xs_handle *h, const char *uuid)
 		handle_start_event(h, id);
 	else if (!strcmp(token, CONTROL_WATCH_CHECKPOINT))
 		handle_checkpoint_event(h, id);
+	else if (!strcmp(token, CONTROL_WATCH_PAUSE))
+		handle_pause_event(h, id);
 	else if (!strcmp(token, CONTROL_WATCH_SHUTDOWN))
 		handle_shutdown_event(h, id);
 
@@ -653,6 +725,15 @@ add_control_watch(struct xs_handle *h, const char *path, const char *uuid)
 		goto mem_fail;
 
 	if (!xs_watch(h, watch, CONTROL_WATCH_CHECKPOINT))
+		goto watch_fail;
+
+	free(watch);
+
+	/* tapdisk pause event */
+	if (asprintf(&watch, "%s/pause", path) == -1)
+		goto mem_fail;
+
+	if (!xs_watch(h, watch, CONTROL_WATCH_PAUSE))
 		goto watch_fail;
 
 	free(watch);
@@ -697,6 +778,15 @@ remove_control_watch(struct xs_handle *h, const char *path)
 		goto mem_fail;
 
 	if (!xs_unwatch(h, watch, CONTROL_WATCH_CHECKPOINT))
+		goto watch_fail;
+
+	free(watch);
+
+	/* tapdisk pause event */
+	if (asprintf(&watch, "%s/pause", path) == -1)
+		goto mem_fail;
+
+	if (!xs_unwatch(h, watch, CONTROL_WATCH_PAUSE))
 		goto watch_fail;
 
 	free(watch);
