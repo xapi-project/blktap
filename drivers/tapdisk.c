@@ -228,6 +228,21 @@ static inline void init_preq(pending_req_t *preq)
 	memset(preq, 0, sizeof(pending_req_t));
 }
 
+static inline int
+namedup(char **dup, char *name)
+{
+	*dup = NULL;
+
+	if (strnlen(name, MAX_NAME_LEN) >= MAX_NAME_LEN)
+		return -ENAMETOOLONG;
+	
+	*dup = strdup(name);
+	if (*dup == NULL)
+		return -ENOMEM;
+
+	return 0;
+}
+
 static void free_state(struct td_state *s)
 {
 	if (!s)
@@ -243,7 +258,7 @@ static void free_state(struct td_state *s)
 static struct td_state *state_init(char *name,
 				   struct tap_disk *drv, int storage)
 {
-	int i;
+	int i, err;
 	struct td_state *s = NULL;
 	blkif_t *blkif = NULL;
 
@@ -251,8 +266,8 @@ static struct td_state *state_init(char *name,
 	if (!s)
 		return NULL;
 
-	s->name = strdup(name);
-	if (!s->name)
+	err = namedup(&s->name, name);
+	if (err)
 		goto fail;
 
 	blkif = s->blkif = malloc(sizeof(blkif_t));
@@ -276,10 +291,21 @@ static struct td_state *state_init(char *name,
 	return NULL;
 }
 
+static void free_driver(struct disk_driver *d)
+{
+	if (!d)
+		return;
+
+	free(d->name);
+	free(d->private);
+	free(d);
+}
+
 static struct disk_driver *disk_init(struct td_state *s, 
 				     struct tap_disk *drv, 
 				     char *name, td_flag_t flags, int storage)
 {
+	int err;
 	struct disk_driver *dd;
 
 	dd = calloc(1, sizeof(struct disk_driver));
@@ -287,27 +313,23 @@ static struct disk_driver *disk_init(struct td_state *s,
 		return NULL;
 	
 	dd->private = malloc(drv->private_data_size);
-	if (!dd->private) {
-		free(dd);
-		return NULL;
-	}
+	if (!dd->private)
+		goto fail;
+
+	err = namedup(&dd->name, name);
+	if (err)
+		goto fail;
 
 	dd->drv      = drv;
 	dd->td_state = s;
-	dd->name     = name;
 	dd->flags    = flags;
 	dd->storage  = storage;
 
 	return dd;
-}
 
-static void free_driver(struct disk_driver *d)
-{
-	if (!d)
-		return;
-	free(d->name);
-	free(d->private);
-	free(d);
+fail:
+	free_driver(dd);
+	return NULL;
 }
 
 static int map_new_dev(struct td_state *s, int minor)
@@ -429,18 +451,13 @@ static void unmap_disk(struct td_state *s)
 static int open_disk(struct td_state *s, struct tap_disk *drv,
 		     char *path, td_flag_t flags)
 {
-	char *dup;
 	int err, iocbs;
 	td_flag_t pflags;
 	struct disk_id id;
 	struct disk_driver *d;
 
-	dup = strdup(path);
-	if (!dup)
-		return -ENOMEM;
-
 	memset(&id, 0, sizeof(struct disk_id));
-	s->disks = d = disk_init(s, drv, dup, flags, s->storage);
+	s->disks = d = disk_init(s, drv, path, flags, s->storage);
 	if (!d)
 		return -ENOMEM;
 
@@ -459,17 +476,17 @@ static int open_disk(struct td_state *s, struct tap_disk *drv,
 		struct disk_driver *new;
 		
 		if (id.drivertype > MAX_DISK_TYPES || 
-		    !get_driver(id.drivertype) || !id.name)
+		    !get_driver(id.drivertype) || !id.name) {
+			err = -EINVAL;
 			goto fail;
-
-		dup = strdup(id.name);
-		if (!dup)
-			goto fail;
+		}
 
 		new = disk_init(s, get_driver(id.drivertype),
-				dup, pflags, s->storage);
-		if (!new)
+				id.name, pflags, s->storage);
+		if (!new) {
+			err = -ENOMEM;
 			goto fail;
+		}
 
 		err = new->drv->td_open(new, new->name, pflags);
 		if (err) {
@@ -519,7 +536,7 @@ static int open_disk(struct td_state *s, struct tap_disk *drv,
 		d = tmp;
 	}
 	s->disks = NULL;
-	return -1;
+	return err;
 }
 
 #define EIO_SLEEP   1
@@ -858,7 +875,7 @@ static int read_msg(char *buf)
 	msg_cp_t *msg_cp;
 	msg_lock_t *msg_lock;
 	struct tap_disk *drv;
-	int ret = -1;
+	int i, ret = -1;
 	struct td_state *s = NULL;
 	fd_list_entry_t *entry;
 	td_flag_t flags;
@@ -897,7 +914,15 @@ static int read_msg(char *buf)
 
 			/*Open file*/
 			flags = (msg_p->readonly ? TD_OPEN_RDONLY : 0);
-			ret   = open_disk(s, drv, path, flags);
+
+			for (i = 0; i < EIO_RETRIES; i++) {
+				ret = open_disk(s, drv, path, flags);
+				if (ret != -EIO)
+					break;
+
+				sleep(EIO_SLEEP);
+			}
+
 			if (ret)
 				goto params_done;
 

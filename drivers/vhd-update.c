@@ -260,8 +260,10 @@ enable_vhd(struct vhd_update_ctx *ctx)
 	vhd_header_out((struct dd_hdr *)buf);
 
 	err = atomicio(vwrite, fd, buf, sizeof(struct dd_hdr));
-	if (err != sizeof(struct dd_hdr))
+	if (err != sizeof(struct dd_hdr)) {
 		err = -errno;
+		goto out;
+	}
 
 	err = 0;
 
