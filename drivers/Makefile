@@ -43,8 +43,6 @@ BLK-OBJS  += tapdisk-log.o
 
 all: $(IBIN) lock-util $(VHD_UPDATE_UTIL)
 
-LINUX_ROOT := $(wildcard $(XEN_ROOT)/linux-2.6.*-xen-sparse)
-
 tapdisk: $(BLK-OBJS) tapdisk.c
 	$(CC) $(CFLAGS) -o tapdisk $(BLK-OBJS) tapdisk.c \
 		$(AIOLIBS) $(LIBS)
