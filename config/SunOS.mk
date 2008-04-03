@@ -9,8 +9,6 @@ STRIP      = $(CROSS_COMPILE)gstrip
 OBJCOPY    = $(CROSS_COMPILE)gobjcopy
 OBJDUMP    = $(CROSS_COMPILE)gobjdump
 
-MSGFMT     = gmsgfmt
-
 SHELL      = bash
 
 INSTALL      = ginstall
@@ -20,8 +18,6 @@ INSTALL_PROG = $(INSTALL) -m0755 -p
 
 LIB64DIR = lib/amd64
 
-SOCKET_LIBS = -lsocket
-CURSES_LIBS = -lcurses
 SONAME_LDFLAG = -h
 SHLIB_CFLAGS = -R /usr/sfw/$(LIBDIR) -shared
 

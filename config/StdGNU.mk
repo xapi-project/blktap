@@ -9,9 +9,6 @@ STRIP      = $(CROSS_COMPILE)strip
 OBJCOPY    = $(CROSS_COMPILE)objcopy
 OBJDUMP    = $(CROSS_COMPILE)objdump
 
-MSGFMT     = msgfmt
-MSGMERGE   = msgmerge
-
 INSTALL      = install
 INSTALL_DIR  = $(INSTALL) -d -m0755 -p
 INSTALL_DATA = $(INSTALL) -m0644 -p
@@ -19,8 +16,6 @@ INSTALL_PROG = $(INSTALL) -m0755 -p
 
 LIB64DIR = lib64
 
-SOCKET_LIBS =
-CURSES_LIBS = -lncurses
 SONAME_LDFLAG = -soname
 SHLIB_CFLAGS = -shared
 
