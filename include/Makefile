@@ -8,3 +8,7 @@ all:
 install:
 	$(INSTALL_DIR) -p $(DESTDIR)/usr/include
 	$(INSTALL_DATA) blktaplib.h $(DESTDIR)/usr/include
+
+.PHONY: clean
+clean:
+	@:
