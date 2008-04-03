@@ -1,5 +1,5 @@
-XEN_ROOT = ../../..
-include $(XEN_ROOT)/tools/Rules.mk
+BLKTAP_ROOT= ..
+include $(BLKTAP_ROOT)/Rules.mk
 
 IBIN            = tapdisk td-util
 LOCK_UTIL       = lock-util

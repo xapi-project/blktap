@@ -4,7 +4,6 @@ include $(B_BASE)/rpmbuild.mk
 
 REPO_NAME= blktap
 REPO=$(call hg_loc,blktap)
-XEN_ROOT=$(call pq_loc,xs-xen)
 RPM_BUILD_COOKIE= $(MY_OBJ_DIR)/.rpm_build_cookie
 
 J_FLAG = 8
@@ -71,7 +70,7 @@ $(MY_OBJ_DIR)/proprietary.code.check.stamp:
 
 $(RPM_SOURCESDIR)/%.o:
 	rm -f $(REPO)/drivers/.$*.o.d $(REPO)/drivers/$*.o
-	make -C $(REPO)/drivers/ USE_SYSTEM_LIBRARIES=y XEN_ROOT=$(XEN_ROOT) $*.o
+	make -C $(REPO)/drivers/ USE_SYSTEM_LIBRARIES=y $*.o
 	mv $(REPO)/drivers/$*.o $(RPM_SOURCESDIR)/$*.o
 
 $(RPM_SOURCESDIR)/blktap-$(BLKTAP_VERSION).tar.bz2: $(MY_OBJ_DIR)/proprietary.code.check.stamp \
@@ -102,7 +101,6 @@ $(RPM_SPECSDIR)/blktap.spec: blktap.spec.in $(RPM_SPECSDIR)/.dirstamp
 	sed -e s\,@REPO_VERSION@,$(REPO_VERSION),g \
 	    -e s\,@BLKTAP_VERSION@,$(BLKTAP_VERSION),g\
 	    -e s\,@BLKTAP_RELEASE@,$(BLKTAP_RELEASE),g\
-	    -e s\,@XEN_ROOT@,$(XEN_ROOT),g\
 	    -e \\,%changelog,rchangelog.tmp        \
 	    < blktap.spec.in                       \
 	    > $(RPM_SPECSDIR)/blktap.spec

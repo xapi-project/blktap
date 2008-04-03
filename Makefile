@@ -1,7 +1,7 @@
 ## export XEN_ROOT = /path/to/xen/tree
 ## if XEN_ROOT is not otherwise set, assume standard xen tree structure
-XEN_ROOT = ../..
-include $(XEN_ROOT)/tools/Rules.mk
+BLKTAP_ROOT := .
+include $(BLKTAP_ROOT)/Rules.mk
 
 SUBDIRS-y :=
 SUBDIRS-y += include

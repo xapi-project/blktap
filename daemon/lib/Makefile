@@ -1,5 +1,5 @@
-XEN_ROOT = ../../../..
-include $(XEN_ROOT)/tools/Rules.mk
+BLKTAP_ROOT := ../../
+include $(BLKTAP_ROOT)/Rules.mk
 
 MAJOR    = 3.1
 MINOR    = 0
