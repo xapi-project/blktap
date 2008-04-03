@@ -25,7 +25,6 @@
  * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS
  * IN THE SOFTWARE.
  */
-#include <xs.h>
 #include <stdio.h>
 #include <errno.h>
 #include <fcntl.h>
@@ -35,6 +34,7 @@
 #include <sys/ioctl.h>
 #include <sys/types.h>
 #include <sys/wait.h>
+#include <xs.h>
                                                                      
 #include "tapdisk-dispatch.h"
 #include "disktypes.h"

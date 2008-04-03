@@ -32,12 +32,12 @@
  *
  */
 
-#include <xs.h>
 #include <stdio.h>
 #include <errno.h>
 #include <stdlib.h>
 #include <string.h>
 #include <stdarg.h>
+#include <xs.h>
 
 #include "xs_api.h"
 #include "blktaplib.h"
