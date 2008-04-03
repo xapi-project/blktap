@@ -7,4 +7,4 @@ all:
 .PHONY: install
 install:
 	$(INSTALL_DIR) -p $(DESTDIR)/usr/include
-	$(INSTALL_PROG) blktaplib.h $(DESTDIR)/usr/include
+	$(INSTALL_DATA) blktaplib.h $(DESTDIR)/usr/include

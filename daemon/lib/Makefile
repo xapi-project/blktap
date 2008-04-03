@@ -45,7 +45,7 @@ libblktap: libblktap.a
 
 install: all
 	$(INSTALL_DIR) -p $(DESTDIR)/usr/$(LIBDIR)
-	$(INSTALL_PROG) $(LIB) $(DESTDIR)/usr/$(LIBDIR)
+	$(INSTALL_DATA) $(LIB) $(DESTDIR)/usr/$(LIBDIR)
 	ln -sf libblktap.so.$(MAJOR).$(MINOR) $(DESTDIR)/usr/$(LIBDIR)/libblktap.so.$(MAJOR)
 	ln -sf libblktap.so.$(MAJOR) $(DESTDIR)/usr/$(LIBDIR)/libblktap.so
 
