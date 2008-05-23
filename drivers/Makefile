@@ -14,6 +14,8 @@ CFLAGS    += -I../include
 CFLAGS    += -D_GNU_SOURCE
 CFLAGS    += -DUSE_NFS_LOCKS
 
+LIBS      += -lrt
+
 # Get gcc to generate the dependencies for us.
 CFLAGS    += -Wp,-MD,.$(@F).d
 DEPS       = .*.d
@@ -46,6 +48,7 @@ BLK-OBJS  += block-ram.o
 BLK-OBJS  += block-cache.o
 BLK-OBJS  += block-vhd.o
 BLK-OBJS  += block-vindex.o
+BLK-OBJS  += block-log.o
 BLK-OBJS  += lock.o
 BLK-OBJS  += io-optimize.o
 BLK-OBJS  += tapdisk-queue.o
