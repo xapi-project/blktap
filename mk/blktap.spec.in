@@ -17,9 +17,11 @@ Source9: vhd-update.o
 Source10: relative-path.o
 Source11: libvhd.o
 Source12: libvhd-journal.o
-Source13: vhd-util-resize.o
-Source14: relative-path.o
-Source15: vhd-util.o
+Source13: libvhd-index.o
+Source14: vhd-util-resize.o
+Source15: relative-path.o
+Source16: vhd-util.o
+Source17: vhd-index.o
 
 Patch0: %{name}-development.patch
 BuildRoot: %{_tmppath}/%{name}-%{version}-%{release}-buildroot
@@ -54,7 +56,9 @@ cp %{SOURCE11} vhd/lib
 cp %{SOURCE12} vhd/lib
 cp %{SOURCE13} vhd/lib
 cp %{SOURCE14} vhd/lib
-cp %{SOURCE15} vhd
+cp %{SOURCE15} vhd/lib
+cp %{SOURCE16} vhd
+cp %{SOURCE17} vhd
 
 %build
 %{__make} USE_SYSTEM_LIBRARIES=y
@@ -77,6 +81,7 @@ rm -rf $RPM_BUILD_ROOT
 %{_sbindir}/lock-util
 %{_sbindir}/vhd-update
 %{_sbindir}/vhd-util
+%{_sbindir}/vhd-index
 
 %files devel
 %defattr(-,root,root,-)

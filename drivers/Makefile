@@ -38,6 +38,9 @@ TAP-OBJS  += tapdisk-image.o
 TAP-OBJS  += tapdisk-driver.o
 TAP-OBJS  += tapdisk-interface.o
 
+MISC-OBJS := atomicio.o
+MISC-OBJS += relative-path.o
+
 BLK-OBJS  := block-aio.o
 BLK-OBJS  += block-ram.o
 BLK-OBJS  += block-cache.o
@@ -56,8 +59,8 @@ BLK-OBJS  += tapdisk-utils.o
 
 all: $(IBIN) lock-util #$(VHD_UPDATE_UTIL)
 
-tapdisk: $(TAP-OBJS) $(BLK-OBJS) tapdisk-server.c
-	$(CC) $(CFLAGS) -o tapdisk $(TAP-OBJS) $(BLK-OBJS) tapdisk-server.c \
+tapdisk: $(TAP-OBJS) $(MISC_OBJS) $(BLK-OBJS) tapdisk-server.c
+	$(CC) $(CFLAGS) -o tapdisk $(TAP-OBJS) $(MISC_OBJS) $(BLK-OBJS) tapdisk-server.c \
 		$(AIOLIBS) $(LIBS)
 
 td-util: $(BLK-OBJS) td.o
