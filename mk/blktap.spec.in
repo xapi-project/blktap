@@ -92,6 +92,7 @@ rm -rf $RPM_BUILD_ROOT
 %{_sbindir}/vhd-update
 %{_sbindir}/vhd-util
 %{_sbindir}/vhd-index
+%{_sbindir}/tapdisk-client
 
 %files devel
 %defattr(-,root,root,-)

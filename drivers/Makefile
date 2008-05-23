@@ -3,7 +3,7 @@ include $(BLKTAP_ROOT)/Rules.mk
 
 LIBVHDDIR  = $(BLKTAP_ROOT)/vhd/lib
 
-IBIN       = tapdisk td-util
+IBIN       = tapdisk td-util tapdisk-client
 LOCK_UTIL  = lock-util
 INST_DIR   = /usr/sbin
 
@@ -61,6 +61,9 @@ all: $(IBIN) lock-util
 tapdisk: $(TAP-OBJS) $(MISC-OBJS) $(BLK-OBJS) tapdisk-server.c
 	$(CC) $(CFLAGS) -o tapdisk $(TAP-OBJS) $(MISC-OBJS) $(BLK-OBJS) \
 		tapdisk-server.c $(AIOLIBS) $(LIBS)
+
+tapdisk-client: tapdisk-client.o
+	$(CC) $(CFLAGS) -o $@ $^ $(LIBS)
 
 td-util: td.o tapdisk-utils.o
 	$(CC) $(CFLAGS) -o td-util td.o tapdisk-utils.o $(LIBS)
