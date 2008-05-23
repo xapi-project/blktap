@@ -42,6 +42,7 @@ PROPRIETARY_SOURCE += mk/Makefile
 PROPRIETARY_SOURCE += mk/blktap.spec.in
 PROPRIETARY_SOURCE += include/relative-path.h
 PROPRIETARY_SOURCE += include/libvhd.h
+PROPRIETARY_SOURCE += include/libvhd-journal.h
 PROPRIETARY_SOURCE += include/vhd.h
 PROPRIETARY_SOURCE += drivers/block-vhd.c
 PROPRIETARY_SOURCE += drivers/io-optimize.c
@@ -54,6 +55,7 @@ PROPRIETARY_SOURCE += drivers/tapdisk-filter.c
 PROPRIETARY_SOURCE += drivers/vhd-update.c
 PROPRIETARY_SOURCE += drivers/relative-path.c
 PROPRIETARY_SOURCE += vhd/lib/libvhd.c
+PROPRIETARY_SOURCE += vhd/lib/libvhd-journal.c
 PROPRIETARY_SOURCE += vhd/lib/relative-path.c
 
 PROPRIETARY_C_DRIVERS += $(filter drivers/%.c,$(PROPRIETARY_SOURCE))

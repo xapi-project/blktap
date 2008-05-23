@@ -23,7 +23,9 @@ CFLAGS          += -Wp,-MD,.$(@F).d
 DEPS             = .*.d
 
 LIB-SRCS        := libvhd.c
+LIB-SRCS        += libvhd-journal.c
 LIB-SRCS        += relative-path.c
+LIB-SRCS        += atomicio.c
 
 LIB-OBJS         = $(patsubst %.c,%.o,$(LIB-SRCS))
 
