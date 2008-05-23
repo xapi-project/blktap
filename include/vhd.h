@@ -10,7 +10,6 @@
 #include <asm/types.h>
 #include <uuid/uuid.h>
 #include <inttypes.h>
-#include "../drivers/disktypes.h"
 
 typedef __u32 u32;
 typedef __u64 u64;
@@ -198,32 +197,5 @@ static const char VHD_BATMAP_COOKIE[9] = "tdbatmap";
  * | HD Footer (511 bytes)                           |
  * +-------------------------------------------------+
  */
-
-struct td_driver_handle;
-
-struct vhd_info {
-	int       spb;
-	int       bat_entries;
-	uint32_t *bat;
-	uint64_t  secs;
-	int       bitmap_format;
-  	long      td_fields[TD_FIELD_INVALID];
-};
-uint32_t vhd_footer_checksum(struct hd_ftr *footer);
-uint32_t vhd_header_checksum(struct dd_hdr *header);
-uint32_t vhd_batmap_checksum(struct dd_batmap_hdr *header, char *map);
-void _vhd_get_footer(struct td_driver_handle *, struct hd_ftr *footer);
-int _vhd_get_header(struct td_driver_handle *, struct dd_hdr *header);
-int vhd_get_batmap_header(struct td_driver_handle *, struct dd_batmap_hdr *hdr);
-int vhd_get_info(struct td_driver_handle *, struct vhd_info *info);
-int _vhd_get_bat(struct td_driver_handle *, struct vhd_info *info);
-int vhd_set_field(struct td_driver_handle *, td_field_t field, long value);
-int vhd_coalesce(char *name);
-int vhd_fill(char *name);
-//int vhd_repair(struct disk_driver *dd);
-//int vhd_read(struct disk_driver *dd, int argc, char *argv[]);
-
-//char *macx_decode_location(char *in, char *out, int len);
-//char *w2u_decode_location(char *in, char *out, int len, char *utf_type);
 
 #endif

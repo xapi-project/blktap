@@ -18,9 +18,9 @@
 #include <unistd.h>
 #include <string.h>
 
-#define TAPDISK
-#include "tapdisk.h"
-#include "vhd.h"
+#include "libvhd.h"
+#include "vhd-util.h"
+#include "tapdisk-utils.h"
 
 #if 1
 #define DFPRINTF(_f, _a...) fprintf ( stdout, _f , ## _a )
@@ -29,16 +29,30 @@
 #endif
 
 typedef enum {
+	TD_FIELD_HIDDEN  = 0,
+	TD_FIELD_INVALID = 1
+} td_field_t;
+
+struct vdi_field {
+	char       *name;
+	td_field_t  id;
+};
+
+static struct vdi_field td_vdi_fields[TD_FIELD_INVALID] = {
+	{ .id = TD_FIELD_HIDDEN, .name = "hidden" }
+};
+
+typedef enum {
 	TD_CMD_CREATE    = 0,
-	TD_CMD_SNAPSHOT  = 1,
-	TD_CMD_COALESCE  = 2,
-	TD_CMD_QUERY     = 3,
-	TD_CMD_RESIZE    = 4,
-	TD_CMD_SET       = 5,
-	TD_CMD_REPAIR    = 6,
-	TD_CMD_FILL      = 7,
-	TD_CMD_READ      = 8,
-	TD_CMD_INVALID   = 9
+	TD_CMD_SNAPSHOT,
+/*	TD_CMD_COALESCE,       */
+	TD_CMD_QUERY,
+/* 	TD_CMD_RESIZE,         */
+	TD_CMD_SET,
+/*	TD_CMD_REPAIR,         */
+/*	TD_CMD_FILL,           */
+/*	TD_CMD_READ,           */
+	TD_CMD_INVALID,
 } td_command_t;
 
 struct command {
@@ -50,35 +64,63 @@ struct command {
 struct command commands[TD_CMD_INVALID] = {
 	{ .id = TD_CMD_CREATE,   .name = "create",   .needs_type = 1 },
 	{ .id = TD_CMD_SNAPSHOT, .name = "snapshot", .needs_type = 1 },
-	{ .id = TD_CMD_COALESCE, .name = "coalesce", .needs_type = 1 },
+/*	{ .id = TD_CMD_COALESCE, .name = "coalesce", .needs_type = 1 },    */
 	{ .id =	TD_CMD_QUERY,    .name = "query",    .needs_type = 1 },
-	{ .id =	TD_CMD_RESIZE,   .name = "resize",   .needs_type = 1 },
+/*	{ .id =	TD_CMD_RESIZE,   .name = "resize",   .needs_type = 1 },    */
 	{ .id = TD_CMD_SET,      .name = "set",      .needs_type = 1 },
-	{ .id = TD_CMD_REPAIR,   .name = "repair",   .needs_type = 1 },
-	{ .id = TD_CMD_FILL,     .name = "fill",     .needs_type = 1 },
-	{ .id = TD_CMD_READ,     .name = "read",     .needs_type = 1 },
+/*	{ .id = TD_CMD_REPAIR,   .name = "repair",   .needs_type = 1 },    */
+/*	{ .id = TD_CMD_FILL,     .name = "fill",     .needs_type = 1 },    */
+/*	{ .id = TD_CMD_READ,     .name = "read",     .needs_type = 1 },    */
 };
 
-#define COMMAND_NAMES "{ create | snapshot | coalesce | query | resize | set | repair | fill | read }"
-#define PLUGIN_TYPES  "{ aio | qcow | ram | vhd | vmdk }"
+typedef enum {
+	TD_TYPE_VHD         = 0,
+	TD_TYPE_AIO,
+	TD_TYPE_INVALID,
+} td_disk_t;
 
-#define print_field_names()                                           \
-do {                                                                  \
-	int i;                                                        \
-	fprintf(stderr, "FIELD := { ");                               \
-	fprintf(stderr, "%s", td_vdi_fields[0].name);                 \
-	for (i = 1; i < TD_FIELD_INVALID; i++)                        \
-		fprintf(stderr, " | %s", td_vdi_fields[i].name);      \
-	fprintf(stderr, " }\n");                                      \
-} while (0)
+const char *td_disk_types[TD_TYPE_INVALID] = {
+	"vhd",
+	"aio",
+};
+
+#define print_commands()						\
+	do {								\
+		int i;							\
+		fprintf(stderr, "COMMAND := { ");			\
+		fprintf(stderr, "%s", commands[0].name);		\
+		for (i = 1; i < TD_CMD_INVALID; i++)			\
+			fprintf(stderr, " | %s", commands[i].name);	\
+		fprintf(stderr, " }\n");				\
+	} while (0)
+
+#define print_disk_types()						\
+	do {								\
+		int i;							\
+		fprintf(stderr, "TYPE := { ");				\
+		fprintf(stderr, "%s", td_disk_types[0]);		\
+		for (i = 1; i < TD_TYPE_INVALID; i++)			\
+			fprintf(stderr, " | %s", td_disk_types[i]);	\
+		fprintf(stderr, " }\n");				\
+	} while (0);
+
+#define print_field_names()						\
+	do {								\
+		int i;							\
+		fprintf(stderr, "FIELD := { ");				\
+		fprintf(stderr, "%s", td_vdi_fields[0].name);		\
+		for (i = 1; i < TD_FIELD_INVALID; i++)			\
+			fprintf(stderr, " | %s", td_vdi_fields[i].name); \
+		fprintf(stderr, " }\n");				\
+	} while (0)
 
 void 
 help(void)
 {
 	fprintf(stderr, "Tapdisk Utilities: v1.0.0\n");
 	fprintf(stderr, "usage: td-util COMMAND [TYPE] [OPTIONS]\n");
-	fprintf(stderr, "COMMAND := %s\n", COMMAND_NAMES);
-	fprintf(stderr, "TYPE    := %s\n", PLUGIN_TYPES);
+	print_commands();
+	print_disk_types();
 	exit(-1);
 }
 
@@ -109,75 +151,16 @@ get_field(char *field)
 int
 get_driver_type(char *type)
 {
-	int i, types, len;
+	int i;
 
-	len   = strlen(type);
-	types = sizeof(dtypes)/sizeof(disk_info_t *);
+	if (strnlen(type, 25) >= 25)
+		return -ENAMETOOLONG;
 
-	for (i = 0; i < types; i++)
-		if (!strcmp(type, dtypes[i]->handle)) {
-			if (dtypes[i]->idnum == DISK_TYPE_SYNC ||
-			    dtypes[i]->idnum == DISK_TYPE_VHDSYNC ||
-			    !dtypes[i]->drv)
-				return -1;
+	for (i = 0; i < TD_TYPE_INVALID; i++)
+		if (!strcmp(type, td_disk_types[i]))
 			return i;
-		}
 
-	return -1;
-}
-
-int
-namedup(char **dup, char *name)
-{
-	*dup = NULL;
-
-	if (strnlen(name, MAX_NAME_LEN) >= MAX_NAME_LEN)
-		return ENAMETOOLONG;
-	
-	*dup = strdup(name);
-	return 0;
-}
-
-int
-init_disk_driver(struct disk_driver *dd, int type, char *name, td_flag_t flags)
-{
-	int err = -ENOMEM;
-
-	memset(dd, 0, sizeof(struct disk_driver));
-
-	dd->drv      = dtypes[type]->drv;
-	dd->private  = malloc(dd->drv->private_data_size);
-	dd->td_state = malloc(sizeof(struct td_state));
-
-	if (!dd->td_state || !dd->private)
-		goto fail;
-
-	if (name) {
-		err = namedup(&dd->name, name);
-		if (err)
-			goto fail;
-
-		err = dd->drv->td_open(dd, name, flags);
-		if (err)
-			goto fail;
-	}
-
-	return 0;
-
- fail:
-	free(dd->name);
-	free(dd->private);
-	free(dd->td_state);
-	return -err;
-}
-
-inline void
-free_disk_driver(struct disk_driver *dd)
-{
-	dd->drv->td_close(dd);
-	free(dd->name);
-	free(dd->private);
-	free(dd->td_state);
+	return -TD_TYPE_INVALID;
 }
 
 int
@@ -187,11 +170,6 @@ td_create(int type, int argc, char *argv[])
 	uint64_t size;
 	char *name, *buf;
 	int c, i, fd, sparse = 1;
-
-	if (type == DISK_TYPE_VMDK) {
-		fprintf(stderr, "vmdk create not supported\n");
-		return EINVAL;
-	}
 
 	while ((c = getopt(argc, argv, "hr")) != -1) {
 		switch(c) {
@@ -218,23 +196,29 @@ td_create(int type, int argc, char *argv[])
 		return ENAMETOOLONG;
 	}
 
-	/* image-specific create */
-	if (dtypes[type]->drv->td_create) {
-		td_flag_t flags = (sparse ? TD_CREATE_SPARSE : 0);
-		return dtypes[type]->drv->td_create(name, size, flags);
+	if (type == TD_TYPE_VHD) {
+		int cargc = 0;
+		char sbuf[32], *cargv[6];
+
+		size >>= 20;
+
+		memset(cargv, 0, sizeof(cargv));
+		snprintf(sbuf, sizeof(sbuf) - 1, "%llu", size);
+		cargv[cargc++] = "create";
+		cargv[cargc++] = "-n";
+		cargv[cargc++] = name;
+		cargv[cargc++] = "-s";
+		cargv[cargc++] = sbuf;
+		if (!sparse)
+			cargv[cargc++] = "-r";
+
+		return vhd_util_create(cargc, cargv);
 	}
 
 	/* generic create */
 	if (sparse) {
 		fprintf(stderr, "Cannot create sparse %s image\n",
-			dtypes[type]->handle);
-		return EINVAL;
-	}
-
-	if (type == DISK_TYPE_RAM &&
-	    size > (MAX_RAMDISK_SIZE << SECTOR_SHIFT)) {
-		fprintf(stderr, "Max ram disk size is %dMB\n",
-			MAX_RAMDISK_SIZE >> (20 - SECTOR_SHIFT));
+			td_disk_types[type]);
 		return EINVAL;
 	}
 
@@ -242,9 +226,11 @@ td_create(int type, int argc, char *argv[])
 	if (!buf)
 		return ENOMEM;
 
-	fd = open(name, O_WRONLY | O_CREAT | O_TRUNC, 0644);
-	if (fd == -1)
+	fd = open(name, O_WRONLY | O_DIRECT | O_CREAT | O_TRUNC, 0644);
+	if (fd == -1) {
+		free(buf);
 		return errno;
+	}
 
 	size >>= 20;
 	for (i = 0; i < size; i++)
@@ -261,83 +247,21 @@ td_create(int type, int argc, char *argv[])
 
  usage:
 	fprintf(stderr, "usage: td-util create %s [-h help] [-r reserve] "
-		"<SIZE(MB)> <FILENAME>\n", dtypes[type]->handle);
+		"<SIZE(MB)> <FILENAME>\n", td_disk_types[type]);
 	return EINVAL;
-}
-
-
-/* 
- * search a chain of vhd snapshots for
- * the first image that has been written to 
- */
-int
-get_non_zero_image(char **image, int type, char *backing)
-{
-	int i, err;
-	char *name;
-	struct disk_id pid;
-	struct vhd_info info;
-	struct disk_driver dd;
-
-	if (type != DISK_TYPE_VHD)
-		return namedup(image, backing);
-
-	*image         = NULL;
-	name           = backing;
-	pid.drivertype = type;
-
-	do {
-		err = init_disk_driver(&dd, type, name, TD_OPEN_RDONLY);
-
-		if (name != backing)
-			free(name);
-
-		if (err)
-			return err;
-
-		err = dd.drv->td_get_parent_id(&dd, &pid);
-		if (err) {
-			if (err == TD_NO_PARENT)
-				err = namedup(image, dd.name);
-			free_disk_driver(&dd);
-			return err;
-		}
-
-		err = _vhd_get_bat(&dd, &info);
-		if (err) {
-			free_disk_driver(&dd);
-			free(pid.name);
-			return err;
-		}
-
-		for (i = 0; i < info.bat_entries; i++)
-			if (info.bat[i] != DD_BLK_UNUSED) {
-				err = namedup(image, dd.name);
-				free(pid.name);
-				pid.name = NULL;
-				break;
-			}
-
-		name = pid.name;
-		free(info.bat);
-		free_disk_driver(&dd);
-
-	} while(!*image && !err);
-
-	return err;
 }
 
 int
 td_snapshot(int type, int argc, char *argv[])
 {
-	int c, err;
+	char *cargv[5];
+	int c, err, cargc;
 	struct stat stats;
 	char *name, *backing;
-	struct disk_id pid;
 
-	if (!dtypes[type]->drv->td_snapshot) {
+	if (type != TD_TYPE_VHD) {
 		fprintf(stderr, "Cannot create snapshot of %s image type\n",
-			dtypes[type]->handle);
+			td_disk_types[type]);
 		return EINVAL;
 	}
 
@@ -367,33 +291,30 @@ td_snapshot(int type, int argc, char *argv[])
 		return errno;
 	}
 
-	pid.drivertype = type;
-	err = get_non_zero_image(&pid.name, type, backing);
-	if (err)
-		return err;
-
-	err = dtypes[type]->drv->td_snapshot(&pid, name, 0);
-
-	free(pid.name);
-	return err;
+	cargc = 0;
+	memset(cargv, 0, sizeof(cargv));
+	cargv[cargc++] = "snapshot";
+	cargv[cargc++] = "-n";
+	cargv[cargc++] = name;
+	cargv[cargc++] = "-p";
+	cargv[cargc++] = backing;
+	return vhd_util_snapshot(cargc, cargv);
 
  usage:
 	fprintf(stderr, "usage: td-util snapshot %s [-h help] "
-		"<FILENAME> <BACKING_FILENAME>\n", dtypes[type]->handle);
+		"<FILENAME> <BACKING_FILENAME>\n", td_disk_types[type]);
 	return EINVAL;
 }
 
 int
 td_coalesce(int type, int argc, char *argv[])
 {
-	char *name;
-	int c, ret;
-	struct disk_id id;
-	struct disk_driver dd;
+	int c, ret, cargc;
+	char *name, *pname, *cargv[3];
 
-	if (type != DISK_TYPE_QCOW && type != DISK_TYPE_VHD) {
-		fprintf(stderr, "Cannot coalesce images of type %s\n",
-			dtypes[type]->handle);
+	if (type != TD_TYPE_VHD) {
+		fprintf(stderr, "Cannot create snapshot of %s image type\n",
+			td_disk_types[type]);
 		return EINVAL;
 	}
 
@@ -416,40 +337,20 @@ td_coalesce(int type, int argc, char *argv[])
 		return ENAMETOOLONG;
 	}
 
-	ret = init_disk_driver(&dd, type, name, TD_OPEN_RDONLY);
-	if (ret) {
-		DFPRINTF("Failed opening %s\n", name);
-		return ret;
-	}
-	ret = dd.drv->td_get_parent_id(&dd, &id);
-	free_disk_driver(&dd);
-	
-	if (ret == TD_NO_PARENT) {
-		printf("%s has no parent\n", name);
-		return EINVAL;
-	} else if (ret) {
-		printf("Failed getting %s's parent\n", name);
-		return EIO;
-	}
-
-	switch (type) {
-	case DISK_TYPE_VHD:
-		ret = vhd_coalesce(name);
-		break;
-	case DISK_TYPE_QCOW:
-		/* ret = qcow_coalesce(name); */
-	default:
-		ret = -EINVAL;
-	}
-
+	cargc = 0;
+	memset(cargv, 0, sizeof(cargv));
+	cargv[cargc++] = "coalesce";
+	cargv[cargc++] = "-n";
+	cargv[cargc++] = name;
+	ret = vhd_util_coalesce(cargc, cargv);
 	if (ret)
-		printf("coalesce failed: %d\n", -ret);
+		printf("coalesce failed: %d\n", ret);
 
 	return ret;
 
  usage:
 	fprintf(stderr, "usage: td-util coalesce %s [-h help] "
-		"<FILENAME>\n", dtypes[type]->handle);
+		"<FILENAME>\n", td_disk_types[type]);
 	return EINVAL;
 }
 
@@ -458,7 +359,6 @@ td_query(int type, int argc, char *argv[])
 {
 	char *name;
 	int c, size = 0, parent = 0, fields = 0, err = 0;
-	struct disk_driver dd;
 
 	while ((c = getopt(argc, argv, "hvpf")) != -1) {
 		switch(c) {
@@ -469,15 +369,9 @@ td_query(int type, int argc, char *argv[])
 			parent = 1;
 			break;
 		case 'f':
-			if (type != DISK_TYPE_VHD && type != DISK_TYPE_QCOW) {
-				fprintf(stderr, "Cannot read fields of %s "
-					"images\n", dtypes[type]->handle);
-				return EINVAL;
-			}
 			fields = 1;
 			break;
 		default:
-			fprintf(stderr, "Unknown option %c\n", (char)c);
 		case 'h':
 			goto usage;
 		}
@@ -493,116 +387,95 @@ td_query(int type, int argc, char *argv[])
 		return ENAMETOOLONG;
 	}
 
-	err = init_disk_driver(&dd, type, name, TD_OPEN_QUERY);
-	if (err) {
-		DFPRINTF("Failed opening %s\n", name);
-		return err;
-	}
+	if (type == TD_TYPE_VHD) {
+		vhd_context_t vhd;
 
-	if (size)
-		printf("%llu\n", dd.td_state->size >> 11);
-	if (parent) {
-		struct disk_id id;
-		err = dd.drv->td_get_parent_id(&dd, &id);
-		if (!err) {
-			printf("%s\n", id.name);
-			free(id.name);
-		} else if (err == TD_NO_PARENT) {
-			printf("%s has no parent\n", name);
-			err = ENODATA;
-		} else
-			printf("query failed\n");
-	}
-	if (fields) {
-		int i;
-		long *values;
-		struct vhd_info vinfo;
-		/* struct qcow_info qinfo; */
-
-		switch(type) {
-		case DISK_TYPE_VHD:
-			err = vhd_get_info(&dd, &vinfo);
-			values = vinfo.td_fields;
-			break;
-		case DISK_TYPE_QCOW:
-			/*
-			err = qcow_get_info(&dd, &qinfo);
-			values = qinfo.td_fields;
-			free(qinfo.l1);
-			if (!err && !qinfo.valid_td_fields)
-				err = EINVAL;
-			*/
-			break;
+		err = vhd_open(&vhd, name, O_RDONLY | O_DIRECT);
+		if (err) {
+			printf("failed opening %s: %d\n", name, err);
+			return err;
 		}
 
-		if (!err)
+		if (size)
+			printf("%llu\n", vhd.footer.curr_size >> 20);
+
+		if (parent) {
+			if (vhd.footer.type != HD_TYPE_DIFF)
+				printf("%s has no parent\n", name);
+			else {
+				char *pname;
+
+				err = vhd_parent_locator_get(&vhd, &pname);
+				if (err)
+					printf("failed getting parent: %d\n",
+					       err);
+				else {
+					printf("%s\n", pname);
+					free(pname);
+				}
+			}
+		}
+
+		if (fields) {
+			printf("%s: %d\n", td_vdi_fields[TD_FIELD_HIDDEN].name,
+			       vhd.footer.hidden);
+		}
+
+		vhd_close(&vhd);
+
+	} else if (type == TD_TYPE_AIO) {
+		if (size) {
+			int fd;
+			uint64_t secs;
+			uint32_t ssize;
+
+			fd = open(name, O_RDONLY | O_LARGEFILE);
+			if (fd == -1) {
+				printf("failed opening %s: %d\n", name, errno);
+				return -errno;
+			}
+
+			err = tapdisk_get_image_size(fd, &secs, &ssize);
+			close(fd);
+
+			if (err) {
+				printf("failed getting size for %s: %d\n:",
+				       name, err);
+				return err;
+			}
+
+			printf("%llu\n", secs >> 11);
+		}
+
+		if (parent)
+			printf("%s has no parent\n", name);
+
+		if (fields) {
+			int i;
+
 			for (i = 0; i < TD_FIELD_INVALID; i++)
-				printf("%s: %ld\n", 
-				       td_vdi_fields[i].name, values[i]);
-		else
-			printf("field query failed\n");
+				printf("%s: 0\n", td_vdi_fields[i].name);
+		}
 	}
 
-	free_disk_driver(&dd);
 	return err;
 
  usage:
 	fprintf(stderr, "usage: td-util query %s [-h help] [-v virtsize] "
-		"[-p parent] [-f fields] <FILENAME>\n", dtypes[type]->handle);
-	return EINVAL;
-}
-
-int
-td_resize(int type, int argc, char *argv[])
-{
-	size_t mb;
-	int err, c;
-	char *name;
-	uint64_t size;
-	struct disk_driver dd;
-
-	if (type != DISK_TYPE_VHD) {
-	  fprintf(stderr, "Cannot resize %s images\n",
-			dtypes[type]->handle);
-		return EINVAL;
-	}
-
-	while ((c = getopt(argc, argv, "h")) != -1) {
-		switch(c) {
-		default:
-			fprintf(stderr, "Unknown option %c\n", (char)c);
-		case 'h':
-			goto usage;
-		}
-	}
-
-	if (optind != (argc - 2))
-		goto usage;
-
-	name = argv[optind++];
-	size = strtoull(argv[optind], NULL, 10);
-	err  = vhd_resize(name, size);
-
-	return err;
-
-usage:
-	fprintf(stderr, "usage: td-util resize %s <FILENAME> <SIZE(MB)>\n",
-		dtypes[type]->handle);
+		"[-p parent] [-f fields] <FILENAME>\n", td_disk_types[type]);
 	return EINVAL;
 }
 
 int
 td_set_field(int type, int argc, char *argv[])
 {
-	char *name;
-	long value;
-	int ret, i, c;
-	struct disk_driver dd;
+	int ret, i, c, cargc;
 	struct vdi_field *field;
+	char *name, *value, *cargv[7];
 
-	if (type != DISK_TYPE_VHD && type != DISK_TYPE_QCOW) {
+	if (type != TD_TYPE_VHD) {
 		fprintf(stderr, "Cannot set fields of %s images\n",
-			dtypes[type]->handle);
+			td_disk_types[type]);
 		return EINVAL;
 	}
 
@@ -621,175 +494,29 @@ td_set_field(int type, int argc, char *argv[])
 	name  = argv[optind++];
 
 	field = get_field(argv[optind]);
-	if (!field) {
+	if (!field || field->id != TD_FIELD_HIDDEN) {
 		fprintf(stderr, "Invalid field %s\n", argv[optind]);
 		goto usage;
 	}
 
-	errno = 0;
-	value = strtol(argv[++optind], NULL, 10);
-	if (errno) {
-		fprintf(stderr, "Invalid value %s\n", argv[optind]);
-		goto usage;
-	}
+	value = argv[++optind];
 
-	ret = init_disk_driver(&dd, type, name, 0);
-	if (ret) {
-		DPRINTF("Failed opening %s\n", name);
-		return ret;
-	}
-
-	switch(type) {
-	case DISK_TYPE_VHD:
-		ret = vhd_set_field(&dd, field->id, value);
-		break;
-	case DISK_TYPE_QCOW:
-		/* ret = qcow_set_field(&dd, field->id, value);*/
-		break;
-	}
-
-	free_disk_driver(&dd);
-
-	return ret;
+	cargc = 0;
+	memset(cargv, 0, sizeof(cargv));
+	cargv[cargc++] = "set";
+	cargv[cargc++] = "-n";
+	cargv[cargc++] = name;
+	cargv[cargc++] = "-f";
+	cargv[cargc++] = field->name;
+	cargv[cargc++] = "-v";
+	cargv[cargc++] = value;
+	return vhd_util_set_field(cargc, cargv);
 
  usage:
 	fprintf(stderr, "usage: td-util set %s [-h help] "
-		"<FILENAME> <FIELD> <VALUE>\n", dtypes[type]->handle);
+		"<FILENAME> <FIELD> <VALUE>\n", td_disk_types[type]);
 	print_field_names();
 	return EINVAL;
-}
-
-int
-td_repair(int type, int argc, char *argv[])
-{
-	char *name;
-	int ret, c;
-	struct disk_driver dd;
-
-	if (type != DISK_TYPE_VHD) {
-		fprintf(stderr, "Cannot repair %s images\n",
-			dtypes[type]->handle);
-		return EINVAL;
-	}
-
-	while ((c = getopt(argc, argv, "h")) != -1) {
-		switch(c) {
-		default:
-			fprintf(stderr, "Unknown option %c\n", (char)c);
-		case 'h':
-			goto usage;
-		}
-	}
-
-	if (optind != (argc - 1))
-		goto usage;
-
-	name = argv[optind++];
-	ret  = init_disk_driver(&dd, type, name, 0);
-	if (ret) {
-		DPRINTF("Failed opening %s\n", name);
-		return ret;
-	}
-
-	ret = vhd_repair(&dd);
-	if (!ret)
-		printf("%s successfully repaired\n", name);
-	else
-		printf("failed to repair %s: %d\n", name, ret);
-
-	free_disk_driver(&dd);
-
-	return ret;
-
- usage:
-	fprintf(stderr, "usage: td-util repair %s [-h help] "
-		"<FILENAME>\n", dtypes[type]->handle);
-	return EINVAL;
-}
-
-int
-td_fill(int type, int argc, char *argv[])
-{
-	int c, ret;
-	char *name;
-
-	if (type != DISK_TYPE_VHD) {
-		fprintf(stderr, "Cannot fill images of type %s\n",
-			dtypes[type]->handle);
-		return EINVAL;
-	}
-
-	while ((c = getopt(argc, argv, "h")) != -1) {
-		switch(c) {
-		default:
-			fprintf(stderr, "Unknown option %c\n", (char)c);
-		case 'h':
-			goto usage;
-		}
-	}
-
-	if (optind != (argc - 1))
-		goto usage;
-
-	name = argv[optind++];
-
-	if (strnlen(name, MAX_NAME_LEN) == MAX_NAME_LEN) {
-		fprintf(stderr, "Device name too long\n");
-		return ENAMETOOLONG;
-	}
-
-	ret = vhd_fill(name);
-	if (!ret)
-		printf("%s successfully filled\n", name);
-	else
-		printf("failed to fill %s: %d\n", name, ret);
-
-	return ret;
-
- usage:
-	fprintf(stderr, "usage: td-util fill %s [-h help] "
-		"<FILENAME>\n", dtypes[type]->handle);
-	return EINVAL;
-}
-
-int
-td_read(int type, int argc, char *argv[])
-{
-	int err = 0;
-	char *name;
-	struct disk_driver dd;
-
-	if (argc <= 1)
-		goto usage;
-
-	if (type != DISK_TYPE_VHD) {
-		fprintf(stderr, "Cannot read %s images\n",
-			dtypes[type]->handle);
-		return EINVAL;
-	}
-
-	name = argv[1];
-	if (strnlen(name, MAX_NAME_LEN) == MAX_NAME_LEN) {
-		fprintf(stderr, "Device name too long\n");
-		err = ENAMETOOLONG;
-		goto usage;
-	}
-
-	err = init_disk_driver(&dd, type, name, TD_OPEN_QUERY);
-	if (err) {
-		DFPRINTF("Failed opening %s\n", name);
-		goto usage;
-	}
-
-	err = _vhd_read(&dd, argc, argv);
-	free_disk_driver(&dd);
-
-	return err;
-
- usage:
-	fprintf(stderr, "usage: td-util read %s <FILENAME> "
-		"[image-specific options]\n", dtypes[type]->handle);
-	return err;
 }
 
 int
@@ -819,15 +546,16 @@ main(int argc, char *argv[])
 
 	if (cmd->needs_type) {
 		if (argc < 3) {
-			fprintf(stderr, "td-util %s requires a TYPE: %s\n", 
-				cmd->name, PLUGIN_TYPES);
+			fprintf(stderr, "td-util %s requires a TYPE\n",
+				cmd->name);
+			print_disk_types();
 			exit(-1);
 		}
 
 		type = get_driver_type(argv[2]);
-		if (type == -1) {
-			fprintf(stderr, "invalid TYPE '%s'.  Choose from: %s\n", 
-				argv[2], PLUGIN_TYPES);
+		if (type < 0) {
+			fprintf(stderr, "invalid TYPE '%s'.\n", argv[2]);
+			print_disk_types();
 			exit(-1);
 		}
 		--cargc;
@@ -848,18 +576,23 @@ main(int argc, char *argv[])
 	case TD_CMD_SNAPSHOT:
 		ret = td_snapshot(type, cargc, cargv);
 		break;
+/*
 	case TD_CMD_COALESCE:
 		ret = td_coalesce(type, cargc, cargv);
 		break;
+*/
 	case TD_CMD_QUERY:
 		ret = td_query(type, cargc, cargv);
 		break;
+/*
 	case TD_CMD_RESIZE:
 		ret = td_resize(type, cargc, cargv);
 		break;
+*/
 	case TD_CMD_SET:
 		ret = td_set_field(type, cargc, cargv);
 		break;
+/*
 	case TD_CMD_REPAIR:
 		ret = td_repair(type, cargc, cargv);
 		break;
@@ -869,6 +602,8 @@ main(int argc, char *argv[])
 	case TD_CMD_READ:
 		ret = td_read(type, cargc, cargv);
 		break;
+*/
+	default:
 	case TD_CMD_INVALID:
 		ret = EINVAL;
 		break;

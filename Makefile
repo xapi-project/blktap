@@ -1,5 +1,3 @@
-## export XEN_ROOT = /path/to/xen/tree
-## if XEN_ROOT is not otherwise set, assume standard xen tree structure
 BLKTAP_ROOT := .
 include $(BLKTAP_ROOT)/Rules.mk
 

@@ -873,15 +873,18 @@ vhd_util_resize(int argc, char **argv)
 	printf("resize not fully implemented\n");
 	return -ENOSYS;
 
+	err  = -EINVAL;
 	size = 0;
 	name = NULL;
 
+	optind = 0;
 	while ((c = getopt(argc, argv, "n:s:h")) != -1) {
 		switch (c) {
 		case 'n':
 			name = optarg;
 			break;
 		case 's':
+			err  = 0;
 			size = strtoull(optarg, NULL, 10);
 			break;
 		case 'h':
@@ -889,6 +892,9 @@ vhd_util_resize(int argc, char **argv)
 			goto usage;
 		}
 	}
+
+	if (err || !name || argc != optind)
+		goto usage;
 
 	err = vhd_journal_create(&journal, name);
 

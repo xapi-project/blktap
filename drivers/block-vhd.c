@@ -2190,31 +2190,12 @@ vhd_debug(td_driver_t *driver)
 */
 }
 
-static int
-_vhd_create(const char *name, uint64_t bytes, td_flag_t flags)
-{
-	uint32_t type;
-
-	type = td_flag_test(flags, TD_CREATE_SPARSE) ?
-		HD_TYPE_DYNAMIC : HD_TYPE_FIXED;
-
-	return vhd_create(name, bytes, type);
-}
-
-static int
-_vhd_snapshot(td_disk_id_t *parent, char *name, td_flag_t flags)
-{
-	return vhd_snapshot(name, parent->name);
-}
-
 struct tap_disk tapdisk_vhd = {
 	.disk_type          = "tapdisk_vhd",
 	.flags              = 0,
 	.private_data_size  = sizeof(struct vhd_state),
 	.td_open            = _vhd_open,
 	.td_close           = _vhd_close,
-	.td_create          = _vhd_create,
-	.td_snapshot        = _vhd_snapshot,
 	.td_queue_read      = vhd_queue_read,
 	.td_queue_write     = vhd_queue_write,
 	.td_get_parent_id   = vhd_get_parent_id,

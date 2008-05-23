@@ -1,7 +1,7 @@
 BLKTAP_ROOT := ../
 include $(BLKTAP_ROOT)/Rules.mk
 
-IBIN               = vhd-util vhd-index
+IBIN               = vhd-util vhd-index vhd-update
 INST_DIR           = /usr/sbin
 
 LIBDIR             = lib
@@ -34,7 +34,10 @@ vhd-util: vhd-util.o
 	$(CC) $(CFLAGS) -o vhd-util vhd-util.o $(LIBS)
 
 vhd-index: vhd-index.o
-	$(CC) $(CFLAGS) -o vhd-index vhd-index.o $(OBJS) $(LIBS)
+	$(CC) $(CFLAGS) -o vhd-index vhd-index.o $(LIBS)
+
+vhd-update: vhd-update.o
+	$(CC) $(CFLAGS) -o vhd-update vhd-update.o $(LIBS)
 
 install: all
 	$(MAKE) -C $(LIBDIR) install
@@ -45,6 +48,6 @@ clean:
 	$(MAKE) -C $(LIBDIR) clean
 	rm -rf *.o *~ $(DEPS) $(IBIN)
 
-.PHONY: all build clean install libvhd
+.PHONY: all build clean install libvhd vhd-util vhd-index vhd-update
 
 -include $(DEPS)

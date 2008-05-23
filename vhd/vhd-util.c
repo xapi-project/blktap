@@ -24,7 +24,15 @@ struct command {
 };
 
 struct command commands[] = {
-	{ .name = "resize",      .func = vhd_util_resize  },
+	{ .name = "create",      .func = vhd_util_create        },
+	{ .name = "snapshot",    .func = vhd_util_snapshot      },
+	{ .name = "query",       .func = vhd_util_query         },
+	{ .name = "read",        .func = vhd_util_read          },
+	{ .name = "set",         .func = vhd_util_set_field     },
+	{ .name = "repair",      .func = vhd_util_repair        },
+	{ .name = "resize",      .func = vhd_util_resize        },
+	{ .name = "fill",        .func = vhd_util_fill          },
+	{ .name = "coalesce",    .func = vhd_util_coalesce      },
 };
 
 #define print_commands()					\
