@@ -216,6 +216,47 @@ done:
 }
 
 static int
+tapdisk_vbd_open_index(td_vbd_t *vbd)
+{
+	int err;
+	char *path;
+	td_flag_t flags;
+	td_image_t *last, *image;
+
+	last = tapdisk_vbd_last_image(vbd);
+	err  = asprintf(&path, "%s.bat", last->name);
+	if (err == -1)
+		return -errno;
+
+	err = access(path, R_OK);
+	if (err == -1) {
+		free(path);
+		return -errno;
+	}
+
+	flags = vbd->flags | TD_OPEN_RDONLY | TD_OPEN_SHAREABLE;
+	image = tapdisk_image_allocate(path, DISK_TYPE_VINDEX,
+				       vbd->storage, flags, vbd);
+	if (!image) {
+		err = -ENOMEM;
+		goto fail;
+	}
+
+	err = td_open(image);
+	if (err)
+		goto fail;
+
+	tapdisk_vbd_add_image(vbd, image);
+	return 0;
+
+fail:
+	if (image)
+		tapdisk_image_free(image);
+	free(path);
+	return err;
+}
+
+static int
 __tapdisk_vbd_open_vdi(td_vbd_t *vbd)
 {
 	char *file;
@@ -246,6 +287,19 @@ __tapdisk_vbd_open_vdi(td_vbd_t *vbd)
 		if (err) {
 			if (err != -ENODEV)
 				goto fail;
+
+			if (td_flag_test(flags, TD_OPEN_VHD_INDEX) &&
+			    td_flag_test(flags, TD_OPEN_RDONLY)) {
+				err = tapdisk_vbd_open_index(vbd);
+				if (!err) {
+					tapdisk_image_free(image);
+					image = NULL;
+					break;
+				}
+
+				if (err != -ENOENT)
+					goto fail;
+			}
 
 			err = td_open(image);
 			if (err)

@@ -47,6 +47,7 @@ PROPRIETARY_SOURCE += include/libvhd-index.h
 PROPRIETARY_SOURCE += include/vhd.h
 PROPRIETARY_SOURCE += include/vhd-util.h
 PROPRIETARY_SOURCE += drivers/block-vhd.c
+PROPRIETARY_SOURCE += drivers/block-vindex.c
 PROPRIETARY_SOURCE += drivers/io-optimize.c
 PROPRIETARY_SOURCE += drivers/td.c
 PROPRIETARY_SOURCE += drivers/vhd-coalesce.c

@@ -5,9 +5,9 @@ include $(BLKTAP_ROOT)/Rules.mk
 
 SUBDIRS-y :=
 SUBDIRS-y += include
+SUBDIRS-y += vhd
 SUBDIRS-y += drivers
 SUBDIRS-y += daemon
-SUBDIRS-y += vhd
 
 .PHONY: all
 all: build

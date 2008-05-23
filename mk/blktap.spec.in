@@ -6,22 +6,23 @@ License: Proprietary
 Group: System/Hypervisor
 Source0: %{name}-%{version}.tar.bz2
 Source1: block-vhd.o
-Source2: io-optimize.o
-Source3: td.o
-Source4: vhd-coalesce.o
-Source5: vhd-fill.o
-Source6: vhd-read.o
-Source7: tapdisk-queue.o
-Source8: tapdisk-filter.o
-Source9: vhd-update.o
-Source10: relative-path.o
-Source11: libvhd.o
-Source12: libvhd-journal.o
-Source13: libvhd-index.o
-Source14: vhd-util-resize.o
-Source15: relative-path.o
-Source16: vhd-util.o
-Source17: vhd-index.o
+Source2: block-vindex.o
+Source3: io-optimize.o
+Source4: td.o
+Source5: vhd-coalesce.o
+Source6: vhd-fill.o
+Source7: vhd-read.o
+Source8: tapdisk-queue.o
+Source9: tapdisk-filter.o
+Source10: vhd-update.o
+Source11: relative-path.o
+Source12: libvhd.o
+Source13: libvhd-journal.o
+Source14: libvhd-index.o
+Source15: vhd-util-resize.o
+Source16: relative-path.o
+Source17: vhd-util.o
+Source18: vhd-index.o
 
 Patch0: %{name}-development.patch
 BuildRoot: %{_tmppath}/%{name}-%{version}-%{release}-buildroot
@@ -52,13 +53,14 @@ cp %{SOURCE7} drivers
 cp %{SOURCE8} drivers
 cp %{SOURCE9} drivers
 cp %{SOURCE10} drivers
-cp %{SOURCE11} vhd/lib
+cp %{SOURCE11} drivers
 cp %{SOURCE12} vhd/lib
 cp %{SOURCE13} vhd/lib
 cp %{SOURCE14} vhd/lib
 cp %{SOURCE15} vhd/lib
-cp %{SOURCE16} vhd
+cp %{SOURCE16} vhd/lib
 cp %{SOURCE17} vhd
+cp %{SOURCE18} vhd
 
 %build
 %{__make} USE_SYSTEM_LIBRARIES=y

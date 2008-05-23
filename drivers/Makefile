@@ -1,6 +1,8 @@
 BLKTAP_ROOT= ..
 include $(BLKTAP_ROOT)/Rules.mk
 
+LIBVHDDIR  = $(BLKTAP_ROOT)/vhd/lib
+
 IBIN            = tapdisk #td-util
 LOCK_UTIL       = lock-util
 VHD_UPDATE_UTIL = vhd-update
@@ -18,7 +20,7 @@ CFLAGS   += -Wp,-MD,.$(@F).d
 DEPS      = .*.d
 
 #tapdisk td-util vhd-update: LIBS += -luuid
-tapdisk: LIBS += -luuid
+tapdisk: LIBS += -L$(LIBVHDDIR) -lvhd -luuid
 
 ifneq ($(USE_SYSTEM_LIBRARIES),y)
 LIBAIO_DIR = $(XEN_ROOT)/tools/libaio/src
@@ -45,6 +47,7 @@ BLK-OBJS  := block-aio.o
 BLK-OBJS  += block-ram.o
 BLK-OBJS  += block-cache.o
 BLK-OBJS  += block-vhd.o
+BLK-OBJS  += block-vindex.o
 BLK-OBJS  += lock.o
 BLK-OBJS  += atomicio.o
 BLK-OBJS  += io-optimize.o
