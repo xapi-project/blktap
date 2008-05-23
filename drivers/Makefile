@@ -27,6 +27,8 @@ else
 tapdisk td-util vhd-update: AIOLIBS := -laio
 endif
 
+TAP-OBJS  := tapdisk-ipc.o
+
 BLK-OBJS  := block-aio.o
 BLK-OBJS  += block-vhd.o
 BLK-OBJS  += block-ram.o
@@ -43,8 +45,8 @@ BLK-OBJS  += tapdisk-log.o
 
 all: $(IBIN) lock-util $(VHD_UPDATE_UTIL)
 
-tapdisk: $(BLK-OBJS) tapdisk.c
-	$(CC) $(CFLAGS) -o tapdisk $(BLK-OBJS) tapdisk.c \
+tapdisk: $(TAP-OBJS) $(BLK-OBJS) tapdisk.c
+	$(CC) $(CFLAGS) -o tapdisk $(TAP-OBJS) $(BLK-OBJS) tapdisk.c \
 		$(AIOLIBS) $(LIBS)
 
 td-util: $(BLK-OBJS) td.o

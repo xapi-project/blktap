@@ -45,6 +45,8 @@
 #define DOMNAME "Domain-0"
 #define BASE_DEV_VAL 2048
 
+static LIST_HEAD(watches);
+
 int
 xs_gather(struct xs_handle *xs, const char *dir, ...)
 {
@@ -207,55 +209,102 @@ get_dom_domid(struct xs_handle *h)
 	return domid;
 }
 
-int convert_dev_name_to_num(char *name) {
-	char *p, *ptr;
-	int majors[] = { 3, 22, 33, 34, 56, 57, 88, 89, 90, 91 };
-	int maj, i, ret = 0;
+/*
+ * a little paranoia: we don't just trust token
+ */
+static struct xenbus_watch *find_watch(const char *token)
+{
+	struct xenbus_watch *i, *cmp;
 
-	char *p_sd  = "/dev/sd";
-	char *p_hd  = "/dev/hd";
-	char *p_xvd = "/dev/xvd";
-	char *p_plx = "plx";
-	char *alpha = "abcdefghijklmnop";
+	cmp = (void *)strtoul(token, NULL, 16);
 
-	if (strstr(name, p_sd) != NULL) {
-		p = name + strlen(p_sd);
-		for (i = 0, ptr = alpha; i < strlen(alpha); i++) {
-			if (*ptr == *p)
-				break;
-			*ptr++;
-		}
-		*p++;
-		ret = BASE_DEV_VAL + (16 * i) + atoi(p);
+	list_for_each_entry(i, &watches, list)
+		if (i == cmp)
+			return i;
 
-	} else if (strstr(name, p_hd) != NULL) {
-		p = name + strlen(p_hd);
-		for (i = 0, ptr = alpha; i < strlen(alpha); i++) {
-			if (*ptr == *p)
-				break;
-			*ptr++;
-		}
-		*p++;
-		ret = (majors[i / 2] * 256) + atoi(p);
+	return NULL;
+}
 
-	} else if (strstr(name, p_xvd) != NULL) {
-		p = name + strlen(p_xvd);
-		for (i = 0, ptr = alpha; i < strlen(alpha); i++) {
-			if (*ptr == *p)
-				break;
-			*ptr++;
-		}
-		*p++;
-		ret = (202 * 256) + (16 * i) + atoi(p);
+/*
+ * Register callback to watch this node;
+ * like xs_watch, return 0 on failure
+ */
+int register_xenbus_watch(struct xs_handle *h, struct xenbus_watch *watch)
+{
+	/* Pointer in ascii is the token. */
+	char token[sizeof(watch) * 2 + 1];
 
-	} else if (strstr(name, p_plx) != NULL) {
-		p = name + strlen(p_plx);
-		ret = atoi(p);
-
-	} else {
-		DPRINTF("Unknown device type, setting to default.\n");
-		ret = BASE_DEV_VAL;
+	sprintf(token, "%lX", (long)watch);
+	if (find_watch(token)) {
+		EPRINTF("watch collision!\n");
+		return -EINVAL;
 	}
 
-	return ret;
+	if (!xs_watch(h, watch->node, token)) {
+		EPRINTF("unable to set watch!\n");
+		return -EINVAL;
+	}
+
+	list_add(&watch->list, &watches);
+
+	return 0;
+}
+
+int unregister_xenbus_watch(struct xs_handle *h, struct xenbus_watch *watch)
+{
+	char token[sizeof(watch) * 2 + 1];
+
+	sprintf(token, "%lX", (long)watch);
+	if (!find_watch(token)) {
+		EPRINTF("no such watch!\n");
+		return -EINVAL;
+	}
+
+	if (!xs_unwatch(h, watch->node, token))
+		EPRINTF("XENBUS Failed to release watch %s\n", watch->node);
+
+	list_del(&watch->list);
+
+	return 0;
+}
+
+/*
+ * re-register callbacks to all watches
+ */
+void reregister_xenbus_watches(struct xs_handle *h)
+{
+	struct xenbus_watch *watch;
+	char token[sizeof(watch) * 2 + 1];
+
+	list_for_each_entry(watch, &watches, list) {
+		sprintf(token, "%lX", (long)watch);
+		xs_watch(h, watch->node, token);
+	}
+}
+
+/*
+ * based on watch_thread() 
+ */
+int xs_fire_next_watch(struct xs_handle *h)
+{
+	unsigned int num;
+	struct xenbus_watch *w;
+	char **res, *token, *node = NULL;
+
+	res = xs_read_watch(h, &num);
+	if (res == NULL) 
+		return -EAGAIN; /* in O_NONBLOCK, read_watch returns 0... */
+
+	node  = res[XS_WATCH_PATH];
+	token = res[XS_WATCH_TOKEN];
+	DPRINTF("got watch %s on %s\n", token, node);
+
+	w = find_watch(token);
+	if (w) 
+		w->callback(h, w, node);
+	DPRINTF("handled watch %s on %s\n", token, node);
+
+	free(res);
+
+	return 1;
 }

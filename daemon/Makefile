@@ -1,7 +1,7 @@
 BLKTAP_ROOT := ..
 include $(BLKTAP_ROOT)/Rules.mk
 
-IBIN          = blktapctrl tapdisk-control
+IBIN          = blktapctrl
 INST_DIR      = /usr/sbin
 
 LIBDIR        = lib
@@ -16,10 +16,8 @@ INCLUDES     += -I $(XEN_LIBXC) -I $(XEN_XENSTORE)
 LIBS         += -L$(XEN_XENSTORE)
 endif
 
-SHARED-OBJS  := tapdisk-dispatch-common.o
-
-CONTROL-OBJS := tapdisk-xenbus.o
-CONTROL-OBJS += tapdisk-blkif.o
+OBJS         := tapdisk-dispatch-common.o
+OBJS         += tapdisk-channel.o
 
 CFLAGS       += -Werror
 CFLAGS       += -Wno-unused
@@ -34,12 +32,8 @@ DEPS          = .*.d
 
 all: libblktap $(IBIN)
 
-blktapctrl: tapdisk-daemon.c $(SHARED-OBJS)
-	$(CC) $(CFLAGS) -o blktapctrl tapdisk-daemon.c $(LIBS) $(SHARED-OBJS)
-
-tapdisk-control: tapdisk-control.c $(SHARED-OBJS) $(CONTROL-OBJS)
-	$(CC) $(CFLAGS) -o tapdisk-control tapdisk-control.c \
-		$(LIBS) $(SHARED-OBJS) $(CONTROL-OBJS)
+blktapctrl: tapdisk-daemon.c $(OBJS)
+	$(CC) $(CFLAGS) -o blktapctrl tapdisk-daemon.c $(LIBS) $(OBJS)
 
 libblktap:
 	@set -e
@@ -54,7 +48,7 @@ clean:
 	$(MAKE) -C $(LIBDIR) clean
 	rm -rf *.o *~ $(DEPS) xen TAGS
 
-.PHONY: all clean install blktapctrl tapdisk-control libblktap
+.PHONY: all clean install blktapctrl libblktap
 
 -include $(DEPS)
 

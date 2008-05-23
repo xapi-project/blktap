@@ -1,5 +1,5 @@
 /*
- * (c) 2005 Andrew Warfield and Julian Chesterfield
+ * Copyright (c) 2008 Xensource Inc.
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License version 2
@@ -25,67 +25,65 @@
  * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS
  * IN THE SOFTWARE.
  */
-#ifndef TAPDISK_DISPATCH_H
-#define TAPDISK_DISPATCH_H
+#ifndef _TAPDISK_DISPATCH_H_
+#define _TAPDISK_DISPATCH_H_
 
-#include <xs.h>
+#include "xs_api.h"
 #include "blktaplib.h"
+#include "tapdisk-message.h"
 
-static inline unsigned long long
-tapdisk_get_size(blkif_t *blkif)
-{
-	image_t *img = (image_t *)blkif->prv;
-	return img->size;
-}
+struct tapdisk_channel {
+	int                       state;
 
-static inline unsigned long
-tapdisk_get_secsize(blkif_t *blkif)
-{
-	image_t *img = (image_t *)blkif->prv;
-	return img->secsize;
-}
+	int                       read_fd;
+	int                       write_fd;
+	int                       blktap_fd;
+	int                       channel_id;
 
-static inline unsigned int
-tapdisk_get_info(blkif_t *blkif)
-{
-	image_t *img = (image_t *)blkif->prv;
-	return img->info;
-}
+	char                      mode;
+	char                      shared;
+	char                      open;
+	unsigned int              domid;
+	unsigned int              busid;
+	unsigned int              major;
+	unsigned int              minor;
+	unsigned int              storage;
+	unsigned int              drivertype;
+	uint16_t                  cookie;
+	pid_t                     tapdisk_pid;
 
-static struct blkif_ops tapdisk_ops = {
-	.get_size = tapdisk_get_size,
-	.get_secsize = tapdisk_get_secsize,
-	.get_info = tapdisk_get_info,
+	char                     *path;
+	char                     *frontpath;
+	char                     *params;
+	char                     *vdi_path;
+	char                     *uuid_str;
+	char                     *pause_str;
+	char                     *pause_done_str;
+	char                     *shutdown_str;
+	char                     *share_tapdisk_str;
+
+	image_t                   image;
+
+	struct list_head          list;
+	struct xenbus_watch       pause_watch;
+	struct xenbus_watch       shutdown_watch;
+
+	struct xs_handle         *xsh;
 };
 
-/* tapdisk-dispatch-common.c */
+typedef struct tapdisk_channel tapdisk_channel_t;
+
 int strsep_len(const char *str, char c, unsigned int len);
-void make_blktap_dev(char *devname, int major, int minor, int perm);
+int make_blktap_device(char *devname, int major, int minor, int perm);
 
-/* tapdisk-control.c */
-void tapdisk_control_start(void);
-void tapdisk_control_stop(void);
-int tapdisk_control_new(struct blkif *blkif);
-int tapdisk_control_connected(struct blkif *blkif);
-int tapdisk_control_map(struct blkif *blkif);
-int tapdisk_control_unmap(struct blkif *blkif);
-int tapdisk_control_checkpoint(struct blkif *blkif, char *request);
-int tapdisk_control_lock(struct blkif *blkif, char *request, int enforce);
-int tapdisk_control_pause(blkif_t *blkif);
-int tapdisk_control_resume(blkif_t *blkif);
+int tapdisk_channel_open(tapdisk_channel_t **,
+			 char *node, struct xs_handle *,
+			 int blktap_fd, uint16_t cookie);
+void tapdisk_channel_close(tapdisk_channel_t *);
 
-/* tapdisk-xenstore.c */
-int add_control_watch(struct xs_handle *h, const char *path, const char *uuid);
-int remove_control_watch(struct xs_handle *h, const char *path);
-int tapdisk_control_handle_event(struct xs_handle *h, const char *uuid);
+void tapdisk_daemon_find_channel(tapdisk_channel_t *);
+void tapdisk_daemon_close_channel(tapdisk_channel_t *);
 
-/* tapdisk-blkif.c */
-struct blkif *alloc_blkif(domid_t domid);
-void free_blkif(struct blkif *blkif);
-int blkif_init(struct blkif *blkif, long int handle, long int pdev);
-void blkif_unmap(struct blkif *blkif);
-int blkif_connected(struct blkif *blkif);
-int blkif_checkpoint(struct blkif *blkif, char *request);
-int blkif_lock(struct blkif *blkif, char *request, int enforce);
+int tapdisk_channel_receive_message(tapdisk_channel_t *, tapdisk_message_t *);
 
 #endif

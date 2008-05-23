@@ -48,9 +48,10 @@ strsep_len(const char *str, char c, unsigned int len)
 	return (len == 0) ? i : -ERANGE;
 }
 
-void
-make_blktap_dev(char *devname, int major, int minor, int perm)
+int
+make_blktap_device(char *devname, int major, int minor, int perm)
 {
+	int err;
 	struct stat st;
 	
 	if (lstat(devname, &st) == 0) {
@@ -58,7 +59,7 @@ make_blktap_dev(char *devname, int major, int minor, int perm)
 
 		/* it already exists, but is it the same major number */
 		if (((st.st_rdev>>8) & 0xff) == major)
-			return;
+			return 0;
 
 		DPRINTF("%s has old major %d\n", devname,
 			(unsigned int)((st.st_rdev >> 8) & 0xff));
@@ -66,16 +67,23 @@ make_blktap_dev(char *devname, int major, int minor, int perm)
 		if (unlink(devname)) {
 			EPRINTF("unlink %s failed: %d\n", devname, errno);
 			/* only try again if we succed in deleting it */
-			return;
+			return -errno;
 		}
 	}
 
 	/* Need to create device */
-	if (mkdir(BLKTAP_DEV_DIR, 0755) == 0)
-		DPRINTF("Created %s directory\n", BLKTAP_DEV_DIR);
+	err = mkdir(BLKTAP_DEV_DIR, 0755);
+	if (err && errno != EEXIST) {
+		EPRINTF("Failed to create %s directory\n", BLKTAP_DEV_DIR);
+		return -errno;
+	}
 
-	if (mknod(devname, perm, makedev(major, minor)) == 0)
-		DPRINTF("Created %s device\n", devname);
-	else
-		EPRINTF("mknod %s failed: %d\n", devname, errno);
+	err = mknod(devname, perm, makedev(major, minor));
+	if (err) {
+		EPRINTF("mknod %s failed: %d\n", devname, -errno);
+		return -errno;
+	}
+
+	DPRINTF("Created %s device\n", devname);
+	return 0;
 }

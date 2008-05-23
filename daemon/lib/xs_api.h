@@ -29,9 +29,33 @@
  * IN THE SOFTWARE.
  */
 
+#ifndef _XS_API_H_
+#define _XS_API_H_
+
+#include <xs.h>
+
+#include "list.h"
+
+struct xenbus_watch
+{
+        struct list_head  list;
+        char             *node;
+	void             *data;
+        void (*callback) (struct xs_handle *h, 
+			  struct xenbus_watch *, 
+			  const  char *node);
+};
+
 int xs_gather(struct xs_handle *xs, const char *dir, ...);
 int xs_printf(struct xs_handle *h, const char *dir, const char *node, 
 	      const char *fmt, ...);
 int xs_exists(struct xs_handle *h, const char *path);
 char *get_dom_domid(struct xs_handle *h);
 int convert_dev_name_to_num(char *name);
+
+int register_xenbus_watch(struct xs_handle *h, struct xenbus_watch *watch);
+int unregister_xenbus_watch(struct xs_handle *h, struct xenbus_watch *watch);
+void reregister_xenbus_watches(struct xs_handle *h);
+int xs_fire_next_watch(struct xs_handle *h);
+
+#endif

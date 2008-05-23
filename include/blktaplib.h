@@ -42,7 +42,7 @@
 #define DPRINTF(_f, _a...) ((void)0)
 #endif
 
-#define EPRINTF(_f, _a...) syslog(LOG_ERR, "tap-err: " _f, ##_a)
+#define EPRINTF(_f, _a...) syslog(LOG_ERR, "tap-err:%s: " _f, __func__, ##_a)
 
 #define BLK_RING_SIZE __RING_SIZE((blkif_sring_t *)0, XC_PAGE_SIZE)
 
@@ -106,12 +106,6 @@ typedef struct {
 	int              num_retries;
 	struct timeval   last_try;
 } pending_req_t;
-
-struct blkif_ops {
-	unsigned long long (*get_size)(struct blkif *blkif);
-	unsigned long (*get_secsize)(struct blkif *blkif);
-	unsigned int (*get_info)(struct blkif *blkif);
-};
 
 typedef struct blkif {
 	domid_t domid;

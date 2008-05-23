@@ -26,7 +26,6 @@
  * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#define MSG_SIZE 4096
 #define TAPDISK
 
 #include <stdio.h>
@@ -46,6 +45,7 @@
 #include "lock.h"
 #include "tapdisk.h"
 #include "blktaplib.h"
+#include "tapdisk-message.h"
 
 //#define TAPDISK_FILTER (TD_CHECK_INTEGRITY | TD_INJECT_FAULTS)
 
@@ -255,20 +255,17 @@ static void free_state(struct td_state *s)
 	free(s);
 }
 
-static struct td_state *state_init(char *name,
-				   struct tap_disk *drv, int storage)
+static int state_init(struct td_state *s, char *name,
+		      struct tap_disk *drv, int storage)
 {
 	int i, err;
-	struct td_state *s = NULL;
 	blkif_t *blkif = NULL;
-
-	s = calloc(1, sizeof(struct td_state));
-	if (!s)
-		return NULL;
 
 	err = namedup(&s->name, name);
 	if (err)
 		goto fail;
+
+	err = -ENOMEM;
 
 	blkif = s->blkif = malloc(sizeof(blkif_t));
 	if (!blkif)
@@ -284,11 +281,11 @@ static struct td_state *state_init(char *name,
 	s->drv     = drv;
 	s->storage = storage;
 
-	return s;
+	return 0;
 
  fail:
-	free_state(s);
-	return NULL;
+	EPRINTF("failed to init tapdisk state for %s\n", name);
+	return err;
 }
 
 static void free_driver(struct disk_driver *d)
@@ -334,19 +331,19 @@ fail:
 
 static int map_new_dev(struct td_state *s, int minor)
 {
-	int tap_fd = -1;
-	tapdev_info_t *info = s->ring_info;
 	char *devname;
 	fd_list_entry_t *ptr;
-	int page_size;
+	int err, tap_fd, page_size;
+	tapdev_info_t *info = s->ring_info;
 
-	if (asprintf(&devname,"%s/%s%d", 
-		     BLKTAP_DEV_DIR, BLKTAP_DEV_NAME, minor) == -1)
-		return -1;
+	err = asprintf(&devname,"%s/%s%d",
+		       BLKTAP_DEV_DIR, BLKTAP_DEV_NAME, minor);
+	if (err == -1)
+		return -ENOMEM;
 	
 	tap_fd = open(devname, O_RDWR);
-	if (tap_fd == -1) 
-	{
+	if (tap_fd == -1) {
+		err = -errno;
 		EPRINTF("open failed on dev %s: %d", devname, errno);
 		goto fail;
 	} 
@@ -355,9 +352,10 @@ static int map_new_dev(struct td_state *s, int minor)
 	/*Map the shared memory*/
 	page_size = getpagesize();
 	info->mem = mmap(0, page_size * BLKTAP_MMAP_REGION_SIZE, 
-			  PROT_READ | PROT_WRITE, MAP_SHARED, info->fd, 0);
+			 PROT_READ | PROT_WRITE, MAP_SHARED, info->fd, 0);
 	if ((long int)info->mem == -1) 
 	{
+		err = -errno;
 		EPRINTF("mmap failed on dev %s!\n", devname);
 		goto fail;
 	}
@@ -369,7 +367,7 @@ static int map_new_dev(struct td_state *s, int minor)
 	info->vstart = 
 	        (unsigned long)info->mem + (BLKTAP_RING_PAGES * page_size);
 
-	ioctl(info->fd, BLKTAP_IOCTL_SETMODE, BLKTAP_MODE_INTERPOSE );
+	ioctl(info->fd, BLKTAP_IOCTL_SETMODE, BLKTAP_MODE_INTERPOSE);
 	free(devname);
 
 	/*Update the fd entry*/
@@ -383,13 +381,13 @@ static int map_new_dev(struct td_state *s, int minor)
 	}	
 	++connected_disks;
 
-	return minor;
+	return 0;
 
  fail:
 	if (tap_fd != -1)
 		close(tap_fd);
 	free(devname);
-	return -1;
+	return -err;
 }
 
 static void close_disk(struct td_state *s)
@@ -439,6 +437,8 @@ static void unmap_disk(struct td_state *s)
 
 	close(info->fd);
 	--connected_disks;
+
+	tapdisk_ipc_write(&s->ipc, TAPDISK_MESSAGE_CLOSE_RSP, 2);
 
 	if (info != NULL && info->mem > 0)
 	        munmap(info->mem, getpagesize() * BLKTAP_MMAP_REGION_SIZE);
@@ -603,23 +603,6 @@ static void shutdown_disk(struct td_state *s)
 	sig_handler(SIGINT);
 }
 
-static int write_ctlmsg_rsp(int type, int err)
-{
-	char buf[50];
-	msg_hdr_t *msg;
-	int msglen, len;
-
-	memset(buf, 0, sizeof(buf));
-	msg = (msg_hdr_t *)buf;
-	msglen = sizeof(msg_hdr_t) + sizeof(int);
-	msg->type = type;
-	msg->len = msglen;
-	*((int *)(buf + sizeof(msg_hdr_t))) = err;
-
-	len = write(fds[WRITE], buf, msglen);
-	return ((len == msglen) ? 0 : -errno);
-}
-
 static inline int drain_queue(struct td_state *s)
 {
 	int i;
@@ -648,14 +631,14 @@ static inline void td_pause(struct td_state *s)
 		s->flags |= TD_PAUSE;
 	else {
 		close_disk(s);
-		write_ctlmsg_rsp(CTLMSG_PAUSE_RSP, 0);
+		tapdisk_ipc_write(&s->ipc, TAPDISK_MESSAGE_PAUSE_RSP, 2);
 		s->flags |= TD_PAUSED;
 	}
 }
 
 static inline void td_resume(struct td_state *s)
 {
-	int i, err = 0;
+	int i, rsp, err = 0;
 
 	if (s->flags & TD_PAUSED) {
 		for (i = 0; i < EIO_RETRIES; i++) {
@@ -670,9 +653,11 @@ static inline void td_resume(struct td_state *s)
 	if (!err) {
 		s->flags &= ~(TD_PAUSE | TD_PAUSED);
 		start_queue(s);
-	}
+		rsp = TAPDISK_MESSAGE_RESUME_RSP;
+	} else
+		rsp = TAPDISK_MESSAGE_ERROR;
 
-	write_ctlmsg_rsp(CTLMSG_RESUME_RSP, err);
+	tapdisk_ipc_write(&s->ipc, rsp, 2);
 }
 
 static inline void kill_queue(struct td_state *s)
@@ -759,357 +744,6 @@ static void assert_locks(struct timeval *tv)
 
 	tv->tv_sec  = min_lease_time;
 	tv->tv_usec = 0;
-}
-
-/*
- * order of operations:
- *  1: drain request queue
- *  2: close orig_vdi
- *  3: rename orig_vdi to cp_uuid
- *  4: chmod(cp_uuid, 444) -- make snapshot immutable
- *  5: snapshot(cp_uuid, orig_vdi) -- create new overlay named orig_vdi
- *  6: open cp_uuid (parent) and orig_vdi (child)
- *  7: add orig_vdi to head of disk list
- *
- * for crash recovery:
- *  if cp_uuid exists but no orig_vdi: rename cp_uuid to orig_vdi
- */
-static int checkpoint(struct td_state *s)
-{
-	int i, err, size;
-	mode_t orig_mode;
-	char *orig, *snap;
-	struct stat stats;
-	struct disk_id pid;
-	td_flag_t flags = 0;
-	struct tap_disk *drv;
-	struct disk_driver *child, *parent;
-
-	parent   = s->disks;
-	orig     = parent->name;
-	snap     = s->cp_uuid;
-	pid.name = s->cp_uuid;
-	size     = sizeof(dtypes)/sizeof(disk_info_t *);
-
-	for (i = 0; i < size; i++)
-		if (dtypes[i]->drv == parent->drv) {
-			pid.drivertype = i;
-			break;
-		}
-
-	if (stat(snap, &stats) == 0) {
-		err = -EEXIST;
-		goto out;
-	}
-
-	stat(orig, &stats);
-	orig_mode = stats.st_mode;
-
-	err   = -ENOMEM;
-	drv   = get_driver(s->cp_drivertype);
-	child = disk_init(s, drv, NULL, 0, s->storage);
-	if (!child)
-		goto out;
-
-	parent->drv->td_close(parent);
-
-	if (rename(orig, snap)) {
-		err = -errno;
-		goto fail_close;
-	}
-
-	if (chmod(snap, S_IRUSR | S_IRGRP | S_IROTH)) {
-		err = -errno;
-		goto fail_rename;
-	}
-
-	err = drv->td_snapshot(&pid, orig, flags);
-	if (err) 
-		goto fail_chmod;
-
-	child->name  = orig;
-	parent->name = snap;
-	s->cp_uuid   = NULL;
-
-	err = child->drv->td_open(child, child->name, 0);
-	if (err)
-		goto fail_chmod;
-
-	parent->flags |= TD_OPEN_RDONLY;
-	err = parent->drv->td_open(parent, parent->name, TD_OPEN_RDONLY);
-	if (err)
-		goto fail_parent;
-
-	child->next = parent;
-	s->disks    = child;
-	goto out;
-
- fail_parent:
-	child->drv->td_close(child);
- fail_chmod:
-	chmod(snap, orig_mode);
- fail_rename:
-	if (rename(snap, orig))
-		EPRINTF("ERROR taking checkpoint, unable to revert!\n");
- fail_close:
-	free_driver(child);
-	if (parent->drv->td_open(parent, orig, 0))
-		EPRINTF("ERROR taking checkpoint, unable to revert!\n");
- out:
-	free(s->cp_uuid);
-	s->cp_uuid = NULL;
-	write_ctlmsg_rsp(CTLMSG_CHECKPOINT_RSP, err);
-	s->flags &= ~TD_CHECKPOINT;
-	return 0;
-}
-
-static int read_msg(char *buf)
-{
-	int length, len, msglen, tap_fd, *io_fd;
-	char *path = NULL, *cp_uuid = NULL;
-	image_t *img;
-	msg_hdr_t *msg;
-	msg_params_t *msg_p;
-	msg_newdev_t *msg_dev;
-	msg_pid_t *msg_pid;
-	msg_cp_t *msg_cp;
-	msg_lock_t *msg_lock;
-	struct tap_disk *drv;
-	int i, ret = -1;
-	struct td_state *s = NULL;
-	fd_list_entry_t *entry;
-	td_flag_t flags;
-
-	length = read(fds[READ], buf, MSG_SIZE);
-
-	if (length > 0 && length >= sizeof(msg_hdr_t)) 
-	{
-		msg = (msg_hdr_t *)buf;
-		DPRINTF("Tapdisk: Received msg, len %d, type %d, UID %d\n",
-			length,msg->type,msg->cookie);
-
-		switch (msg->type) {
-		case CTLMSG_PARAMS:
-			msg_p   = (msg_params_t *)(buf + sizeof(msg_hdr_t));
-			path    = calloc(1, msg_p->path_len);
-			if (!path)
-				goto params_done;
-
-			memcpy(path, &buf[msg_p->path_off], msg_p->path_len);
-
-			DPRINTF("Received CTLMSG_PARAMS: [%s]\n", path);
-
-			/*Assign driver*/
-			drv = get_driver(msg->drivertype);
-			if (drv == NULL)
-				goto params_done;
-				
-			DPRINTF("Loaded driver: name [%s], type [%d]\n",
-				drv->disk_type, msg->drivertype);
-
-			/* Allocate the disk structs */
-			s = state_init(path, drv, msg_p->storage);
-			if (s == NULL)
-				goto params_done;
-
-			/*Open file*/
-			flags = (msg_p->readonly ? TD_OPEN_RDONLY : 0);
-
-			for (i = 0; i < EIO_RETRIES; i++) {
-				ret = open_disk(s, drv, path, flags);
-				if (ret != -EIO)
-					break;
-
-				sleep(EIO_SLEEP);
-			}
-
-			if (ret)
-				goto params_done;
-
-			entry = add_fd_entry(0, s);
-			entry->cookie = msg->cookie;
-			DPRINTF("Entered cookie %d\n", entry->cookie);
-			
-			memset(buf, 0x00, MSG_SIZE); 
-			
-		params_done:
-			if (ret == 0) {
-				msglen = sizeof(msg_hdr_t) + sizeof(image_t);
-				msg->type = CTLMSG_IMG;
-				img = (image_t *)(buf + sizeof(msg_hdr_t));
-				img->size = s->size;
-				img->secsize = s->sector_size;
-				img->info = s->info;
-			} else {
-				msglen = sizeof(msg_hdr_t);
-				msg->type = CTLMSG_IMG_FAIL;
-				msg->len = msglen;
-				if (s) {
-					free(s->fd_entry);
-					free_state(s);
-				}
-			}
-
-			len = write(fds[WRITE], buf, msglen);
-			if (path) free(path);
-			return 1;
-			
-		case CTLMSG_NEWDEV:
-			msg_dev = (msg_newdev_t *)(buf + sizeof(msg_hdr_t));
-
-			s = get_state(msg->cookie);
-			DPRINTF("Retrieving state, cookie %d.....[%s]\n",
-				msg->cookie, (s == NULL ? "FAIL":"OK"));
-			if (s != NULL) {
-				ret = ((map_new_dev(s, msg_dev->devnum) 
-					== msg_dev->devnum ? 0: -1));
-			}	
-
-			memset(buf, 0x00, MSG_SIZE); 
-			msglen = sizeof(msg_hdr_t);
-			msg->type = (ret == 0 ? CTLMSG_NEWDEV_RSP 
-				              : CTLMSG_NEWDEV_FAIL);
-			msg->len = msglen;
-
-			len = write(fds[WRITE], buf, msglen);
-			return 1;
-
-		case CTLMSG_CLOSE:
-			s = get_state(msg->cookie);
-			if (s) {
-				s->flags |= TD_SHUTDOWN_REQUESTED;
-				if (drain_queue(s) == 0)
-					shutdown_disk(s);
-				else
-					DPRINTF("close: pending aio;"
-						" draining queue\n");
-			}
-			sig_handler(SIGINT);
-
-			return 1;
-
-		case CTLMSG_PID:
-			memset(buf, 0x00, MSG_SIZE);
-			msglen = sizeof(msg_hdr_t) + sizeof(msg_pid_t);
-			msg->type = CTLMSG_PID_RSP;
-			msg->len = msglen;
-
-			msg_pid = (msg_pid_t *)(buf + sizeof(msg_hdr_t));
-			msg_pid->pid = getpid();
-
-			len = write(fds[WRITE], buf, msglen);
-			return 1;
-
-		case CTLMSG_CHECKPOINT:
-			msg_cp = (msg_cp_t *)(buf + sizeof(msg_hdr_t));
-
-			ret = -EINVAL;
-			s = get_state(msg->cookie);
-			if (!s)
-				goto cp_fail;
-			if (s->cp_uuid) {
-				EPRINTF("concurrent checkpoints requested\n");
-				goto cp_fail;
-			}
-			if (queue_closed(s)) {
-				EPRINTF("checkpoint fail: queue closed\n");
-				goto cp_fail;
-			}
-
-			s->cp_drivertype = msg_cp->cp_drivertype;
-			drv = get_driver(s->cp_drivertype);
-			if (!drv || !drv->td_snapshot)
-				goto cp_fail;
-
-			ret = -ENOMEM;
-			s->cp_uuid = calloc(1, msg_cp->cp_uuid_len);
-			if (!s->cp_uuid)
-				goto cp_fail;
-			memcpy(s->cp_uuid, 
-			       &buf[msg_cp->cp_uuid_off], msg_cp->cp_uuid_len);
-
-			DPRINTF("%s: request to create checkpoint %s for %s\n",
-				__func__, s->cp_uuid, s->disks->name);
-
-			s->flags |= TD_CHECKPOINT;
-			if (drain_queue(s) == 0) {
-				checkpoint(s);
-				start_queue(s);
-			}
-
-			return 1;
-
-		cp_fail:
-			write_ctlmsg_rsp(CTLMSG_CHECKPOINT_RSP, ret);
-			return 1;
-
-		case CTLMSG_LOCK:
-			msg_lock = (msg_lock_t *)(buf + sizeof(msg_hdr_t));
-			ret = -EINVAL;
-
-#ifndef USE_NFS_LOCKS
-			EPRINTF("locking support not enabled!\n");
-			goto lock_out;
-#endif
-
-			s = get_state(msg->cookie);
-			if (!s)
-				goto lock_out;
-
-			s->lock_uuid = malloc(msg_lock->uuid_len);
-			if (!s->lock_uuid) {
-				ret = -ENOMEM;
-				goto lock_out;
-			}
-			
-			memcpy(s->lock_uuid, 
-			       &buf[msg_lock->uuid_off], msg_lock->uuid_len);
-			s->lock_ro = msg_lock->ro;
-			s->flags  |= TD_LOCKING;
-			ret        = 0;
-
-			if (msg_lock->enforce)
-				s->flags |= TD_LOCK_ENFORCE;
-			
-			DPRINTF("%s: locking: uuid: %s, ro: %d\n",
-				__func__, s->lock_uuid, s->lock_ro);
-
-		lock_out:
-			memset(buf, 0x00, MSG_SIZE);
-			msglen    = sizeof(msg_hdr_t) + sizeof(int);
-			msg->type = CTLMSG_LOCK_RSP;
-			msg->len  = msglen;
-			*((int *)(buf + sizeof(msg_hdr_t))) = ret;
-
-			len = write(fds[WRITE], buf, msglen);
-			return 1;
-
-		case CTLMSG_PAUSE:
-			s = get_state(msg->cookie);
-			if (!s)
-				write_ctlmsg_rsp(CTLMSG_PAUSE_RSP, -EINVAL);
-			else if (s->flags & TD_PAUSED)
-				write_ctlmsg_rsp(CTLMSG_PAUSE_RSP, 0);
-			else
-				td_pause(s);
-
-			return 1;
-
-		case CTLMSG_RESUME:
-			s = get_state(msg->cookie);
-			if (!s)
-				write_ctlmsg_rsp(CTLMSG_RESUME_RSP, -EINVAL);
-			else
-				td_resume(s);				
-
-			return 1;
-
-
-		default:
-			return 0;
-		}
-	}
-	return 0;
 }
 
 static inline int write_rsp_to_ring(struct td_state *s, blkif_response_t *rsp)
@@ -1573,6 +1207,163 @@ static void check_progress(struct timeval *tv)
 	}
 }
 
+int
+tapdisk_init(uint16_t cookie)
+{
+	struct td_state *s;
+	fd_list_entry_t *entry;
+
+	s = get_state(cookie);
+	if (s) {
+		EPRINTF("duplicate cookies! %u\n", cookie);
+		return -EEXIST;
+	}
+
+	s = calloc(1, sizeof(struct td_state));
+	if (!s) {
+		EPRINTF("failed to allocate tapdisk state\n");
+		return -ENOMEM;
+	}
+
+	s->ipc.rfd    = fds[READ];
+	s->ipc.wfd    = fds[WRITE];
+	s->ipc.cookie = cookie;
+
+	entry         = add_fd_entry(0, s);
+	entry->cookie = cookie;
+	DPRINTF("Entered cookie %d\n", entry->cookie);
+
+	return 0;
+}
+
+int
+tapdisk_open(uint16_t cookie, char *path,
+	     uint16_t drivertype, uint16_t storage, td_flag_t flags)
+{
+	int i, err;
+	struct td_state *s;
+	struct tap_disk *drv;
+
+	s = get_state(cookie);
+	if (!s)
+		return -EINVAL;
+
+	drv = get_driver(drivertype);
+	if (!drv)
+		return -EINVAL;
+				
+	DPRINTF("Loaded driver: name [%s], type [%d]\n",
+		drv->disk_type, drivertype);
+
+	err = state_init(s, path, drv, storage);
+	if (err)
+		return err;
+
+	for (i = 0; i < EIO_RETRIES; i++) {
+		err = open_disk(s, drv, path, flags);
+		if (err != -EIO)
+			break;
+
+		sleep(EIO_SLEEP);
+	}
+
+	if (err)
+		goto fail;
+
+	return 0;
+
+fail:
+	if (s) {
+		free(s->fd_entry);
+		free_state(s);
+	}
+	return err;
+}
+
+int
+tapdisk_new_device(uint16_t cookie, uint32_t devnum)
+{
+	struct td_state *s;
+
+	s = get_state(cookie);
+	DPRINTF("Retrieving state, cookie %d.....[%s]\n",
+		cookie, (s == NULL ? "FAIL":"OK"));
+	if (!s)
+		return -EINVAL;
+
+	return map_new_dev(s, devnum);
+}
+
+int tapdisk_get_image_info(uint16_t cookie, image_t *image)
+{
+	struct td_state *s;
+
+	memset(image, 0, sizeof(image_t));
+
+	s = get_state(cookie);
+	if (!s)
+		return -EINVAL;
+
+	image->size    = s->size;
+	image->secsize = s->sector_size;
+	image->info    = s->info;
+
+	return 0;
+}
+
+void
+tapdisk_pause(uint16_t cookie)
+{
+	struct td_state *s;
+
+	s = get_state(cookie);
+	if (!s) {
+		EPRINTF("got pause request for unknown cookie %u\n", cookie);
+		return;
+	}
+
+	if (s->flags & TD_PAUSED) {
+		tapdisk_ipc_write(&s->ipc, TAPDISK_MESSAGE_PAUSE_RSP, 2);
+		return;
+	}
+
+	td_pause(s);
+}
+
+void
+tapdisk_resume(uint16_t cookie)
+{
+	struct td_state *s;
+
+	s = get_state(cookie);
+	if (!s) {
+		EPRINTF("got resume request for unknown cookie %u\n", cookie);
+		return;
+	}
+
+	td_resume(s);
+}
+
+void
+tapdisk_close(uint16_t cookie)
+{
+	struct td_state *s;
+
+	s = get_state(cookie);
+	if (!s) {
+		EPRINTF("got close request for unknown cookie %u\n", cookie);
+		return;
+	}
+
+	s->flags |= TD_SHUTDOWN_REQUESTED;
+	if (drain_queue(s) == 0)
+		shutdown_disk(s);
+	else
+		DPRINTF("%s: pending aio: draining queue\n", __func__);
+
+	sig_handler(SIGINT);
+}
+
 int main(int argc, char *argv[])
 {
 	int len, msglen, ret;
@@ -1582,6 +1373,7 @@ int main(int argc, char *argv[])
 	struct td_state *s;
 	char openlogbuf[128];
 	struct timeval timeout = { .tv_sec = ONE_DAY, .tv_usec = 0 };
+	td_ipc_t ipc;
 
 	if (argc != 3) usage();
 
@@ -1617,12 +1409,8 @@ int main(int argc, char *argv[])
 		exit(-1);
 	}
 
-	buf = calloc(MSG_SIZE, 1);
-
-	if (buf == NULL) {
-		EPRINTF("ERROR: allocating memory.\n");
-		exit(-1);
-	}
+	ipc.rfd = fds[READ];
+	ipc.wfd = fds[WRITE];
 
 	while (run) {
 		ret = 0;
@@ -1674,12 +1462,6 @@ int main(int argc, char *argv[])
 			submit_requests(s);
 			kick_responses(s);
 
-			if (s->flags & TD_CHECKPOINT)
-				if (drain_queue(s) == 0) {
-					checkpoint(s);
-					start_queue(s);
-				}
-
 			if (s->flags & TD_PAUSE)
 				td_pause(s);
 
@@ -1692,10 +1474,9 @@ int main(int argc, char *argv[])
 		}
 
 		if (FD_ISSET(fds[READ], &readfds))
-			read_msg(buf);
+			tapdisk_ipc_read(&ipc, 0);
 	}
 
-	free(buf);
 	close(fds[READ]);
 	close(fds[WRITE]);
 

@@ -12,7 +12,7 @@
 #define DELIMITER    '/'
 #define MAX_NAME_LEN 1000
 
-#define EPRINTF(_f, _a...) syslog(LOG_ERR, "tap-err: " _f, ##_a)
+#define EPRINTF(_f, _a...) syslog(LOG_ERR, "tap-err:%s: " _f, __func__, ##_a)
 
 /*
  * returns a relative path from @src to @dest

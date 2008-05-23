@@ -96,15 +96,14 @@ typedef uint32_t td_flag_t;
 #define TD_CREATE_MULTITYPE          0x00002
 
 #define TD_DRAIN_QUEUE               0x00001
-#define TD_CHECKPOINT                0x00002
-#define TD_LOCKING                   0x00004
-#define TD_CLOSED                    0x00008
-#define TD_DEAD                      0x00010
-#define TD_RETRY_NEEDED              0x00020
-#define TD_SHUTDOWN_REQUESTED        0x00040
-#define TD_LOCK_ENFORCE              0x00080
-#define TD_PAUSE                     0x00100
-#define TD_PAUSED                    0x00200
+#define TD_LOCKING                   0x00002
+#define TD_CLOSED                    0x00004
+#define TD_DEAD                      0x00008
+#define TD_RETRY_NEEDED              0x00010
+#define TD_SHUTDOWN_REQUESTED        0x00020
+#define TD_LOCK_ENFORCE              0x00040
+#define TD_PAUSE                     0x00080
+#define TD_PAUSED                    0x00100
 
 struct td_state;
 struct tap_disk;
@@ -125,6 +124,12 @@ struct disk_driver {
 	struct td_state *td_state;
 	struct disk_driver *next;
 };
+
+typedef struct td_ipc_handle {
+	int            rfd;
+	int            wfd;
+	uint16_t       cookie;
+} td_ipc_t;
 
 /* This structure represents the state of an active virtual disk.           */
 struct td_state {
@@ -151,6 +156,8 @@ struct td_state {
 	struct tqueue queue;
 	struct disk_driver *disks;
 	uint64_t pending_data;
+
+	td_ipc_t ipc;
 };
 
 /* Prototype of the callback to activate as requests complete.              */
@@ -182,6 +189,20 @@ struct tap_disk {
 	int (*td_create)         (const char *name, 
 				  uint64_t size, td_flag_t flags);
 };
+
+/* tapdisk.c */
+int tapdisk_init(uint16_t cookie);
+int tapdisk_open(uint16_t cookie, char *path,
+		 uint16_t drivertype, uint16_t storage, td_flag_t flags);
+int tapdisk_new_device(uint16_t cookie, uint32_t devnum);
+int tapdisk_get_image_info(uint16_t cookie,  image_t *image);
+void tapdisk_pause(uint16_t cookie);
+void tapdisk_resume(uint16_t cookie);
+void tapdisk_close(uint16_t cookie);
+
+/* tapdisk-ipc.c */
+int tapdisk_ipc_read(td_ipc_t *ipc, int timeout);
+int tapdisk_ipc_write(td_ipc_t *ipc, int type, int timeout);
 
 struct qcow_info {
         int       l1_size;
