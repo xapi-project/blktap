@@ -189,6 +189,10 @@ tapdisk_ipc_read(td_ipc_t *ipc)
 
 		if (message.u.params.flags & TAPDISK_MESSAGE_FLAG_RDONLY)
 			flags |= TD_OPEN_RDONLY;
+		if (message.u.params.flags & TAPDISK_MESSAGE_FLAG_SHARED)
+			flags |= TD_OPEN_SHAREABLE;
+		if (message.u.params.flags & TAPDISK_MESSAGE_FLAG_ADD_CACHE)
+			flags |= TD_OPEN_ADD_CACHE;
 
 		err   = tapdisk_vbd_open(vbd,
 					 message.u.params.path,

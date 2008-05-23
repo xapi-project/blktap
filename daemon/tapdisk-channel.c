@@ -407,6 +407,9 @@ tapdisk_channel_send_open_request(tapdisk_channel_t *channel)
 	if (channel->shared)
 		message.u.params.flags |= TAPDISK_MESSAGE_FLAG_SHARED;
 
+	if (xs_exists(channel->xsh, "/local/domain/0/tapdisk/add-cache"))
+		message.u.params.flags |= TAPDISK_MESSAGE_FLAG_ADD_CACHE;
+
 	return tapdisk_channel_send_message(channel, &message, 2);
 }
 

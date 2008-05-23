@@ -75,6 +75,9 @@ tapdisk_server_get_shared_image(td_image_t *image)
 	td_vbd_t *vbd, *tmpv;
 	td_image_t *img, *tmpi;
 
+	if (!td_flag_test(image->flags, TD_OPEN_SHAREABLE))
+		return NULL;
+
 	tapdisk_server_for_each_vbd(vbd, tmpv)
 		tapdisk_vbd_for_each_image(vbd, img, tmpi)
 			if (img->type == image->type &&
@@ -374,7 +377,7 @@ main(int argc, char *argv[])
 
 	snprintf(buf, sizeof(buf), "TAPDISK[%d]", getpid());
 	openlog(buf, LOG_CONS | LOG_ODELAY, LOG_DAEMON);
-	open_tlog("/tmp/tapdisk.log", (64 << 10), TLOG_DBG, 1);
+	open_tlog("/tmp/tapdisk.log", (64 << 10), TLOG_WARN, 0);
 
 #if defined(CORE_DUMP)
 #include <sys/resource.h>

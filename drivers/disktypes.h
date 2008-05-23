@@ -61,6 +61,7 @@ extern struct tap_disk tapdisk_aio;
 extern struct tap_disk tapdisk_vhd;
 extern struct tap_disk tapdisk_ram;
 /* extern struct tap_disk tapdisk_qcow;    */
+extern struct tap_disk tapdisk_block_cache;
 
 #define MAX_DISK_TYPES     20
 
@@ -71,6 +72,7 @@ extern struct tap_disk tapdisk_ram;
 #define DISK_TYPE_VHD      4
 #define DISK_TYPE_RAM      5
 #define DISK_TYPE_QCOW     6
+#define DISK_TYPE_BLOCK_CACHE 7
 
 /*Define Individual Disk Parameters here */
 static disk_info_t null_disk = {
@@ -158,6 +160,16 @@ static disk_info_t qcow_disk = {
 };
 */
 
+static disk_info_t block_cache_disk = {
+       DISK_TYPE_BLOCK_CACHE,
+       "block cache image (bc)",
+       "bc",
+       1,
+#ifdef TAPDISK
+       &tapdisk_block_cache,
+#endif
+};
+
 /*Main disk info array */
 static disk_info_t *dtypes[] = {
        &aio_disk,
@@ -167,6 +179,7 @@ static disk_info_t *dtypes[] = {
        &vhd_disk,
        &ram_disk,
        &null_disk, /* &qcow_disk, */
+       &block_cache_disk,
 };
 
 #endif

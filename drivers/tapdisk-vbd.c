@@ -34,6 +34,7 @@
 #include <sys/ioctl.h>
 
 #include "tapdisk-image.h"
+#include "tapdisk-driver.h"
 #include "tapdisk-server.h"
 #include "tapdisk-interface.h"
 
@@ -118,7 +119,11 @@ tapdisk_vbd_validate_chain(td_vbd_t *vbd)
 	int err;
 	td_image_t *image, *parent, *tmp;
 
+	DPRINTF("VBD CHAIN:\n");
+
 	tapdisk_vbd_for_each_image(vbd, image, tmp) {
+		DPRINTF("%s: %d\n", image->name, image->type);
+
 		if (tapdisk_vbd_is_last_image(vbd, image))
 			break;
 
@@ -146,6 +151,71 @@ tapdisk_vbd_close_vdi(td_vbd_t *vbd)
 }
 
 static int
+tapdisk_vbd_add_block_cache(td_vbd_t *vbd)
+{
+	int err;
+	td_driver_t *driver;
+	td_image_t *cache, *image, *target, *tmp;
+
+	target = NULL;
+
+	tapdisk_vbd_for_each_image(vbd, image, tmp)
+		if (td_flag_test(image->flags, TD_OPEN_RDONLY) &&
+		    td_flag_test(image->flags, TD_OPEN_SHAREABLE)) {
+			target = image;
+			break;
+		}
+
+	if (!target)
+		return 0;
+
+	cache = tapdisk_image_allocate(target->name,
+				       DISK_TYPE_BLOCK_CACHE,
+				       target->storage,
+				       target->flags,
+				       target->private);
+	if (!cache)
+		return -ENOMEM;
+
+	/* try to load existing cache */
+	err = td_load(cache);
+	if (!err)
+		goto done;
+
+	/* hack driver to send open() correct image size */
+	if (!target->driver) {
+		err = -ENODEV;
+		goto fail;
+	}
+
+	cache->driver = tapdisk_driver_allocate(cache->type,
+						cache->name,
+						cache->flags,
+						cache->storage);
+	if (!cache->driver) {
+		err = -ENOMEM;
+		goto fail;
+	}
+
+	cache->driver->info = target->driver->info;
+
+	/* try to open new cache */
+	err = td_open(cache);
+	if (!err)
+		goto done;
+
+fail:
+	/* give up */
+	tapdisk_image_free(target);
+	return err;
+
+done:
+	/* insert cache before image */
+	list_add(&cache->next, target->next.prev);
+	return 0;
+}
+
+static int
 __tapdisk_vbd_open_vdi(td_vbd_t *vbd)
 {
 	char *file;
@@ -155,7 +225,7 @@ __tapdisk_vbd_open_vdi(td_vbd_t *vbd)
 	td_image_t *image, *tmp;
 	struct tfilter *filter = NULL;
 
-	flags = vbd->flags;
+	flags = vbd->flags & ~TD_OPEN_SHAREABLE;
 	file  = vbd->name;
 	type  = vbd->type;
 
@@ -199,8 +269,14 @@ __tapdisk_vbd_open_vdi(td_vbd_t *vbd)
 
 		file   = id.name;
 		type   = id.drivertype;
-		flags |= TD_OPEN_RDONLY;
+		flags |= (TD_OPEN_RDONLY | TD_OPEN_SHAREABLE);
 	}
+
+	if (td_flag_test(vbd->flags, TD_OPEN_ADD_CACHE)) {
+		err = tapdisk_vbd_add_block_cache(vbd);
+		if (err)
+			goto fail;
+	}		
 
 	err = tapdisk_vbd_validate_chain(vbd);
 	if (err)
@@ -229,7 +305,8 @@ tapdisk_vbd_open_vdi(td_vbd_t *vbd, char *path,
 	ops = tapdisk_server_find_driver_interface(drivertype);
 	if (!ops)
 		return -EINVAL;
-	DPRINTF("Loaded %s driver for vbd %u\n", ops->disk_type, vbd->uuid);
+	DPRINTF("Loaded %s driver for vbd %u %s 0x%08x\n",
+		ops->disk_type, vbd->uuid, path, flags);
 
 	err = tapdisk_namedup(&vbd->name, path);
 	if (err)

@@ -83,6 +83,8 @@
 #define TD_OPEN_QUERY                0x00002
 #define TD_OPEN_RDONLY               0x00004
 #define TD_OPEN_STRICT               0x00008
+#define TD_OPEN_SHAREABLE            0x00010
+#define TD_OPEN_ADD_CACHE            0x00020
 
 #define TD_CREATE_SPARSE             0x00001
 #define TD_CREATE_MULTITYPE          0x00002
