@@ -1,7 +1,7 @@
 BLKTAP_ROOT := ../
 include $(BLKTAP_ROOT)/Rules.mk
 
-IBIN               =
+IBIN               = vhd-util
 INST_DIR           = /usr/sbin
 
 LIBDIR             = lib
@@ -29,6 +29,9 @@ build: libvhd $(IBIN)
 libvhd:
 	@set -e
 	$(MAKE) -C $(LIBDIR) all
+
+vhd-util: vhd-util.o
+	$(CC) $(CFLAGS) -o vhd-util vhd-util.o $(LIBS)
 
 install: all
 	$(MAKE) -C $(LIBDIR) install

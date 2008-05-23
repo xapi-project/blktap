@@ -24,6 +24,7 @@ DEPS             = .*.d
 
 LIB-SRCS        := libvhd.c
 LIB-SRCS        += libvhd-journal.c
+LIB-SRCS        += vhd-util-resize.c
 LIB-SRCS        += relative-path.c
 LIB-SRCS        += atomicio.c
 

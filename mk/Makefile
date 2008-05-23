@@ -44,6 +44,7 @@ PROPRIETARY_SOURCE += include/relative-path.h
 PROPRIETARY_SOURCE += include/libvhd.h
 PROPRIETARY_SOURCE += include/libvhd-journal.h
 PROPRIETARY_SOURCE += include/vhd.h
+PROPRIETARY_SOURCE += include/vhd-util.h
 PROPRIETARY_SOURCE += drivers/block-vhd.c
 PROPRIETARY_SOURCE += drivers/io-optimize.c
 PROPRIETARY_SOURCE += drivers/td.c
@@ -56,12 +57,16 @@ PROPRIETARY_SOURCE += drivers/vhd-update.c
 PROPRIETARY_SOURCE += drivers/relative-path.c
 PROPRIETARY_SOURCE += vhd/lib/libvhd.c
 PROPRIETARY_SOURCE += vhd/lib/libvhd-journal.c
+PROPRIETARY_SOURCE += vhd/lib/vhd-util-resize.c
 PROPRIETARY_SOURCE += vhd/lib/relative-path.c
+PROPRIETARY_SOURCE += vhd/vhd-util.c
 
 PROPRIETARY_C_DRIVERS += $(filter drivers/%.c,$(PROPRIETARY_SOURCE))
 PROPRIETARY_C_LIBVHD += $(filter vhd/lib/%.c,$(PROPRIETARY_SOURCE))
+PROPRIETARY_C_VHD += $(filter vhd/%.c,$(PROPRIETARY_SOURCE))
 SOURCES += $(patsubst drivers/%.c,$(RPM_SOURCESDIR)/drivers/%.o,$(PROPRIETARY_C_DRIVERS))
 SOURCES += $(patsubst vhd/lib/%.c,$(RPM_SOURCESDIR)/vhd/lib/%.o,$(PROPRIETARY_C_LIBVHD))
+SOURCES += $(patsubst vhd/%.c,$(RPM_SOURCESDIR)/vhd/%.o,$(PROPRIETARY_C_VHD))
 
 HG_EXCLUDE := $(PROPRIETARY_SOURCE:%=-X "%")
 

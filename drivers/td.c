@@ -33,11 +33,12 @@ typedef enum {
 	TD_CMD_SNAPSHOT  = 1,
 	TD_CMD_COALESCE  = 2,
 	TD_CMD_QUERY     = 3,
-	TD_CMD_SET       = 4,
-	TD_CMD_REPAIR    = 5,
-	TD_CMD_FILL      = 6,
-	TD_CMD_READ      = 7,
-	TD_CMD_INVALID   = 8
+	TD_CMD_RESIZE    = 4,
+	TD_CMD_SET       = 5,
+	TD_CMD_REPAIR    = 6,
+	TD_CMD_FILL      = 7,
+	TD_CMD_READ      = 8,
+	TD_CMD_INVALID   = 9
 } td_command_t;
 
 struct command {
@@ -51,13 +52,14 @@ struct command commands[TD_CMD_INVALID] = {
 	{ .id = TD_CMD_SNAPSHOT, .name = "snapshot", .needs_type = 1 },
 	{ .id = TD_CMD_COALESCE, .name = "coalesce", .needs_type = 1 },
 	{ .id =	TD_CMD_QUERY,    .name = "query",    .needs_type = 1 },
+	{ .id =	TD_CMD_RESIZE,   .name = "resize",   .needs_type = 1 },
 	{ .id = TD_CMD_SET,      .name = "set",      .needs_type = 1 },
 	{ .id = TD_CMD_REPAIR,   .name = "repair",   .needs_type = 1 },
 	{ .id = TD_CMD_FILL,     .name = "fill",     .needs_type = 1 },
 	{ .id = TD_CMD_READ,     .name = "read",     .needs_type = 1 },
 };
 
-#define COMMAND_NAMES "{ create | snapshot | coalesce | query | set | repair | fill | read }"
+#define COMMAND_NAMES "{ create | snapshot | coalesce | query | resize | set | repair | fill | read }"
 #define PLUGIN_TYPES  "{ aio | qcow | ram | vhd | vmdk }"
 
 #define print_field_names()                                           \
@@ -551,6 +553,45 @@ td_query(int type, int argc, char *argv[])
 }
 
 int
+td_resize(int type, int argc, char *argv[])
+{
+	size_t mb;
+	int err, c;
+	char *name;
+	uint64_t size;
+	struct disk_driver dd;
+
+	if (type != DISK_TYPE_VHD) {
+	  fprintf(stderr, "Cannot resize %s images\n",
+			dtypes[type]->handle);
+		return EINVAL;
+	}
+
+	while ((c = getopt(argc, argv, "h")) != -1) {
+		switch(c) {
+		default:
+			fprintf(stderr, "Unknown option %c\n", (char)c);
+		case 'h':
+			goto usage;
+		}
+	}
+
+	if (optind != (argc - 2))
+		goto usage;
+
+	name = argv[optind++];
+	size = strtoull(argv[optind], NULL, 10);
+	err  = vhd_resize(name, size);
+
+	return err;
+
+usage:
+	fprintf(stderr, "usage: td-util resize %s <FILENAME> <SIZE(MB)>\n",
+		dtypes[type]->handle);
+	return EINVAL;
+}
+
+int
 td_set_field(int type, int argc, char *argv[])
 {
 	char *name;
@@ -812,6 +853,9 @@ main(int argc, char *argv[])
 		break;
 	case TD_CMD_QUERY:
 		ret = td_query(type, cargc, cargv);
+		break;
+	case TD_CMD_RESIZE:
+		ret = td_resize(type, cargc, cargv);
 		break;
 	case TD_CMD_SET:
 		ret = td_set_field(type, cargc, cargv);

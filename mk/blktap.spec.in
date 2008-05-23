@@ -17,7 +17,10 @@ Source9: vhd-update.o
 Source10: relative-path.o
 Source11: libvhd.o
 Source12: libvhd-journal.o
-Source13: relative-path.o
+Source13: vhd-util-resize.o
+Source14: relative-path.o
+Source15: vhd-util.o
+
 Patch0: %{name}-development.patch
 BuildRoot: %{_tmppath}/%{name}-%{version}-%{release}-buildroot
 Obsoletes: xen-blktap
@@ -50,6 +53,8 @@ cp %{SOURCE10} drivers
 cp %{SOURCE11} vhd/lib
 cp %{SOURCE12} vhd/lib
 cp %{SOURCE13} vhd/lib
+cp %{SOURCE14} vhd/lib
+cp %{SOURCE15} vhd
 
 %build
 %{__make} USE_SYSTEM_LIBRARIES=y
@@ -71,6 +76,7 @@ rm -rf $RPM_BUILD_ROOT
 %{_sbindir}/td-util
 %{_sbindir}/lock-util
 %{_sbindir}/vhd-update
+%{_sbindir}/vhd-util
 
 %files devel
 %defattr(-,root,root,-)
