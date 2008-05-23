@@ -30,24 +30,16 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
-#include <sys/statvfs.h>
 #include <sys/stat.h>
 #include <sys/ioctl.h>
-#include <linux/fs.h>
 #include <uuid/uuid.h> /* For whatever reason, Linux packages this in */
                        /* e2fsprogs-devel.                            */
 #include <string.h>    /* for memset.                                 */
 #include <libaio.h>
-#include <iconv.h>
-#include <libgen.h>
-#include <endian.h>
-#include <byteswap.h>
-#include <inttypes.h>
 #include <sys/mman.h>
 
-#include "vhd.h"
+#include "libvhd.h"
 #include "tapdisk.h"
-#include "relative-path.h"
 #include "tapdisk-driver.h"
 #include "tapdisk-interface.h"
 
@@ -61,8 +53,8 @@ unsigned int SPB;
 	do {								\
 		DBG(TLOG_DBG, "%s: QUEUED: %" PRIu64 ", COMPLETED: %"	\
 		    PRIu64", RETURNED: %" PRIu64 ", DATA_ALLOCATED: "	\
-		    "%lu, BBLK: %u\n",					\
-		    s->name, s->queued, s->completed, s->returned,	\
+		    "%lu, BBLK: 0x%04x\n",				\
+		    s->vhd.file, s->queued, s->completed, s->returned,	\
 		    VHD_REQS_DATA - s->vreq_free_count,			\
 		    s->bat.pbw_blk);					\
 	} while(0)
@@ -141,203 +133,122 @@ unsigned int SPB;
 #define VHD_FLAG_TX_LIVE             1
 #define VHD_FLAG_TX_UPDATE_BAT       2
 
-#define VHD_FLAG_CR_SPARSE           1
-#define VHD_FLAG_CR_IGNORE_PARENT    2
-
 typedef uint8_t vhd_flag_t;
 
 struct vhd_state;
 struct vhd_request;
 
 struct vhd_req_list {
-	struct vhd_request *head, *tail;
+	struct vhd_request       *head;
+	struct vhd_request       *tail;
 };
 
 struct vhd_transaction {
-	int error;
-	int closed;
-	int started;
-	int finished;
-	vhd_flag_t status;
-	struct vhd_req_list requests;
+	int                       error;
+	int                       closed;
+	int                       started;
+	int                       finished;
+	vhd_flag_t                status;
+	struct vhd_req_list       requests;
 };
 
 struct vhd_request {
-	int error;
-	uint8_t op;
-	vhd_flag_t flags;
-	td_request_t treq;
-	struct tiocb tiocb;
-	struct vhd_state *state;
-	struct vhd_request *next;
-	struct vhd_transaction *tx;
+	int                       error;
+	uint8_t                   op;
+	vhd_flag_t                flags;
+	td_request_t              treq;
+	struct tiocb              tiocb;
+	struct vhd_state         *state;
+	struct vhd_request       *next;
+	struct vhd_transaction   *tx;
 };
 
-struct vhd_bat {
-	uint32_t  *bat;
-	char      *batmap;                     /* tracks full segments */
-	vhd_flag_t status;
-	uint32_t   pbw_blk;                    /* blk num of pending write */
-	uint64_t   pbw_offset;                 /* file offset of same */
-	struct vhd_request req;                /* for writing bat table */
-	struct vhd_request zero_req;           /* for initializing bitmaps */
-	char      *bat_buf;
-	char      *zero_buf;
+struct vhd_bat_state {
+	vhd_bat_t                 bat;
+	vhd_batmap_t              batmap;
+	vhd_flag_t                status;
+	uint32_t                  pbw_blk;     /* blk num of pending write */
+	uint64_t                  pbw_offset;  /* file offset of same */
+	struct vhd_request        req;         /* for writing bat table */
+	struct vhd_request        zero_req;    /* for initializing bitmaps */
+	char                     *bat_buf;
 };
 
 struct vhd_bitmap {
-	u32        blk;
-	u64        seqno;                      /* lru sequence number */
-	vhd_flag_t status;
+	u32                       blk;
+	u64                       seqno;       /* lru sequence number */
+	vhd_flag_t                status;
 
-	char *map;                             /* map should only be modified
+	char                     *map;         /* map should only be modified
 					        * in finish_bitmap_write */
-	char *shadow;                          /* in-memory bitmap changes are 
+	char                     *shadow;      /* in-memory bitmap changes are 
 					        * made to shadow and copied to
 					        * map only after having been
 					        * flushed to disk */
-	struct vhd_transaction tx;             /* transaction data structure
+	struct vhd_transaction    tx;          /* transaction data structure
 						* encapsulating data, bitmap, 
 						* and bat writes */
-	struct vhd_req_list queue;             /* data writes waiting for next
+	struct vhd_req_list       queue;       /* data writes waiting for next
 						* transaction */
-	struct vhd_req_list waiting;           /* pending requests that cannot
+	struct vhd_req_list       waiting;     /* pending requests that cannot
 					        * be serviced until this bitmap
 					        * is read from disk */
-	struct vhd_request req;
+	struct vhd_request        req;
 };
 
 struct vhd_state {
-	int                   fd;
-	vhd_flag_t            flags;
-	int                   bitmap_format;
+	vhd_flag_t                flags;
 
         /* VHD stuff */
-        struct hd_ftr         ftr;
-        struct dd_hdr         hdr;
-	struct dd_batmap_hdr  batmap_hdr;
-	u32                   spp;             /* sectors per page */
-        u32                   spb;             /* sectors per block */
-        u64                   next_db;         /* pointer to the next 
+	vhd_context_t             vhd;
+	u32                       spp;         /* sectors per page */
+        u32                       spb;         /* sectors per block */
+        u64                       next_db;     /* pointer to the next 
 						* (unallocated) datablock */
 
-	struct vhd_bat        bat;
+	struct vhd_bat_state      bat;
 
-	u64                   bm_lru;          /* lru sequence number */
-	u32                   bm_secs;         /* size of bitmap, in sectors */
-	struct vhd_bitmap    *bitmap[VHD_CACHE_SIZE];
+	u64                       bm_lru;      /* lru sequence number */
+	u32                       bm_secs;     /* size of bitmap, in sectors */
+	struct vhd_bitmap        *bitmap[VHD_CACHE_SIZE];
 
-	int                   bm_free_count;
-	struct vhd_bitmap    *bitmap_free[VHD_CACHE_SIZE];
-	struct vhd_bitmap     bitmap_list[VHD_CACHE_SIZE];
+	int                       bm_free_count;
+	struct vhd_bitmap        *bitmap_free[VHD_CACHE_SIZE];
+	struct vhd_bitmap         bitmap_list[VHD_CACHE_SIZE];
 
-	int                   vreq_free_count;
-	struct vhd_request   *vreq_free[VHD_REQS_DATA];
-	struct vhd_request    vreq_list[VHD_REQS_DATA];
+	int                       vreq_free_count;
+	struct vhd_request       *vreq_free[VHD_REQS_DATA];
+	struct vhd_request        vreq_list[VHD_REQS_DATA];
 
-	char                 *name;
-	td_driver_t          *driver;
+	td_driver_t              *driver;
 
 	/* used for block preallocation */
-	char                 *zeros;
-	int                   zsize;
+	char                     *zeros;
+	int                       zsize;
 
-	/* debug info */
-	uint64_t queued, completed, returned;
-	uint64_t writes, reads, write_size, read_size;
+	uint64_t                  queued;
+	uint64_t                  completed;
+	uint64_t                  returned;
+	uint64_t                  reads;
+	uint64_t                  read_size;
+	uint64_t                  writes;
+	uint64_t                  write_size;
 };
-
-/* Helpers: */
-#if BYTE_ORDER == LITTLE_ENDIAN
-  #define BE32_IN(foo)  (*(foo)) = bswap_32(*(foo))
-  #define BE64_IN(foo)  (*(foo)) = bswap_64(*(foo))
-  #define BE32_OUT(foo) (*(foo)) = bswap_32(*(foo))
-  #define BE64_OUT(foo) (*(foo)) = bswap_64(*(foo))
-#else
-  #define BE32_IN(foo)
-  #define BE64_IN(foo)
-  #define BE32_OUT(foo)
-  #define BE64_OUT(foo)
-#endif
-
-#define MIN(a, b)                  (((a) < (b)) ? (a) : (b))
-#define MAX(a, b)                  (((a) > (b)) ? (a) : (b))
 
 #define test_vhd_flag(word, flag)  ((word) & (flag))
 #define set_vhd_flag(word, flag)   ((word) |= (flag))
 #define clear_vhd_flag(word, flag) ((word) &= ~(flag))
 
-#define bat_entry(s, blk)          ((s)->bat.bat[(blk)])
-
-#define secs_round_up(bytes) \
-              (((bytes) + (VHD_SECTOR_SIZE - 1)) >> VHD_SECTOR_SHIFT)
-#define secs_round_up_no_zero(bytes) \
-              (secs_round_up(bytes) ? : 1)
-
-/* tapdisk batmaps, if present, immediately follow the bat */
-#define batmap_hdr_offset(s)                                               \
-      ((s)->hdr.table_offset +                                             \
-       (secs_round_up_no_zero((s)->hdr.max_bat_size * sizeof(u32)) <<      \
-	VHD_SECTOR_SHIFT))
+#define bat_entry(s, blk)          ((s)->bat.bat.bat[(blk)])
 
 static void vhd_complete(void *, struct tiocb *, int);
 static void finish_data_transaction(struct vhd_state *, struct vhd_bitmap *);
 
-static inline int
-le_test_bit (int nr, volatile u32 *addr)
-{
-	return (((u32 *)addr)[nr >> 5] >> (nr & 31)) & 1;
-}
-
-static inline void
-le_clear_bit (int nr, volatile u32 *addr)
-{
-	((u32 *)addr)[nr >> 5] &= ~(1 << (nr & 31));
-}
-
-static inline void
-le_set_bit (int nr, volatile u32 *addr)
-{
-	((u32 *)addr)[nr >> 5] |= (1 << (nr & 31));
-}
-
-#define BIT_MASK 0x80
-
-static inline int
-be_test_bit (int nr, volatile char *addr)
-{
-	return ((addr[nr >> 3] << (nr & 7)) & BIT_MASK) != 0;
-}
-
-static inline void
-be_clear_bit (int nr, volatile char *addr)
-{
-	addr[nr >> 3] &= ~(BIT_MASK >> (nr & 7));
-}
-
-static inline void
-be_set_bit (int nr, volatile char *addr)
-{
-	addr[nr >> 3] |= (BIT_MASK >> (nr & 7));
-}
-
-#define test_bit(s, nr, addr)                                             \
-	((s)->bitmap_format == LITTLE_ENDIAN ?                            \
-	 le_test_bit(nr, (uint32_t *)(addr)) : be_test_bit(nr, addr))
-
-#define clear_bit(s, nr, addr)                                            \
-	((s)->bitmap_format == LITTLE_ENDIAN ?                            \
-	 le_clear_bit(nr, (uint32_t *)(addr)) : be_clear_bit(nr, addr))
-
-#define set_bit(s, nr, addr)                                              \
-	((s)->bitmap_format == LITTLE_ENDIAN ?                            \
-	 le_set_bit(nr, (uint32_t *)(addr)) : be_set_bit(nr, addr))
-
 static inline void
 set_batmap(struct vhd_state *s, uint32_t blk)
 {
-	if (s->bat.batmap) {
-		set_bit(s, blk, s->bat.batmap);
+	if (s->bat.batmap.map) {
+		vhd_batmap_set(&s->vhd, &s->bat.batmap, blk);
 		DBG(TLOG_DBG, "block 0x%x completely full\n", blk);
 	}
 }
@@ -345,409 +256,35 @@ set_batmap(struct vhd_state *s, uint32_t blk)
 static inline int
 test_batmap(struct vhd_state *s, uint32_t blk)
 {
-	if (!s->bat.batmap)
+	if (!s->bat.batmap.map)
 		return 0;
-	return test_bit(s, blk, s->bat.batmap);
-}
-
-/* Debug print functions: */
-
-/* Stringify the VHD timestamp for printing.                              */
-/* As with ctime_r, target must be >=26 bytes.                            */
-/* TODO: Verify this is correct.                                          */
-static size_t 
-vhd_time_to_s(u32 timestamp, char *target)
-{
-        struct tm tm;
-        time_t t1, t2;
-        char *cr;
-    
-        memset(&tm, 0, sizeof(struct tm));
- 
-        /* VHD uses an epoch of 12:00AM, Jan 1, 2000.         */
-        /* Need to adjust this to the expected epoch of 1970. */
-        tm.tm_year  = 100;
-        tm.tm_mon   = 0;
-        tm.tm_mday  = 1;
-
-        t1 = mktime(&tm);
-        t2 = t1 + (time_t)timestamp;
-        ctime_r(&t2, target);
-
-        /* handle mad ctime_r newline appending. */
-        if ((cr = strchr(target, '\n')) != NULL)
-		*cr = '\0';
-
-        return (strlen(target));
-}
-
-static u32
-vhd_time(time_t time)
-{
-	struct tm tm;
-	time_t micro_epoch;
-
-	memset(&tm, 0, sizeof(struct tm));
-	tm.tm_year   = 100;
-	tm.tm_mon    = 0;
-	tm.tm_mday   = 1;
-	micro_epoch  = mktime(&tm);
-
-	return (u32)(time - micro_epoch);
-}
-
-/*
- * nabbed from vhd specs.
- */
-static u32
-chs(uint64_t size)
-{
-	u32 secs, cylinders, heads, spt, cth;
-
-	secs = secs_round_up_no_zero(size);
-
-	if (secs > 65535 * 16 * 255)
-		secs = 65535 * 16 * 255;
-
-	if (secs >= 65535 * 16 * 63) {
-		spt   = 255;
-		cth   = secs / spt;
-		heads = 16;
-	} else {
-		spt   = 17;
-		cth   = secs / spt;
-		heads = (cth + 1023) / 1024;
-
-		if (heads < 4)
-			heads = 4;
-
-		if (cth >= (heads * 1024) || heads > 16) {
-			spt   = 31;
-			cth   = secs / spt;
-			heads = 16;
-		}
-
-		if (cth >= heads * 1024) {
-			spt   = 63;
-			cth   = secs / spt;
-			heads = 16;
-		}
-	}
-
-	cylinders = cth / heads;
-
-	return GEOM_ENCODE(cylinders, heads, spt);
-}
-
-/*
- * returns absolute offset of the first 
- * byte of the file which is not vhd metadata
- */
-static off64_t
-end_of_vhd_headers(struct vhd_state *s)
-{
-	off64_t eom;
-	struct prt_loc *loc;
-	int i, n, bat_secs, bat_bytes;
-
-	if (s->ftr.type == HD_TYPE_FIXED)
-		return 0;
-
-	eom = 3 << VHD_SECTOR_SHIFT; /* copy of footer and header */
-
-	bat_bytes = s->hdr.max_bat_size * sizeof(u32);
-	bat_secs  = secs_round_up_no_zero(bat_bytes);
-	eom      += bat_secs << VHD_SECTOR_SHIFT; /* bat table */
-
-	if (s->bat.batmap) {
-		off64_t hdr_end, hdr_secs, map_end, map_secs;
-
-		hdr_secs = secs_round_up_no_zero(sizeof(struct dd_batmap_hdr));
-		hdr_end  = (batmap_hdr_offset(s) +
-			    (hdr_secs << VHD_SECTOR_SHIFT));
-		eom      = MAX(eom, hdr_end);
-
-		map_secs = s->batmap_hdr.batmap_size;
-		map_end  = (s->batmap_hdr.batmap_offset +
-			    (map_secs << VHD_SECTOR_SHIFT));
-		eom      = MAX(eom, map_end);
-	}
-
-	/* parent locators */
-	n = sizeof(s->hdr.loc) / sizeof(struct prt_loc);
-	for (i = 0; i < n; i++) {
-		off64_t loc_end;
-
-		loc = &s->hdr.loc[i];
-		if (loc->code == PLAT_CODE_NONE)
-			continue;
-
-		loc_end = loc->data_offset;
-
-		/*
-		 * MICROSOFT_COMPAT
-		 * data_space *should* be in sectors,
-		 * but sometimes we find it in bytes
-		 */
-		if (loc->data_space < 512)
-			loc_end += (loc->data_space << VHD_SECTOR_SHIFT);
-		else if (loc->data_space % 512 == 0)
-			loc_end += loc->data_space;
-		else
-			DPRINTF("invalid parent locator data_space: %u",
-				loc->data_space);
-
-		eom = MAX(eom, loc_end);
-	}
-
-	return eom;
-}
-
-uint32_t
-vhd_footer_checksum( struct hd_ftr *f )
-{
-	int i;
-	u32 cksm = 0;
-	struct hd_ftr safe_f; /* 512 bytes on the stack should be okay here. */
-	unsigned char *blob;
-	memcpy(&safe_f, f, sizeof(struct hd_ftr));
-
-	safe_f.checksum = 0;
-    
-	blob = (unsigned char *) &safe_f;
-	for (i = 0; i < sizeof(struct hd_ftr); i++)
-		cksm += (u32)blob[i];
-    
-	return ~cksm;
-}
-
-static void
-debug_print_footer( struct hd_ftr *f )
-{
-	u32  ff_maj, ff_min;
-	char time_str[26];
-	char creator[5];
-	u32  cr_maj, cr_min;
-	u64  c, h, s;
-	u32  cksm, cksm_save;
-	char uuid[37];
-
-	DPRINTF("VHD Footer Summary:\n-------------------\n");
-	DPRINTF("Features            : (0x%08x) %s%s\n", f->features,
-		(f->features & HD_TEMPORARY) ? "<TEMP>" : "",
-		(f->features & HD_RESERVED)  ? "<RESV>" : "");
-
-	ff_maj = f->ff_version >> 16;
-	ff_min = f->ff_version & 0xffff;
-	DPRINTF("File format version : Major: %d, Minor: %d\n", 
-		ff_maj, ff_min);
-
-	DPRINTF("Data offset         : %lld\n", f->data_offset);
-    
-	vhd_time_to_s(f->timestamp, time_str);
-	DPRINTF("Timestamp           : %s\n", time_str);
-    
-	memcpy(creator, f->crtr_app, 4);
-	creator[4] = '\0';
-	DPRINTF("Creator Application : '%s'\n", creator);
-
-	cr_maj = f->crtr_ver >> 16;
-	cr_min = f->crtr_ver & 0xffff;
-	DPRINTF("Creator version     : Major: %d, Minor: %d\n",
-		cr_maj, cr_min);
-
-	DPRINTF("Creator OS          : %s\n",
-		((f->crtr_os == HD_CR_OS_WINDOWS) ? "Windows" :
-		 ((f->crtr_os == HD_CR_OS_MACINTOSH) ? "Macintosh" : 
-		  "Unknown!")));
-
-	DPRINTF("Original disk size  : %lld MB (%lld Bytes)\n",
-		f->orig_size >> 20, f->orig_size);
-	
-	DPRINTF("Current disk size   : %lld MB (%lld Bytes)\n",
-		f->curr_size >> 20, f->curr_size);
-
-	c = f->geometry >> 16;
-	h = (f->geometry & 0x0000FF00) >> 8;
-	s = f->geometry & 0x000000FF;
-	DPRINTF("Geometry            : Cyl: %lld, Hds: %lld, Sctrs: %lld\n",
-		c, h, s);
-	DPRINTF("                    : = %lld MB (%lld Bytes)\n", 
-		(c*h*s)>>11, c*h*s<<9);
-	
-	DPRINTF("Disk type           : %s\n", 
-		f->type <= HD_TYPE_MAX ? 
-		HD_TYPE_STR[f->type] : "Unknown type!\n");
-
-	cksm = vhd_footer_checksum(f);
-	DPRINTF("Checksum            : 0x%x|0x%x (%s)\n", f->checksum, cksm,
-		f->checksum == cksm ? "Good!" : "Bad!" );
-
-	uuid_unparse(f->uuid, uuid);
-	DPRINTF("UUID                : %s\n", uuid);
-	
-	DPRINTF("Saved state         : %s\n", f->saved == 0 ? "No" : "Yes" );
-}
-
-uint32_t
-vhd_header_checksum( struct dd_hdr *h )
-{
-	int i;
-	u32 cksm = 0;
-	struct dd_hdr safe_h; /* slightly larger for this one. */
-	unsigned char *blob;
-	memcpy(&safe_h, h, sizeof(struct dd_hdr));
-
-	safe_h.checksum = 0;
-    
-	blob = (unsigned char *) &safe_h;
-	for (i = 0; i < sizeof(struct dd_hdr); i++)
-		cksm += (u32)blob[i];
-    
-	return ~cksm;
-}
-
-static void
-debug_print_header( struct dd_hdr *h )
-{
-	char uuid[37];
-	char time_str[26];
-	u32  cksm;
-
-	DPRINTF("VHD Header Summary:\n-------------------\n");
-	DPRINTF("Data offset (unusd) : %lld\n", h->data_offset);
-	DPRINTF("Table offset        : %lld\n", h->table_offset);
-	DPRINTF("Header version      : 0x%08x\n", h->hdr_ver);
-	DPRINTF("Max BAT size        : %d\n", h->max_bat_size);
-	DPRINTF("Block size          : 0x%x (%dMB)\n", h->block_size,
-		h->block_size >> 20);
-
-	uuid_unparse(h->prt_uuid, uuid);
-	DPRINTF("Parent UUID         : %s\n", uuid);
-    
-	vhd_time_to_s(h->prt_ts, time_str);
-	DPRINTF("Parent timestamp    : %s\n", time_str);
-
-	cksm = vhd_header_checksum(h);
-	DPRINTF("Checksum            : 0x%x|0x%x (%s)\n", h->checksum, cksm,
-		h->checksum == cksm ? "Good!" : "Bad!" );
-
-	{
-		int i;
-		for (i = 0; i < 8; i++)
-			DPRINTF("loc[%d].offset: %llu\n",
-				i, h->loc[i].data_offset);
-	}
-}
-
-/* End of debug print functions. */
-
-static int
-vhd_read_hd_ftr(int fd, struct hd_ftr *ftr, vhd_flag_t flags)
-{
-	char *buf;
-	int err, secs;
-	off_t vhd_end;
-
-	err  = -EINVAL;
-	secs = secs_round_up(sizeof(struct hd_ftr));
-
-	if (posix_memalign((void **)&buf, 512, (secs << VHD_SECTOR_SHIFT)))
-		return -ENOMEM;
-
-	memset(ftr, 0, sizeof(struct hd_ftr));
-
-	/* Not sure if it's generally a good idea to use SEEK_END with -ve   */
-	/* offsets, so do one seek to find the end of the file, and then use */
-	/* SEEK_SETs when searching for the footer.                          */
-	if ((vhd_end = lseek64(fd, 0, SEEK_END)) == -1) {
-		err = -errno;
-		goto out;
-	}
-
-	/* Look for the footer 512 bytes before the end of the file. */
-	if (lseek64(fd, (off64_t)(vhd_end - 512), SEEK_SET) == -1) {
-		err = -errno;
-		goto out;
-	}
-	if (read(fd, buf, 512) != 512) {
-		err = (errno ? -errno : -EIO);
-		goto out;
-	}
-	memcpy(ftr, buf, sizeof(struct hd_ftr));
-	if (memcmp(ftr->cookie, HD_COOKIE,  8) == 0) goto found_footer;
-    
-	/* According to the spec, pre-Virtual PC 2004 VHDs used a            */
-	/* 511B footer.  Try that...                                         */
-	memcpy(ftr, &buf[1], MIN(sizeof(struct hd_ftr), 511));
-	if (memcmp(ftr->cookie, HD_COOKIE,  8) == 0) goto found_footer;
-    
-	/* Last try.  Look for the copy of the footer at the start of image. */
-	if (test_vhd_flag(flags, VHD_FLAG_OPEN_STRICT)) {
-		DPRINTF("NOTE: Couldn't find footer at the end of the VHD "
-			"image.  Using backup footer from start of file.  "
-			"This may have been caused by system crash recovery, "
-			"or this VHD may be corrupt.\n");
-		{
-			int *i = (int *)buf;
-			if (i[0] == 0xc7c7c7c7)
-				DPRINTF("footer dead\n");
-		}
-	}
-	if (lseek64(fd, 0, SEEK_SET) == -1) {
-		err = -errno;
-		goto out;
-	}
-	if (read(fd, buf, 512) != 512) {
-		err = (errno ? -errno : -EIO);
-		goto out;
-	}
-	memcpy(ftr, buf, sizeof(struct hd_ftr));
-	if (memcmp(ftr->cookie, HD_COOKIE,  8) == 0) goto found_footer;
-
-	if (!test_vhd_flag(flags, VHD_FLAG_OPEN_QUIET))
-		DPRINTF("error reading footer.\n");
-	goto out;
-
- found_footer:
-
-	err = 0;
-
-	BE32_IN(&ftr->features);
-	BE32_IN(&ftr->ff_version);
-	BE64_IN(&ftr->data_offset);
-	BE32_IN(&ftr->timestamp);
-	BE32_IN(&ftr->crtr_ver);
-	BE32_IN(&ftr->crtr_os);
-	BE64_IN(&ftr->orig_size);
-	BE64_IN(&ftr->curr_size);
-	BE32_IN(&ftr->geometry);
-	BE32_IN(&ftr->type);
-	BE32_IN(&ftr->checksum);
-
- out:
-	free(buf);
-	return err;
+	return vhd_batmap_test(&s->vhd, &s->bat.batmap, blk);
 }
 
 static int
-vhd_kill_hd_ftr(int fd)
+vhd_kill_footer(struct vhd_state *s)
 {
-	int err = 1;
+	int err;
 	off64_t end;
 	char *zeros;
 
-	if (posix_memalign((void **)&zeros, 512, 512) == -1)
-		return -errno;
+	if (s->vhd.footer.type == HD_TYPE_FIXED)
+		return 0;
+
+	err = posix_memalign((void **)&zeros, 512, 512);
+	if (err)
+		return -err;
+
+	err = 1;
 	memset(zeros, 0xc7c7c7c7, 512);
 
-	if ((end = lseek64(fd, 0, SEEK_END)) == -1)
+	if ((end = lseek64(s->vhd.fd, 0, SEEK_END)) == -1)
 		goto fail;
 
-	if (lseek64(fd, (end - 512), SEEK_SET) == -1)
+	if (lseek64(s->vhd.fd, (end - 512), SEEK_SET) == -1)
 		goto fail;
 
-	if (write(fd, zeros, 512) != 512)
+	if (write(s->vhd.fd, zeros, 512) != 512)
 		goto fail;
 
 	err = 0;
@@ -759,406 +296,177 @@ vhd_kill_hd_ftr(int fd)
 	return 0;
 }
 
-/* 
- * Take a copy of the footer on the stack and update endianness.
- * Write it to the current position in the fd.
- */
-static int
-vhd_write_hd_ftr(int fd, struct hd_ftr *in_use_ftr)
+static inline int
+find_next_free_block(struct vhd_state *s)
 {
-	char *buf;
-	int ret, secs, err;
-	struct hd_ftr ftr = *in_use_ftr;
+	int err;
+	off64_t eom;
+	uint32_t i, entry;
 
-	err  = 0;
-	secs = secs_round_up(sizeof(struct hd_ftr));
+	err = vhd_end_of_headers(&s->vhd, &eom);
+	if (err)
+		return err;
 
-	if (posix_memalign((void **)&buf, 512, (secs << VHD_SECTOR_SHIFT)))
-		return -ENOMEM;
+	s->next_db = secs_round_up(eom);
 
-	BE32_OUT(&ftr.features);
-	BE32_OUT(&ftr.ff_version);
-	BE64_OUT(&ftr.data_offset);
-	BE32_OUT(&ftr.timestamp);
-	BE32_OUT(&ftr.crtr_ver);
-	BE32_OUT(&ftr.crtr_os);
-	BE64_OUT(&ftr.orig_size);
-	BE64_OUT(&ftr.curr_size);
-	BE32_OUT(&ftr.geometry);
-	BE32_OUT(&ftr.type);
-	BE32_OUT(&ftr.checksum);
-
-	memcpy(buf, &ftr, sizeof(struct hd_ftr));
-	
-	ret = write(fd, buf, 512);
-	if (ret != 512)
-		err = (errno ? -errno : -EIO);
-
-	free(buf);
-	return err;
-}
-
-/* 
- * Take a copy of the header on the stack and update endianness.
- * Write it to the current position in the fd. 
- */
-static int
-vhd_write_dd_hdr(int fd, struct dd_hdr *in_use_hdr)
-{
-	char *buf;
-	int ret, secs, err, i, n;
-	struct dd_hdr hdr = *in_use_hdr;
-
-	err  = 0;
-	secs = secs_round_up(sizeof(struct dd_hdr));
-
-	if (posix_memalign((void **)&buf, 512, (secs << VHD_SECTOR_SHIFT)))
-		return -ENOMEM;
-
-	BE64_OUT(&hdr.data_offset);
-	BE64_OUT(&hdr.table_offset);
-	BE32_OUT(&hdr.hdr_ver);
-	BE32_OUT(&hdr.max_bat_size);	
-	BE32_OUT(&hdr.block_size);
-	BE32_OUT(&hdr.checksum);
-	BE32_OUT(&hdr.prt_ts);
-
-	n = sizeof(hdr.loc) / sizeof(struct prt_loc);
-	for (i = 0; i < n; i++) {
-		BE32_OUT(&hdr.loc[i].code);
-		BE32_OUT(&hdr.loc[i].data_space);
-		BE32_OUT(&hdr.loc[i].data_len);
-		BE64_OUT(&hdr.loc[i].data_offset);
+	for (i = 0; i < s->bat.bat.entries; i++) {
+		entry = bat_entry(s, i);
+		if (entry != DD_BLK_UNUSED && entry >= s->next_db)
+			s->next_db = entry + s->spb + s->bm_secs;
 	}
 
-	memcpy(buf, &hdr, sizeof(struct dd_hdr));
+	return 0;
+}
 
-	ret = write(fd, buf, 1024);
-	if (ret != 1024)
-		err = (errno ? -errno : -EIO);
-
-	free(buf);
-	return err;
+static void
+vhd_free_bat(struct vhd_state *s)
+{
+	free(s->bat.bat.bat);
+	free(s->bat.batmap.map);
+	free(s->bat.bat_buf);
+	if (s->zeros)
+		munmap(s->zeros, s->zsize);
+	memset(&s->bat, 0, sizeof(struct vhd_bat));
 }
 
 static int
-vhd_read_dd_hdr(int fd, struct dd_hdr *hdr, u64 location)
+vhd_initialize_bat(struct vhd_state *s)
 {
-	char *buf;
-	int   err, size, i;
+	int err, psize;
 
-	err  = -EINVAL;
-	size = secs_round_up(sizeof(struct dd_hdr)) << VHD_SECTOR_SHIFT;
+	memset(&s->bat, 0, sizeof(struct vhd_bat));
 
-	if (posix_memalign((void **)&buf, 512, size))
-		return -ENOMEM;
+	psize = getpagesize();
 
-	if (lseek64(fd, location, SEEK_SET) == -1) {
-		err = -errno;
-		goto out;
+	err = vhd_read_bat(&s->vhd, &s->bat.bat);
+	if (err) {
+		EPRINTF("%s: reading bat: %d\n", s->vhd.file, err);
+		return err;
 	}
-	if (read(fd, buf, size) != size) {
-		err = (errno ? -errno : -EIO);
-		goto out;
-	}
-	memcpy(hdr, buf, sizeof(struct dd_hdr));
-	if (memcmp(hdr->cookie, DD_COOKIE,  8) != 0)
-		goto out;
-	
-	err = 0;
 
-	BE64_IN(&hdr->data_offset);
-	BE64_IN(&hdr->table_offset);
-	BE32_IN(&hdr->hdr_ver);
-	BE32_IN(&hdr->max_bat_size);
-	BE32_IN(&hdr->block_size);
-	BE32_IN(&hdr->checksum);
-	BE32_IN(&hdr->prt_ts);
-
-	for (i = 0; i < 8; i++) {
-		BE32_IN(&hdr->loc[i].code);
-		BE32_IN(&hdr->loc[i].data_space);
-		BE32_IN(&hdr->loc[i].data_len);
-		BE64_IN(&hdr->loc[i].data_offset);
-	}
-	
- out:
-	free(buf);
-	return err;
-}
-
-uint32_t
-vhd_batmap_checksum(struct dd_batmap_hdr *batmap_header, char *batmap)
-{
-	uint32_t cksm;
-	int i, batmap_bytes;
-
-	cksm         = 0;
-	batmap_bytes = batmap_header->batmap_size << VHD_SECTOR_SHIFT;
-
-	for (i = 0; i < batmap_bytes; i++)
-		cksm += (u32)(batmap[i]);
-
-	return ~cksm;
-}
-
-static int
-vhd_read_batmap(int fd, struct vhd_state *s)
-{
-	u32 cksm;
-	char *buf;
-	int err, header_bytes, batmap_bytes;
-	uint64_t header_offset, batmap_offset;
-
-	s->bat.batmap = NULL;
-
-	if (strncmp(s->ftr.crtr_app, "tap", 4) ||
-	    s->ftr.crtr_ver < 0x00010001)
-		return 0;
-				      
-	header_offset = batmap_hdr_offset(s);
-	if (lseek64(fd, header_offset, SEEK_SET) == (off64_t)-1) {
-		err = -errno;
-		DPRINTF("lseek failed: %d\n", err);
+	err = find_next_free_block(s);
+	if (err)
 		goto fail;
+
+	if (vhd_has_batmap(&s->vhd)) {
+		err = vhd_read_batmap(&s->vhd, &s->bat.batmap);
+		if (err) {
+			EPRINTF("%s: reading batmap: %d\n", s->vhd.file, err);
+			goto fail;
+		}
 	}
 
-	header_bytes = secs_round_up_no_zero(sizeof(struct dd_batmap_hdr)) <<
-		VHD_SECTOR_SHIFT;
-	if (posix_memalign((void **)&buf, 512, header_bytes)) {
-		err = -ENOMEM;
-		goto fail;
-	}
-
-	if (read(fd, buf, header_bytes) != header_bytes) {
-		err = (errno ? -errno : -EIO);
-		free(buf);
-		DPRINTF("reading batmap header failed: %d\n", errno);
-		goto fail;
-	}
-
-	memcpy(&s->batmap_hdr, buf, sizeof(struct dd_batmap_hdr));
-	free(buf);
-
-	BE64_IN(&s->batmap_hdr.batmap_offset);
-	BE32_IN(&s->batmap_hdr.batmap_size);
-	BE32_IN(&s->batmap_hdr.batmap_version);
-	BE32_IN(&s->batmap_hdr.checksum);
-
-	if (memcmp(s->batmap_hdr.cookie, VHD_BATMAP_COOKIE, 8)) {
-		DPRINTF("unrecognized batmap cookie\n");
-		return 0;
-	}
-
-	if (s->batmap_hdr.batmap_version != VHD_BATMAP_CURRENT_VERSION) {
-		DPRINTF("unrecognized batmap version\n");
-		return 0;
-	}
-
-	batmap_bytes = s->batmap_hdr.batmap_size << VHD_SECTOR_SHIFT;
-	if (posix_memalign((void **)&s->bat.batmap, 512, batmap_bytes)) {
-		err = -ENOMEM;
-		s->bat.batmap = NULL;
-		goto fail;
-	}
-
-	batmap_offset = s->batmap_hdr.batmap_offset;
-	if (lseek64(fd, batmap_offset, SEEK_SET) == (off64_t)-1) {
+	s->zsize      = (s->spb << VHD_SECTOR_SHIFT) + psize;
+	s->zeros      = mmap(0, s->zsize, PROT_READ,
+			     MAP_SHARED | MAP_ANONYMOUS, -1, 0);
+	if (s->zeros == MAP_FAILED) {
+		s->zeros = NULL;
 		err = -errno;
 		goto fail;
 	}
 
-	if (read(fd, s->bat.batmap, batmap_bytes) != batmap_bytes) {
-		err = (errno ? -errno : -EIO);
-		DPRINTF("readint batmap failed: %d\n", err);
-		goto fail;
-	}
-
-	cksm = vhd_batmap_checksum(&s->batmap_hdr, s->bat.batmap);
-	if (cksm != s->batmap_hdr.checksum) {
-		DPRINTF("invalid batmap checksum\n");
-		err = -EINVAL;
+	err = posix_memalign((void **)&s->bat.bat_buf,
+			     VHD_SECTOR_SIZE, VHD_SECTOR_SIZE);
+	if (err) {
+		s->bat.bat_buf = NULL;
 		goto fail;
 	}
 
 	return 0;
 
- fail:
-	free(s->bat.batmap);
-	s->bat.batmap = NULL;
+fail:
+	vhd_free_bat(s);
 	return err;
 }
 
 static void
-vhd_write_batmap(struct vhd_state *s)
+vhd_free_bitmap_cache(struct vhd_state *s)
 {
-	char *buf;
-	int header_bytes, batmap_bytes;
-	off64_t header_offset, batmap_offset;
-	struct dd_batmap_hdr *hdr;
+	int i;
+	struct vhd_bitmap *bm;
 
-	if (!s->bat.batmap)
-		return;
-
-	batmap_offset = s->batmap_hdr.batmap_offset;
-	batmap_bytes  = s->batmap_hdr.batmap_size << VHD_SECTOR_SHIFT;
-	s->batmap_hdr.checksum = vhd_batmap_checksum(&s->batmap_hdr,
-						     s->bat.batmap);
-
-	if (lseek64(s->fd, batmap_offset, SEEK_SET) == (off64_t)-1)
-		return;
-
-	if (write(s->fd, s->bat.batmap, batmap_bytes) != batmap_bytes) {
-		DPRINTF("batmap write failed: %d\n", errno);
-		return;
+	for (i = 0; i < VHD_CACHE_SIZE; i++) {
+		bm = s->bitmap_list + i;
+		free(bm->map);
+		free(bm->shadow);
+		s->bitmap_free[i] = NULL;
 	}
 
-	header_offset = batmap_hdr_offset(s);
-	if (lseek64(s->fd, header_offset, SEEK_SET) == (off64_t)-1)
-		return;
-
-	header_bytes = secs_round_up_no_zero(sizeof(struct dd_batmap_hdr)) << 
-		VHD_SECTOR_SHIFT;
-	if (posix_memalign((void **)&buf, 512, header_bytes)) {
-		DPRINTF("batmap_hdr write failed: %d\n", -ENOMEM);
-		return;
-	}
-
-	memset(buf, 0, header_bytes);
-	memcpy(buf, &s->batmap_hdr, sizeof(struct dd_batmap_hdr));
-	hdr = (struct dd_batmap_hdr *)buf;
-
-	BE64_OUT(&hdr->batmap_offset);
-	BE32_OUT(&hdr->batmap_size);
-	BE32_OUT(&hdr->batmap_version);
-	BE32_OUT(&hdr->checksum);
-
-	if (write(s->fd, buf, header_bytes) != header_bytes)
-		DPRINTF("batmap_hdr write failed: %d\n", errno);
-
-	free(buf);
+	memset(s->bitmap_list, 0, sizeof(struct vhd_bitmap) * VHD_CACHE_SIZE);
 }
 
 static int
-vhd_read_bat(int fd, struct vhd_state *s)
+vhd_initialize_bitmap_cache(struct vhd_state *s)
 {
-	char *buf;
-	off64_t eom;
-	uint32_t count, full;
-	int i, secs, err = 0;
+	int i, err, map_size;
+	struct vhd_bitmap *bm;
 
-	u32 entries  = s->hdr.max_bat_size;
-	u64 location = s->hdr.table_offset;
-	secs         = secs_round_up_no_zero(entries * sizeof(u32));
+	memset(s->bitmap_list, 0, sizeof(struct vhd_bitmap) * VHD_CACHE_SIZE);
 
-	if (vhd_read_batmap(fd, s)) {
-		DPRINTF("Error reading batmap\n");
-		s->bat.batmap = NULL;
-	}
+	s->bm_lru        = 0;
+	map_size         = s->bm_secs << VHD_SECTOR_SHIFT;
+	s->bm_free_count = VHD_CACHE_SIZE;
 
-	if (posix_memalign((void **)&buf, 512, (secs << VHD_SECTOR_SHIFT)))
-		return -ENOMEM;
+	for (i = 0; i < VHD_CACHE_SIZE; i++) {
+		bm = s->bitmap_list + i;
 
-	DBG(TLOG_DBG, "Reading BAT at %lld, %d entries\n", location, entries);
-
-	if (lseek64(fd, location, SEEK_SET) == (off64_t)-1) {
-		err = -errno;
-		goto out;
-	}
-	if (read(fd, buf, secs << VHD_SECTOR_SHIFT)
-	    != (secs << VHD_SECTOR_SHIFT) ) {
-		err = (errno ? -errno : -EIO);
-		goto out;
-	}
-
-	memcpy(s->bat.bat, buf, entries * sizeof(u32));
-
-	eom        = end_of_vhd_headers(s);
-	s->next_db = secs_round_up(eom);
-	count      = 0;
-	full       = 0;
-
-	DBG(TLOG_DBG, "FirstDB: %llu\n", s->next_db);
-
-	for (i = 0; i < entries; i++) {
-		BE32_IN(&bat_entry(s, i));
-		if ((bat_entry(s, i) != DD_BLK_UNUSED) && 
-		    (bat_entry(s, i) >= s->next_db)) {
-			s->next_db = bat_entry(s, i) + s->spb + s->bm_secs;
-			DBG(TLOG_DBG, "i: %d, bat[i]: %u, spb: %d, "
-			    "next: %llu\n", i, bat_entry(s, i), s->spb,
-			    s->next_db);
+		err = posix_memalign((void **)&bm->map, 512, map_size);
+		if (err) {
+			bm->map = NULL;
+			goto fail;
 		}
 
-		if (bat_entry(s, i) != DD_BLK_UNUSED) {
-			count++;
-			if (test_batmap(s, i))
-				full++;
-		} else
-			ASSERT(!test_batmap(s, i));
+		err = posix_memalign((void **)&bm->shadow, 512, map_size);
+		if (err) {
+			bm->shadow = NULL;
+			goto fail;
+		}
+
+		memset(bm->map, 0, map_size);
+		memset(bm->shadow, 0, map_size);
+		s->bitmap_free[i] = bm;
 	}
 
-	if (!test_vhd_flag(s->flags, VHD_FLAG_OPEN_QUIET))
-		DPRINTF("%s: block summary: total: %u, allocated: %u, full: "
-			"%u\n", __func__, s->hdr.max_bat_size, count, full);
+	return 0;
 
- out:
-	free(buf);
+fail:
+	vhd_free_bitmap_cache(s);
 	return err;
 }
 
-static void
-free_bat(struct vhd_state *s)
-{
-	free(s->bat.bat);
-	free(s->bat.bat_buf);
-	free(s->bat.batmap);
-
-	if (test_vhd_flag(s->flags, VHD_FLAG_OPEN_PREALLOCATE)) {
-		if (s->zeros)
-			munmap(s->zeros, s->zsize);
-		s->zeros = NULL;
-	} else
-		free(s->bat.zero_buf);
-
-	memset(&s->bat, 0, sizeof(struct vhd_bat));
-}
-
 static int
-alloc_bat(struct vhd_state *s)
+vhd_initialize_dynamic_disk(struct vhd_state *s)
 {
-	int psize = getpagesize();
-	int secs  = secs_round_up(s->hdr.max_bat_size * sizeof(u32));
+	int err;
 
-	memset(&s->bat, 0, sizeof(struct vhd_bat));
-	s->bat.bat = calloc(1, secs << VHD_SECTOR_SHIFT);
-	if (!s->bat.bat)
-		return -ENOMEM;
-
-	if (test_vhd_flag(s->flags, VHD_FLAG_OPEN_PREALLOCATE)) {
-		s->zsize = (s->spb << VHD_SECTOR_SHIFT) + psize;
-		s->zeros = mmap(0, s->zsize, PROT_READ,
-				MAP_SHARED | MAP_ANONYMOUS, -1, 0);
-		if (s->zeros == MAP_FAILED) {
-			s->zeros = NULL;
-			free_bat(s);
-			return -ENOMEM;
-		}
-	} else {
-		if (posix_memalign((void **)&s->bat.zero_buf,
-				   VHD_SECTOR_SIZE, psize)) {
-			s->bat.zero_buf = NULL;
-			free_bat(s);
-			return -ENOMEM;
-		}
-		memset(s->bat.zero_buf, 0, psize);
+	err = vhd_get_header(&s->vhd);
+	if (err) {
+		if (!test_vhd_flag(s->flags, VHD_FLAG_OPEN_QUIET))
+			EPRINTF("Error reading VHD DD header.\n");
+		return err;
 	}
 
-	if (posix_memalign((void **)&s->bat.bat_buf, 
-			   VHD_SECTOR_SIZE, VHD_SECTOR_SIZE)) {
-		s->bat.bat_buf = NULL;
-		free_bat(s);
-		return -ENOMEM;
+	if (s->vhd.header.hdr_ver != 0x00010000) {
+		EPRINTF("unsupported header version! (0x%x)\n",
+			s->vhd.header.hdr_ver);
+		return -EINVAL;
+	}
+
+	s->spp     = getpagesize() >> VHD_SECTOR_SHIFT;
+	s->spb     = s->vhd.header.block_size >> VHD_SECTOR_SHIFT;
+	s->bm_secs = secs_round_up_no_zero(s->spb >> 3);
+
+	if (test_vhd_flag(s->flags, VHD_FLAG_OPEN_NO_CACHE))
+		return 0;
+
+	err = vhd_initialize_bat(s);
+	if (err)
+		return err;
+
+	err = vhd_initialize_bitmap_cache(s);
+	if (err) {
+		vhd_free_bat(s);
+		return err;
 	}
 
 	return 0;
@@ -1167,167 +475,100 @@ alloc_bat(struct vhd_state *s)
 static int
 vhd_check_version(struct vhd_state *s)
 {
-	if (!test_vhd_flag(s->flags, VHD_FLAG_OPEN_QUIET)) {
-		char buf[5];
-		snprintf(buf, sizeof(buf), "%s", s->ftr.crtr_app);
-		DPRINTF("%s version: %s 0x%08x\n",
-			s->name, buf, s->ftr.crtr_ver);
-	}
-
-	if (strncmp(s->ftr.crtr_app, "tap", 4))
+	if (strncmp(s->vhd.footer.crtr_app, "tap", 4))
 		return 0;
 
-	if (s->ftr.crtr_ver > VHD_CURRENT_VERSION) {
+	if (s->vhd.footer.crtr_ver > VHD_CURRENT_VERSION) {
 		if (!test_vhd_flag(s->flags, VHD_FLAG_OPEN_QUIET))
-			DPRINTF("WARNING: %s vhd creator version 0x%08x, "
+			EPRINTF("WARNING: %s vhd creator version 0x%08x, "
 				"but only versions up to 0x%08x are "
-				"supported for IO\n", s->name,
-				s->ftr.crtr_ver, VHD_CURRENT_VERSION);
+				"supported for IO\n", s->vhd.file,
+				s->vhd.footer.crtr_ver, VHD_CURRENT_VERSION);
 
-		/*
-		 * refuse to open unsupported tapdisk
-		 * versions for anything but queries 
-		 */
-		if (!test_vhd_flag(s->flags, VHD_FLAG_OPEN_QUERY))
-			return -EINVAL;
+		return -EINVAL;
 	}
 
 	return 0;
 }
 
-static int
-bitmap_format(struct vhd_state *s)
+static inline void
+vhd_log_open(struct vhd_state *s)
 {
-	int format = BIG_ENDIAN;
+	char buf[5];
+	uint32_t i, allocated, full;
 
-	if (!strncmp(s->ftr.crtr_app, "tap", 4) &&
-	    s->ftr.crtr_ver == 0x00000001)
-		format = LITTLE_ENDIAN;
+	if (test_vhd_flag(s->flags, VHD_FLAG_OPEN_QUIET))
+		return;
 
-	if (!test_vhd_flag(s->flags, VHD_FLAG_OPEN_QUIET))
-		DPRINTF("%s VHD bitmap format: %s_ENDIAN\n",
-			s->name, (format == BIG_ENDIAN ? "BIG" : "LITTLE"));
+	snprintf(buf, sizeof(buf), "%s", s->vhd.footer.crtr_app);
+	if (!vhd_type_dynamic(&s->vhd)) {
+		DPRINTF("%s version: %s 0x%08x\n",
+			s->vhd.file, buf, s->vhd.footer.crtr_ver);
+		return;
+	}
 
-	return format;
+	allocated = 0;
+	full      = 0;
+
+	for (i = 0; i < s->bat.bat.entries; i++) {
+		if (bat_entry(s, i) != DD_BLK_UNUSED)
+			allocated++;
+		if (test_batmap(s, i))
+			full++;
+	}
+
+	DPRINTF("%s version: %s 0x%08x, b: %u, a: %u, f: %u, n: %llu\n",
+		s->vhd.file, buf, s->vhd.footer.crtr_ver, s->bat.bat.entries,
+		allocated, full, s->next_db);
 }
 
 static int
 __vhd_open(td_driver_t *driver, const char *name, vhd_flag_t flags)
 {
-	char *tmp;
-	u32 map_size;
-        int fd, i, o_flags, ret = 0;
-	struct vhd_state *s = (struct vhd_state *)driver->data;
+        int i, o_flags, err;
+	struct vhd_state *s;
 
         DBG(TLOG_INFO, "vhd_open: %s\n", name);
+	libvhd_set_log_level(1);
 
+	s = (struct vhd_state *)driver->data;
 	memset(s, 0, sizeof(struct vhd_state));
 
 	s->flags  = flags;
 	s->driver = driver;
-	s->name   = strdup(name);
-	if (!s->name)
-		return -ENOMEM;
 
-	o_flags  = O_LARGEFILE | O_DIRECT;
-	o_flags |= ((test_vhd_flag(flags, VHD_FLAG_OPEN_RDONLY)) ? 
-		    O_RDONLY : O_RDWR);
-        fd = open(name, o_flags);
-        if ((fd == -1) && (errno == EINVAL)) {
-                /* Maybe O_DIRECT isn't supported. */
-		o_flags &= ~O_DIRECT;
-                fd = open(name, o_flags);
-                if (fd != -1) 
-			DPRINTF("WARNING: Accessing image without"
-				"O_DIRECT! (%s)\n", name);
-        } else if (fd != -1) 
-		DBG(TLOG_WARN, "open(%s) with O_DIRECT\n", name);
+	o_flags   = O_LARGEFILE | O_DIRECT;
+	o_flags  |= ((test_vhd_flag(flags, VHD_FLAG_OPEN_RDONLY)) ? 
+		     O_RDONLY : O_RDWR);
 
-	if (fd == -1) {
+	err = vhd_open(&s->vhd, name, o_flags);
+	if (err) {
 		if (!test_vhd_flag(flags, VHD_FLAG_OPEN_QUIET))
 			DPRINTF("Unable to open [%s] (%d)!\n", name, -errno);
-		return -errno;
+		return err;
 	}
 
-        /* Read the disk footer. */
-        ret = vhd_read_hd_ftr(fd, &s->ftr, flags);
-	if (ret) {
-		if (!test_vhd_flag(flags, VHD_FLAG_OPEN_QUIET))
-			DPRINTF("Error reading VHD footer.\n");
-                return ret;
-        }
-
-	ret = vhd_check_version(s);
-	if (ret)
-		return ret;
+	err = vhd_check_version(s);
+	if (err)
+		goto fail;
 
 	s->spb = s->spp = 1;
 
-        /* If this is a dynamic or differencing disk, read the dd header. */
-        if ((s->ftr.type == HD_TYPE_DYNAMIC) ||
-	    (s->ftr.type == HD_TYPE_DIFF)) {
-
-		ret = vhd_read_dd_hdr(fd, &s->hdr, s->ftr.data_offset);
-                if (ret) {
-			if (!test_vhd_flag(flags, VHD_FLAG_OPEN_QUIET))
-				DPRINTF("Error reading VHD DD header.\n");
-                        return ret;
-                }
-
-                if (s->hdr.hdr_ver != 0x00010000) {
-                        DPRINTF("DANGER: unsupported hdr version! (0x%x)\n",
-				 s->hdr.hdr_ver);
-			if (!test_vhd_flag(flags, VHD_FLAG_OPEN_QUERY))
-				return -EINVAL;
-                }
-
-		s->spp     = getpagesize() >> VHD_SECTOR_SHIFT;
-                s->spb     = s->hdr.block_size >> VHD_SECTOR_SHIFT;
-		s->bm_secs = secs_round_up_no_zero(s->spb >> 3);
-
-		SPB = s->spb;
-
-		if (test_vhd_flag(flags, VHD_FLAG_OPEN_NO_CACHE))
-			goto out;
-
-                /* Allocate and read the Block Allocation Table. */
-		if (alloc_bat(s)) {
-                        DPRINTF("Error allocating BAT.\n");
-			return -ENOMEM;
-                }
-
-                if ((ret = vhd_read_bat(fd, s)) != 0) {
-                        DPRINTF("Error reading BAT.\n");
+	if (vhd_type_dynamic(&s->vhd)) {
+		err = vhd_initialize_dynamic_disk(s);
+		if (err)
 			goto fail;
-                }
+	}
 
-		/* Allocate bitmap cache */
-		s->bm_lru        = 0;
-		map_size         = s->bm_secs << VHD_SECTOR_SHIFT;
-		s->bm_free_count = VHD_CACHE_SIZE;
+	vhd_log_open(s);
 
-		ret = -ENOMEM;
-		for (i = 0; i < VHD_CACHE_SIZE; i++) {
-			struct vhd_bitmap *bm = &s->bitmap_list[i];
-			if (posix_memalign((void **)&bm->map, 512, map_size))
-				goto fail;
-			if (posix_memalign((void **)&bm->shadow, 
-					   512, map_size))
-				goto fail;
-			memset(bm->map, 0, map_size);
-			memset(bm->shadow, 0, map_size);
-			s->bitmap_free[i] = bm;
-		}
-        }
+	SPB = s->spb;
 
- out:
 	s->vreq_free_count = VHD_REQS_DATA;
 	for (i = 0; i < VHD_REQS_DATA; i++)
 		s->vreq_free[i] = s->vreq_list + i;
 
-	s->fd                    = fd;
-	s->bitmap_format         = bitmap_format(s);
-	driver->info.size        = s->ftr.curr_size >> VHD_SECTOR_SHIFT;
+	driver->info.size        = s->vhd.footer.curr_size >> VHD_SECTOR_SHIFT;
 	driver->info.sector_size = VHD_SECTOR_SIZE;
 	driver->info.info        = 0;
 
@@ -1336,10 +577,10 @@ __vhd_open(td_driver_t *driver, const char *name, vhd_flag_t flags)
 
 	if (test_vhd_flag(flags, VHD_FLAG_OPEN_STRICT) && 
 	    !test_vhd_flag(flags, VHD_FLAG_OPEN_RDONLY)) {
-		ret = vhd_kill_hd_ftr(fd);
-		if (ret) {
-			DPRINTF("ERROR killing footer: %d\n", ret);
-			return ret;
+		err = vhd_kill_footer(s);
+		if (err) {
+			DPRINTF("ERROR killing footer: %d\n", err);
+			goto fail;
 		}
 		s->writes++;
 	}
@@ -1347,17 +588,14 @@ __vhd_open(td_driver_t *driver, const char *name, vhd_flag_t flags)
         return 0;
 
  fail:
-	free_bat(s);
-	for (i = 0; i < VHD_CACHE_SIZE; i++) {
-		struct vhd_bitmap *bm = &s->bitmap_list[i];
-		free(bm->map);
-		free(bm->shadow);
-	}
-	return ret;
+	vhd_free_bat(s);
+	vhd_free_bitmap_cache(s);
+	vhd_close(&s->vhd);
+	return err;
 }
 
 static int
-vhd_open(td_driver_t *driver, const char *name, td_flag_t flags)
+_vhd_open(td_driver_t *driver, const char *name, td_flag_t flags)
 {
 	vhd_flag_t vhd_flags = 0;
 
@@ -1381,72 +619,46 @@ vhd_open(td_driver_t *driver, const char *name, td_flag_t flags)
 }
 
 static int
-vhd_close(td_driver_t *driver)
+_vhd_close(td_driver_t *driver)
 {
-	int i;
-	off64_t off;
+	int err;
+	struct vhd_state *s;
 	struct vhd_bitmap *bm;
-	struct vhd_state  *s = (struct vhd_state *)driver->data;
 	
 	DBG(TLOG_WARN, "vhd_close\n");
+	s = (struct vhd_state *)driver->data;
 
 	/* don't write footer if tapdisk is read-only */
 	if (test_vhd_flag(s->flags, VHD_FLAG_OPEN_RDONLY))
 		goto free;
 	
-	/* write footer if:
+	/* 
+	 * write footer if:
 	 *   - we killed it on open (opened with strict) 
 	 *   - we've written data since opening
 	 */
 	if (test_vhd_flag(s->flags, VHD_FLAG_OPEN_STRICT) || s->writes) {
-		if (s->ftr.type != HD_TYPE_FIXED) {
-			uint64_t i, blk, max;
+		memcpy(&s->vhd.bat, &s->bat.bat, sizeof(vhd_bat_t));
+		err = vhd_write_footer(&s->vhd, &s->vhd.footer);
+		memset(&s->vhd.bat, 0, sizeof(vhd_bat_t));
 
-			max = end_of_vhd_headers(s) >> VHD_SECTOR_SHIFT;
-			for (i = 0; i < s->hdr.max_bat_size; i++) {
-				blk = bat_entry(s, i);
-				if (blk != DD_BLK_UNUSED) {
-					blk += s->spb + s->bm_secs;
-					max  = MAX(blk, max);
-				}
-			}
-			off = max << VHD_SECTOR_SHIFT;
+		if (err)
+			EPRINTF("writing %s footer: %d\n", s->vhd.file, err);
 
-			if (lseek64(s->fd, off, SEEK_SET) == (off64_t)-1) {
-				DPRINTF("ERROR: seeking footer extension.\n");
-				goto free;
-			}
-		} else {
-			off = lseek64(s->fd, 0, SEEK_END);
-			if (off == (off64_t)-1) {
-				DPRINTF("ERROR: seeking footer extension.\n");
-				goto free;
-			}
-			if (lseek64(s->fd, (off64_t)(off - 512), 
-				    SEEK_SET) == (off64_t)-1) {
-				DPRINTF("ERROR: seeking footer extension.\n");
-				goto free;
-			}
-		}
-		if (vhd_write_hd_ftr(s->fd, &s->ftr))
-			DPRINTF("ERROR: writing footer. %d\n", errno);
+		if (!vhd_has_batmap(&s->vhd))
+			goto free;
 
-		vhd_write_batmap(s);
+		err = vhd_write_batmap(&s->vhd, &s->bat.batmap);
+		if (err)
+			EPRINTF("writing %s batmap: %d\n", s->vhd.file, err);
 	}
 
  free:
-	for (i = 0; i < VHD_CACHE_SIZE; i++) {
-		bm = &s->bitmap_list[i];
-		free(bm->map);
-		free(bm->shadow);
-	}
+	vhd_free_bat(s);
+	vhd_free_bitmap_cache(s);
+	vhd_close(&s->vhd);
 
-	free_bat(s);
-
-	if (fsync(s->fd) == -1)
-		DPRINTF("ERROR: syncing file: %d\n", errno);
-	if (close(s->fd) == -1)
-		DPRINTF("ERROR: closing file: %d\n", errno);
+	memset(s, 0, sizeof(struct vhd_state));
 
 	return 0;
 }
@@ -1465,8 +677,8 @@ vhd_validate_parent(td_driver_t *child_driver,
 	 *   - parent VHD modified during coalesce
 	 */
 	/*
-	if (stat(parent->name, &stats)) {
-		DPRINTF("ERROR stating parent file %s\n", parent->name);
+	if (stat(parent->vhd.file, &stats)) {
+		DPRINTF("ERROR stating parent file %s\n", parent->vhd.file);
 		return -errno;
 	}
 
@@ -1477,10 +689,10 @@ vhd_validate_parent(td_driver_t *child_driver,
 	}
 	*/
 
-	if (uuid_compare(child->hdr.prt_uuid, parent->ftr.uuid)) {
+	if (uuid_compare(child->vhd.header.prt_uuid, parent->vhd.footer.uuid)) {
 		DPRINTF("ERROR: %s: %s, %s: parent uuid has changed since "
 			"snapshot.  Child image no longer valid.\n",
-			__func__, child->name, parent->name);
+			__func__, child->vhd.file, parent->vhd.file);
 		return -EINVAL;
 	}
 
@@ -1489,965 +701,29 @@ vhd_validate_parent(td_driver_t *child_driver,
 	return 0;
 }
 
-static char *
-find_parent(char *child, char *parent)
-{
-	struct stat stats;
-	char *location, *cpath, *cdir, *path;
-
-	cpath    = NULL;
-	location = NULL;
-
-	if (!child || !parent)
-		return NULL;
-
-	if (parent[0] == '/') {
-		if (!stat(parent, &stats))
-			return strdup(parent);
-		return NULL;
-	}
-
-	/* check parent path relative to child's directory */
-	cpath = realpath(child, NULL);
-	if (!cpath)
-		goto out;
-
-	cdir = dirname(cpath);
-	if (asprintf(&location, "%s/%s", cdir, parent) == -1) {
-		location = NULL;
-		goto out;
-	}
-
-	if (!stat(location, &stats)) {
-		path = realpath(location, NULL);
-		free(location);
-		return path;
-	}
-
-out:
-	free(location);
-	free(cpath);
-	return NULL;
-}
-
-static int 
-macx_encode_location(char *name, char **out, int *outlen)
-{
-	iconv_t cd;
-	int len, err;
-	size_t ibl, obl;
-	char *uri, *urip, *uri_utf8, *uri_utf8p, *ret;
-
-	err     = 0;
-	ret     = NULL;
-	*out    = NULL;
-	*outlen = 0;
-	len     = strlen(name) + strlen("file://");
-
-	ibl     = len;
-	obl     = len;
-
-	uri = urip = malloc(ibl + 1);
-	uri_utf8 = uri_utf8p = malloc(obl);
-
-	if (!uri || !uri_utf8)
-		return -ENOMEM;
-
-	cd = iconv_open("UTF-8", "ASCII");
-	if (cd == (iconv_t)-1) {
-		err = -errno;
-		goto out;
-	}
-
-	sprintf(uri, "file://%s", name);
-
-	if (iconv(cd, &urip, &ibl, &uri_utf8p, &obl) == (size_t)-1 ||
-	    ibl || obl) {
-		err = (errno ? -errno : -EIO);
-		goto out;
-	}
-
-	ret = malloc(len);
-	if (!ret) {
-		err = -ENOMEM;
-		goto out;
-	}
-
-	memcpy(ret, uri_utf8, len);
-	*outlen = len;
-	*out    = ret;
-
- out:
-	free(uri);
-	free(uri_utf8);
-	if (cd != (iconv_t)-1)
-		iconv_close(cd);
-
-	return err;
-}
-
-static int
-w2u_encode_location(char *name, char **out, int *outlen)
-{
-	iconv_t cd;
-	int len, err;
-	size_t ibl, obl;
-	char *uri, *urip, *uri_utf16, *uri_utf16p, *tmp, *ret;
-
-	err     = 0;
-	ret     = NULL;
-	*out    = NULL;
-	*outlen = 0;
-	cd      = (iconv_t) -1;
-
-	/* 
-	 * MICROSOFT_COMPAT
-	 * relative paths must start with ".\" 
-	 */
-	if (name[0] != '/') {
-		tmp = strstr(name, "./");
-		if (tmp == name)
-			tmp += strlen("./");
-		else
-			tmp = name;
-
-		err = asprintf(&uri, ".\\%s", tmp);
-	} else
-		err = asprintf(&uri, "%s", name);
-
-	if (err == -1)
-		return -ENOMEM;
-
-	tmp = uri;
-	while (*tmp != '\0') {
-		if (*tmp == '/')
-			*tmp = '\\';
-		tmp++;
-	}
-
-	len  = strlen(uri);
-	ibl  = len;
-	obl  = len * 2;
-	urip = uri;
-
-	uri_utf16 = uri_utf16p = malloc(obl);
-	if (!uri_utf16) {
-		err = -ENOMEM;
-		goto out;
-	}
-
-	/* 
-	 * MICROSOFT_COMPAT
-	 * little endian unicode here 
-	 */
-	cd = iconv_open("UTF-16LE", "ASCII");
-	if (cd == (iconv_t)-1) {
-		err = -errno;
-		goto out;
-	}
-
-	if (iconv(cd, &urip, &ibl, &uri_utf16p, &obl) == (size_t)-1 ||
-	    ibl || obl) {
-		err = (errno ? -errno : -EIO);
-		goto out;
-	}
-
-	len = len * 2;
-	ret = malloc(len);
-	if (!ret) {
-		err = -ENOMEM;
-		goto out;
-	}
-
-	memcpy(ret, uri_utf16, len);
-	*outlen = len;
-	*out    = ret;
-	err     = 0;
-
- out:
-	free(uri);
-	free(uri_utf16);
-	if (cd != (iconv_t)-1)
-		iconv_close(cd);
-
-	return err;
-}
-
-char *
-macx_decode_location(char *in, char *out, int len)
-{
-	iconv_t cd;
-	char *name;
-	size_t ibl, obl;
-
-	name = out;
-	ibl  = obl = len;
-
-	cd = iconv_open("ASCII", "UTF-8");
-	if (cd == (iconv_t)-1) 
-		return NULL;
-
-	if (iconv(cd, &in, &ibl, &out, &obl) == (size_t)-1 || ibl)
-		return NULL;
-
-	iconv_close(cd);
-	*out = '\0';
-
-	if (strstr(name, "file://") != name) {
-		DPRINTF("ERROR: invalid locator name %s\n", name);
-		return NULL;
-	}
-	name += strlen("file://");
-
-	return strdup(name);
-}
-
-#define UTF_16   "UTF-16"
-#define UTF_16LE "UTF-16LE"
-#define UTF_16BE "UTF-16BE"
-
-char *
-w2u_decode_location(char *in, char *out, int len, char *utf_type)
-{
-	iconv_t cd;
-	char *name, *tmp;
-	size_t ibl, obl;
-
-	tmp = name = out;
-	ibl = obl  = len;
-
-	cd = iconv_open("ASCII", utf_type);
-	if (cd == (iconv_t)-1) 
-		return NULL;
-
-	if (iconv(cd, &in, &ibl, &out, &obl) == (size_t)-1 || ibl)
-		return NULL;
-
-	iconv_close(cd);
-	*out = '\0';
-
-	/* TODO: spaces */
-	while (tmp != out) {
-		if (*tmp == '\\')
-			*tmp = '/';
-		tmp++;
-	}
-
-	if (strstr(name, "C:") == name || strstr(name, "c:") == name)
-		name += strlen("c:");
-
-	return strdup(name);
-}
-
 int
-vhd_get_parent_id(td_driver_t *child_driver, td_disk_id_t *id)
+vhd_get_parent_id(td_driver_t *driver, td_disk_id_t *id)
 {
-	struct stat stats;
-	struct prt_loc *loc;
-	int i, n, size, err = -EINVAL;
-	char *raw, *out, *name = NULL;
-	struct vhd_state *child = (struct vhd_state *)child_driver->data;
+	int err;
+	char *parent;
+	struct vhd_state *s;
 
 	DBG(TLOG_DBG, "\n");
+	memset(id, 0, sizeof(td_disk_id_t));
 
-	out = id->name = NULL;
-	if (child->ftr.type != HD_TYPE_DIFF)
+	s = (struct vhd_state *)driver->data;
+
+	if (s->vhd.footer.type != HD_TYPE_DIFF)
 		return TD_NO_PARENT;
 
-	n = sizeof(child->hdr.loc) / sizeof(struct prt_loc);
-	for (i = 0; i < n && !id->name; i++) {
-		raw = out = name = NULL;
+	err = vhd_parent_locator_get(&s->vhd, &parent);
+	if (err)
+		return err;
 
-		loc = &child->hdr.loc[i];
-		if (loc->code != PLAT_CODE_MACX && 
-		    loc->code != PLAT_CODE_W2KU &&
-		    loc->code != PLAT_CODE_W2RU)
-			continue;
-
-		if (lseek64(child->fd, loc->data_offset, 
-			    SEEK_SET) == (off64_t)-1) {
-			err = -errno;
-			continue;
-		}
-
-		/* 
-		 * MICROSOFT_COMPAT
-		 * data_space *should* be in sectors, 
-		 * but sometimes we find it in bytes 
-		 */
-		if (loc->data_space < 512)
-			size = loc->data_space << VHD_SECTOR_SHIFT;
-		else if (loc->data_space % 512 == 0)
-			size = loc->data_space;
-		else {
-			err = -EINVAL;
-			continue;
-		}
-
-		if (posix_memalign((void **)&raw, 512, size)) {
-			err = -ENOMEM;
-			continue;
-		}
-
-		if (read(child->fd, raw, size) != size) {
-			err = -errno;
-			goto next;
-		}
-
-		out = malloc(loc->data_len + 1);
-		if (!out) {
-			err = -errno;
-			goto next;
-		}
-
-		switch(loc->code) {
-		case PLAT_CODE_MACX:
-			name = macx_decode_location(raw, out, loc->data_len);
-			break;
-		case PLAT_CODE_W2KU:
-		case PLAT_CODE_W2RU:
-			name = w2u_decode_location(raw, out,
-						   loc->data_len, UTF_16LE);
-			break;
-		}
-
-		if (name) {
-			char *location;
-
-			location = find_parent(child_driver->name, name);
-			free(name);
-
-			if (!location) {
-				err    = -EINVAL;
-				goto next;
-			}
-
-			id->name       = location;
-			id->drivertype = DISK_TYPE_VHD;
-			err            = 0;
-		} else
-			err            = -EINVAL;
-
-	next:
-		free(raw);
-		free(out);
-	}
-
-	DBG(TLOG_INFO, "done: %s\n", id->name);
-	return err;
-}
-
-int
-vhd_get_info(td_driver_t *driver, struct vhd_info *info)
-{
-	int err;
-	char *buf = NULL;
-	struct hd_ftr ftr;
-	struct vhd_state *s = (struct vhd_state *)driver->data;
-
-	info->spb           = s->spb;
-	info->secs          = driver->info.size;
-	info->bat_entries   = s->hdr.max_bat_size;
-	info->bitmap_format = s->bitmap_format;
-
-	if (s->ftr.type != HD_TYPE_FIXED) {
-		if (posix_memalign((void **)&buf, 512, 512)) {
-			err = -errno;
-			goto fail;
-		}
-		if (lseek64(s->fd, 0, SEEK_SET) == (off64_t)-1) {
-			err = -errno;
-			goto fail;
-		}
-		if (read(s->fd, buf, 512) != 512) {
-			err = (errno ? -errno : -EIO);
-			goto fail;
-		}
-		memcpy(&ftr, buf, sizeof(struct hd_ftr));
-		
-		info->td_fields[TD_FIELD_HIDDEN] = (long)ftr.hidden;
-
-		free(buf);
-	} else {
-		info->td_fields[TD_FIELD_HIDDEN] = (long)s->ftr.hidden;
-	}
+	id->drivertype = DISK_TYPE_VHD;
+	id->name       = parent;
 
 	return 0;
-
- fail:
-	free(buf);
-	return err;
-}
-
-int
-_vhd_get_bat(td_driver_t *driver, struct vhd_info *info)
-{
-	int err;
-	struct vhd_state *s = (struct vhd_state *)driver->data;
-
-	if (!s->bat.bat) {
-		if ((err = alloc_bat(s)) != 0) {
-			DPRINTF("Error allocating BAT: %d\n", err);
-			return -err;
-		}
-
-		if ((err = vhd_read_bat(s->fd, s)) != 0) {
-			DPRINTF("Error reading BAT: %d\n", err);
-			free_bat(s);
-			return -err;
-		}
-	}
-
-	info->spb           = s->spb;
-	info->secs          = driver->info.size;
-	info->bat_entries   = s->hdr.max_bat_size;
-	info->bitmap_format = s->bitmap_format;
-	info->bat           = malloc(sizeof(uint32_t) * info->bat_entries);
-	if (!info->bat)
-		return -ENOMEM;
-
-	memcpy(info->bat, s->bat.bat, sizeof(uint32_t) * info->bat_entries);
-	return 0;
-}
-
-int
-_vhd_get_header(td_driver_t *driver, struct dd_hdr *header)
-{
-	struct vhd_state *s = (struct vhd_state *)driver->data;
-	if (s->ftr.type == HD_TYPE_DYNAMIC || s->ftr.type == HD_TYPE_DIFF) {
-		memcpy(header, &s->hdr, sizeof(struct dd_hdr));
-		return 0;
-	} else {
-		memset(header, 0, sizeof(struct dd_hdr));
-		return -EINVAL;
-	}
-}
-
-void
-_vhd_get_footer(td_driver_t *driver, struct hd_ftr *footer)
-{
-	struct vhd_state *s = (struct vhd_state *)driver->data;
-	memcpy(footer, &s->ftr, sizeof(struct hd_ftr));
-}
-
-int
-vhd_get_batmap_header(td_driver_t *driver, struct dd_batmap_hdr *hdr)
-{
-	struct vhd_state *s = (struct vhd_state *)driver->data;
-
-	memset(hdr, 0, sizeof(struct dd_batmap_hdr));
-
-	if (s->ftr.type != HD_TYPE_DYNAMIC && s->ftr.type != HD_TYPE_DIFF)
-		return -EINVAL;
-
-	if (!s->bat.batmap) {
-		int err;
-		if ((err = vhd_read_batmap(s->fd, s)) != 0) {
-			DPRINTF("error reading batmap: %d\n", err);
-			return err;
-		}
-	}
-
-	memcpy(hdr, &s->batmap_hdr, sizeof(struct dd_batmap_hdr));
-	return 0;
-}
-
-int
-vhd_set_field(td_driver_t *driver, td_field_t field, long value)
-{
-	off64_t end;
-	struct vhd_state *s = (struct vhd_state *)driver->data;
-
-	switch(field) {
-	case TD_FIELD_HIDDEN:
-		if (value < 0 || value > 256)
-			return -ERANGE;
-		s->ftr.hidden = (char)value;
-		break;
-	default:
-		return -EINVAL;
-	}
-
-	if (s->ftr.type != HD_TYPE_FIXED) {
-		/* store special fields in backup footer at start of file */
-		if (lseek64(s->fd, 0, SEEK_SET) == (off64_t)-1)
-			return -errno;
-	} else {
-		if ((end = lseek64(s->fd, 0, SEEK_END)) == (off64_t)-1)
-			return -errno;
-		if (lseek64(s->fd, 
-			    (off64_t)(end - 512), SEEK_SET) == (off64_t)-1)
-			return -errno;
-	}
-
-	return vhd_write_hd_ftr(s->fd, &s->ftr);
-}
-
-static int
-add_batmap(struct vhd_state *s)
-{
-	char *buf;
-	uint64_t header_off, batmap_off;
-	int err, header_secs, header_bytes, batmap_secs, batmap_bytes;
-	struct dd_batmap_hdr *hdr;
-
-	s->bat.batmap = NULL;
-
-	if (s->ftr.type == HD_TYPE_FIXED)
-		return 0;
-
-	header_off    = batmap_hdr_offset(s);
-	header_secs   = secs_round_up_no_zero(sizeof(struct dd_batmap_hdr));
-	header_bytes  = header_secs << VHD_SECTOR_SHIFT;
-	batmap_off    = header_off + header_bytes;
-	batmap_secs   = secs_round_up_no_zero(s->hdr.max_bat_size >> 3);
-	batmap_bytes  = batmap_secs << VHD_SECTOR_SHIFT;
-
-	if (posix_memalign((void **)&buf, 512, batmap_bytes))
-		return -ENOMEM;
-
-	memset(buf, 0, batmap_bytes);
-	memcpy(s->batmap_hdr.cookie, VHD_BATMAP_COOKIE, 8);
-	s->batmap_hdr.batmap_size    = batmap_secs;
-	s->batmap_hdr.batmap_offset  = batmap_off;
-	s->batmap_hdr.batmap_version = VHD_BATMAP_CURRENT_VERSION;
-	s->batmap_hdr.checksum       = vhd_batmap_checksum(&s->batmap_hdr, buf);
-	memcpy(buf, &s->batmap_hdr, sizeof(struct dd_batmap_hdr));
-	hdr = (struct dd_batmap_hdr *)buf;
-
-	BE64_OUT(&hdr->batmap_offset);
-	BE32_OUT(&hdr->batmap_size);
-	BE32_OUT(&hdr->batmap_version);
-	BE32_OUT(&hdr->checksum);
-
-	if (lseek64(s->fd, header_off, SEEK_SET) == (off64_t)-1) {
-		err = -errno;
-		goto fail;
-	}
-
-	if (write(s->fd, buf, header_bytes) != header_bytes) {
-		err = (errno ? -errno : -EIO);
-		goto fail;
-	}
-
-	if (lseek64(s->fd, batmap_off, SEEK_SET) == (off64_t)-1) {
-		err = -errno;
-		goto fail;
-	}
-
-	memset(buf, 0, batmap_bytes);
-	if (write(s->fd, buf, batmap_bytes) != batmap_bytes) {
-		err = (errno ? -errno : -EIO);
-		goto fail;
-	}
-
-	s->bat.batmap = buf;
-	return 0;
-	
- fail:
-	free(buf);
-	return err;
-}
-
-static int
-write_locator_entry(struct vhd_state *s, int idx,
-		    char *entry, int len, int type)
-{
-	struct prt_loc *loc;
-
-	if (idx < 0 || idx > sizeof(s->hdr.loc) / sizeof(struct prt_loc))
-		return -EINVAL;
-
-	loc              = &s->hdr.loc[idx];
-	loc->code        = type;
-	loc->data_len    = len;
-#ifdef MICROSOFT_COMPAT
-	/*
-	 * MICROSOFT_COMPAT
-	 * data_sace *should* be in sectors,
-	 * but viridian/virtual pc expect bytes
-	 */
-	loc->data_space  = secs_round_up_no_zero(len) << VHD_SECTOR_SHIFT;
-#else
-	loc->data_space  = secs_round_up_no_zero(len);
-#endif
-	loc->data_offset = end_of_vhd_headers(s);
-
-	if (lseek64(s->fd, loc->data_offset, SEEK_SET) == (off64_t)-1)
-		return -errno;
-
-	if (write(s->fd, entry, len) != len)
-		return (errno ? -errno : -EIO);
-
-	return 0;
-}
-
-static int
-set_parent_name(struct vhd_state *child, char *pname)
-{
-	char *tmp;
-	iconv_t cd;
-	int ret = 0;
-	size_t ibl, obl;
-
-	/*
-	 * MICROSOFT_COMPAT
-	 * big endian unicode here
-	 */
-	cd = iconv_open("UTF-16BE", "ASCII");
-	if (cd == (iconv_t)-1)
-		return -errno;
-
-	ibl = strlen(pname) + 1;
-	obl = sizeof(child->hdr.prt_name);
-	tmp = child->hdr.prt_name;
-
-	if (iconv(cd, &pname, &ibl, &tmp, &obl) == (size_t)-1 || ibl)
-		ret = (errno ? -errno : -EINVAL);
-
-	iconv_close(cd);
-	return ret;
-}
-
-static int
-set_parent(struct vhd_state *child, struct vhd_state *parent, 
-	   td_disk_id_t *parent_id, vhd_flag_t flags)
-{
-	struct stat stats;
-	int len, err = 0, lidx = 0;
-	char *loc, *file, *parent_path, *absolute_path, *relative_path;
-
-	absolute_path = NULL;
-	relative_path = NULL;
-
-	parent_path = parent_id->name;
-	file = basename(parent_path); /* (using GNU, not POSIX, basename) */
-	absolute_path = realpath(parent_path, NULL);
-
-	if (!absolute_path || strcmp(file, "") == 0) {
-		DPRINTF("ERROR: invalid path %s\n", parent_path);
-		err = (errno ? -errno : -EINVAL);
-		goto out;
-	}
-
-	if (stat(absolute_path, &stats)) {
-		DPRINTF("ERROR stating %s\n", absolute_path);
-		err = -errno;
-		goto out;
-	}
-
-	/* get the relative path from the child to the parent */
-	relative_path = relative_path_to(child->name, absolute_path, &err);
-	if (!relative_path || err)
-		goto out;
-
-	child->hdr.prt_ts = vhd_time(stats.st_mtime);
-	if (parent)
-		uuid_copy(child->hdr.prt_uuid, parent->ftr.uuid);
-	else {
-		/* TODO: hack vhd metadata to store parent driver type */
-	}
-
-	if ((err = set_parent_name(child, file)) != 0)
-		goto out;
-
-	/* relative path -- macx format */
-	err = macx_encode_location(relative_path, &loc, &len);
-	if (err)
-		goto out;
-
-	err = write_locator_entry(child, lidx++, loc, len, PLAT_CODE_MACX);
-	free(loc);
-
-	if (err)
-		goto out;
-
-	/* relative path -- w2ru format */
-	err = w2u_encode_location(relative_path, &loc, &len);
-	if (err)
-		goto out;
-
-	err = write_locator_entry(child, lidx++, loc, len, PLAT_CODE_W2RU);
-	free(loc);
-
-	if (err)
-		goto out;
-
-#ifdef MICROSOFT_COMPAT
-	/*
-	 * MICROSOFT_COMPAT
-	 */
-
-	/* absolute path -- w2ku format */
-	err = w2u_encode_location(absolute_path, &loc, &len);
-	if (err)
-		goto out;
-
-	err = write_locator_entry(child, lidx++, loc, len, PLAT_CODE_W2KU);
-	free(loc);
-
-	if (err)
-		goto out;
-#endif
-
-#ifndef MICROSOFT_COMPAT
-	/*
-	 * MICROSOFT_COMPAT
-	 * viridian precludes two locators of the same type,
-	 * so we're limited to macx relative locators here
-	 */
-
-	/* absolute path -- macx format */
-	err = macx_encode_location(absolute_path, &loc, &len);
-	if (err)
-		goto out;
-
-	err = write_locator_entry(child, lidx++, loc, len, PLAT_CODE_MACX);
-	free(loc);
-
-	if (err)
-		goto out;
-#endif
-
- out:
-	free(absolute_path);
-	free(relative_path);
-	return err;
-}
-
-int
-__vhd_create(const char *name, uint64_t total_size, 
-	     td_disk_id_t *backing_file, vhd_flag_t flags)
-{
-	struct hd_ftr *ftr;
-	struct dd_hdr *hdr;
-	struct vhd_state s;
-	uint64_t size, blks;
-	u32 type, *bat = NULL;
-	int fd, spb, err, i, BLK_SHIFT, ret, sparse;
-
-	memset(&s, 0, sizeof(struct vhd_state));
-
-	sparse = test_vhd_flag(flags, VHD_FLAG_CR_SPARSE);
-	BLK_SHIFT = 21;   /* 2MB blocks */
-
-	hdr  = &s.hdr;
-	ftr  = &s.ftr;
-	err  = 0;
-	bat  = NULL;
-
-	blks = (total_size + ((u64)1 << BLK_SHIFT) - 1) >> BLK_SHIFT;
-	size = blks << BLK_SHIFT;
-	type = ((sparse) ? HD_TYPE_DYNAMIC : HD_TYPE_FIXED);
-	if (sparse && backing_file)
-		type = HD_TYPE_DIFF;
-
-	s.name = strdup(name);
-	if (!s.name)
-		return -ENOMEM;
-
-	s.fd = fd = open(name, 
-			 O_WRONLY | O_CREAT | O_TRUNC | O_LARGEFILE, 0644);
-	if (fd < 0)
-		return -errno;
-
-	memset(ftr, 0, sizeof(struct hd_ftr));
-	memcpy(ftr->cookie, HD_COOKIE, sizeof(ftr->cookie));
-	ftr->features     = HD_RESERVED;
-	ftr->ff_version   = HD_FF_VERSION;
-	ftr->timestamp    = vhd_time(time(NULL));
-	ftr->crtr_ver     = VHD_CURRENT_VERSION;
-	ftr->crtr_os      = 0x00000000;
-	ftr->orig_size    = size;
-	ftr->curr_size    = size;
-	ftr->geometry     = chs(size);
-	ftr->type         = type;
-	ftr->saved        = 0;
-	ftr->data_offset  = ((sparse) ? VHD_SECTOR_SIZE : 0xFFFFFFFFFFFFFFFF);
-	strcpy(ftr->crtr_app, "tap");
-	uuid_generate(ftr->uuid);
-	ftr->checksum = vhd_footer_checksum(ftr);
-
-	if (sparse) {
-		int bat_secs;
-
-		memset(hdr, 0, sizeof(struct dd_hdr));
-		memcpy(hdr->cookie, DD_COOKIE, sizeof(hdr->cookie));
-		hdr->data_offset   = (u64)-1;
-		hdr->table_offset  = VHD_SECTOR_SIZE * 3; /* 1 ftr + 2 hdr */
-		hdr->hdr_ver       = DD_VERSION;
-		hdr->block_size    = 0x00200000;
-		hdr->prt_ts        = 0;
-		hdr->res1          = 0;
-		hdr->max_bat_size  = blks;
-
-		if (backing_file) {
-			struct vhd_state  *p = NULL;
-			vhd_flag_t         oflags;
-			td_driver_t        parent;
-
-			if (test_vhd_flag(flags, VHD_FLAG_CR_IGNORE_PARENT))
-				goto set_parent;
-
-			memset(&parent, 0, sizeof(td_driver_t));
-			parent.data = malloc(sizeof(struct vhd_state));
-			if (!parent.data) {
-				DPRINTF("ERROR allocating parent state\n");
-				err = -ENOMEM;
-				goto out;
-			}
-			oflags = VHD_FLAG_OPEN_RDONLY | VHD_FLAG_OPEN_NO_CACHE;
-			err = __vhd_open(&parent, backing_file->name, oflags);
-			if (err) {
-				DPRINTF("ERROR: opening parent %s",
-					backing_file->name);
-				goto out;
-			}
-
-			p = (struct vhd_state *)parent.data;
-			blks = (p->ftr.curr_size + ((u64)1 << BLK_SHIFT) - 1)
-							   >> BLK_SHIFT;
-			ftr->orig_size    = p->ftr.curr_size;
-			ftr->curr_size    = p->ftr.curr_size;
-			ftr->geometry     = chs(ftr->orig_size);
-			hdr->max_bat_size = blks;
-
-		set_parent:
-			/* add batmap before any parent locators */
-			ret = add_batmap(&s);
-			if (ret)
-				return ret;
-
-			err = set_parent(&s, p, backing_file, flags);
-			if (p) {
-				vhd_close(&parent);
-				free(p);
-			}
-			if (err) {
-				DPRINTF("ERROR attaching to parent %s (%d)\n",
-					backing_file->name, err);
-				goto out;
-			}
-		} else {
-			ret = add_batmap(&s);
-			if (ret)
-				return ret;
-		}
-
-		ftr->checksum = vhd_footer_checksum(ftr);
-		hdr->checksum = vhd_header_checksum(hdr);
-
-#if (DEBUGGING == 1)
-		debug_print_footer(ftr);
-		debug_print_header(hdr);
-#endif
-
-		/* copy of footer */
-		if (lseek64(fd, 0, SEEK_SET) == (off64_t)-1) {
-			DPRINTF("ERROR seeking footer copy\n");
-			err = -errno;
-			goto out;
-		}
-		if ((err = vhd_write_hd_ftr(fd, ftr)))
-			goto out;
-
-		/* header */
-		if (lseek64(fd, ftr->data_offset, SEEK_SET) == (off64_t)-1) {
-			DPRINTF("ERROR seeking header\n");
-			err = -errno;
-			goto out;
-		}
-		if ((err = vhd_write_dd_hdr(fd, hdr)))
-			goto out;
-
-		bat_secs = secs_round_up_no_zero(blks * sizeof(u32));
-		bat = calloc(1, bat_secs << VHD_SECTOR_SHIFT);
-		if (!bat) {
-			err = -ENOMEM;
-			goto out;
-		}
-
-		for (i = 0; i < blks; i++) {
-			bat[i] = DD_BLK_UNUSED;
-			BE32_OUT(&bat[i]);
-		}
-
-		/* bat */
-		if (lseek64(fd, hdr->table_offset, SEEK_SET) == (off64_t)-1) {
-			DPRINTF("ERROR seeking bat\n");
-			err = -errno;
-			goto out;
-		}
-		if (write(fd, bat, bat_secs << VHD_SECTOR_SHIFT) !=
-		    bat_secs << VHD_SECTOR_SHIFT) {
-			err = (errno ? -errno : -EIO);
-			goto out;
-		}
-	} else {
-		char *buf;
-		ssize_t megs, mb;
-		
-		mb   = 1 << 20;
-		megs = size >> 20;
-		buf  = calloc(1, mb);
-		if (!buf) {
-			err = -ENOMEM;
-			goto out;
-		}
-
-		for (i = 0; i < megs; i++)
-			if (write(fd, buf, mb) != mb) {
-				err = (errno ? -errno : -EIO);
-				free(buf);
-				goto out;
-			}
-		free(buf);
-	}
-
-	if (ftr->type != HD_TYPE_FIXED)
-		if (lseek64(fd, end_of_vhd_headers(&s),
-			    SEEK_SET) == (off64_t)-1)
-			goto out;
-
-	if ((err = vhd_write_hd_ftr(fd, ftr)))
-		goto out;
-
-	/* finished */
-		
-	DPRINTF("size: %llu, blk_size: %" PRIu64 ", blks: %" PRIu64 "\n",
-		ftr->orig_size, (uint64_t)1 << BLK_SHIFT, blks);
-
-	err = 0;
-
-out:
-	free(s.name);
-	free(bat);
-	close(fd);
-	if (err)
-		unlink(name);
-	return err;
-}
-
-int
-_vhd_create(const char *name, uint64_t total_size, td_flag_t td_flags)
-{
-	vhd_flag_t vhd_flags = 0;
-
-	if (td_flags & TD_CREATE_SPARSE)
-		vhd_flags |= VHD_FLAG_CR_SPARSE;
-
-	return __vhd_create(name, total_size, NULL, vhd_flags);
-}
-
-int
-_vhd_snapshot(td_disk_id_t *parent_id, char *child_name, td_flag_t td_flags)
-{
-	vhd_flag_t vhd_flags = VHD_FLAG_CR_SPARSE;
-
-	if (td_flags & TD_CREATE_MULTITYPE)
-		return -EINVAL; /* multitype snapshots not yet supported */
-
-	return __vhd_create(child_name, 0, parent_id, vhd_flags);
 }
 
 static inline void
@@ -2516,7 +792,7 @@ add_to_transaction(struct vhd_transaction *tx, struct vhd_request *r)
 	add_to_tail(&tx->requests, r);
 	set_vhd_flag(tx->status, VHD_FLAG_TX_LIVE);
 
-	DBG(TLOG_DBG, "blk: %" PRIu64 ", lsec: %" PRIu64 ", tx: %p, "
+	DBG(TLOG_DBG, "blk: 0x%04"PRIx64", lsec: 0x%08"PRIx64", tx: %p, "
 	    "started: %d, finished: %d, status: %u\n",
 	    r->treq.sec / SPB, r->treq.sec, tx,
 	    tx->started, tx->finished, tx->status);
@@ -2629,11 +905,11 @@ bitmap_full(struct vhd_state *s, struct vhd_bitmap *bm)
 		if (bm->map[i] != (char)0xFF)
 			return 0;
 
-	DBG(TLOG_DBG, "bitmap 0x%08x full\n", bm->blk);
+	DBG(TLOG_DBG, "bitmap 0x%04x full\n", bm->blk);
 	return 1;
 }
 
-static struct vhd_bitmap*
+static struct vhd_bitmap *
 remove_lru_bitmap(struct vhd_state *s)
 {
 	int i, idx = 0;
@@ -2745,14 +1021,15 @@ read_bitmap_cache(struct vhd_state *s, uint64_t sector, uint8_t op)
 	struct vhd_bitmap *bm;
 
 	/* in fixed disks, every block is present */
-	if (s->ftr.type == HD_TYPE_FIXED) 
+	if (s->vhd.footer.type == HD_TYPE_FIXED) 
 		return VHD_BM_BIT_SET;
 
 	blk = sector / s->spb;
 	sec = sector % s->spb;
 
-	if (blk > s->hdr.max_bat_size) {
-		DPRINTF("ERROR: sec %" PRIu64 " out of range, op = %d\n", sector, op);
+	if (blk > s->vhd.header.max_bat_size) {
+		DPRINTF("ERROR: sec %"PRIu64" out of range, op = %d\n",
+			sector, op);
 		return -EINVAL;
 	}
 
@@ -2765,7 +1042,7 @@ read_bitmap_cache(struct vhd_state *s, uint64_t sector, uint8_t op)
 	}
 
 	if (test_batmap(s, blk)) {
-		DBG(TLOG_DBG, "batmap set for %u\n", blk);
+		DBG(TLOG_DBG, "batmap set for 0x%04x\n", blk);
 		return VHD_BM_BIT_SET;
 	}
 
@@ -2779,7 +1056,7 @@ read_bitmap_cache(struct vhd_state *s, uint64_t sector, uint8_t op)
 	if (test_vhd_flag(bm->status, VHD_FLAG_BM_READ_PENDING))
 		return VHD_BM_READ_PENDING;
 
-	return ((test_bit(s, sec, bm->map)) ? 
+	return ((vhd_bitmap_test(&s->vhd, bm->map, sec)) ? 
 		VHD_BM_BIT_SET : VHD_BM_BIT_CLEAR);
 }
 
@@ -2792,7 +1069,7 @@ read_bitmap_cache_span(struct vhd_state *s,
 	struct vhd_bitmap *bm;
 
 	/* in fixed disks, every block is present */
-	if (s->ftr.type == HD_TYPE_FIXED) 
+	if (s->vhd.footer.type == HD_TYPE_FIXED) 
 		return nr_secs;
 
 	sec = sector % s->spb;
@@ -2806,7 +1083,7 @@ read_bitmap_cache_span(struct vhd_state *s,
 	ASSERT(bm && bitmap_valid(bm));
 
 	for (ret = 0; sec < s->spb && ret < nr_secs; sec++, ret++)
-		if (test_bit(s, sec, bm->map) != value)
+		if (vhd_bitmap_test(&s->vhd, bm->map, sec) != value)
 			break;
 
 	return ret;
@@ -2839,7 +1116,7 @@ aio_read(struct vhd_state *s, struct vhd_request *req, uint64_t offset)
 {
 	struct tiocb *tiocb = &req->tiocb;
 
-	td_prep_read(tiocb, s->fd, req->treq.buf,
+	td_prep_read(tiocb, s->vhd.fd, req->treq.buf,
 		     req->treq.secs << VHD_SECTOR_SHIFT,
 		     offset, vhd_complete, req);
 	td_queue_tiocb(s->driver, tiocb);
@@ -2855,7 +1132,7 @@ aio_write(struct vhd_state *s, struct vhd_request *req, uint64_t offset)
 {
 	struct tiocb *tiocb = &req->tiocb;
 
-	td_prep_write(tiocb, s->fd, req->treq.buf,
+	td_prep_write(tiocb, s->vhd.fd, req->treq.buf,
 		      req->treq.secs << VHD_SECTOR_SHIFT,
 		      offset, vhd_complete, req);
 	td_queue_tiocb(s->driver, tiocb);
@@ -2906,7 +1183,7 @@ schedule_bat_write(struct vhd_state *s)
 	for (i = 0; i < 128; i++)
 		BE32_OUT(&((u32 *)buf)[i]);
 
-	offset         = s->hdr.table_offset + (blk - (blk % 128)) * 4;
+	offset         = s->vhd.header.table_offset + (blk - (blk % 128)) * 4;
 	req->treq.secs = 1;
 	req->treq.buf  = buf;
 	req->op        = VHD_OP_BAT_WRITE;
@@ -2915,8 +1192,8 @@ schedule_bat_write(struct vhd_state *s)
 	aio_write(s, req, offset);
 	set_vhd_flag(s->bat.status, VHD_FLAG_BAT_WRITE_STARTED);
 
-	DBG(TLOG_DBG, "blk: %u, pbwo: %" PRIu64 ", table_offset: %llu\n",
-	    blk, s->bat.pbw_offset, offset);
+	DBG(TLOG_DBG, "blk: 0x%04x, pbwo: 0x%08"PRIx64", "
+	    "table_offset: 0x%08"PRIx64"\n", blk, s->bat.pbw_offset, offset);
 
 	return 0;
 }
@@ -2934,10 +1211,10 @@ schedule_zero_bm_write(struct vhd_state *s,
 	req->op        = VHD_OP_ZERO_BM_WRITE;
 	req->treq.sec  = s->bat.pbw_blk * s->spb;
 	req->treq.secs = (s->bat.pbw_offset - lb_end) + s->bm_secs;
-	req->treq.buf  = s->bat.zero_buf;
+	req->treq.buf  = s->zeros;
 	req->next      = NULL;
 
-	DBG(TLOG_DBG, "blk: %u, writing zero bitmap at %" PRIu64 "\n",
+	DBG(TLOG_DBG, "blk: 0x%04x, writing zero bitmap at 0x%08"PRIx64"\n",
 	    s->bat.pbw_blk, offset);
 
 	lock_bitmap(bm);
@@ -3007,9 +1284,10 @@ allocate_block(struct vhd_state *s, uint32_t blk)
 
 	s->bat.pbw_offset = s->next_db;
 
-	DBG(TLOG_DBG, "blk: %u, pbwo: %" PRIu64 "\n", blk, s->bat.pbw_offset);
+	DBG(TLOG_DBG, "blk: 0x%04x, pbwo: 0x%08"PRIx64"\n",
+	    blk, s->bat.pbw_offset);
 
-	if (lseek(s->fd, offset, SEEK_SET) == (off_t)-1) {
+	if (lseek(s->vhd.fd, offset, SEEK_SET) == (off_t)-1) {
 		ERR(errno, "lseek failed\n");
 		return -errno;
 	}
@@ -3021,7 +1299,7 @@ allocate_block(struct vhd_state *s, uint32_t blk)
 		size = s->zsize;
 	}
 
-	if ((err = write(s->fd, s->zeros, size)) != size) {
+	if ((err = write(s->vhd.fd, s->zeros, size)) != size) {
 		err = (err == -1 ? -errno : -EIO);
 		ERR(err, "write failed");
 		return err;
@@ -3055,7 +1333,7 @@ schedule_data_read(struct vhd_state *s, td_request_t treq, vhd_flag_t flags)
 	struct vhd_bitmap  *bm;
 	struct vhd_request *req;
 
-	if (s->ftr.type == HD_TYPE_FIXED) {
+	if (s->vhd.footer.type == HD_TYPE_FIXED) {
 		offset = treq.sec << VHD_SECTOR_SHIFT;
 		goto make_request;
 	}
@@ -3083,9 +1361,10 @@ schedule_data_read(struct vhd_state *s, td_request_t treq, vhd_flag_t flags)
 
 	aio_read(s, req, offset);
 
-	DBG(TLOG_DBG, "%s: lsec: %" PRIu64 ", blk: %u, sec: %u, "
-	    "nr_secs: %u, offset: %llu, flags: %u, buf: %p\n", s->name,
-	    treq.sec, blk, sec, treq.secs, offset, req->flags, treq.buf);
+	DBG(TLOG_DBG, "%s: lsec: 0x%08"PRIx64", blk: 0x%04x, sec: 0x%04x, "
+	    "nr_secs: 0x%04x, offset: 0x%08"PRIx64", flags: 0x%08x, buf: %p\n",
+	    s->vhd.file, treq.sec, blk, sec, treq.secs, offset, req->flags,
+	    treq.buf);
 
 	return 0;
 }
@@ -3099,7 +1378,7 @@ schedule_data_write(struct vhd_state *s, td_request_t treq, vhd_flag_t flags)
 	struct vhd_bitmap  *bm = NULL;
 	struct vhd_request *req;
 
-	if (s->ftr.type == HD_TYPE_FIXED) {
+	if (s->vhd.footer.type == HD_TYPE_FIXED) {
 		offset = treq.sec << VHD_SECTOR_SHIFT;
 		goto make_request;
 	}
@@ -3147,9 +1426,9 @@ schedule_data_write(struct vhd_state *s, td_request_t treq, vhd_flag_t flags)
 
 	aio_write(s, req, offset);
 
-	DBG(TLOG_DBG, "%s: lsec: %" PRIu64 ", blk: %u, sec: %u, "
-	    "nr_secs: %u, offset: %llu, flags: %u\n", s->name, 
-	    treq.sec, blk, sec, treq.secs, offset, req->flags);
+	DBG(TLOG_DBG, "%s: lsec: 0x%08"PRIx64", blk: 0x%04x, sec: 0x%04x, "
+	    "nr_secs: 0x%04x, offset: 0x%08"PRIx64", flags: 0x%08x\n",
+	    s->vhd.file, treq.sec, blk, sec, treq.secs, offset, req->flags);
 
 	return 0;
 }
@@ -3162,7 +1441,7 @@ schedule_bitmap_read(struct vhd_state *s, uint32_t blk)
 	struct vhd_bitmap  *bm;
 	struct vhd_request *req = NULL;
 
-	ASSERT(s->ftr.type != HD_TYPE_FIXED);
+	ASSERT(vhd_type_dynamic(&s->vhd));
 
 	offset = bat_entry(s, blk);
 
@@ -3190,8 +1469,8 @@ schedule_bitmap_read(struct vhd_state *s, uint32_t blk)
 	install_bitmap(s, bm);
 	set_vhd_flag(bm->status, VHD_FLAG_BM_READ_PENDING);
 
-	DBG(TLOG_DBG, "%s: lsec: %" PRIu64 ", blk: %u, nr_secs: %u, "
-	    "offset: %llu.\n", s->name, req->treq.sec, blk,
+	DBG(TLOG_DBG, "%s: lsec: 0x%08"PRIx64", blk: 0x%04x, nr_secs: 0x%04x, "
+	    "offset: 0x%08"PRIx64"\n", s->vhd.file, req->treq.sec, blk,
 	    req->treq.secs, offset);
 
 	return 0;
@@ -3207,7 +1486,7 @@ schedule_bitmap_write(struct vhd_state *s, uint32_t blk)
 	bm     = get_bitmap(s, blk);
 	offset = bat_entry(s, blk);
 
-	ASSERT(s->ftr.type != HD_TYPE_FIXED);
+	ASSERT(vhd_type_dynamic(&s->vhd));
 	ASSERT(bm && bitmap_valid(bm) &&
 	       !test_vhd_flag(bm->status, VHD_FLAG_BM_WRITE_PENDING));
 
@@ -3233,8 +1512,8 @@ schedule_bitmap_write(struct vhd_state *s, uint32_t blk)
 	touch_bitmap(s, bm);     /* bump lru count */
 	set_vhd_flag(bm->status, VHD_FLAG_BM_WRITE_PENDING);
 
-	DBG(TLOG_DBG, "%s: blk: %u, sec: %" PRIu64 ", nr_secs: %u, "
-	    "offset: %llu\n", s->name, blk, req->treq.sec,
+	DBG(TLOG_DBG, "%s: blk: 0x%04x, sec: 0x%08"PRIx64", nr_secs: 0x%04x, "
+	    "offset: 0x%"PRIx64"\n", s->vhd.file, blk, req->treq.sec,
 	    req->treq.secs, offset);
 }
 
@@ -3249,7 +1528,7 @@ __vhd_queue_request(struct vhd_state *s, uint8_t op, td_request_t treq)
 	struct vhd_bitmap  *bm;
 	struct vhd_request *req;
 
-	ASSERT(s->ftr.type != HD_TYPE_FIXED);
+	ASSERT(vhd_type_dynamic(&s->vhd));
 
 	blk = treq.sec / s->spb;
 	bm  = get_bitmap(s, blk);
@@ -3267,8 +1546,8 @@ __vhd_queue_request(struct vhd_state *s, uint8_t op, td_request_t treq)
 	add_to_tail(&bm->waiting, req);
 	lock_bitmap(bm);
 
-	DBG(TLOG_DBG, "data request queued: %s: lsec: %" PRIu64 ", blk: %u "
-	    "nr_secs: %u, op: %u\n", s->name, treq.sec, blk, treq.secs, op);
+	DBG(TLOG_DBG, "%s: lsec: 0x%08"PRIx64", blk: 0x%04x nr_secs: 0x%04x, "
+	    "op: %u\n", s->vhd.file, treq.sec, blk, treq.secs, op);
 
 	TRACE(s);
 	return 0;
@@ -3279,8 +1558,8 @@ vhd_queue_read(td_driver_t *driver, td_request_t treq)
 {
 	struct vhd_state *s = (struct vhd_state *)driver->data;
 
-	DBG(TLOG_DBG, "%s: sector: %" PRIu64 ", nb_sectors: %d (seg: %ld)\n",
-	    s->name, treq.sec, treq.secs, treq.sidx);
+	DBG(TLOG_DBG, "%s: lsec: 0x%08"PRIx64", secs: 0x%04x (seg: %d)\n",
+	    s->vhd.file, treq.sec, treq.secs, treq.sidx);
 
 	while (treq.secs) {
 		int err;
@@ -3352,8 +1631,8 @@ vhd_queue_write(td_driver_t *driver, td_request_t treq)
 {
 	struct vhd_state *s = (struct vhd_state *)driver->data;
 
-	DBG(TLOG_DBG, "%s: sector: %" PRIu64 ", nb_sectors: %d, (seg: %ld)\n",
-	    s->name, treq.sec, treq.secs, treq.sidx);
+	DBG(TLOG_DBG, "%s: lsec: 0x%08"PRIx64", secs: 0x%04x, (seg: %d)\n",
+	    s->vhd.file, treq.sec, treq.secs, treq.sidx);
 
 	while (treq.secs) {
 		int err;
@@ -3435,18 +1714,23 @@ vhd_queue_write(td_driver_t *driver, td_request_t treq)
 static inline void
 signal_completion(struct vhd_request *list, int error)
 {
+	struct vhd_state *s;
 	struct vhd_request *r, *next;
-	struct vhd_state *s = list->state;
+
+	if (!list)
+		return;
 
 	r = list;
+	s = list->state;
+
 	while (r) {
 		int err;
 
 		err  = (error ? error : r->error);
 		next = r->next;
 		td_complete_request(r->treq, err);
-		DBG(TLOG_DBG, "lsec: %" PRIu64 ", blk: %" PRIu64 ", err: %d\n", 
-		    r->treq.sec, r->treq.sec / s->spb, err);
+		DBG(TLOG_DBG, "lsec: 0x%08"PRIx64", blk: 0x%04"PRIx64", "
+		    "err: %d\n", r->treq.sec, r->treq.sec / s->spb, err);
 		free_vhd_request(s, r);
 		r    = next;
 
@@ -3465,7 +1749,7 @@ start_new_bitmap_transaction(struct vhd_state *s, struct vhd_bitmap *bm)
 	if (!bm->queue.head)
 		return;
 
-	DBG(TLOG_DBG, "blk: %u\n", bm->blk);
+	DBG(TLOG_DBG, "blk: 0x%04x\n", bm->blk);
 
 	r  = bm->queue.head;
 	tx = &bm->tx;
@@ -3485,7 +1769,8 @@ start_new_bitmap_transaction(struct vhd_state *s, struct vhd_bitmap *bm)
 			if (!r->error) {
 				u32 sec = r->treq.sec % s->spb;
 				for (i = 0; i < r->treq.secs; i++)
-					set_bit(s, sec + i, bm->shadow);
+					vhd_bitmap_set(&s->vhd,
+						       bm->shadow, sec + i);
 			}
 		}
 		r = next;
@@ -3517,7 +1802,7 @@ finish_bat_transaction(struct vhd_state *s, struct vhd_bitmap *bm)
 	return;
 
  release:
-	DBG(TLOG_DBG, "blk: %u\n", bm->blk);
+	DBG(TLOG_DBG, "blk: 0x%04x\n", bm->blk);
 	unlock_bat(s);
 	init_bat(s);
 }
@@ -3529,7 +1814,7 @@ finish_bitmap_transaction(struct vhd_state *s,
 	int map_size;
 	struct vhd_transaction *tx = &bm->tx;
 
-	DBG(TLOG_DBG, "blk: %u, err: %d\n", bm->blk, error);
+	DBG(TLOG_DBG, "blk: 0x%04x, err: %d\n", bm->blk, error);
 	tx->error = (tx->error ? tx->error : error);
 	map_size  = s->bm_secs << VHD_SECTOR_SHIFT;
 
@@ -3570,7 +1855,7 @@ finish_data_transaction(struct vhd_state *s, struct vhd_bitmap *bm)
 {
 	struct vhd_transaction *tx = &bm->tx;
 
-	DBG(TLOG_DBG, "blk: %u\n", bm->blk);
+	DBG(TLOG_DBG, "blk: 0x%04x\n", bm->blk);
 
 	tx->closed = 1;
 
@@ -3592,7 +1877,7 @@ finish_bat_write(struct vhd_request *req)
 
 	bm = get_bitmap(s, s->bat.pbw_blk);
 
-	DBG(TLOG_DBG, "blk %u, pbwo: %" PRIu64 ", err %d\n", 
+	DBG(TLOG_DBG, "blk 0x%04x, pbwo: 0x%08"PRIx64", err %d\n",
 	    s->bat.pbw_blk, s->bat.pbw_offset, req->error);
 	ASSERT(bm && bitmap_valid(bm));
 	ASSERT(bat_locked(s) &&
@@ -3635,7 +1920,7 @@ finish_zero_bm_write(struct vhd_request *req)
 	blk = req->treq.sec / s->spb;
 	bm  = get_bitmap(s, blk);
 
-	DBG(TLOG_DBG, "blk: %u\n", blk);
+	DBG(TLOG_DBG, "blk: 0x%04x\n", blk);
 	ASSERT(bat_locked(s));
 	ASSERT(s->bat.pbw_blk == blk);
 	ASSERT(bm && bitmap_valid(bm) && bitmap_locked(bm));
@@ -3669,7 +1954,7 @@ finish_bitmap_read(struct vhd_request *req)
 	blk = req->treq.sec / s->spb;
 	bm  = get_bitmap(s, blk);
 
-	DBG(TLOG_DBG, "blk: %u\n", blk);
+	DBG(TLOG_DBG, "blk: 0x%04x\n", blk);
 	ASSERT(bm && test_vhd_flag(bm->status, VHD_FLAG_BM_READ_PENDING));
 
 	r = bm->waiting.head;
@@ -3722,7 +2007,7 @@ finish_bitmap_write(struct vhd_request *req)
 	bm  = get_bitmap(s, blk);
 	tx  = &bm->tx;
 
-	DBG(TLOG_DBG, "blk: %u, started: %d, finished: %d\n", 
+	DBG(TLOG_DBG, "blk: 0x%04x, started: %d, finished: %d\n",
 	    blk, tx->started, tx->finished);
 	ASSERT(tx->closed);
 	ASSERT(bm && bitmap_valid(bm));
@@ -3738,7 +2023,7 @@ finish_data_read(struct vhd_request *req)
 {
 	struct vhd_state *s = req->state;
 
-	DBG(TLOG_DBG, "lsec %" PRIu64 ", blk: %" PRIu64 "\n", 
+	DBG(TLOG_DBG, "lsec 0x%08"PRIx64", blk: 0x%04"PRIx64"\n", 
 	    req->treq.sec, req->treq.sec / s->spb);
 	signal_completion(req, 0);
 }
@@ -3764,20 +2049,20 @@ finish_data_write(struct vhd_request *req)
 
 		tx->finished++;
 
-		DBG(TLOG_DBG, "lsec: %" PRIu64 ", blk: %" PRIu64 ", "
+		DBG(TLOG_DBG, "lsec: 0x%08"PRIx64", blk: 0x04%"PRIx64", "
 		    "tx->started: %d, tx->finished: %d\n", req->treq.sec,
 		    req->treq.sec / s->spb, tx->started, tx->finished);
 
 		if (!req->error)
 			for (i = 0; i < req->treq.secs; i++)
-				set_bit(s, sec + i, bm->shadow);
+				vhd_bitmap_set(&s->vhd, bm->shadow,  sec + i);
 
 		if (transaction_completed(tx))
 			finish_data_transaction(s, bm);
 
 	} else if (!test_vhd_flag(req->flags, VHD_FLAG_REQ_QUEUED)) {
 		ASSERT(!req->next);
-		DBG(TLOG_DBG, "lsec: %" PRIu64 ", blk: %" PRIu64 "\n", 
+		DBG(TLOG_DBG, "lsec: 0x%08"PRIx64", blk: 0x%04"PRIx64"\n", 
 		    req->treq.sec, req->treq.sec / s->spb);
 		signal_completion(req, 0);
 	}
@@ -3798,7 +2083,7 @@ vhd_complete(void *arg, struct tiocb *tiocb, int err)
 	if (req->error)
 		ERR(req->error, "%s: op: %u, lsec: %"PRIu64", secs: %u, "
 		    "nbytes: %lu, blk: %"PRIu64", blk_offset: %u",
-		    s->name, req->op, req->treq.sec, req->treq.secs,
+		    s->vhd.file, req->op, req->treq.sec, req->treq.secs,
 		    io->u.c.nbytes, req->treq.sec / s->spb,
 		    bat_entry(s, req->treq.sec / s->spb));
 
@@ -3839,23 +2124,23 @@ vhd_debug(td_driver_t *driver)
 	int i;
 	struct vhd_state *s = (struct vhd_state *)driver->data;
 
-	DBG(TLOG_WARN, "%s: QUEUED: %" PRIu64 ", COMPLETED: %" PRIu64 ", "
-	    "RETURNED: %" PRIu64 "\n", s->name, s->queued, s->completed,
+	DBG(TLOG_WARN, "%s: QUEUED: 0x%08"PRIx64", COMPLETED: 0x%08"PRIx64", "
+	    "RETURNED: 0x%08"PRIx64"\n", s->vhd.file, s->queued, s->completed,
 	    s->returned);
-	DBG(TLOG_WARN, "WRITES: %" PRIu64 ", AVG_WRITE_SIZE: %f\n",
+	DBG(TLOG_WARN, "WRITES: 0x%08"PRIx64", AVG_WRITE_SIZE: %f\n",
 	    s->writes, (s->writes ? ((float)s->write_size / s->writes) : 0.0));
-	DBG(TLOG_WARN, "READS: %" PRIu64 ", AVG_READ_SIZE: %f\n",
+	DBG(TLOG_WARN, "READS: 0x%08"PRIx64", AVG_READ_SIZE: %f\n",
 	    s->reads, (s->reads ? ((float)s->read_size / s->reads) : 0.0));
 
 	DBG(TLOG_WARN, "ALLOCATED REQUESTS: (%lu total)\n", VHD_REQS_DATA);
 	for (i = 0; i < VHD_REQS_DATA; i++) {
 		struct vhd_request *r = &s->vreq_list[i];
 		td_request_t *t       = &r->treq;
-		if (t->sec)
-			DBG(TLOG_WARN, "%d: id: %d, err: %d, op: %d, lsec: %" 
-			    PRIu64 ", flags: %d, this: %p, next: %p, tx: %p\n",
-			    i, t->id, r->error, r->op, t->sec, r->flags, 
-			    r, r->next, r->tx);
+		if (t->secs)
+			DBG(TLOG_WARN, "%d: id: 0x%04"PRIx64", err: %d, op: %d,"
+			    " lsec: 0x%08"PRIx64", flags: %d, this: %p, "
+			    "next: %p, tx: %p\n", i, t->id, r->error, r->op,
+			    t->sec, r->flags, r, r->next, r->tx);
 	}
 
 	DBG(TLOG_WARN, "BITMAP CACHE:\n");
@@ -3887,7 +2172,7 @@ vhd_debug(td_driver_t *driver)
 			r = r->next;
 		}
 
-		DBG(TLOG_WARN, "%d: blk: %u, status: %u, q: %p, qnum: %d, w: %p, "
+		DBG(TLOG_WARN, "%d: blk: 0x%04x, status: 0x%08x, q: %p, qnum: %d, w: %p, "
 		    "wnum: %d, locked: %d, in use: %d, tx: %p, tx_error: %d, "
 		    "started: %d, finished: %d, status: %u, reqs: %p, nreqs: %d\n",
 		    i, bm->blk, bm->status, bm->queue.head, qnum, bm->waiting.head,
@@ -3895,8 +2180,9 @@ vhd_debug(td_driver_t *driver)
 		    tx->started, tx->finished, tx->status, tx->requests.head, rnum);
 	}
 
-	DBG(TLOG_WARN, "BAT: status: %u, pbw_blk: %u, pbw_off: %" PRIu64 ", tx: %p\n",
-	    s->bat.status, s->bat.pbw_blk, s->bat.pbw_offset, s->bat.req.tx);
+	DBG(TLOG_WARN, "BAT: status: 0x%08x, pbw_blk: 0x%04x, "
+	    "pbw_off: 0x%08"PRIx64", tx: %p\n", s->bat.status, s->bat.pbw_blk,
+	    s->bat.pbw_offset, s->bat.req.tx);
 
 /*
 	for (i = 0; i < s->hdr.max_bat_size; i++)
@@ -3904,46 +2190,29 @@ vhd_debug(td_driver_t *driver)
 */
 }
 
-int
-vhd_repair(td_driver_t *driver)
+static int
+_vhd_create(const char *name, uint64_t bytes, td_flag_t flags)
 {
-	int err;
-	off64_t off, end;
-	struct vhd_state *s = (struct vhd_state *)driver->data;
+	uint32_t type;
 
-	if (s->ftr.type == HD_TYPE_FIXED) {
-		if ((off = lseek64(s->fd, 0, SEEK_END)) == (off64_t)-1)
-			return -errno;
+	type = td_flag_test(flags, TD_CREATE_SPARSE) ?
+		HD_TYPE_DYNAMIC : HD_TYPE_FIXED;
 
-		if (lseek64(s->fd, (off - 512), SEEK_CUR) == (off64_t)-1)
-			return -errno;
-	} else {
-		off = s->next_db << VHD_SECTOR_SHIFT;
-		if (lseek64(s->fd, off, SEEK_SET) == (off64_t)-1)
-			return -errno;
-	}
+	return vhd_create(name, bytes, type);
+}
 
-	err = vhd_write_hd_ftr(s->fd, &s->ftr);
-	if (err)
-		return err;
-
-	off += sizeof(struct hd_ftr); /* 512 */
-	if ((end = lseek64(s->fd, 0, SEEK_END)) == (off64_t)-1)
-		return -errno;
-
-	if (end != off)
-		if (ftruncate(s->fd, off) == -1)
-			return -errno;
-
-	return 0;
+static int
+_vhd_snapshot(td_disk_id_t *parent, char *name, td_flag_t flags)
+{
+	return vhd_snapshot(name, parent->name);
 }
 
 struct tap_disk tapdisk_vhd = {
 	.disk_type          = "tapdisk_vhd",
 	.flags              = 0,
 	.private_data_size  = sizeof(struct vhd_state),
-	.td_open            = vhd_open,
-	.td_close           = vhd_close,
+	.td_open            = _vhd_open,
+	.td_close           = _vhd_close,
 	.td_create          = _vhd_create,
 	.td_snapshot        = _vhd_snapshot,
 	.td_queue_read      = vhd_queue_read,
