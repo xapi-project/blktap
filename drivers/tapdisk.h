@@ -86,6 +86,7 @@
 #define TD_OPEN_SHAREABLE            0x00010
 #define TD_OPEN_ADD_CACHE            0x00020
 #define TD_OPEN_VHD_INDEX            0x00040
+#define TD_OPEN_LOG_DIRTY            0x00080
 
 #define TD_CREATE_SPARSE             0x00001
 #define TD_CREATE_MULTITYPE          0x00002

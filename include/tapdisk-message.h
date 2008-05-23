@@ -35,6 +35,7 @@
 #define TAPDISK_MESSAGE_FLAG_RDONLY      0x02
 #define TAPDISK_MESSAGE_FLAG_ADD_CACHE   0x04
 #define TAPDISK_MESSAGE_FLAG_VHD_INDEX   0x08
+#define TAPDISK_MESSAGE_FLAG_LOG_DIRTY   0x10
 
 typedef struct tapdisk_message           tapdisk_message_t;
 typedef uint8_t                          tapdisk_message_flag_t;

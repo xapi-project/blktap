@@ -195,6 +195,8 @@ tapdisk_ipc_read(td_ipc_t *ipc)
 			flags |= TD_OPEN_ADD_CACHE;
 		if (message.u.params.flags & TAPDISK_MESSAGE_FLAG_VHD_INDEX)
 			flags |= TD_OPEN_VHD_INDEX;
+		if (message.u.params.flags & TAPDISK_MESSAGE_FLAG_LOG_DIRTY)
+			flags |= TD_OPEN_LOG_DIRTY;
 
 		err   = tapdisk_vbd_open(vbd,
 					 message.u.params.path,

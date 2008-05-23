@@ -407,10 +407,13 @@ tapdisk_channel_send_open_request(tapdisk_channel_t *channel)
 	if (channel->shared)
 		message.u.params.flags |= TAPDISK_MESSAGE_FLAG_SHARED;
 
+	/* TODO: clean this up */
 	if (xs_exists(channel->xsh, "/local/domain/0/tapdisk/add-cache"))
 		message.u.params.flags |= TAPDISK_MESSAGE_FLAG_ADD_CACHE;
 	if (xs_exists(channel->xsh, "/local/domain/0/tapdisk/vhd-index"))
 		message.u.params.flags |= TAPDISK_MESSAGE_FLAG_VHD_INDEX;
+	if (xs_exists(channel->xsh, "/local/domain/0/tapdisk/log-dirty"))
+		message.u.params.flags |= TAPDISK_MESSAGE_FLAG_LOG_DIRTY;
 
 	return tapdisk_channel_send_message(channel, &message, 2);
 }

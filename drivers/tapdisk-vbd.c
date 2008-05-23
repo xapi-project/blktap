@@ -257,6 +257,50 @@ fail:
 }
 
 static int
+tapdisk_vbd_add_dirty_log(td_vbd_t *vbd)
+{
+	int err;
+	td_driver_t *driver;
+	td_image_t *log, *parent;
+
+	driver = NULL;
+	log    = NULL;
+
+	parent = tapdisk_vbd_first_image(vbd);
+
+	log    = tapdisk_image_allocate(parent->name,
+					DISK_TYPE_LOG,
+					parent->storage,
+					parent->flags,
+					vbd);
+	if (!log)
+		return -ENOMEM;
+
+	driver = tapdisk_driver_allocate(log->type,
+					 log->name,
+					 log->flags,
+					 log->storage);
+	if (!driver) {
+		err = -ENOMEM;
+		goto fail;
+	}
+
+	driver->info = parent->driver->info;
+	log->driver  = driver;
+
+	err = td_open(log);
+	if (err)
+		goto fail;
+
+	list_add(&log->next, &vbd->images);
+	return 0;
+
+fail:
+	tapdisk_image_free(log);
+	return err;
+}
+
+static int
 __tapdisk_vbd_open_vdi(td_vbd_t *vbd)
 {
 	char *file;
@@ -324,6 +368,12 @@ __tapdisk_vbd_open_vdi(td_vbd_t *vbd)
 		file   = id.name;
 		type   = id.drivertype;
 		flags |= (TD_OPEN_RDONLY | TD_OPEN_SHAREABLE);
+	}
+
+	if (td_flag_test(vbd->flags, TD_OPEN_LOG_DIRTY)) {
+		err = tapdisk_vbd_add_dirty_log(vbd);
+		if (err)
+			goto fail;
 	}
 
 	if (td_flag_test(vbd->flags, TD_OPEN_ADD_CACHE)) {
