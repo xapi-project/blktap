@@ -41,12 +41,11 @@
  * and passing in a completion callback, which the disk is responsible for 
  * tracking.  Disks should transform these requests as necessary and return
  * the resulting iocbs to tapdisk using td_prep_[read,write]() and 
- * td_queue_tiocb().  tapdisk will submit iocbs in batches and signal
- * completions via td_complete().
+ * td_queue_tiocb().
  *
  * NOTE: tapdisk uses the number of sectors submitted per request as a 
  * ref count.  Plugins must use the callback function to communicate the
- * completion--or error--of every sector submitted to them.
+ * completion -- or error -- of every sector submitted to them.
  *
  * td_get_parent_id returns:
  *     0 if parent id successfully retrieved
@@ -54,38 +53,31 @@
  *     -errno on error
  */
 
-#ifndef TAPDISK_H_
-#define TAPDISK_H_
+#ifndef _TAPDISK_H_
+#define _TAPDISK_H_
 
 #include <time.h>
 #include <stdint.h>
 
-#include "disktypes.h"
+#include "list.h"
 #include "blktaplib.h"
+#include "disktypes.h"
 #include "tapdisk-log.h"
-#include "tapdisk-queue.h"
-#include "tapdisk-filter.h"
+#include "tapdisk-utils.h"
 
-/* Things disks need to know about, these should probably be in a higher-level
- * header. */
-#define MAX_SEGMENTS_PER_REQ     11
-#define SECTOR_SHIFT             9
-#define DEFAULT_SECTOR_SIZE      512
+#define MAX_SEGMENTS_PER_REQ         11
+#define SECTOR_SHIFT                 9
+#define DEFAULT_SECTOR_SIZE          512
 
-#define TD_MAX_RETRIES           100
-#define TD_RETRY_INTERVAL        1
+#define TAPDISK_DATA_REQUESTS       (MAX_REQUESTS * MAX_SEGMENTS_PER_REQ)
 
-#define MAX_IOFD                 2
+//#define BLK_NOT_ALLOCATED            (-99)
+#define TD_NO_PARENT                 1
 
-#define BLK_NOT_ALLOCATED        (-99)
-#define TD_NO_PARENT             1
+#define MAX_RAMDISK_SIZE             1024000 /*500MB disk limit*/
 
-#define TAPDISK_DATA_REQUESTS    (MAX_REQUESTS * MAX_SEGMENTS_PER_REQ)
-
-#define MAX_RAMDISK_SIZE          1024000 /*500MB disk limit*/
-#define MAX_NAME_LEN              1000
-
-typedef uint32_t td_flag_t;
+#define TD_OP_READ                   0
+#define TD_OP_WRITE                  1
 
 #define TD_OPEN_QUIET                0x00001
 #define TD_OPEN_QUERY                0x00002
@@ -95,129 +87,68 @@ typedef uint32_t td_flag_t;
 #define TD_CREATE_SPARSE             0x00001
 #define TD_CREATE_MULTITYPE          0x00002
 
-#define TD_DRAIN_QUEUE               0x00001
-#define TD_LOCKING                   0x00002
-#define TD_CLOSED                    0x00004
-#define TD_DEAD                      0x00008
-#define TD_RETRY_NEEDED              0x00010
-#define TD_SHUTDOWN_REQUESTED        0x00020
-#define TD_LOCK_ENFORCE              0x00040
-#define TD_PAUSE                     0x00080
-#define TD_PAUSED                    0x00100
+#define td_flag_set(word, flag)      ((word) |= (flag))
+#define td_flag_clear(word, flag)    ((word) &= ~(flag))
+#define td_flag_test(word, flag)     ((word) & (flag))
 
-struct td_state;
-struct tap_disk;
+typedef uint16_t                     td_uuid_t;
+typedef uint32_t                     td_flag_t;
+typedef uint64_t                     td_sector_t;
+typedef struct td_disk_id            td_disk_id_t;
+typedef struct td_disk_info          td_disk_info_t;
+typedef struct td_request            td_request_t;
+typedef struct td_driver_handle      td_driver_t;
+typedef struct td_image_handle       td_image_t;
 
-struct disk_id {
-	char *name;
-	int drivertype;
+/* 
+ * Prototype of the callback to activate as requests complete.
+ */
+typedef void (*td_callback_t)(td_request_t, int);
+
+struct td_disk_id {
+	char                        *name;
+	int                          drivertype;
 };
 
-struct disk_driver {
-	int early;
-	char *name;
-	int storage;
-	void *private;
-	td_flag_t flags;
-	int io_fd[MAX_IOFD];
-	struct tap_disk *drv;
-	struct td_state *td_state;
-	struct disk_driver *next;
+struct td_disk_info {
+	td_sector_t                  size;
+        long                         sector_size;
+	uint32_t                     info;
 };
 
-typedef struct td_ipc_handle {
-	int            rfd;
-	int            wfd;
-	uint16_t       cookie;
-} td_ipc_t;
+struct td_request {
+	int                          op;
+	char                        *buf;
+	td_sector_t                  sec;
+	int                          secs;
 
-/* This structure represents the state of an active virtual disk.           */
-struct td_state {
-	void *blkif;
-	void *image;
-	void *ring_info;
-	void *fd_entry;
-	char *cp_uuid;
-	int   cp_drivertype;
-	char *lock_uuid;
-	int   lock_ro;
-	td_flag_t flags;
-	unsigned long      sector_size;
-	unsigned long long size;
-	unsigned int       info;
-	unsigned long retries, received, returned, kicked;
-	struct timeval ts;
-	int dumped_log;
+	td_image_t                  *image;
 
-	char *name;
-	struct tap_disk *drv;
-	int storage;
+	td_callback_t                cb;
+	void                        *cb_data;
 
-	struct tqueue queue;
-	struct disk_driver *disks;
-	uint64_t pending_data;
-
-	td_ipc_t ipc;
+	uint64_t                     id;
+	int                          sidx;
+	void                        *private;
 };
 
-/* Prototype of the callback to activate as requests complete.              */
-typedef int (*td_callback_t)(struct disk_driver *dd, int res, uint64_t sector,
-			     int nb_sectors, int id, void *private);
-
-/* Structure describing the interface to a virtual disk implementation.     */
-/* See note at the top of this file describing this interface.              */
+/* 
+ * Structure describing the interface to a virtual disk implementation.
+ * See note at the top of this file describing this interface.
+ */
 struct tap_disk {
-	const char *disk_type;
-	int private_data_size;
-	int private_iocbs;
-	int (*td_open)           (struct disk_driver *dd, 
-				  const char *name, td_flag_t flags);
-	int (*td_close)          (struct disk_driver *dd);
-	int (*td_queue_read)     (struct disk_driver *dd, uint64_t sector,
-				  int nb_sectors, char *buf, td_callback_t cb,
-				  int id, void *prv);
-	int (*td_queue_write)    (struct disk_driver *dd, uint64_t sector,
-				  int nb_sectors, char *buf, td_callback_t cb, 
-				  int id, void *prv);
-	int (*td_complete)       (struct disk_driver *dd,
-				  struct tiocb *tiocb, int err);
-	int (*td_get_parent_id)  (struct disk_driver *dd, struct disk_id *id);
-	int (*td_validate_parent)(struct disk_driver *dd, 
-				  struct disk_driver *p, td_flag_t flags);
-	int (*td_snapshot)       (struct disk_id *parent_id, 
-				  char *child_name, td_flag_t flags);
-	int (*td_create)         (const char *name, 
-				  uint64_t size, td_flag_t flags);
+	const char                  *disk_type;
+	td_flag_t                    flags;
+	int                          private_data_size;
+	int (*td_open)               (td_driver_t *, const char *, td_flag_t);
+	int (*td_close)              (td_driver_t *);
+	int (*td_create)             (const char *, uint64_t, td_flag_t);
+	int (*td_snapshot)           (td_disk_id_t *, char *, td_flag_t);
+	int (*td_get_parent_id)      (td_driver_t *, td_disk_id_t *);
+	int (*td_validate_parent)    (td_driver_t *, td_driver_t *, td_flag_t);
+	void (*td_queue_read)        (td_driver_t *, td_request_t);
+	void (*td_queue_write)       (td_driver_t *, td_request_t);
+	void (*td_debug)             (td_driver_t *);
 };
 
-/* tapdisk.c */
-int tapdisk_init(uint16_t cookie);
-int tapdisk_open(uint16_t cookie, char *path,
-		 uint16_t drivertype, uint16_t storage, td_flag_t flags);
-int tapdisk_new_device(uint16_t cookie, uint32_t devnum);
-int tapdisk_get_image_info(uint16_t cookie,  image_t *image);
-void tapdisk_pause(uint16_t cookie);
-void tapdisk_resume(uint16_t cookie);
-void tapdisk_close(uint16_t cookie);
-
-/* tapdisk-ipc.c */
-int tapdisk_ipc_read(td_ipc_t *ipc, int timeout);
-int tapdisk_ipc_write(td_ipc_t *ipc, int type, int timeout);
-
-struct qcow_info {
-        int       l1_size;
-        int       l2_size;
-        uint64_t *l1;
-        uint64_t  secs;
-	int       valid_td_fields;
-	long      td_fields[TD_FIELD_INVALID];
-};
-int qcow_create(const char *filename, uint64_t total_size,
-		const char *backing_file, int flags);
-int qcow_set_field(struct disk_driver *dd, td_field_t field, long value);
-int qcow_get_info(struct disk_driver *dd, struct qcow_info *info);
-int qcow_coalesce(char *name);
-
-void vhd_debug(struct disk_driver *dd);
-
-#endif /*TAPDISK_H_*/
+#endif

@@ -192,7 +192,7 @@ static const char VHD_BATMAP_COOKIE[9] = "tdbatmap";
  * +-------------------------------------------------+
  */
 
-struct disk_driver;
+struct td_driver_handle;
 
 struct vhd_info {
 	int       spb;
@@ -205,16 +205,16 @@ struct vhd_info {
 uint32_t vhd_footer_checksum(struct hd_ftr *footer);
 uint32_t vhd_header_checksum(struct dd_hdr *header);
 uint32_t vhd_batmap_checksum(struct dd_batmap_hdr *header, char *map);
-void vhd_get_footer(struct disk_driver *dd, struct hd_ftr *footer);
-int vhd_get_header(struct disk_driver *dd, struct dd_hdr *header);
-int vhd_get_batmap_header(struct disk_driver *dd, struct dd_batmap_hdr *hdr);
-int vhd_get_info(struct disk_driver *dd, struct vhd_info *info);
-int vhd_get_bat(struct disk_driver *dd, struct vhd_info *info);
-int vhd_set_field(struct disk_driver *dd, td_field_t field, long value);
+void vhd_get_footer(struct td_driver_handle *, struct hd_ftr *footer);
+int vhd_get_header(struct td_driver_handle *, struct dd_hdr *header);
+int vhd_get_batmap_header(struct td_driver_handle *, struct dd_batmap_hdr *hdr);
+int vhd_get_info(struct td_driver_handle *, struct vhd_info *info);
+int vhd_get_bat(struct td_driver_handle *, struct vhd_info *info);
+int vhd_set_field(struct td_driver_handle *, td_field_t field, long value);
 int vhd_coalesce(char *name);
 int vhd_fill(char *name);
-int vhd_repair(struct disk_driver *dd);
-int vhd_read(struct disk_driver *dd, int argc, char *argv[]);
+//int vhd_repair(struct disk_driver *dd);
+//int vhd_read(struct disk_driver *dd, int argc, char *argv[]);
 
 #define UTF_16   "UTF-16"
 #define UTF_16LE "UTF-16LE"

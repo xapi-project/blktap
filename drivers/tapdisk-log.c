@@ -102,7 +102,7 @@ __tlog_write(int level, const char *func, const char *fmt, ...)
 
 	buf = tapdisk_log.p;
 	gettimeofday(&t, NULL);
-	len = snprintf(buf, MAX_ENTRY_LEN - 1, "0x%08"PRIu64":%010ld.%06ld:"
+	len = snprintf(buf, MAX_ENTRY_LEN - 1, "%08"PRIu64":%010ld.%06ld:"
 		       "%s ", tapdisk_log.cnt, t.tv_sec, t.tv_usec, func);
 
 	va_start(ap, fmt);

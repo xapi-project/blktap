@@ -10,9 +10,13 @@
 #include <libaio.h>
 
 #include "tapdisk.h"
+#include "tapdisk-log.h"
+#include "tapdisk-queue.h"
+#include "tapdisk-filter.h"
 #include "atomicio.h"
 
-#define DBG(_f, _a...) tlog_write(TLOG_WARN, _f, ##_a)
+#define WARN(_f, _a...) tlog_write(TLOG_WARN, _f, ##_a)
+#define DBG(_f, _a...) tlog_write(TLOG_DBG, _f, ##_a)
 #define ERR(_err, _f, _a...) tlog_error(_err, _f, ##_a)
 
 /*
@@ -53,6 +57,7 @@ defer_tiocb(struct tqueue *queue, struct tiocb *tiocb)
 		list->tail = list->tail->next = tiocb;
 
 	queue->tiocbs_deferred++;
+	queue->deferrals++;
 }
 
 static inline void
@@ -87,7 +92,6 @@ complete_tiocb(struct tqueue *queue, struct tiocb *tiocb, unsigned long res)
 {
 	int err;
 	struct iocb *iocb = &tiocb->iocb;
-	struct disk_driver *dd = tiocb->dd;
 
 	if (res == iocb->u.c.nbytes)
 		err = 0;
@@ -96,7 +100,7 @@ complete_tiocb(struct tqueue *queue, struct tiocb *tiocb, unsigned long res)
 	else
 		err = -EIO;
 
-	dd->drv->td_complete(dd, tiocb, err);
+	tiocb->cb(tiocb->arg, tiocb, err);
 }
 
 static int
@@ -270,28 +274,27 @@ tapdisk_debug_queue(struct tqueue *queue)
 {
 	struct tiocb *tiocb = queue->deferred.head;
 
-	DBG("TAPDISK QUEUE:\n");
-	DBG("size: %d, sync: %d, queued: %d, iocbs_pending: %d, "
-	    "tiocbs_pending: %d, tiocbs_deferred: %d\n",
-	    queue->size, queue->sync, queue->queued, queue->iocbs_pending,
-	    queue->tiocbs_pending, queue->tiocbs_deferred);
+	WARN("TAPDISK QUEUE:\n");
+	WARN("size: %d, sync: %d, queued: %d, iocbs_pending: %d, "
+	     "tiocbs_pending: %d, tiocbs_deferred: %d, deferrals: %llx\n",
+	     queue->size, queue->sync, queue->queued, queue->iocbs_pending,
+	     queue->tiocbs_pending, queue->tiocbs_deferred, queue->deferrals);
 
 	if (tiocb) {
-		DBG("deferred:\n");
+		WARN("deferred:\n");
 		for (; tiocb != NULL; tiocb = tiocb->next) {
 			struct iocb *io = &tiocb->iocb;
-			DBG("%s of %lu bytes at %lld\n",
-			    (io->aio_lio_opcode == IO_CMD_PWRITE ?
-			     "write" : "read"),
-			    io->u.c.nbytes, io->u.c.offset);
+			WARN("%s of %lu bytes at %lld\n",
+			     (io->aio_lio_opcode == IO_CMD_PWRITE ?
+			      "write" : "read"),
+			     io->u.c.nbytes, io->u.c.offset);
 		}
 	}
 }
 
 void
-tapdisk_prep_tiocb(struct tiocb *tiocb, struct disk_driver *dd,
-		   int fd, int rw, char *buf, size_t size,
-		   long long offset, void *data)
+tapdisk_prep_tiocb(struct tiocb *tiocb, int fd, int rw, char *buf, size_t size,
+		   long long offset, td_queue_callback_t cb, void *arg)
 {
 	struct iocb *iocb = &tiocb->iocb;
 
@@ -301,9 +304,9 @@ tapdisk_prep_tiocb(struct tiocb *tiocb, struct disk_driver *dd,
 		io_prep_pread(iocb, fd, buf, size, offset);
 
 	iocb->data  = tiocb;
-	tiocb->data = data;
+	tiocb->cb   = cb;
+	tiocb->arg  = arg;
 	tiocb->next = NULL;
-	tiocb->dd   = dd;
 }
 
 void
@@ -332,6 +335,9 @@ tapdisk_submit_tiocbs(struct tqueue *queue)
 	tapdisk_filter_iocbs(queue->filter, queue->iocbs, queue->queued);
 	merged    = io_merge(&queue->opioctx, queue->iocbs, queue->queued);
 	submitted = io_submit(queue->aio_ctx, merged, queue->iocbs);
+
+	DBG("queued: %d, merged: %d, submitted: %d\n",
+	    queue->queued, merged, submitted);
 
 	if (submitted < 0) {
 		err = submitted;
@@ -375,6 +381,8 @@ tapdisk_complete_tiocbs(struct tqueue *queue)
 	split = io_split(&queue->opioctx, queue->aio_events, ret);
 	tapdisk_filter_events(queue->filter, queue->aio_events, split);
 
+	DBG("events: %d, tiocbs: %d\n", ret, split);
+
 	queue->iocbs_pending  -= ret;
 	queue->tiocbs_pending -= split;
 
@@ -408,26 +416,4 @@ tapdisk_cancel_all_tiocbs(struct tqueue *queue)
 	} while (!tapdisk_queue_empty(queue));
 
 	return cancelled;
-}
-
-void
-td_queue_tiocb(struct disk_driver *dd, struct tiocb *tiocb)
-{
-	struct td_state *s = dd->td_state;
-	struct tqueue   *q = &s->queue;
-	tapdisk_queue_tiocb(q, tiocb);
-}
-
-void
-td_prep_read(struct tiocb *tiocb, struct disk_driver *dd, int fd,
-	     char *buf, size_t bytes, long long offset, void *data)
-{
-	tapdisk_prep_tiocb(tiocb, dd, fd, 0, buf, bytes, offset, data);
-}
-
-void
-td_prep_write(struct tiocb *tiocb, struct disk_driver *dd, int fd,
-	      char *buf, size_t bytes, long long offset, void *data)
-{
-	tapdisk_prep_tiocb(tiocb, dd, fd, 1, buf, bytes, offset, data);
 }

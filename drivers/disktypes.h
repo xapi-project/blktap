@@ -123,6 +123,7 @@ static disk_info_t vhdsync_disk = {
 #endif
 };
 */
+
 static disk_info_t vhd_disk = {
        DISK_TYPE_VHD,
        "virtual server image (vhd)",
@@ -133,6 +134,7 @@ static disk_info_t vhd_disk = {
 #endif
 };
 
+
 static disk_info_t ram_disk = {
        DISK_TYPE_RAM,
        "ramdisk image (ram)",
@@ -142,6 +144,8 @@ static disk_info_t ram_disk = {
        &tapdisk_ram,
 #endif
 };
+
+
 /*
 static disk_info_t qcow_disk = {
        DISK_TYPE_QCOW,

@@ -13,6 +13,8 @@
 
 #define TAPDISK
 #include "tapdisk.h"
+#include "tapdisk-driver.h"
+#include "tapdisk-interface.h"
 #include "vhd.h"
 
 #if 1
@@ -37,7 +39,7 @@ struct vhd_context {
 	unsigned long        blk_size;
 
 	struct vhd_info      info;
-	struct disk_driver  *dd;
+	td_driver_t         *driver;
 };
 
 static void

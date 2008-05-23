@@ -36,7 +36,10 @@
 #include <sys/ioctl.h>
 #include <linux/fs.h>
 #include <string.h>
+
 #include "tapdisk.h"
+#include "tapdisk-driver.h"
+#include "tapdisk-interface.h"
 
 char *img;
 long int   disksector_size;
@@ -49,7 +52,7 @@ struct tdram_state {
 };
 
 /*Get Image size, secsize*/
-static int get_image_info(struct td_state *s, int fd)
+static int get_image_info(int fd, td_disk_info_t *info)
 {
 	int ret;
 	long size;
@@ -65,80 +68,79 @@ static int get_image_info(struct td_state *s, int fd)
 
 	if (S_ISBLK(stat.st_mode)) {
 		/*Accessing block device directly*/
-		s->size = 0;
-		if (ioctl(fd,BLKGETSIZE,&s->size)!=0) {
+		info->size = 0;
+		if (ioctl(fd,BLKGETSIZE,&info->size)!=0) {
 			DPRINTF("ERR: BLKGETSIZE failed, couldn't stat image");
 			return -EINVAL;
 		}
 
 		DPRINTF("Image size: \n\tpre sector_shift  [%llu]\n\tpost "
 			"sector_shift [%llu]\n",
-			(long long unsigned)(s->size << SECTOR_SHIFT),
-			(long long unsigned)s->size);
+			(long long unsigned)(info->size << SECTOR_SHIFT),
+			(long long unsigned)info->size);
 
 		/*Get the sector size*/
 #if defined(BLKSSZGET)
 		{
 			int arg;
-			s->sector_size = DEFAULT_SECTOR_SIZE;
-			ioctl(fd, BLKSSZGET, &s->sector_size);
+			info->sector_size = DEFAULT_SECTOR_SIZE;
+			ioctl(fd, BLKSSZGET, &info->sector_size);
 			
-			if (s->sector_size != DEFAULT_SECTOR_SIZE)
+			if (info->sector_size != DEFAULT_SECTOR_SIZE)
 				DPRINTF("Note: sector size is %ld (not %d)\n",
-					s->sector_size, DEFAULT_SECTOR_SIZE);
+					info->sector_size, DEFAULT_SECTOR_SIZE);
 		}
 #else
-		s->sector_size = DEFAULT_SECTOR_SIZE;
+		info->sector_size = DEFAULT_SECTOR_SIZE;
 #endif
 
 	} else {
 		/*Local file? try fstat instead*/
-		s->size = (stat.st_size >> SECTOR_SHIFT);
-		s->sector_size = DEFAULT_SECTOR_SIZE;
+		info->size = (stat.st_size >> SECTOR_SHIFT);
+		info->sector_size = DEFAULT_SECTOR_SIZE;
 		DPRINTF("Image size: \n\tpre sector_shift  [%llu]\n\tpost "
 			"sector_shift [%llu]\n",
-			(long long unsigned)(s->size << SECTOR_SHIFT),
-			(long long unsigned)s->size);
+			(long long unsigned)(info->size << SECTOR_SHIFT),
+			(long long unsigned)info->size);
 	}
 
-	if (s->size == 0) {		
-		s->size =((uint64_t) MAX_RAMDISK_SIZE);
-		s->sector_size = DEFAULT_SECTOR_SIZE;
+	if (info->size == 0) {		
+		info->size =((uint64_t) MAX_RAMDISK_SIZE);
+		info->sector_size = DEFAULT_SECTOR_SIZE;
 	}
-	s->info = 0;
+	info->info = 0;
 
         /*Store variables locally*/
-	disksector_size = s->sector_size;
-	disksize        = s->size;
-	diskinfo        = s->info;
+	disksector_size = info->sector_size;
+	disksize        = info->size;
+	diskinfo        = info->info;
 	DPRINTF("Image sector_size: \n\t[%lu]\n",
-		s->sector_size);
+		info->sector_size);
 
 	return 0;
 }
 
 /* Open the disk file and initialize ram state. */
-int tdram_open (struct disk_driver *dd, const char *name, td_flag_t flags)
+int tdram_open (td_driver_t *driver, const char *name, td_flag_t flags)
 {
 	char *p;
 	uint64_t size;
 	int i, fd, ret = 0, count = 0, o_flags;
-	struct td_state    *s     = dd->td_state;
-	struct tdram_state *prv   = (struct tdram_state *)dd->private;
+	struct tdram_state *prv = (struct tdram_state *)driver->data;
 
 	connections++;
 
 	if (connections > 1) {
-		s->sector_size = disksector_size;
-		s->size        = disksize;
-		s->info        = diskinfo; 
+		driver->info.sector_size = disksector_size;
+		driver->info.size        = disksize;
+		driver->info.info        = diskinfo; 
 		DPRINTF("Image already open, returning parameters:\n");
 		DPRINTF("Image size: \n\tpre sector_shift  [%llu]\n\tpost "
 			"sector_shift [%llu]\n",
-			(long long unsigned)(s->size << SECTOR_SHIFT),
-			(long long unsigned)s->size);
+			(long long unsigned)(driver->info.size << SECTOR_SHIFT),
+			(long long unsigned)driver->info.size);
 		DPRINTF("Image sector_size: \n\t[%lu]\n",
-			s->sector_size);
+			driver->info.sector_size);
 
 		prv->fd = -1;
 		goto done;
@@ -167,10 +169,10 @@ int tdram_open (struct disk_driver *dd, const char *name, td_flag_t flags)
 
         prv->fd = fd;
 
-	ret = get_image_info(s, fd);
+	ret = get_image_info(fd, &driver->info);
 	size = MAX_RAMDISK_SIZE;
 
-	if (s->size > size) {
+	if (driver->info.size > size) {
 		DPRINTF("Disk exceeds limit, must be less than [%d]MB",
 			(MAX_RAMDISK_SIZE<<SECTOR_SHIFT)>>20);
 		return -ENOMEM;
@@ -178,16 +180,18 @@ int tdram_open (struct disk_driver *dd, const char *name, td_flag_t flags)
 
 	/*Read the image into memory*/
 	if (posix_memalign((void **)&img, 
-			   DEFAULT_SECTOR_SIZE, s->size << SECTOR_SHIFT)) {
+			   DEFAULT_SECTOR_SIZE,
+			   driver->info.size << SECTOR_SHIFT)) {
 		DPRINTF("Mem malloc failed\n");
 		return -errno;
 	}
 	p = img;
-	DPRINTF("Reading %llu bytes.......",(long long unsigned)s->size << SECTOR_SHIFT);
+	DPRINTF("Reading %llu bytes.......",
+		(long long unsigned)driver->info.size << SECTOR_SHIFT);
 
-	for (i = 0; i < s->size; i++) {
-		ret = read(prv->fd, p, s->sector_size);
-		if (ret != s->sector_size) {
+	for (i = 0; i < driver->info.size; i++) {
+		ret = read(prv->fd, p, driver->info.sector_size);
+		if (ret != driver->info.sector_size) {
 			DPRINTF("ret = %d, errno = %d\n", ret, errno);
 			ret = 0 - errno;
 			break;
@@ -197,7 +201,7 @@ int tdram_open (struct disk_driver *dd, const char *name, td_flag_t flags)
 		}
 	}
 	DPRINTF("[%d]\n",count);
-	if (count != s->size << SECTOR_SHIFT) {
+	if (count != driver->info.size << SECTOR_SHIFT) {
 		ret = -1;
 	} else {
 		ret = 0;
@@ -207,67 +211,61 @@ done:
 	return ret;
 }
 
- int tdram_queue_read(struct disk_driver *dd, uint64_t sector,
-		      int nb_sectors, char *buf, td_callback_t cb,
-		      int id, void *private)
+void tdram_queue_read(td_driver_t *driver, td_request_t treq)
 {
-	struct td_state    *s   = dd->td_state;
-	struct tdram_state *prv = (struct tdram_state *)dd->private;
-	int      size    = nb_sectors * s->sector_size;
-	uint64_t offset  = sector * (uint64_t)s->sector_size;
+	struct tdram_state *prv = (struct tdram_state *)driver->data;
+	int      size    = treq.secs * driver->info.sector_size;
+	uint64_t offset  = treq.sec * (uint64_t)driver->info.sector_size;
 
-	memcpy(buf, img + offset, size);
+	memcpy(treq.buf, img + offset, size);
 
-	return cb(dd, 0, sector, nb_sectors, id, private);
+	td_complete_request(treq, 0);
 }
 
-int tdram_queue_write(struct disk_driver *dd, uint64_t sector,
-		      int nb_sectors, char *buf, td_callback_t cb,
-		      int id, void *private)
+void tdram_queue_write(td_driver_t *driver, td_request_t treq)
 {
-	struct td_state    *s   = dd->td_state;
-	struct tdram_state *prv = (struct tdram_state *)dd->private;
-	int      size    = nb_sectors * s->sector_size;
-	uint64_t offset  = sector * (uint64_t)s->sector_size;
+	struct tdram_state *prv = (struct tdram_state *)driver->data;
+	int      size    = treq.secs * driver->info.sector_size;
+	uint64_t offset  = treq.sec * (uint64_t)driver->info.sector_size;
 	
 	/* We assume that write access is controlled
 	 * at a higher level for multiple disks */
-	memcpy(img + offset, buf, size);
+	memcpy(img + offset, treq.buf, size);
 
-	return cb(dd, 0, sector, nb_sectors, id, private);
+	td_complete_request(treq, 0);
 }
 
-int tdram_close(struct disk_driver *dd)
+int tdram_close(td_driver_t *driver)
 {
-	struct tdram_state *prv = (struct tdram_state *)dd->private;
+	struct tdram_state *prv = (struct tdram_state *)driver->data;
 	
 	connections--;
 	
 	return 0;
 }
 
-int tdram_get_parent_id(struct disk_driver *dd, struct disk_id *id)
+int tdram_get_parent_id(td_driver_t *driver, td_disk_id_t *id)
 {
 	return TD_NO_PARENT;
 }
 
-int tdram_validate_parent(struct disk_driver *dd, 
-			  struct disk_driver *parent, td_flag_t flags)
+int tdram_validate_parent(td_driver_t *driver,
+			  td_driver_t *pdriver, td_flag_t flags)
 {
 	return -EINVAL;
 }
 
 struct tap_disk tapdisk_ram = {
 	.disk_type          = "tapdisk_ram",
+	.flags              = 0,
 	.private_data_size  = sizeof(struct tdram_state),
-	.private_iocbs      = 0,
 	.td_open            = tdram_open,
 	.td_close           = tdram_close,
+	.td_create          = NULL,
+	.td_snapshot        = NULL,
 	.td_queue_read      = tdram_queue_read,
 	.td_queue_write     = tdram_queue_write,
-	.td_complete        = NULL,
 	.td_get_parent_id   = tdram_get_parent_id,
 	.td_validate_parent = tdram_validate_parent,
-	.td_snapshot        = NULL,
-	.td_create          = NULL
+	.td_debug           = NULL,
 };

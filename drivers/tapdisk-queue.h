@@ -9,14 +9,18 @@
 
 #include "io-optimize.h"
 
+struct tiocb;
 struct tfilter;
-struct disk_driver;
+
+typedef void (*td_queue_callback_t)(void *arg, struct tiocb *, int err);
+
 
 struct tiocb {
-	void                 *data;
+	td_queue_callback_t   cb;
+	void                 *arg;
+
 	struct iocb           iocb;
 	struct tiocb         *next;
-	struct disk_driver   *dd;
 };
 
 struct tlist {
@@ -53,6 +57,8 @@ struct tqueue {
 
 	/* optional tapdisk filter */
 	struct tfilter       *filter;
+
+	uint64_t              deferrals;
 };
 
 /*
@@ -77,17 +83,7 @@ int tapdisk_submit_all_tiocbs(struct tqueue *);
 int tapdisk_complete_tiocbs(struct tqueue *);
 int tapdisk_cancel_tiocbs(struct tqueue *);
 int tapdisk_cancel_all_tiocbs(struct tqueue *);
-void tapdisk_prep_tiocb(struct tiocb *, struct disk_driver *, int fd, int rw,
-			char *buf, size_t size, long long offset, void *data);
-
-/*
- * Convenience wrappers for request consumers (i.e., plugins)
- * NB: dd->td_state->queue must be properly initialized by request producer
- */
-void td_queue_tiocb(struct disk_driver *dd, struct tiocb *tiocb);
-void td_prep_read(struct tiocb *tiocb, struct disk_driver *dd, int fd,
-		  char *buf, size_t bytes, long long offset, void *data);
-void td_prep_write(struct tiocb *tiocb, struct disk_driver *dd, int fd,
-		   char *buf, size_t bytes, long long offset, void *data);
+void tapdisk_prep_tiocb(struct tiocb *, int, int, char *, size_t,
+			long long, td_queue_callback_t, void *);
 
 #endif

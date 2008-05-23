@@ -37,22 +37,24 @@
 #include <sys/stat.h>
 #include <sys/ioctl.h>
 #include <linux/fs.h>
-#include "tapdisk.h"
 
+#include "tapdisk.h"
+#include "tapdisk-driver.h"
+#include "tapdisk-interface.h"
 
 #define MAX_AIO_REQS         TAPDISK_DATA_REQUESTS
 
+struct tdaio_state;
+
 struct aio_request {
-	int                  id;
-	uint64_t             lsec;
-	int                  secs;
-	void                *private;
+	td_request_t         treq;
 	struct tiocb         tiocb;
-	td_callback_t        cb;
+	struct tdaio_state  *state;
 };
 
 struct tdaio_state {
 	int                  fd;
+	td_driver_t         *driver;
 
 	int                  aio_free_count;	
 	struct aio_request   aio_requests[MAX_AIO_REQS];
@@ -60,7 +62,7 @@ struct tdaio_state {
 };
 
 /*Get Image size, secsize*/
-static int get_image_info(struct td_state *s, int fd)
+static int tdaio_get_image_info(int fd, td_disk_info_t *info)
 {
 	int ret;
 	long size;
@@ -76,57 +78,59 @@ static int get_image_info(struct td_state *s, int fd)
 
 	if (S_ISBLK(stat.st_mode)) {
 		/*Accessing block device directly*/
-		s->size = 0;
-		if (ioctl(fd,BLKGETSIZE,&s->size)!=0) {
+		info->size = 0;
+		if (ioctl(fd,BLKGETSIZE,&info->size)!=0) {
 			DPRINTF("ERR: BLKGETSIZE failed, couldn't stat image");
 			return -EINVAL;
 		}
 
 		DPRINTF("Image size: \n\tpre sector_shift  [%llu]\n\tpost "
 			"sector_shift [%llu]\n",
-			(long long unsigned)(s->size << SECTOR_SHIFT),
-			(long long unsigned)s->size);
+			(long long unsigned)(info->size << SECTOR_SHIFT),
+			(long long unsigned)info->size);
 
 		/*Get the sector size*/
 #if defined(BLKSSZGET)
 		{
 			int arg;
-			s->sector_size = DEFAULT_SECTOR_SIZE;
-			ioctl(fd, BLKSSZGET, &s->sector_size);
+			info->sector_size = DEFAULT_SECTOR_SIZE;
+			ioctl(fd, BLKSSZGET, &info->sector_size);
 			
-			if (s->sector_size != DEFAULT_SECTOR_SIZE)
+			if (info->sector_size != DEFAULT_SECTOR_SIZE)
 				DPRINTF("Note: sector size is %ld (not %d)\n",
-					s->sector_size, DEFAULT_SECTOR_SIZE);
+					info->sector_size, DEFAULT_SECTOR_SIZE);
 		}
 #else
-		s->sector_size = DEFAULT_SECTOR_SIZE;
+		info->sector_size = DEFAULT_SECTOR_SIZE;
 #endif
 
 	} else {
 		/*Local file? try fstat instead*/
-		s->size = (stat.st_size >> SECTOR_SHIFT);
-		s->sector_size = DEFAULT_SECTOR_SIZE;
+		info->size = (stat.st_size >> SECTOR_SHIFT);
+		info->sector_size = DEFAULT_SECTOR_SIZE;
 		DPRINTF("Image size: \n\tpre sector_shift  [%llu]\n\tpost "
 			"sector_shift [%llu]\n",
-			(long long unsigned)(s->size << SECTOR_SHIFT),
-			(long long unsigned)s->size);
+			(long long unsigned)(info->size << SECTOR_SHIFT),
+			(long long unsigned)info->size);
 	}
 
-	if (s->size == 0) {		
-		s->size =((uint64_t) 16836057);
-		s->sector_size = DEFAULT_SECTOR_SIZE;
+	if (info->size == 0) {		
+		info->size =((uint64_t) 16836057);
+		info->sector_size = DEFAULT_SECTOR_SIZE;
 	}
-	s->info = 0;
+	info->info = 0;
 
 	return 0;
 }
 
 /* Open the disk file and initialize aio state. */
-int tdaio_open (struct disk_driver *dd, const char *name, td_flag_t flags)
+int tdaio_open(td_driver_t *driver, const char *name, td_flag_t flags)
 {
-	int i, fd, ret = 0, o_flags;
-	struct td_state    *s   = dd->td_state;
-	struct tdaio_state *prv = (struct tdaio_state *)dd->private;
+	int i, fd, ret, o_flags;
+	struct tdaio_state *prv;
+
+	ret = 0;
+	prv = (struct tdaio_state *)driver->data;
 
 	DPRINTF("block-aio open('%s')", name);
 
@@ -157,109 +161,114 @@ int tdaio_open (struct disk_driver *dd, const char *name, td_flag_t flags)
         	goto done;
         }
 
-        prv->fd = fd;
+	ret = tdaio_get_image_info(fd, &driver->info);
+	if (ret) {
+		close(fd);
+		goto done;
+	}
 
-	ret = get_image_info(s, fd);
+        prv->fd = fd;
 
 done:
 	return ret;	
 }
 
-int tdaio_queue_read(struct disk_driver *dd, uint64_t sector,
-		     int nb_sectors, char *buf, td_callback_t cb,
-		     int id, void *private)
+void tdaio_complete(void *arg, struct tiocb *tiocb, int err)
 {
-	struct   aio_request *aio;
-	struct   td_state    *s   = dd->td_state;
-	struct   tdaio_state *prv = (struct tdaio_state *)dd->private;
-	int      size    = nb_sectors * s->sector_size;
-	uint64_t offset  = sector * (uint64_t)s->sector_size;
+	struct aio_request *aio = (struct aio_request *)arg;
+	struct tdaio_state *prv = aio->state;
 
-	if (prv->aio_free_count == 0)
-		return -EBUSY;
-	aio = prv->aio_free_list[--prv->aio_free_count];
-
-	aio->cb      = cb;
-	aio->id      = id;
-	aio->lsec    = sector;
-	aio->secs    = nb_sectors;
-	aio->private = private;
-
-	td_prep_read(&aio->tiocb, dd, prv->fd, buf, size, offset, aio);
-	td_queue_tiocb(dd, &aio->tiocb);
-
-	return 0;
-}
-			
-int tdaio_queue_write(struct disk_driver *dd, uint64_t sector,
-		      int nb_sectors, char *buf, td_callback_t cb,
-		      int id, void *private)
-{
-	struct   aio_request *aio;
-	struct   td_state    *s   = dd->td_state;
-	struct   tdaio_state *prv = (struct tdaio_state *)dd->private;
-	int      size    = nb_sectors * s->sector_size;
-	uint64_t offset  = sector * (uint64_t)s->sector_size;
-
-	if (prv->aio_free_count == 0)
-		return -EBUSY;
-	aio = prv->aio_free_list[--prv->aio_free_count];
-
-	aio->cb      = cb;
-	aio->id      = id;
-	aio->lsec    = sector;
-	aio->secs    = nb_sectors;
-	aio->private = private;
-
-	td_prep_write(&aio->tiocb, dd, prv->fd, buf, size, offset, aio);
-	td_queue_tiocb(dd, &aio->tiocb);
-
-	return 0;
+	td_complete_request(aio->treq, err);
+	prv->aio_free_list[prv->aio_free_count++] = aio;
 }
 
-int tdaio_close(struct disk_driver *dd)
+void tdaio_queue_read(td_driver_t *driver, td_request_t treq)
 {
-	struct tdaio_state *prv = (struct tdaio_state *)dd->private;
+	int size;
+	uint64_t offset;
+	struct aio_request *aio;
+	struct tdaio_state *prv;
+
+	prv    = (struct tdaio_state *)driver->data;
+	size   = treq.secs * driver->info.sector_size;
+	offset = treq.sec  * (uint64_t)driver->info.sector_size;
+
+	if (prv->aio_free_count == 0)
+		goto fail;
+
+	aio        = prv->aio_free_list[--prv->aio_free_count];
+	aio->treq  = treq;
+	aio->state = prv;
+
+	td_prep_read(&aio->tiocb, prv->fd, treq.buf,
+		     size, offset, tdaio_complete, aio);
+	td_queue_tiocb(driver, &aio->tiocb);
+
+	return;
+
+fail:
+	td_complete_request(treq, -EBUSY);
+}
+
+void tdaio_queue_write(td_driver_t *driver, td_request_t treq)
+{
+	int size;
+	uint64_t offset;
+	struct aio_request *aio;
+	struct tdaio_state *prv;
+
+	prv     = (struct tdaio_state *)driver->data;
+	size    = treq.secs * driver->info.sector_size;
+	offset  = treq.sec  * (uint64_t)driver->info.sector_size;
+
+	if (prv->aio_free_count == 0)
+		goto fail;
+
+	aio        = prv->aio_free_list[--prv->aio_free_count];
+	aio->treq  = treq;
+	aio->state = prv;
+
+	td_prep_write(&aio->tiocb, prv->fd, treq.buf,
+		      size, offset, tdaio_complete, aio);
+	td_queue_tiocb(driver, &aio->tiocb);
+
+	return;
+
+fail:
+	td_complete_request(treq, -EBUSY);
+}
+
+int tdaio_close(td_driver_t *driver)
+{
+	struct tdaio_state *prv = (struct tdaio_state *)driver->data;
 	
 	close(prv->fd);
 
 	return 0;
 }
 
-int tdaio_complete(struct disk_driver *dd, struct tiocb *tiocb, int err)
-{
-	struct tdaio_state *prv = (struct tdaio_state *)dd->private;
-	struct aio_request *aio = tiocb->data;
-	struct iocb *io = &tiocb->iocb;
-
-	aio->cb(dd, err, aio->lsec, aio->secs, aio->id, aio->private);
-	prv->aio_free_list[prv->aio_free_count++] = aio;
-
-	return 0;
-}
-
-int tdaio_get_parent_id(struct disk_driver *dd, struct disk_id *id)
+int tdaio_get_parent_id(td_driver_t *driver, td_disk_id_t *id)
 {
 	return TD_NO_PARENT;
 }
 
-int tdaio_validate_parent(struct disk_driver *dd, 
-			  struct disk_driver *parent, td_flag_t flags)
+int tdaio_validate_parent(td_driver_t *driver,
+			  td_driver_t *pdriver, td_flag_t flags)
 {
 	return -EINVAL;
 }
 
 struct tap_disk tapdisk_aio = {
 	.disk_type          = "tapdisk_aio",
+	.flags              = 0,
 	.private_data_size  = sizeof(struct tdaio_state),
-	.private_iocbs      = 0,
 	.td_open            = tdaio_open,
 	.td_close           = tdaio_close,
+	.td_create          = NULL,
+	.td_snapshot        = NULL,
 	.td_queue_read      = tdaio_queue_read,
 	.td_queue_write     = tdaio_queue_write,
-	.td_complete        = tdaio_complete,
 	.td_get_parent_id   = tdaio_get_parent_id,
 	.td_validate_parent = tdaio_validate_parent,
-	.td_snapshot        = NULL,
-	.td_create          = NULL
+	.td_debug           = NULL,
 };
