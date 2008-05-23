@@ -128,12 +128,12 @@ init_update_ctx(struct vhd_update_ctx *ctx, char *file)
 		return err;
 	}
 
-	err = vhd_get_bat(&dd, &ctx->info);
+	err = _vhd_get_bat(&dd, &ctx->info);
 	if (err)
 		printf("failed to read VHD metadata: %d\n", err);
 	else {
-		vhd_get_header(&dd, &ctx->header);
-		vhd_get_footer(&dd, &ctx->footer);
+		_vhd_get_header(&dd, &ctx->header);
+		_vhd_get_footer(&dd, &ctx->footer);
 	}
 
 	close_disk_driver(&dd);
@@ -301,7 +301,7 @@ update_creator_version(struct vhd_update_ctx *ctx)
 	}
 
 	memcpy(buf, &ctx->footer, sizeof(struct hd_ftr));
-	((struct hd_ftr *)buf)->crtr_ver = VHD_VERSION_1_1;
+	((struct hd_ftr *)buf)->crtr_ver = VHD_VERSION(1, 1);
 	vhd_footer_out((struct hd_ftr *)buf);
 
 	err = atomicio(vwrite, fd, buf, sizeof(struct hd_ftr));
@@ -714,8 +714,9 @@ main(int argc, char **argv)
 	if (ctx.footer.type == HD_TYPE_FIXED)
 		goto out;
 
-	if (ctx.footer.crtr_ver != 0x00000001) {
-		if (ctx.footer.crtr_ver == 0x00010001 && vhd_disabled(&ctx)) {
+	if (ctx.footer.crtr_ver != VHD_VERSION(0, 1)) {
+		if (ctx.footer.crtr_ver == VHD_VERSION(1, 1) &&
+		    vhd_disabled(&ctx)) {
 			err = enable_vhd(&ctx);
 			if (err)
 				printf("failed to enable VHD: %d\n", err);

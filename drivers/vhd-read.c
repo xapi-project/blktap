@@ -443,7 +443,7 @@ vhd_print_headers(struct disk_driver *dd, struct vhd_info *info, int hex)
 {
 	struct hd_ftr footer;
 
-	vhd_get_footer(dd, &footer);
+	_vhd_get_footer(dd, &footer);
 	vhd_print_footer(&footer, hex);
 	printf("\n");
 
@@ -453,7 +453,7 @@ vhd_print_headers(struct disk_driver *dd, struct vhd_info *info, int hex)
 		struct dd_hdr header;
 		struct dd_batmap_hdr map_header;
 
-		err = vhd_get_header(dd, &header);
+		err = _vhd_get_header(dd, &header);
 		if (err) {
 			printf("failed to get header\n");
 			return err;
@@ -733,7 +733,7 @@ vhd_print_data(struct disk_driver *dd, struct vhd_info *info,
 }
 
 int
-vhd_read(struct disk_driver *dd, int argc, char *argv[])
+_vhd_read(struct disk_driver *dd, int argc, char *argv[])
 {
 	struct vhd_info info;
 	int c, err, headers, hex;
@@ -792,7 +792,7 @@ vhd_read(struct disk_driver *dd, int argc, char *argv[])
 	if (optind != argc - 1)
 		goto usage;
 
-	err = vhd_get_bat(dd, &info);
+	err = _vhd_get_bat(dd, &info);
 	if (err) {
 		printf("Failed to get info for %s\n", dd->name);
 		goto out;

@@ -39,8 +39,8 @@ TAP-OBJS  += tapdisk-driver.o
 TAP-OBJS  += tapdisk-interface.o
 
 BLK-OBJS  := block-aio.o
-BLK-OBJS  += block-vhd.o
 BLK-OBJS  += block-ram.o
+BLK-OBJS  += block-vhd.o
 BLK-OBJS  += lock.o
 BLK-OBJS  += atomicio.o
 BLK-OBJS  += io-optimize.o

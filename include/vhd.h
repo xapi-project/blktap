@@ -10,7 +10,7 @@
 #include <asm/types.h>
 #include <uuid/uuid.h>
 #include <inttypes.h>
-#include "disktypes.h"
+#include "../drivers/disktypes.h"
 
 typedef __u32 u32;
 typedef __u64 u64;
@@ -63,10 +63,14 @@ static const char HD_COOKIE[9]  =  "conectix";
 #define HD_CR_OS_WINDOWS   0x5769326B /* (Wi2k) */
 #define HD_CR_OS_MACINTOSH 0x4D616320 /* (Mac ) */
 
-#define VHD_VERSION_0_1     0x00000001 /* little endian bitmaps */
-#define VHD_VERSION_1_1     0x00010001
-
-#define VHD_CURRENT_VERSION VHD_VERSION_1_1
+/*
+ * version 0.1:  little endian bitmaps
+ * version 1.1:  big endian bitmaps; batmap
+ * version 1.2:  libvhd
+ * version 1.3:  batmap version bump to 1.2
+ */
+#define VHD_VERSION(major, minor)  (((major) << 16) | ((minor) & 0x0000FFFF))
+#define VHD_CURRENT_VERSION        VHD_VERSION(1, 3)
 
 /* Disk geometry accessor macros. */
 /* Geometry is a triple of (cylinders (2 bytes), tracks (1 byte), and 
@@ -155,8 +159,11 @@ struct dd_batmap_hdr {
 
 static const char VHD_BATMAP_COOKIE[9] = "tdbatmap";
 
-#define VHD_BATMAP_VERSION_1_1      0x00010001
-#define VHD_BATMAP_CURRENT_VERSION  VHD_BATMAP_VERSION_1_1
+/*
+ * version 1.1: signed char checksum
+ */
+#define VHD_BATMAP_VERSION(major, minor)  (((major) << 16) | ((minor) & 0x0000FFFF))
+#define VHD_BATMAP_CURRENT_VERSION        VHD_BATMAP_VERSION(1, 2)
 
 /* Layout of a dynamic disk:
  *
@@ -200,27 +207,23 @@ struct vhd_info {
 	uint32_t *bat;
 	uint64_t  secs;
 	int       bitmap_format;
-	long      td_fields[TD_FIELD_INVALID];
+  	long      td_fields[TD_FIELD_INVALID];
 };
 uint32_t vhd_footer_checksum(struct hd_ftr *footer);
 uint32_t vhd_header_checksum(struct dd_hdr *header);
 uint32_t vhd_batmap_checksum(struct dd_batmap_hdr *header, char *map);
-void vhd_get_footer(struct td_driver_handle *, struct hd_ftr *footer);
-int vhd_get_header(struct td_driver_handle *, struct dd_hdr *header);
+void _vhd_get_footer(struct td_driver_handle *, struct hd_ftr *footer);
+int _vhd_get_header(struct td_driver_handle *, struct dd_hdr *header);
 int vhd_get_batmap_header(struct td_driver_handle *, struct dd_batmap_hdr *hdr);
 int vhd_get_info(struct td_driver_handle *, struct vhd_info *info);
-int vhd_get_bat(struct td_driver_handle *, struct vhd_info *info);
+int _vhd_get_bat(struct td_driver_handle *, struct vhd_info *info);
 int vhd_set_field(struct td_driver_handle *, td_field_t field, long value);
 int vhd_coalesce(char *name);
 int vhd_fill(char *name);
 //int vhd_repair(struct disk_driver *dd);
 //int vhd_read(struct disk_driver *dd, int argc, char *argv[]);
 
-#define UTF_16   "UTF-16"
-#define UTF_16LE "UTF-16LE"
-#define UTF_16BE "UTF-16BE"
-
-char *macx_decode_location(char *in, char *out, int len);
-char *w2u_decode_location(char *in, char *out, int len, char *utf_type);
+//char *macx_decode_location(char *in, char *out, int len);
+//char *w2u_decode_location(char *in, char *out, int len, char *utf_type);
 
 #endif

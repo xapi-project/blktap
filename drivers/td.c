@@ -301,7 +301,7 @@ get_non_zero_image(char **image, int type, char *backing)
 			return err;
 		}
 
-		err = vhd_get_bat(&dd, &info);
+		err = _vhd_get_bat(&dd, &info);
 		if (err) {
 			free_disk_driver(&dd);
 			free(pid.name);
@@ -740,7 +740,7 @@ td_read(int type, int argc, char *argv[])
 		goto usage;
 	}
 
-	err = vhd_read(&dd, argc, argv);
+	err = _vhd_read(&dd, argc, argv);
 	free_disk_driver(&dd);
 
 	return err;

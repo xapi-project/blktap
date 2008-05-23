@@ -1356,7 +1356,7 @@ __vhd_open(td_driver_t *driver, const char *name, vhd_flag_t flags)
 	return ret;
 }
 
-int
+static int
 vhd_open(td_driver_t *driver, const char *name, td_flag_t flags)
 {
 	vhd_flag_t vhd_flags = 0;
@@ -1380,7 +1380,7 @@ vhd_open(td_driver_t *driver, const char *name, td_flag_t flags)
 	return __vhd_open(driver, name, vhd_flags);
 }
 
-int 
+static int
 vhd_close(td_driver_t *driver)
 {
 	int i;
@@ -1702,6 +1702,10 @@ macx_decode_location(char *in, char *out, int len)
 	return strdup(name);
 }
 
+#define UTF_16   "UTF-16"
+#define UTF_16LE "UTF-16LE"
+#define UTF_16BE "UTF-16BE"
+
 char *
 w2u_decode_location(char *in, char *out, int len, char *utf_type)
 {
@@ -1876,7 +1880,7 @@ vhd_get_info(td_driver_t *driver, struct vhd_info *info)
 }
 
 int
-vhd_get_bat(td_driver_t *driver, struct vhd_info *info)
+_vhd_get_bat(td_driver_t *driver, struct vhd_info *info)
 {
 	int err;
 	struct vhd_state *s = (struct vhd_state *)driver->data;
@@ -1907,7 +1911,7 @@ vhd_get_bat(td_driver_t *driver, struct vhd_info *info)
 }
 
 int
-vhd_get_header(td_driver_t *driver, struct dd_hdr *header)
+_vhd_get_header(td_driver_t *driver, struct dd_hdr *header)
 {
 	struct vhd_state *s = (struct vhd_state *)driver->data;
 	if (s->ftr.type == HD_TYPE_DYNAMIC || s->ftr.type == HD_TYPE_DIFF) {
@@ -1920,7 +1924,7 @@ vhd_get_header(td_driver_t *driver, struct dd_hdr *header)
 }
 
 void
-vhd_get_footer(td_driver_t *driver, struct hd_ftr *footer)
+_vhd_get_footer(td_driver_t *driver, struct hd_ftr *footer)
 {
 	struct vhd_state *s = (struct vhd_state *)driver->data;
 	memcpy(footer, &s->ftr, sizeof(struct hd_ftr));
@@ -2425,7 +2429,7 @@ out:
 }
 
 int
-vhd_create(const char *name, uint64_t total_size, td_flag_t td_flags)
+_vhd_create(const char *name, uint64_t total_size, td_flag_t td_flags)
 {
 	vhd_flag_t vhd_flags = 0;
 
@@ -2436,7 +2440,7 @@ vhd_create(const char *name, uint64_t total_size, td_flag_t td_flags)
 }
 
 int
-vhd_snapshot(td_disk_id_t *parent_id, char *child_name, td_flag_t td_flags)
+_vhd_snapshot(td_disk_id_t *parent_id, char *child_name, td_flag_t td_flags)
 {
 	vhd_flag_t vhd_flags = VHD_FLAG_CR_SPARSE;
 
@@ -3940,8 +3944,8 @@ struct tap_disk tapdisk_vhd = {
 	.private_data_size  = sizeof(struct vhd_state),
 	.td_open            = vhd_open,
 	.td_close           = vhd_close,
-	.td_create          = vhd_create,
-	.td_snapshot        = vhd_snapshot,
+	.td_create          = _vhd_create,
+	.td_snapshot        = _vhd_snapshot,
 	.td_queue_read      = vhd_queue_read,
 	.td_queue_write     = vhd_queue_write,
 	.td_get_parent_id   = vhd_get_parent_id,

@@ -40,21 +40,26 @@ clean:
 PROPRIETARY_SOURCE :=
 PROPRIETARY_SOURCE += mk/Makefile
 PROPRIETARY_SOURCE += mk/blktap.spec.in
+PROPRIETARY_SOURCE += include/relative-path.h
+PROPRIETARY_SOURCE += include/libvhd.h
+PROPRIETARY_SOURCE += include/vhd.h
 PROPRIETARY_SOURCE += drivers/block-vhd.c
 PROPRIETARY_SOURCE += drivers/io-optimize.c
 PROPRIETARY_SOURCE += drivers/td.c
-PROPRIETARY_SOURCE += drivers/vhd.h
 PROPRIETARY_SOURCE += drivers/vhd-coalesce.c
 PROPRIETARY_SOURCE += drivers/vhd-fill.c
 PROPRIETARY_SOURCE += drivers/vhd-read.c
 PROPRIETARY_SOURCE += drivers/tapdisk-queue.c
 PROPRIETARY_SOURCE += drivers/tapdisk-filter.c
 PROPRIETARY_SOURCE += drivers/vhd-update.c
-PROPRIETARY_SOURCE += drivers/relative-path.h
 PROPRIETARY_SOURCE += drivers/relative-path.c
+PROPRIETARY_SOURCE += vhd/lib/libvhd.c
+PROPRIETARY_SOURCE += vhd/lib/relative-path.c
 
-PROPRIETARY_C += $(filter drivers/%.c,$(PROPRIETARY_SOURCE))
-SOURCES += $(patsubst drivers/%.c,$(RPM_SOURCESDIR)/%.o,$(PROPRIETARY_C))
+PROPRIETARY_C_DRIVERS += $(filter drivers/%.c,$(PROPRIETARY_SOURCE))
+PROPRIETARY_C_LIBVHD += $(filter vhd/lib/%.c,$(PROPRIETARY_SOURCE))
+SOURCES += $(patsubst drivers/%.c,$(RPM_SOURCESDIR)/drivers/%.o,$(PROPRIETARY_C_DRIVERS))
+SOURCES += $(patsubst vhd/lib/%.c,$(RPM_SOURCESDIR)/vhd/lib/%.o,$(PROPRIETARY_C_LIBVHD))
 
 HG_EXCLUDE := $(PROPRIETARY_SOURCE:%=-X "%")
 
@@ -69,9 +74,9 @@ $(MY_OBJ_DIR)/proprietary.code.check.stamp:
 	touch $@
 
 $(RPM_SOURCESDIR)/%.o:
-	rm -f $(REPO)/drivers/.$*.o.d $(REPO)/drivers/$*.o
-	make -C $(REPO)/drivers/ USE_SYSTEM_LIBRARIES=y $*.o
-	mv $(REPO)/drivers/$*.o $(RPM_SOURCESDIR)/$*.o
+	rm -f $(REPO)/.$*.o.d $(REPO)/$*.o
+	make -C $(REPO)/$(dir $*) USE_SYSTEM_LIBRARIES=y $(notdir $*.o)
+	mv $(REPO)/$*.o $(RPM_SOURCESDIR)/$(notdir $*.o)
 
 $(RPM_SOURCESDIR)/blktap-$(BLKTAP_VERSION).tar.bz2: $(MY_OBJ_DIR)/proprietary.code.check.stamp \
 	                                            $(RPM_SOURCESDIR)/.dirstamp $(REPO)

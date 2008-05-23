@@ -7,6 +7,7 @@ SUBDIRS-y :=
 SUBDIRS-y += include
 SUBDIRS-y += drivers
 SUBDIRS-y += daemon
+SUBDIRS-y += vhd
 
 .PHONY: all
 all: build
