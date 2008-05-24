@@ -89,7 +89,7 @@ $(MY_OBJ_DIR)/proprietary.code.check.stamp:
 	touch $@
 
 $(RPM_SOURCESDIR)/%.o:
-	rm -f $(REPO)/.$*.o.d $(REPO)/$*.o
+	rm -f $(REPO)/$(dir $*).$(notdir $*).o.d $(REPO)/$*.o
 	make -C $(REPO)/$(dir $*) USE_SYSTEM_LIBRARIES=y $(notdir $*.o)
 	mv $(REPO)/$*.o $(RPM_SOURCESDIR)/$(notdir $*.o)
 
