@@ -226,7 +226,9 @@ tapdisk_ipc_read(td_ipc_t *ipc)
 		return 0; /* response written asynchronously */
 
 	case TAPDISK_MESSAGE_RESUME:
-		tapdisk_vbd_resume(vbd);
+		tapdisk_vbd_resume(vbd,
+				   message.u.params.path,
+				   message.drivertype);
 		return 0; /* response written asynchronously */
 
 	case TAPDISK_MESSAGE_CLOSE:

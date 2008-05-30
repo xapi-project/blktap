@@ -221,6 +221,7 @@ typedef struct msg_lock {
 
 #define TAPDISK_STORAGE_TYPE_NFS       1
 #define TAPDISK_STORAGE_TYPE_EXT       2
+#define TAPDISK_STORAGE_TYPE_LVM       3
 #define TAPDISK_STORAGE_TYPE_DEFAULT   TAPDISK_STORAGE_TYPE_EXT
 
 /* Abitrary values, must match the underlying driver... */

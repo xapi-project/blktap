@@ -60,22 +60,31 @@ int
 vhd_util_snapshot(int argc, char **argv)
 {
 	int c, err;
+	int fixedsize, rawparent;
 	char *name, *pname, *backing;
 
 	name  = NULL;
 	pname = NULL;
+	fixedsize = 0;
+	rawparent = 0;
 
 	if (!argc || !argv)
 		goto usage;
 
 	optind = 0;
-	while ((c = getopt(argc, argv, "n:p:h")) != -1) {
+	while ((c = getopt(argc, argv, "n:p:bmh")) != -1) {
 		switch (c) {
 		case 'n':
 			name = optarg;
 			break;
 		case 'p':
 			pname = optarg;
+			break;
+		case 'b':
+			fixedsize = 1;
+			break;
+		case 'm':
+			rawparent = 1;
 			break;
 		case 'h':
 		default:
@@ -86,13 +95,25 @@ vhd_util_snapshot(int argc, char **argv)
 	if (!name || !pname || optind != argc)
 		goto usage;
 
-	err = vhd_util_find_snapshot_target(pname, &backing);
-	if (err)
-		return err;
+	if (rawparent)
+		backing = strdup(pname);
+	else {
+		err = vhd_util_find_snapshot_target(pname, &backing);
+		if (err)
+			return err;
+	}
 
-	return vhd_snapshot(name, backing);
+	if (fixedsize && rawparent)
+		return vhd_snapshot_fixed_raw(name, backing);
+	else if (fixedsize)
+		return vhd_snapshot_fixed(name, backing);
+	else if (rawparent)
+		return vhd_snapshot_raw(name, backing);
+	else
+		return vhd_snapshot(name, backing);
 
 usage:
-	printf("options: <-n name> <-p parent name> [-h help]\n");
+	printf("options: <-n name> <-p parent name> [-b file_is_fixed_size] "
+			"[-m parent_is_raw] [-h help]\n");
 	return -EINVAL;
 }

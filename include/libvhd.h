@@ -102,7 +102,7 @@ vhd_type_dynamic(vhd_context_t *ctx)
 static inline int
 vhd_creator_tapdisk(vhd_context_t *ctx)
 {
-	return !strncmp(ctx->footer.crtr_app, "tap", 4);
+	return !strncmp(ctx->footer.crtr_app, "tap", 3);
 }
 
 static inline size_t
@@ -149,7 +149,11 @@ int vhd_validate_platform_code(uint32_t code);
 int vhd_open(vhd_context_t *, const char *file, int flags);
 void vhd_close(vhd_context_t *);
 int vhd_create(const char *name, uint64_t bytes, int type);
+int vhd_create_fixed(const char *name, uint64_t bytes, int type);
 int vhd_snapshot(const char *snapshot, const char *parent);
+int vhd_snapshot_fixed(const char *snapshot, const char *parent);
+int vhd_snapshot_raw(const char *snapshot, const char *parent);
+int vhd_snapshot_fixed_raw(const char *snapshot, const char *parent);
 
 off64_t vhd_position(vhd_context_t *);
 int vhd_seek(vhd_context_t *, off64_t, int);
@@ -176,6 +180,9 @@ int vhd_has_batmap(vhd_context_t *);
 int vhd_batmap_test(vhd_context_t *, vhd_batmap_t *, uint32_t);
 void vhd_batmap_set(vhd_context_t *, vhd_batmap_t *, uint32_t);
 void vhd_batmap_clear(vhd_context_t *, vhd_batmap_t *, uint32_t);
+int vhd_file_size_fixed(vhd_context_t *);
+int vhd_get_phys_size(vhd_context_t *, off64_t *);
+int vhd_set_phys_size(vhd_context_t *, off64_t);
 
 int vhd_bitmap_test(vhd_context_t *, char *, uint32_t);
 void vhd_bitmap_set(vhd_context_t *, char *, uint32_t);
@@ -188,6 +195,7 @@ int vhd_parent_locator_write_at(vhd_context_t *, const char *,
 				off64_t, uint32_t, vhd_parent_locator_t *);
 
 int vhd_header_decode_parent(vhd_context_t *, vhd_header_t *, char **);
+int vhd_change_parent(vhd_context_t *child, char *parent_path);
 
 int vhd_read_footer(vhd_context_t *, vhd_footer_t *);
 int vhd_read_footer_at(vhd_context_t *, vhd_footer_t *, off64_t);

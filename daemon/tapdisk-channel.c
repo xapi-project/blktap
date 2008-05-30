@@ -48,6 +48,8 @@
 #define TAPDISK_CHANNEL_WAIT_CLOSE    6
 #define TAPDISK_CHANNEL_CLOSED        7
 
+static int tapdisk_channel_parse_params(tapdisk_channel_t *);
+
 static int
 tapdisk_channel_check_uuid(tapdisk_channel_t *channel)
 {
@@ -550,15 +552,20 @@ fail:
 static int
 tapdisk_channel_send_resume_request(tapdisk_channel_t *channel)
 {
+	int len;
 	tapdisk_message_t message;
 
 	memset(&message, 0, sizeof(tapdisk_message_t));
 
+	len = strlen(channel->vdi_path);
+
 	DPRINTF("resuming %s\n", channel->path);
 
-	message.type       = TAPDISK_MESSAGE_RESUME;
-	message.drivertype = channel->drivertype;
-	message.cookie     = channel->cookie;
+	message.type              = TAPDISK_MESSAGE_RESUME;
+	message.drivertype        = channel->drivertype;
+	message.cookie            = channel->cookie;
+	message.u.params.path_len = len;
+	strncpy(message.u.params.path, channel->vdi_path, len);
 
 	return tapdisk_channel_send_message(channel, &message, 2);
 }
@@ -645,8 +652,29 @@ tapdisk_channel_pause_event(struct xs_handle *xsh,
 
 		err = tapdisk_channel_send_pause_request(channel);
 
-	} else if (xs_exists(xsh, channel->pause_done_str))
+	} else if (xs_exists(xsh, channel->pause_done_str)) {
+		free(channel->params);
+		channel->params   = NULL;
+		channel->vdi_path = NULL;
+
+		err = xs_gather(channel->xsh, channel->path,
+				"params", NULL, &channel->params, NULL);
+		if (err) {
+			EPRINTF("failure re-reading params: %d\n", err);
+			channel->params = NULL;
+			goto out;
+		}
+
+		err = tapdisk_channel_parse_params(channel);
+		if (err)
+			goto out;
+
 		err = tapdisk_channel_send_resume_request(channel);
+		if (err)
+			goto out;
+	}
+
+	err = 0;
 
 out:
 	if (err)
@@ -979,6 +1007,8 @@ tapdisk_channel_get_storage_type(tapdisk_channel_t *channel)
 		channel->storage = TAPDISK_STORAGE_TYPE_NFS;
 	else if (!strcmp(stype, "ext"))
 		channel->storage = TAPDISK_STORAGE_TYPE_EXT;
+	else if (!strcmp(stype, "lvm"))
+		channel->storage = TAPDISK_STORAGE_TYPE_LVM;
 
 out:
 	free(path);
@@ -1011,8 +1041,11 @@ tapdisk_channel_get_busid(tapdisk_channel_t *channel)
 static int
 tapdisk_channel_parse_params(tapdisk_channel_t *channel)
 {
-	int i, size;
+	int i, size, err;
+	unsigned int len;
 	char *ptr, *path, handle[10];
+	char *vdi_type;
+	char *vtype;
 
 	path = channel->params;
 	size = sizeof(dtypes) / sizeof(disk_info_t *);
@@ -1028,6 +1061,23 @@ tapdisk_channel_parse_params(tapdisk_channel_t *channel)
 	memcpy(handle, path, (ptr - path));
 	ptr  = handle + (ptr - path);
 	*ptr = '\0';
+
+	err = asprintf(&vdi_type, "%s/sm-data/vdi-type", channel->path);
+	if (err == -1)
+		goto fail;
+
+	if (xs_exists(channel->xsh, vdi_type)) {
+		vtype = xs_read(channel->xsh, XBT_NULL, vdi_type, &len);
+		free(vdi_type);
+		if (!vtype)
+			goto fail;
+		if (len >= sizeof(handle) - 1) {
+			free(vtype);
+			goto fail;
+		}
+		sprintf(handle, "%s", vtype);
+		free(vtype);
+	}
 
 	for (i = 0; i < size; i++) {
 		if (strncmp(handle, dtypes[i]->handle, (ptr - path)))

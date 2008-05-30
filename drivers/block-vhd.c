@@ -475,7 +475,7 @@ vhd_initialize_dynamic_disk(struct vhd_state *s)
 static int
 vhd_check_version(struct vhd_state *s)
 {
-	if (strncmp(s->vhd.footer.crtr_app, "tap", 4))
+	if (strncmp(s->vhd.footer.crtr_app, "tap", 3))
 		return 0;
 
 	if (s->vhd.footer.crtr_ver > VHD_CURRENT_VERSION) {
@@ -548,6 +548,12 @@ __vhd_open(td_driver_t *driver, const char *name, vhd_flag_t flags)
 		return err;
 	}
 
+	if (vhd_file_size_fixed(&s->vhd)) {
+		driver->storage = TAPDISK_STORAGE_TYPE_LVM;
+		if (test_vhd_flag(s->flags, VHD_FLAG_OPEN_PREALLOCATE))
+			clear_vhd_flag(s->flags, VHD_FLAG_OPEN_PREALLOCATE);
+	}
+
 	err = vhd_check_version(s);
 	if (err)
 		goto fail;
@@ -611,8 +617,9 @@ _vhd_open(td_driver_t *driver, const char *name, td_flag_t flags)
 			      VHD_FLAG_OPEN_RDONLY |
 			      VHD_FLAG_OPEN_NO_CACHE);
 
-	/* pre-allocate for all but NFS storage */
-	if (driver->storage != TAPDISK_STORAGE_TYPE_NFS)
+	/* pre-allocate for all but NFS and LVM storage */
+	if (driver->storage != TAPDISK_STORAGE_TYPE_NFS &&
+	    driver->storage != TAPDISK_STORAGE_TYPE_LVM)
 		vhd_flags |= VHD_FLAG_OPEN_PREALLOCATE;
 
 	return __vhd_open(driver, name, vhd_flags);
@@ -669,7 +676,12 @@ vhd_validate_parent(td_driver_t *child_driver,
 {
 	struct stat stats;
 	struct vhd_state *child  = (struct vhd_state *)child_driver->data;
-	struct vhd_state *parent = (struct vhd_state *)parent_driver->data;
+	struct vhd_state *parent;
+
+	if (parent_driver->type != DISK_TYPE_VHD)
+		return 0;
+
+	parent = (struct vhd_state *)parent_driver->data;
 
 	/* 
 	 * This check removed because of cases like:
@@ -720,9 +732,12 @@ vhd_get_parent_id(td_driver_t *driver, td_disk_id_t *id)
 	if (err)
 		return err;
 
-	id->drivertype = DISK_TYPE_VHD;
 	id->name       = parent;
-
+	id->drivertype = DISK_TYPE_VHD;
+	if (uuid_is_null(s->vhd.header.prt_uuid)) {
+		DPRINTF("VHD: parent is RAW\n");
+		id->drivertype = DISK_TYPE_AIO;
+	}
 	return 0;
 }
 

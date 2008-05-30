@@ -768,14 +768,24 @@ tapdisk_vbd_pause(td_vbd_t *vbd)
 }
 
 int
-tapdisk_vbd_resume(td_vbd_t *vbd)
+tapdisk_vbd_resume(td_vbd_t *vbd, const char *path, uint16_t drivertype)
 {
 	int i, err;
 
 	if (!td_flag_test(vbd->state, TD_VBD_PAUSED)) {
+		EPRINTF("pause request for unpaused vbd %s\n", vbd->name);
 		tapdisk_ipc_write(&vbd->ipc, TAPDISK_MESSAGE_ERROR);
 		return -EINVAL;
 	}
+
+	free(vbd->name);
+	vbd->name = strdup(path);
+	if (!vbd->name) {
+		EPRINTF("copying new vbd %s name failed\n", path);
+		tapdisk_ipc_write(&vbd->ipc, TAPDISK_MESSAGE_ERROR);
+		return -EINVAL;
+	}
+	vbd->type = drivertype;
 
 	for (i = 0; i < TD_VBD_EIO_RETRIES; i++) {
 		err = __tapdisk_vbd_open_vdi(vbd);

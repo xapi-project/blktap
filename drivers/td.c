@@ -169,12 +169,15 @@ td_create(int type, int argc, char *argv[])
 	ssize_t mb;
 	uint64_t size;
 	char *name, *buf;
-	int c, i, fd, sparse = 1;
+	int c, i, fd, sparse = 1, fixedsize = 0;
 
-	while ((c = getopt(argc, argv, "hr")) != -1) {
+	while ((c = getopt(argc, argv, "hrb")) != -1) {
 		switch(c) {
 		case 'r':
 			sparse = 0;
+			break;
+		case 'b':
+			fixedsize = 1;
 			break;
 		default:
 			fprintf(stderr, "Unknown option %c\n", (char)c);
@@ -198,7 +201,7 @@ td_create(int type, int argc, char *argv[])
 
 	if (type == TD_TYPE_VHD) {
 		int cargc = 0;
-		char sbuf[32], *cargv[6];
+		char sbuf[32], *cargv[10];
 
 		size >>= 20;
 
@@ -211,6 +214,8 @@ td_create(int type, int argc, char *argv[])
 		cargv[cargc++] = sbuf;
 		if (!sparse)
 			cargv[cargc++] = "-r";
+		if (fixedsize)
+			cargv[cargc++] = "-b";
 
 		return vhd_util_create(cargc, cargv);
 	}
@@ -247,17 +252,19 @@ td_create(int type, int argc, char *argv[])
 
  usage:
 	fprintf(stderr, "usage: td-util create %s [-h help] [-r reserve] "
-		"<SIZE(MB)> <FILENAME>\n", td_disk_types[type]);
+		"[-b file_is_fixed_size] <SIZE(MB)> <FILENAME>\n",
+		td_disk_types[type]);
 	return EINVAL;
 }
 
 int
 td_snapshot(int type, int argc, char *argv[])
 {
-	char *cargv[5];
+	char *cargv[10];
 	int c, err, cargc;
 	struct stat stats;
 	char *name, *backing;
+	int fixedsize = 0, rawparent = 0;
 
 	if (type != TD_TYPE_VHD) {
 		fprintf(stderr, "Cannot create snapshot of %s image type\n",
@@ -265,10 +272,16 @@ td_snapshot(int type, int argc, char *argv[])
 		return EINVAL;
 	}
 
-	while ((c = getopt(argc, argv, "h")) != -1) {
+	while ((c = getopt(argc, argv, "hbm")) != -1) {
 		switch(c) {
 		default:
 			fprintf(stderr, "Unknown option %c\n", (char)c);
+		case 'b':
+			fixedsize = 1;
+			break;
+		case 'm':
+			rawparent = 1;
+			break;
 		case 'h':
 			goto usage;
 		}
@@ -298,10 +311,15 @@ td_snapshot(int type, int argc, char *argv[])
 	cargv[cargc++] = name;
 	cargv[cargc++] = "-p";
 	cargv[cargc++] = backing;
+	if (fixedsize)
+		cargv[cargc++] = "-b";
+	if (rawparent)
+		cargv[cargc++] = "-m";
 	return vhd_util_snapshot(cargc, cargv);
 
  usage:
 	fprintf(stderr, "usage: td-util snapshot %s [-h help] "
+			"[-b file_is_fixed_size] [-m parent_raw] "
 		"<FILENAME> <BACKING_FILENAME>\n", td_disk_types[type]);
 	return EINVAL;
 }
@@ -359,8 +377,11 @@ td_query(int type, int argc, char *argv[])
 {
 	char *name;
 	int c, size = 0, parent = 0, fields = 0, err = 0;
+	int physize = 0, setparent = 0;
+	off64_t newsize = 0, currsize;
+	char *newparent = NULL;
 
-	while ((c = getopt(argc, argv, "hvpf")) != -1) {
+	while ((c = getopt(argc, argv, "hvpfsr:t:")) != -1) {
 		switch(c) {
 		case 'v':
 			size = 1;
@@ -370,6 +391,21 @@ td_query(int type, int argc, char *argv[])
 			break;
 		case 'f':
 			fields = 1;
+			break;
+		case 's':
+			physize = 1;
+			break;
+		case 'r':
+			errno = 0;
+			newsize = strtoll(optarg, NULL, 10);
+			if (errno) {
+				fprintf(stderr, "Invalid size '%s'\n", optarg);
+				goto usage;
+			}
+			break;
+		case 't':
+			setparent = 1;
+			newparent = optarg;
 			break;
 		default:
 		case 'h':
@@ -390,7 +426,10 @@ td_query(int type, int argc, char *argv[])
 	if (type == TD_TYPE_VHD) {
 		vhd_context_t vhd;
 
-		err = vhd_open(&vhd, name, O_RDONLY | O_DIRECT);
+		if (newsize || setparent) 
+			err = vhd_open(&vhd, name, O_RDWR | O_DIRECT);
+		else
+			err = vhd_open(&vhd, name, O_RDONLY | O_DIRECT);
 		if (err) {
 			printf("failed opening %s: %d\n", name, err);
 			return err;
@@ -398,6 +437,26 @@ td_query(int type, int argc, char *argv[])
 
 		if (size)
 			printf("%llu\n", vhd.footer.curr_size >> 20);
+
+		if (physize) {
+			err = vhd_get_phys_size(&vhd, &currsize);
+			if (err)
+				printf("failed to get physical size: %d\n", err);
+			else
+				printf("%llu\n", currsize);
+		}
+
+		if (newsize) {
+			err = vhd_set_phys_size(&vhd, newsize);
+			if (err)
+				printf("failed to change physical size to %llu\n", newsize);
+		}
+
+		if (setparent) {
+			err = vhd_change_parent(&vhd, newparent);
+			if (err)
+				printf("failed to set parent to %s\n", newparent);
+		}
 
 		if (parent) {
 			if (vhd.footer.type != HD_TYPE_DIFF)
@@ -462,7 +521,8 @@ td_query(int type, int argc, char *argv[])
 
  usage:
 	fprintf(stderr, "usage: td-util query %s [-h help] [-v virtsize] "
-		"[-p parent] [-f fields] <FILENAME>\n", td_disk_types[type]);
+		"[-p parent] [-f fields] [-s physize] [-r SIZE set physize] "
+		"[-t PATH change parent] <FILENAME>\n", td_disk_types[type]);
 	return EINVAL;
 }
 

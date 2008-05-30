@@ -171,7 +171,7 @@ int tapdisk_vbd_retry_needed(td_vbd_t *);
 int tapdisk_vbd_quiesce_queue(td_vbd_t *);
 int tapdisk_vbd_start_queue(td_vbd_t *);
 int tapdisk_vbd_pause(td_vbd_t *);
-int tapdisk_vbd_resume(td_vbd_t *);
+int tapdisk_vbd_resume(td_vbd_t *, const char *, uint16_t);
 int tapdisk_vbd_kick(td_vbd_t *);
 void tapdisk_vbd_check_state(td_vbd_t *);
 void tapdisk_vbd_check_progress(td_vbd_t *);

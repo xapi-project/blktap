@@ -19,7 +19,7 @@
 #include "libvhd.h"
 #include "relative-path.h"
 
-static int libvhd_dbg = 0;
+static int libvhd_dbg = 1;
 
 void
 libvhd_set_log_level(int level)
@@ -1123,6 +1123,14 @@ vhd_has_batmap(vhd_context_t *ctx)
 	return (!vhd_validate_batmap_header(&ctx->batmap));
 }
 
+/* is the size of the file this VHD lives in fixed? (e.g. a raw disk partition)
+ */
+int
+vhd_file_size_fixed(vhd_context_t *ctx)
+{
+	return (ctx->footer.crtr_app[3] == 'B');
+}
+
 static char *
 vhd_find_parent(char *child, char *parent)
 {
@@ -1596,11 +1604,22 @@ out:
 		loc->res         = 0;
 		loc->code        = code;
 		loc->data_len    = len;
-		loc->data_space  = size;
+		loc->data_space  = size; /* write number of bytes instead of number
+									of sectors to be compatible with MSFT,
+									even though this goes against the specs */
 		loc->data_offset = off;
 	}
 
 	return err;
+}
+
+static int
+vhd_footer_offset_at_eof(vhd_context_t *ctx, off64_t *off)
+{
+	if ((*off = lseek64(ctx->fd, 0, SEEK_END)) == (off64_t)-1)
+		return errno;
+	*off -= sizeof(vhd_footer_t);
+	return 0;
 }
 
 int
@@ -1682,13 +1701,9 @@ vhd_read_block(vhd_context_t *ctx, uint32_t block, char **bufp)
 	off  = (blk + ctx->bm_secs) << VHD_SECTOR_SHIFT;
 	size = ctx->spb << VHD_SECTOR_SHIFT;
 
-	err  = vhd_seek(ctx, 0, SEEK_END);
+	err  = vhd_footer_offset_at_eof(ctx, &end);
 	if (err)
 		return err;
-
-	end  = vhd_position(ctx);
-	if (end == (off64_t)-1)
-		return -errno;
 
 	err  = posix_memalign((void **)&buf, VHD_SECTOR_SIZE, size);
 	if (err) {
@@ -1696,7 +1711,6 @@ vhd_read_block(vhd_context_t *ctx, uint32_t block, char **bufp)
 		goto fail;
 	}
 
-	end -= sizeof(vhd_footer_t);
 	if (end < off + ctx->header.block_size) {
 		size = end - off;
 		memset(buf + size, 0, ctx->header.block_size - size);
@@ -1763,7 +1777,10 @@ vhd_write_footer(vhd_context_t *ctx, vhd_footer_t *footer)
 	int err;
 	off64_t off;
 
-	err = vhd_end_of_data(ctx, &off);
+	if (vhd_file_size_fixed(ctx))
+		err = vhd_footer_offset_at_eof(ctx, &off);
+	else
+		err = vhd_end_of_data(ctx, &off);
 	if (err)
 		return err;
 
@@ -2180,7 +2197,7 @@ vhd_close(vhd_context_t *ctx)
 }
 
 static inline void
-vhd_initialize_footer(vhd_context_t *ctx, int type, uint64_t size)
+vhd_initialize_footer(vhd_context_t *ctx, int type, uint64_t size, int fixed)
 {
 	memset(&ctx->footer, 0, sizeof(vhd_footer_t));
 	memcpy(ctx->footer.cookie, HD_COOKIE, sizeof(ctx->footer.cookie));
@@ -2196,6 +2213,8 @@ vhd_initialize_footer(vhd_context_t *ctx, int type, uint64_t size)
 	ctx->footer.saved        = 0;
 	ctx->footer.data_offset  = 0xFFFFFFFFFFFFFFFF;
 	strcpy(ctx->footer.crtr_app, "tap");
+	if (fixed)
+		ctx->footer.crtr_app[3] = 'B'; // better ideas?
 	uuid_generate(ctx->footer.uuid);
 }
 
@@ -2247,7 +2266,23 @@ out:
 }
 
 static int
-vhd_initialize_header(vhd_context_t *ctx, const char *parent_path)
+get_file_size(const char *name)
+{
+	int fd;
+	off64_t end;
+
+	fd = open(name, O_LARGEFILE | O_RDONLY);
+	if (fd == -1) {
+		VHDLOG("unable to open '%s': %d\n", name, errno);
+		return -errno;
+	}
+	end = lseek64(fd, 0, SEEK_END);
+	close(fd); 
+	return end;
+}
+
+static int
+vhd_initialize_header(vhd_context_t *ctx, const char *parent_path, int raw)
 {
 	int err;
 	struct stat stats;
@@ -2276,19 +2311,29 @@ vhd_initialize_header(vhd_context_t *ctx, const char *parent_path)
 	if (err == -1)
 		return -errno;
 
-	err = vhd_open(&parent, parent_path, O_RDONLY | O_DIRECT);
-	if (err)
-		return err;
+	if (raw) {
+		off64_t size = get_file_size(parent_path);
+		ctx->footer.orig_size    = size;
+		ctx->footer.curr_size    = size;
+		ctx->footer.geometry     = vhd_chs(size);
+		ctx->header.max_bat_size = 
+			(size + VHD_BLOCK_SIZE - 1) >> VHD_BLOCK_SHIFT;
+		ctx->header.prt_ts       = vhd_time(stats.st_mtime);
+	}
+	else {
+		err = vhd_open(&parent, parent_path, O_RDONLY | O_DIRECT);
+		if (err)
+			return err;
 
-	ctx->footer.orig_size    = parent.footer.curr_size;
-	ctx->footer.curr_size    = parent.footer.curr_size;
-	ctx->footer.geometry     = parent.footer.geometry;
-	ctx->header.max_bat_size = (parent.footer.curr_size +
-				    VHD_BLOCK_SIZE - 1) >> VHD_BLOCK_SHIFT;
-	ctx->header.prt_ts       = vhd_time(stats.st_mtime);
-	uuid_copy(ctx->header.prt_uuid, parent.footer.uuid);
-
-	vhd_close(&parent);
+		ctx->footer.orig_size    = parent.footer.curr_size;
+		ctx->footer.curr_size    = parent.footer.curr_size;
+		ctx->footer.geometry     = parent.footer.geometry;
+		ctx->header.max_bat_size = (parent.footer.curr_size +
+				VHD_BLOCK_SIZE - 1) >> VHD_BLOCK_SHIFT;
+		ctx->header.prt_ts       = vhd_time(stats.st_mtime);
+		uuid_copy(ctx->header.prt_uuid, parent.footer.uuid);
+		vhd_close(&parent);
+	}
 
 	return vhd_initialize_header_parent_name(ctx, parent_path);
 }
@@ -2305,18 +2350,12 @@ vhd_write_parent_locators(vhd_context_t *ctx, const char *parent)
 	if (ctx->footer.type != HD_TYPE_DIFF)
 		return -EINVAL;
 
+	off = ctx->batmap.header.batmap_offset + 
+		(ctx->batmap.header.batmap_size << VHD_SECTOR_SHIFT);
+	if (off & (VHD_SECTOR_SIZE - 1))
+		off = vhd_bytes_padded(off);
+
 	for (i = 0; i < 3; i++) {
-		err = vhd_seek(ctx, 0, SEEK_END);
-		if (err)
-			return err;
-
-		off = vhd_position(ctx);
-		if (off == (off64_t)-1)
-			return -errno;
-
-		if (off & (VHD_SECTOR_SIZE - 1))
-			off = vhd_bytes_padded(off);
-
 		switch (i) {
 		case 0:
 			code = PLAT_CODE_MACX;
@@ -2333,8 +2372,42 @@ vhd_write_parent_locators(vhd_context_t *ctx, const char *parent)
 						  code, ctx->header.loc + i);
 		if (err)
 			return err;
+
+		off += vhd_parent_locator_size(ctx->header.loc + i);
 	}
 
+	return 0;
+}
+
+int
+vhd_change_parent(vhd_context_t *child, char *parent_path)
+{
+	int i, err;
+	struct stat stats;
+	vhd_context_t parent;
+
+	err = stat(parent_path, &stats);
+	if (err == -1)
+		return -errno;
+
+	err = vhd_open(&parent, parent_path, O_RDONLY | O_DIRECT);
+	if (err)
+		return err;
+
+	uuid_copy(child->header.prt_uuid, parent.footer.uuid);
+	vhd_initialize_header_parent_name(child, parent_path);
+	child->header.prt_ts = vhd_time(stats.st_mtime);
+
+	vhd_close(&parent);
+
+	for (i = 0; i < vhd_parent_locator_count(child); i++) {
+		off64_t off = child->header.loc[i].data_offset;
+		int code = child->header.loc[i].code;
+		vhd_parent_locator_write_at(child, parent_path, off, code,
+				child->header.loc + i);
+	}
+	vhd_write_header(child, &child->header);
+	vhd_write_footer(child, &child->footer);
 	return 0;
 }
 
@@ -2438,8 +2511,37 @@ out:
 	return err;
 }
 
+int 
+vhd_get_phys_size(vhd_context_t *ctx, off64_t *size)
+{
+	int err;
+
+	if ((err = vhd_end_of_data(ctx, size)))
+		return err;
+	*size += sizeof(vhd_footer_t);
+	return 0;
+}
+
+int 
+vhd_set_phys_size(vhd_context_t *ctx, off64_t size)
+{
+	off64_t phys_size;
+	int err;
+
+	err = vhd_get_phys_size(ctx, &phys_size);
+	if (err)
+		return err;
+	if (size < phys_size) {
+		// would result in data loss
+		VHDLOG("ERROR: new size (%llu) < phys size (%llu)\n", size, phys_size);
+		return -EINVAL;
+	}
+	return vhd_write_footer_at(ctx, &ctx->footer, size - sizeof(vhd_footer_t));
+}
+
 static int
-__vhd_create(const char *name, const char *parent, uint64_t bytes, int type)
+__vhd_create(const char *name, const char *parent, uint64_t bytes, int type,
+		int file_size_fixed, int parent_raw)
 {
 	int err;
 	off64_t off;
@@ -2479,14 +2581,14 @@ __vhd_create(const char *name, const char *parent, uint64_t bytes, int type)
 		goto out;
 	}
 
-	vhd_initialize_footer(&ctx, type, size);
+	vhd_initialize_footer(&ctx, type, size, file_size_fixed);
 
 	if (type == HD_TYPE_FIXED) {
 		err = vhd_initialize_fixed_disk(&ctx);
 		if (err)
 			goto out;
 	} else {
-		err = vhd_initialize_header(&ctx, parent);
+		err = vhd_initialize_header(&ctx, parent, parent_raw);
 		if (err)
 			goto out;
 
@@ -2528,6 +2630,9 @@ __vhd_create(const char *name, const char *parent, uint64_t bytes, int type)
 		goto out;
 	}
 
+	if (file_size_fixed)
+		off -= sizeof(vhd_footer_t);
+
 	err = vhd_write_footer_at(&ctx, &ctx.footer, off);
 	if (err)
 		goto out;
@@ -2544,13 +2649,37 @@ out:
 int
 vhd_create(const char *name, uint64_t bytes, int type)
 {
-	return __vhd_create(name, NULL, bytes, type);
+	return __vhd_create(name, NULL, bytes, type, 0, 0);
+}
+
+int
+vhd_create_fixed(const char *name, uint64_t bytes, int type)
+{
+	return __vhd_create(name, NULL, bytes, type, 1, 0);
 }
 
 int
 vhd_snapshot(const char *name, const char *parent)
 {
-	return __vhd_create(name, parent, 0, HD_TYPE_DIFF);
+	return __vhd_create(name, parent, 0, HD_TYPE_DIFF, 0, 0);
+}
+
+int
+vhd_snapshot_fixed(const char *name, const char *parent)
+{
+	return __vhd_create(name, parent, 0, HD_TYPE_DIFF, 1, 0);
+}
+	
+int
+vhd_snapshot_raw(const char *name, const char *parent)
+{
+	return __vhd_create(name, parent, 0, HD_TYPE_DIFF, 0, 1);
+}
+
+int
+vhd_snapshot_fixed_raw(const char *name, const char *parent)
+{
+	return __vhd_create(name, parent, 0, HD_TYPE_DIFF, 1, 1);
 }
 
 static int
