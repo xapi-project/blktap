@@ -19,7 +19,7 @@
 #include "libvhd.h"
 #include "relative-path.h"
 
-static int libvhd_dbg = 1;
+static int libvhd_dbg = 0;
 
 void
 libvhd_set_log_level(int level)
