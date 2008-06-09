@@ -397,6 +397,7 @@ main(int argc, char *argv[])
 		return -errno;
 	}
 
+#define CORE_DUMP
 #if defined(CORE_DUMP)
 	err = setrlimit(RLIMIT_CORE, &rlim);
 	if (err == -1)
