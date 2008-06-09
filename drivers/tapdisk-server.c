@@ -30,7 +30,9 @@
 #include <errno.h>
 #include <unistd.h>
 #include <stdlib.h>
+#include <sys/mman.h>
 #include <sys/signal.h>
+#include <sys/resource.h>
 
 #define TAPDISK
 #include "tapdisk-server.h"
@@ -369,6 +371,7 @@ main(int argc, char *argv[])
 {
 	int err;
 	char buf[128];
+	struct rlimit rlim;
 
 	if (argc != 3)
 		usage();
@@ -379,15 +382,25 @@ main(int argc, char *argv[])
 	openlog(buf, LOG_CONS | LOG_ODELAY, LOG_DAEMON);
 	open_tlog("/tmp/tapdisk.log", (64 << 10), TLOG_WARN, 0);
 
-#if defined(CORE_DUMP)
-#include <sys/resource.h>
-	{
-		struct rlimit rlim;
-		rlim.rlim_cur = RLIM_INFINITY;
-		rlim.rlim_max = RLIM_INFINITY;
-		if (setrlimit(RLIMIT_CORE, &rlim) < 0)
-			EPRINTF("setrlimit failed: %d\n", errno);
+	rlim.rlim_cur = RLIM_INFINITY;
+	rlim.rlim_max = RLIM_INFINITY;
+
+	err = setrlimit(RLIMIT_MEMLOCK, &rlim);
+	if (err == -1) {
+		EPRINTF("RLIMIT_MEMLOCK failed: %d\n", errno);
+		return -errno;
 	}
+
+	err = mlockall(MCL_CURRENT | MCL_FUTURE);
+	if (err == -1) {
+		EPRINTF("mlockall failed: %d\n", errno);
+		return -errno;
+	}
+
+#if defined(CORE_DUMP)
+	err = setrlimit(RLIMIT_CORE, &rlim);
+	if (err == -1)
+		EPRINTF("RLIMIT_CORE failed: %d\n", errno);
 #endif
 
 	err = tapdisk_server_initialize(argv[1], argv[2]);
