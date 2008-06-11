@@ -13,7 +13,7 @@ LIBS         += -lxenctrl
 
 ifneq ($(USE_SYSTEM_LIBRARIES),y)
 INCLUDES     += -I $(XEN_LIBXC) -I $(XEN_XENSTORE)
-LIBS         += -L$(XEN_XENSTORE)
+LIBS         += -L $(XEN_LIBXC) -L $(XEN_XENSTORE)
 endif
 
 OBJS         := tapdisk-dispatch-common.o
