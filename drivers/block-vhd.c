@@ -529,7 +529,8 @@ __vhd_open(td_driver_t *driver, const char *name, vhd_flag_t flags)
 	struct vhd_state *s;
 
         DBG(TLOG_INFO, "vhd_open: %s\n", name);
-	libvhd_set_log_level(1);
+	if (test_vhd_flag(flags, VHD_FLAG_OPEN_STRICT))
+		libvhd_set_log_level(1);
 
 	s = (struct vhd_state *)driver->data;
 	memset(s, 0, sizeof(struct vhd_state));
@@ -543,9 +544,12 @@ __vhd_open(td_driver_t *driver, const char *name, vhd_flag_t flags)
 
 	err = vhd_open(&s->vhd, name, o_flags);
 	if (err) {
-		if (!test_vhd_flag(flags, VHD_FLAG_OPEN_QUIET))
-			DPRINTF("Unable to open [%s] (%d)!\n", name, -errno);
-		return err;
+		libvhd_set_log_level(1);
+		err = vhd_open(&s->vhd, name, o_flags);
+		if (err) {
+			EPRINTF("Unable to open [%s] (%d)!\n", name, err);
+			return err;
+		}
 	}
 
 	if (vhd_file_size_fixed(&s->vhd)) {
