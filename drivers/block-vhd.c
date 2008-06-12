@@ -485,7 +485,7 @@ vhd_check_version(struct vhd_state *s)
 	return 0;
 }
 
-static inline void
+static void
 vhd_log_open(struct vhd_state *s)
 {
 	char buf[5];
@@ -617,6 +617,28 @@ _vhd_open(td_driver_t *driver, const char *name, td_flag_t flags)
 	return __vhd_open(driver, name, vhd_flags);
 }
 
+static void
+vhd_log_close(struct vhd_state *s)
+{
+	uint32_t i, allocated, full;
+
+	if (test_vhd_flag(s->flags, VHD_FLAG_OPEN_QUIET))
+		return;
+
+	allocated = 0;
+	full      = 0;
+
+	for (i = 0; i < s->bat.bat.entries; i++) {
+		if (bat_entry(s, i) != DD_BLK_UNUSED)
+			allocated++;
+		if (test_batmap(s, i))
+			full++;
+	}
+
+	DPRINTF("%s: b: %u, a: %u, f: %u, n: %llu\n",
+		s->vhd.file, s->bat.bat.entries, allocated, full, s->next_db);
+}
+
 static int
 _vhd_close(td_driver_t *driver)
 {
@@ -653,6 +675,7 @@ _vhd_close(td_driver_t *driver)
 	}
 
  free:
+	vhd_log_close(s);
 	vhd_free_bat(s);
 	vhd_free_bitmap_cache(s);
 	vhd_close(&s->vhd);

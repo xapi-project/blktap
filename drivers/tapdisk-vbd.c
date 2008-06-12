@@ -662,11 +662,54 @@ tapdisk_vbd_open(td_vbd_t *vbd, char *name, uint16_t type,
 	return 0;
 }
 
+static void
+tapdisk_vbd_queue_count(td_vbd_t *vbd, int *new,
+			int *pending, int *failed, int *completed)
+{
+	int n, p, f, c;
+	td_vbd_request_t *vreq, *tvreq;
+
+	n = 0;
+	p = 0;
+	f = 0;
+	c = 0;
+
+	tapdisk_vbd_for_each_request(vreq, tvreq, &vbd->new_requests)
+		n++;
+
+	tapdisk_vbd_for_each_request(vreq, tvreq, &vbd->pending_requests)
+		p++;
+
+	tapdisk_vbd_for_each_request(vreq, tvreq, &vbd->failed_requests)
+		f++;
+
+	tapdisk_vbd_for_each_request(vreq, tvreq, &vbd->completed_requests)
+		c++;
+
+	*new       = n;
+	*pending   = p;
+	*failed    = f;
+	*completed = c;
+}
+
 static int
 tapdisk_vbd_shutdown(td_vbd_t *vbd)
 {
+	int new, pending, failed, completed;
+
 	if (!list_empty(&vbd->pending_requests))
 		return -EAGAIN;
+
+	tapdisk_vbd_queue_count(vbd, &new, &pending, &failed, &completed);
+
+	DPRINTF("%s: state: 0x%08x, new: 0x%02x, pending: 0x%02x, "
+		"failed: 0x%02x, completed: 0x%02x\n", 
+		vbd->name, vbd->state, new, pending, failed, completed);
+	DPRINTF("last activity: %010ld.%06ld, errors: 0x%04llx, "
+		"retries: 0x%04llx, received: 0x%08llx, returned: 0x%08llx, "
+		"kicked: 0x%08llx\n",vbd->ts.tv_sec, vbd->ts.tv_usec,
+		vbd->errors, vbd->retries, vbd->received, vbd->returned,
+		vbd->kicked);
 
 	tapdisk_vbd_close_vdi(vbd);
 	tapdisk_ipc_write(&vbd->ipc, TAPDISK_MESSAGE_CLOSE_RSP);
@@ -716,24 +759,9 @@ void
 tapdisk_vbd_debug(td_vbd_t *vbd)
 {
 	td_image_t *image, *tmp;
-	td_vbd_request_t *vreq, *tvreq;
 	int new, pending, failed, completed;
 
-	new = 0;
-	tapdisk_vbd_for_each_request(vreq, tvreq, &vbd->new_requests)
-		new++;
-
-	pending = 0;
-	tapdisk_vbd_for_each_request(vreq, tvreq, &vbd->pending_requests)
-		pending++;
-
-	failed = 0;
-	tapdisk_vbd_for_each_request(vreq, tvreq, &vbd->failed_requests)
-		failed++;
-
-	completed = 0;
-	tapdisk_vbd_for_each_request(vreq, tvreq, &vbd->completed_requests)
-		completed++;
+	tapdisk_vbd_queue_count(vbd, &new, &pending, &failed, &completed);
 
 	DBG(TLOG_WARN, "%s: state: 0x%08x, new: 0x%02x, pending: 0x%02x, "
 	    "failed: 0x%02x, completed: 0x%02x, last activity: %010ld.%06ld, "
@@ -1048,7 +1076,7 @@ tapdisk_vbd_check_queue(td_vbd_t *vbd)
 	if (!tapdisk_vbd_queue_ready(vbd))
 		return -EAGAIN;
 
-	if (vbd->received == 1) {
+	if (!vbd->reopened) {
 		if (td_flag_test(vbd->state, TD_VBD_LOCKING)) {
 			err = tapdisk_vbd_lock(vbd);
 			if (err)
@@ -1060,8 +1088,10 @@ tapdisk_vbd_check_queue(td_vbd_t *vbd)
 
 		if (tapdisk_vbd_close_and_reopen_image(vbd, image))
 			EPRINTF("reopening disks failed\n");
-		else
+		else {
 			DPRINTF("reopening disks succeeded\n");
+			vbd->reopened = 1;
+		}
 	}
 
 	return 0;
