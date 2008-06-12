@@ -222,10 +222,6 @@ struct vhd_state {
 
 	td_driver_t              *driver;
 
-	/* used for block preallocation */
-	char                     *zeros;
-	int                       zsize;
-
 	uint64_t                  queued;
 	uint64_t                  completed;
 	uint64_t                  returned;
@@ -240,6 +236,15 @@ struct vhd_state {
 #define clear_vhd_flag(word, flag) ((word) &= ~(flag))
 
 #define bat_entry(s, blk)          ((s)->bat.bat.bat[(blk)])
+
+static char static_zeros[5 << 10];
+static char *
+get_static_zeros(int size, int align)
+{
+	char *z = (char *)(((unsigned long)static_zeros + (align - 1)) & ~(align - 1));
+	ASSERT((sizeof(static_zeros) - (z - static_zeros)) >= size);
+	return z;
+}
 
 static void vhd_complete(void *, struct tiocb *, int);
 static void finish_data_transaction(struct vhd_state *, struct vhd_bitmap *);
@@ -324,8 +329,6 @@ vhd_free_bat(struct vhd_state *s)
 	free(s->bat.bat.bat);
 	free(s->bat.batmap.map);
 	free(s->bat.bat_buf);
-	if (s->zeros)
-		munmap(s->zeros, s->zsize);
 	memset(&s->bat, 0, sizeof(struct vhd_bat));
 }
 
@@ -354,15 +357,6 @@ vhd_initialize_bat(struct vhd_state *s)
 			EPRINTF("%s: reading batmap: %d\n", s->vhd.file, err);
 			goto fail;
 		}
-	}
-
-	s->zsize      = (s->spb << VHD_SECTOR_SHIFT) + psize;
-	s->zeros      = mmap(0, s->zsize, PROT_READ,
-			     MAP_SHARED | MAP_ANONYMOUS, -1, 0);
-	if (s->zeros == MAP_FAILED) {
-		s->zeros = NULL;
-		err = -errno;
-		goto fail;
 	}
 
 	err = posix_memalign((void **)&s->bat.bat_buf,
@@ -1231,7 +1225,8 @@ schedule_zero_bm_write(struct vhd_state *s,
 	req->op        = VHD_OP_ZERO_BM_WRITE;
 	req->treq.sec  = s->bat.pbw_blk * s->spb;
 	req->treq.secs = (s->bat.pbw_offset - lb_end) + s->bm_secs;
-	req->treq.buf  = s->zeros;
+	req->treq.buf  = get_static_zeros(req->treq.secs << VHD_SECTOR_SHIFT,
+					  VHD_SECTOR_SIZE);
 	req->next      = NULL;
 
 	DBG(TLOG_DBG, "blk: 0x%04x, writing zero bitmap at 0x%08"PRIx64"\n",
@@ -1277,8 +1272,33 @@ update_bat(struct vhd_state *s, uint32_t blk)
 }
 
 static int
+get_zeros(char **buf, uint64_t size)
+{
+	char *p;
+
+	*buf = NULL;
+
+	p = mmap(0, size, PROT_READ, MAP_SHARED | MAP_ANONYMOUS, -1, 0);
+	if (p == MAP_FAILED) {
+		ERR(errno, "mmap failed\n");
+		return -errno;
+	}
+
+	*buf = p;
+	return 0;
+}
+
+static void
+free_zeros(char *buf, uint64_t size)
+{
+	if (buf && buf != MAP_FAILED)
+		munmap(buf, size);
+}
+
+static int
 allocate_block(struct vhd_state *s, uint32_t blk)
 {
+	char *zeros;
 	int err, gap;
 	uint64_t offset, size;
 	struct vhd_bitmap *bm;
@@ -1313,13 +1333,14 @@ allocate_block(struct vhd_state *s, uint32_t blk)
 	}
 
 	size = ((u64)(s->spb + s->bm_secs + gap)) << VHD_SECTOR_SHIFT;
-	if (size > s->zsize) {
-		DPRINTF("ERROR: size: %" PRIx64 ", zsize: %x, gap: %d\n",
-			size, s->zsize, gap);
-		size = s->zsize;
-	}
+	err  = get_zeros(&zeros, size);
+	if (err)
+		return err;
 
-	if ((err = write(s->vhd.fd, s->zeros, size)) != size) {
+	err = write(s->vhd.fd, zeros, size);
+	free_zeros(zeros, size);
+
+	if (err != size) {
 		err = (err == -1 ? -errno : -EIO);
 		ERR(err, "write failed");
 		return err;
