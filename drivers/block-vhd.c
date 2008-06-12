@@ -740,7 +740,7 @@ vhd_get_parent_id(td_driver_t *driver, td_disk_id_t *id)
 	id->name       = parent;
 	id->drivertype = DISK_TYPE_VHD;
 	if (uuid_is_null(s->vhd.header.prt_uuid)) {
-		DPRINTF("VHD: parent is RAW\n");
+		DPRINTF("VHD: parent is raw\n");
 		id->drivertype = DISK_TYPE_AIO;
 	}
 	return 0;

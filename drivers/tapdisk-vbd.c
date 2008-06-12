@@ -28,6 +28,7 @@
 #include <stdio.h>
 #include <errno.h>
 #include <fcntl.h>
+#include <regex.h>
 #include <unistd.h>
 #include <stdlib.h>
 #include <sys/mman.h>
@@ -300,6 +301,115 @@ fail:
 	return err;
 }
 
+/*
+ * LVHD hack: 
+ * raw volumes are named /dev/<sr-vg-name>-<sr-uuid>/LV-<sr-uuid>
+ * vhd volumes are named /dev/<sr-vg-name>-<sr-uuid>/VHD-<sr-uuid>
+ *
+ * a live snapshot of a raw volume will result in the writeable volume's
+ * name changing from the raw to vhd format, but this change will not be
+ * reflected by xenstore.  hence this mess.
+ */
+static int
+tapdisk_vbd_check_file(td_vbd_t *vbd)
+{
+	int i, err;
+	regex_t re;
+	size_t len, max;
+	regmatch_t matches[4];
+	char *new, *src, *dst, error[256];
+
+	err = access(vbd->name, F_OK);
+	if (!err)
+		return 0;
+
+#define HEX   "[A-Za-z0-9]"
+#define UUID  HEX"\\{8\\}-"HEX"\\{4\\}-"HEX"\\{4\\}-"HEX"\\{4\\}-"HEX"\\{12\\}"
+#define VG    "VG_"HEX"\\+"
+#define TYPE  "\\(LV\\|VHD\\)"
+#define RE    "\\(/dev/"VG"-"UUID"/\\)"TYPE"\\(-"UUID"\\)"
+
+	err = regcomp(&re, RE, 0);
+	if (err)
+		goto regerr;
+
+#undef HEX
+#undef UUID
+#undef VG
+#undef TYPE
+#undef RE
+
+	err = regexec(&re, vbd->name, 4, matches, 0);
+	if (err)
+		goto regerr;
+
+	max = strlen("VHD") + 1;
+	for (i = 1; i < 4; i++) {
+		if (matches[i].rm_so == -1 || matches[i].rm_eo == -1) {
+			EPRINTF("%s: failed to tokenize name\n", vbd->name);
+			err = -EINVAL;
+			goto out;
+		}
+
+		max += matches[i].rm_eo - matches[i].rm_so;
+	}
+
+	new = malloc(max);
+	if (!new) {
+		EPRINTF("%s: failed to allocate new name\n", vbd->name);
+		err = -ENOMEM;
+		goto out;
+	}
+
+	src = new;
+	for (i = 1; i < 4; i++) {
+		dst = vbd->name + matches[i].rm_so;
+		len = matches[i].rm_eo - matches[i].rm_so;
+
+		if (i == 2) {
+			if (memcmp(dst, "LV", len)) {
+				EPRINTF("%s: bad name format\n", vbd->name);
+				free(new);
+				err = -EINVAL;
+				goto out;
+			}
+
+			src += sprintf(src, "VHD");
+			continue;
+		}
+
+		memcpy(src, dst, len + 1);
+		src += len;
+	}
+
+	new[max - 1] = '\0';
+	err = access(new, F_OK);
+	if (err == -1) {
+		EPRINTF("neither %s nor %s accessible\n",
+			vbd->name, new);
+		err = -errno;
+		free(new);
+		goto out;
+	}
+
+	DPRINTF("couldn't find %s, trying %s\n", vbd->name, new);
+
+	err = 0;
+	free(vbd->name);
+	vbd->name = new;
+	vbd->type = DISK_TYPE_VHD;
+
+out:
+	regfree(&re);
+	return err;
+
+regerr:
+	regerror(err, &re, error, sizeof(error));
+	EPRINTF("%s: regex failed: %s\n", vbd->name, error);
+	err = -EINVAL;
+	goto out;
+}
+
 static int
 __tapdisk_vbd_open_vdi(td_vbd_t *vbd)
 {
@@ -309,6 +419,10 @@ __tapdisk_vbd_open_vdi(td_vbd_t *vbd)
 	td_disk_id_t id;
 	td_image_t *image, *tmp;
 	struct tfilter *filter = NULL;
+
+	err = tapdisk_vbd_check_file(vbd);
+	if (err)
+		return err;
 
 	flags = vbd->flags & ~TD_OPEN_SHAREABLE;
 	file  = vbd->name;

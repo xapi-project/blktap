@@ -13,12 +13,13 @@
 #include "libvhd.h"
 
 static int
-vhd_util_find_snapshot_target(const char *name, char **result)
+vhd_util_find_snapshot_target(const char *name, char **result, int *parent_raw)
 {
 	int i, err;
 	char *target;
 	vhd_context_t vhd;
 
+	*parent_raw = 0;
 	*result = NULL;
 	target  = strdup(name);
 
@@ -43,6 +44,10 @@ vhd_util_find_snapshot_target(const char *name, char **result)
 		if (err)
 			goto out;
 
+		if (uuid_is_null(vhd.header.prt_uuid))
+			*parent_raw = 1;
+			goto out;
+
 		vhd_close(&vhd);
 	}
 
@@ -59,7 +64,7 @@ out:
 int
 vhd_util_snapshot(int argc, char **argv)
 {
-	int c, err;
+	int c, err, prt_raw;
 	char *name, *pname, *backing;
 	vhd_flag_creat_t flags;
 
@@ -96,11 +101,12 @@ vhd_util_snapshot(int argc, char **argv)
 
 	if (vhd_flag_test(flags, VHD_FLAG_CREAT_PARENT_RAW)) {
 		backing = strdup(pname);
-	}
-	else {
-		err = vhd_util_find_snapshot_target(pname, &backing);
+	} else {
+		err = vhd_util_find_snapshot_target(pname, &backing, &prt_raw);
 		if (err)
 			return err;
+		if (prt_raw)
+			vhd_flag_set(flags, VHD_FLAG_CREAT_PARENT_RAW);
 	}
 
 	return vhd_snapshot(name, backing, flags);
