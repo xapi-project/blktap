@@ -1123,7 +1123,8 @@ vhd_has_batmap(vhd_context_t *ctx)
 	return (!vhd_validate_batmap_header(&ctx->batmap));
 }
 
-/* is the size of the file this VHD lives in fixed? (e.g. a raw disk partition)
+/* 
+ * is the size of the file this VHD lives in fixed? (e.g. a raw disk partition)
  */
 int
 vhd_file_size_fixed(vhd_context_t *ctx)
@@ -1604,9 +1605,12 @@ out:
 		loc->res         = 0;
 		loc->code        = code;
 		loc->data_len    = len;
-		loc->data_space  = size; /* write number of bytes instead of number
-									of sectors to be compatible with MSFT,
-									even though this goes against the specs */
+		/*
+		 * write number of bytes ('size') instead of number of sectors
+		 * into loc->data_space to be compatible with MSFT, even though
+		 * this goes against the specs
+		 */
+		loc->data_space  = size; 
 		loc->data_offset = off;
 	}
 
@@ -1616,9 +1620,10 @@ out:
 static int
 vhd_footer_offset_at_eof(vhd_context_t *ctx, off64_t *off)
 {
-	if ((*off = lseek64(ctx->fd, 0, SEEK_END)) == (off64_t)-1)
+	int err;
+	if ((err = vhd_seek(ctx, 0, SEEK_END)))
 		return errno;
-	*off -= sizeof(vhd_footer_t);
+	*off = vhd_position(ctx) - sizeof(vhd_footer_t);
 	return 0;
 }
 
@@ -2533,15 +2538,17 @@ vhd_set_phys_size(vhd_context_t *ctx, off64_t size)
 		return err;
 	if (size < phys_size) {
 		// would result in data loss
-		VHDLOG("ERROR: new size (%llu) < phys size (%llu)\n", size, phys_size);
+		VHDLOG("ERROR: new size (%llu) < phys size (%llu)\n", 
+				size, phys_size);
 		return -EINVAL;
 	}
-	return vhd_write_footer_at(ctx, &ctx->footer, size - sizeof(vhd_footer_t));
+	return vhd_write_footer_at(ctx, &ctx->footer, 
+			size - sizeof(vhd_footer_t));
 }
 
 static int
 __vhd_create(const char *name, const char *parent, uint64_t bytes, int type,
-		int file_size_fixed, int parent_raw)
+		vhd_flag_creat_t flags)
 {
 	int err;
 	off64_t off;
@@ -2581,14 +2588,16 @@ __vhd_create(const char *name, const char *parent, uint64_t bytes, int type,
 		goto out;
 	}
 
-	vhd_initialize_footer(&ctx, type, size, file_size_fixed);
+	vhd_initialize_footer(&ctx, type, size, 
+			vhd_flag_test(flags, VHD_FLAG_CREAT_FILE_SIZE_FIXED));
 
 	if (type == HD_TYPE_FIXED) {
 		err = vhd_initialize_fixed_disk(&ctx);
 		if (err)
 			goto out;
 	} else {
-		err = vhd_initialize_header(&ctx, parent, parent_raw);
+		err = vhd_initialize_header(&ctx, parent, vhd_flag_test(flags,
+					VHD_FLAG_CREAT_PARENT_RAW));
 		if (err)
 			goto out;
 
@@ -2630,7 +2639,7 @@ __vhd_create(const char *name, const char *parent, uint64_t bytes, int type,
 		goto out;
 	}
 
-	if (file_size_fixed)
+	if (vhd_flag_test(flags, VHD_FLAG_CREAT_FILE_SIZE_FIXED))
 		off -= sizeof(vhd_footer_t);
 
 	err = vhd_write_footer_at(&ctx, &ctx.footer, off);
@@ -2647,39 +2656,15 @@ out:
 }
 
 int
-vhd_create(const char *name, uint64_t bytes, int type)
+vhd_create(const char *name, uint64_t bytes, int type, vhd_flag_creat_t flags)
 {
-	return __vhd_create(name, NULL, bytes, type, 0, 0);
+	return __vhd_create(name, NULL, bytes, type, flags);
 }
 
 int
-vhd_create_fixed(const char *name, uint64_t bytes, int type)
+vhd_snapshot(const char *name, const char *parent, vhd_flag_creat_t flags)
 {
-	return __vhd_create(name, NULL, bytes, type, 1, 0);
-}
-
-int
-vhd_snapshot(const char *name, const char *parent)
-{
-	return __vhd_create(name, parent, 0, HD_TYPE_DIFF, 0, 0);
-}
-
-int
-vhd_snapshot_fixed(const char *name, const char *parent)
-{
-	return __vhd_create(name, parent, 0, HD_TYPE_DIFF, 1, 0);
-}
-	
-int
-vhd_snapshot_raw(const char *name, const char *parent)
-{
-	return __vhd_create(name, parent, 0, HD_TYPE_DIFF, 0, 1);
-}
-
-int
-vhd_snapshot_fixed_raw(const char *name, const char *parent)
-{
-	return __vhd_create(name, parent, 0, HD_TYPE_DIFF, 1, 1);
+	return __vhd_create(name, parent, 0, HD_TYPE_DIFF, flags);
 }
 
 static int

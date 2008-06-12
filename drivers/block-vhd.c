@@ -552,12 +552,6 @@ __vhd_open(td_driver_t *driver, const char *name, vhd_flag_t flags)
 		}
 	}
 
-	if (vhd_file_size_fixed(&s->vhd)) {
-		driver->storage = TAPDISK_STORAGE_TYPE_LVM;
-		if (test_vhd_flag(s->flags, VHD_FLAG_OPEN_PREALLOCATE))
-			clear_vhd_flag(s->flags, VHD_FLAG_OPEN_PREALLOCATE);
-	}
-
 	err = vhd_check_version(s);
 	if (err)
 		goto fail;
@@ -682,8 +676,15 @@ vhd_validate_parent(td_driver_t *child_driver,
 	struct vhd_state *child  = (struct vhd_state *)child_driver->data;
 	struct vhd_state *parent;
 
-	if (parent_driver->type != DISK_TYPE_VHD)
+	if (parent_driver->type != DISK_TYPE_VHD) {
+		if (child_driver->type != DISK_TYPE_VHD)
+			return -EINVAL;
+		if (child->vhd.footer.type != HD_TYPE_DIFF)
+			return -EINVAL;
+		if (!uuid_is_null(child->vhd.header.prt_uuid))
+			return -EINVAL;
 		return 0;
+	}
 
 	parent = (struct vhd_state *)parent_driver->data;
 

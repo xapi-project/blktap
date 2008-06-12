@@ -16,13 +16,14 @@ vhd_util_create(int argc, char **argv)
 {
 	char *name;
 	uint64_t size;
-	int c, sparse, fixedsize, err;
+	int c, sparse, err;
+	vhd_flag_creat_t flags;
 
 	err       = -EINVAL;
 	size      = 0;
 	sparse    = 1;
-	fixedsize = 0;
 	name      = NULL;
+	flags     = 0;
 
 	if (!argc || !argv)
 		goto usage;
@@ -41,7 +42,7 @@ vhd_util_create(int argc, char **argv)
 			sparse = 0;
 			break;
 		case 'b':
-			fixedsize = 1;
+			vhd_flag_set(flags, VHD_FLAG_CREAT_FILE_SIZE_FIXED);
 			break;
 		case 'h':
 		default:
@@ -52,12 +53,9 @@ vhd_util_create(int argc, char **argv)
 	if (err || !name || optind != argc)
 		goto usage;
 
-	if (fixedsize)
-		return vhd_create_fixed(name, size << 20,
-				  (sparse ? HD_TYPE_DYNAMIC : HD_TYPE_FIXED));
-	else
-		return vhd_create(name, size << 20,
-				  (sparse ? HD_TYPE_DYNAMIC : HD_TYPE_FIXED));
+	return vhd_create(name, size << 20,
+				  (sparse ? HD_TYPE_DYNAMIC : HD_TYPE_FIXED),
+				  flags);
 
 usage:
 	printf("options: <-n name> <-s size (MB)> [-r reserve] "

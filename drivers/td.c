@@ -441,7 +441,8 @@ td_query(int type, int argc, char *argv[])
 		if (physize) {
 			err = vhd_get_phys_size(&vhd, &currsize);
 			if (err)
-				printf("failed to get physical size: %d\n", err);
+				printf("failed to get physical size: %d\n",
+						err);
 			else
 				printf("%llu\n", currsize);
 		}
@@ -449,13 +450,15 @@ td_query(int type, int argc, char *argv[])
 		if (newsize) {
 			err = vhd_set_phys_size(&vhd, newsize);
 			if (err)
-				printf("failed to change physical size to %llu\n", newsize);
+				printf("failed to set physical size to %llu\n",
+						newsize);
 		}
 
 		if (setparent) {
 			err = vhd_change_parent(&vhd, newparent);
 			if (err)
-				printf("failed to set parent to %s\n", newparent);
+				printf("failed to set parent to %s\n",
+						newparent);
 		}
 
 		if (parent) {

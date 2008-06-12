@@ -60,13 +60,12 @@ int
 vhd_util_snapshot(int argc, char **argv)
 {
 	int c, err;
-	int fixedsize, rawparent;
 	char *name, *pname, *backing;
+	vhd_flag_creat_t flags;
 
 	name  = NULL;
 	pname = NULL;
-	fixedsize = 0;
-	rawparent = 0;
+	flags = 0;
 
 	if (!argc || !argv)
 		goto usage;
@@ -81,10 +80,10 @@ vhd_util_snapshot(int argc, char **argv)
 			pname = optarg;
 			break;
 		case 'b':
-			fixedsize = 1;
+			vhd_flag_set(flags, VHD_FLAG_CREAT_FILE_SIZE_FIXED);
 			break;
 		case 'm':
-			rawparent = 1;
+			vhd_flag_set(flags, VHD_FLAG_CREAT_PARENT_RAW);
 			break;
 		case 'h':
 		default:
@@ -95,22 +94,16 @@ vhd_util_snapshot(int argc, char **argv)
 	if (!name || !pname || optind != argc)
 		goto usage;
 
-	if (rawparent)
+	if (vhd_flag_test(flags, VHD_FLAG_CREAT_PARENT_RAW)) {
 		backing = strdup(pname);
+	}
 	else {
 		err = vhd_util_find_snapshot_target(pname, &backing);
 		if (err)
 			return err;
 	}
 
-	if (fixedsize && rawparent)
-		return vhd_snapshot_fixed_raw(name, backing);
-	else if (fixedsize)
-		return vhd_snapshot_fixed(name, backing);
-	else if (rawparent)
-		return vhd_snapshot_raw(name, backing);
-	else
-		return vhd_snapshot(name, backing);
+	return vhd_snapshot(name, backing, flags);
 
 usage:
 	printf("options: <-n name> <-p parent name> [-b file_is_fixed_size] "

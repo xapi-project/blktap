@@ -40,6 +40,13 @@
 #define UTF_16LE                   "UTF-16LE"
 #define UTF_16BE                   "UTF-16BE"
 
+#define VHD_FLAG_CREAT_FILE_SIZE_FIXED   0x00001
+#define VHD_FLAG_CREAT_PARENT_RAW        0x00002
+
+#define vhd_flag_set(word, flag)         ((word) |= (flag))
+#define vhd_flag_clear(word, flag)       ((word) &= ~(flag))
+#define vhd_flag_test(word, flag)        ((word) & (flag))
+
 static const char                  VHD_POISON_COOKIE[] = "v_poison";
 
 typedef struct hd_ftr              vhd_footer_t;
@@ -49,6 +56,7 @@ typedef struct vhd_batmap          vhd_batmap_t;
 typedef struct dd_batmap_hdr       vhd_batmap_header_t;
 typedef struct prt_loc             vhd_parent_locator_t;
 typedef struct vhd_context         vhd_context_t;
+typedef uint32_t                   vhd_flag_creat_t;
 
 struct vhd_bat {
 	uint32_t                   spb;
@@ -148,12 +156,8 @@ int vhd_validate_platform_code(uint32_t code);
 
 int vhd_open(vhd_context_t *, const char *file, int flags);
 void vhd_close(vhd_context_t *);
-int vhd_create(const char *name, uint64_t bytes, int type);
-int vhd_create_fixed(const char *name, uint64_t bytes, int type);
-int vhd_snapshot(const char *snapshot, const char *parent);
-int vhd_snapshot_fixed(const char *snapshot, const char *parent);
-int vhd_snapshot_raw(const char *snapshot, const char *parent);
-int vhd_snapshot_fixed_raw(const char *snapshot, const char *parent);
+int vhd_create(const char *name, uint64_t bytes, int type, vhd_flag_creat_t);
+int vhd_snapshot(const char *snapshot, const char *parent, vhd_flag_creat_t);
 
 off64_t vhd_position(vhd_context_t *);
 int vhd_seek(vhd_context_t *, off64_t, int);
