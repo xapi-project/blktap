@@ -377,6 +377,9 @@ td_query(int type, int argc, char *argv[])
 {
 	char *name;
 	int c, size = 0, parent = 0, fields = 0, err = 0;
+	int physize = 0, setparent = 0;
+	off64_t newsize = 0, currsize;
+	char *newparent = NULL;
 
 	while ((c = getopt(argc, argv, "hvpfsr:t:")) != -1) {
 		switch(c) {
@@ -388,6 +391,21 @@ td_query(int type, int argc, char *argv[])
 			break;
 		case 'f':
 			fields = 1;
+			break;
+		case 's':
+			physize = 1;
+			break;
+		case 'r':
+			errno = 0;
+			newsize = strtoll(optarg, NULL, 10);
+			if (errno) {
+				fprintf(stderr, "Invalid size '%s'\n", optarg);
+				goto usage;
+			}
+			break;
+		case 't':
+			setparent = 1;
+			newparent = optarg;
 			break;
 		default:
 		case 'h':
@@ -408,7 +426,10 @@ td_query(int type, int argc, char *argv[])
 	if (type == TD_TYPE_VHD) {
 		vhd_context_t vhd;
 
-		err = vhd_open(&vhd, name, O_RDONLY | O_DIRECT);
+		if (newsize || setparent) 
+			err = vhd_open(&vhd, name, O_RDWR | O_DIRECT);
+		else
+			err = vhd_open(&vhd, name, O_RDONLY | O_DIRECT);
 		if (err) {
 			printf("failed opening %s: %d\n", name, err);
 			return err;
@@ -416,6 +437,29 @@ td_query(int type, int argc, char *argv[])
 
 		if (size)
 			printf("%llu\n", vhd.footer.curr_size >> 20);
+
+		if (physize) {
+			err = vhd_get_phys_size(&vhd, &currsize);
+			if (err)
+				printf("failed to get physical size: %d\n",
+						err);
+			else
+				printf("%llu\n", currsize);
+		}
+
+		if (newsize) {
+			err = vhd_set_phys_size(&vhd, newsize);
+			if (err)
+				printf("failed to set physical size to %llu\n",
+						newsize);
+		}
+
+		if (setparent) {
+			err = vhd_change_parent(&vhd, newparent);
+			if (err)
+				printf("failed to set parent to %s\n",
+						newparent);
+		}
 
 		if (parent) {
 			if (vhd.footer.type != HD_TYPE_DIFF)
@@ -480,7 +524,8 @@ td_query(int type, int argc, char *argv[])
 
  usage:
 	fprintf(stderr, "usage: td-util query %s [-h help] [-v virtsize] "
-		"[-p parent] [-f fields]  <FILENAME>\n", td_disk_types[type]);
+		"[-p parent] [-f fields] [-s physize] [-r SIZE set physize] "
+		"[-t PATH change parent] <FILENAME>\n", td_disk_types[type]);
 	return EINVAL;
 }
 

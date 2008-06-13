@@ -33,7 +33,6 @@ struct command commands[] = {
 	{ .name = "resize",      .func = vhd_util_resize        },
 	{ .name = "fill",        .func = vhd_util_fill          },
 	{ .name = "coalesce",    .func = vhd_util_coalesce      },
-	{ .name = "modify",      .func = vhd_util_modify        },
 };
 
 #define print_commands()					\

@@ -17,29 +17,24 @@ vhd_util_query(int argc, char **argv)
 {
 	char *name;
 	vhd_context_t vhd;
-	int err, c, size, physize, parent, fields;
-	off64_t currsize;
+	int err, c, size, parent, fields;
 
-	name    = NULL;
-	size    = 0;
-	physize = 0;
-	parent  = 0;
-	fields  = 0;
+	name   = NULL;
+	size   = 0;
+	parent = 0;
+	fields = 0;
 
 	if (!argc || !argv)
 		goto usage;
 
 	optind = 0;
-	while ((c = getopt(argc, argv, "n:vspfh")) != -1) {
+	while ((c = getopt(argc, argv, "n:vpfh")) != -1) {
 		switch (c) {
 		case 'n':
 			name = optarg;
 			break;
 		case 'v':
 			size = 1;
-			break;
-		case 's':
-			physize = 1;
 			break;
 		case 'p':
 			parent = 1;
@@ -66,14 +61,6 @@ vhd_util_query(int argc, char **argv)
 	if (size)
 		printf("%llu\n", vhd.footer.curr_size >> 20);
 
-	if (physize) {
-		err = vhd_get_phys_size(&vhd, &currsize);
-		if (err)
-			printf("failed to get physical size: %d\n", err);
-		else
-			printf("%llu\n", currsize);
-	}
-
 	if (parent) {
 		if (vhd.footer.type != HD_TYPE_DIFF)
 			printf("%s has no parent\n", name);
@@ -98,8 +85,7 @@ vhd_util_query(int argc, char **argv)
 	return err;
 
 usage:
-	printf("options: <-n name> [-v print virtual size (blocks)] "
-			"[-s print physical utilization (bytes)] "
-			"[-p print parent] [-f print fields] [-h help]\n");
+	printf("options: <-n name> [-v print virtual size] "
+	       "[-p print parent] [-f print fields] [-h help]\n");
 	return -EINVAL;
 }
