@@ -28,6 +28,7 @@ LIB-SRCS        += libvhd-index.c
 LIB-SRCS        += vhd-util-coalesce.c
 LIB-SRCS        += vhd-util-create.c
 LIB-SRCS        += vhd-util-fill.c
+LIB-SRCS        += vhd-util-modify.c
 LIB-SRCS        += vhd-util-query.c
 LIB-SRCS        += vhd-util-read.c
 LIB-SRCS        += vhd-util-repair.c
