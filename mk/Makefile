@@ -52,6 +52,7 @@ PROPRIETARY_SOURCE += drivers/io-optimize.c
 PROPRIETARY_SOURCE += drivers/td.c
 PROPRIETARY_SOURCE += drivers/tapdisk-queue.c
 PROPRIETARY_SOURCE += drivers/tapdisk-filter.c
+PROPRIETARY_SOURCE += drivers/tapdisk-vbd.c
 PROPRIETARY_SOURCE += vhd/lib/libvhd.c
 PROPRIETARY_SOURCE += vhd/lib/libvhd-journal.c
 PROPRIETARY_SOURCE += vhd/lib/libvhd-index.c

@@ -27,6 +27,7 @@ Source19: relative-path.o
 Source20: vhd-util.o
 Source21: vhd-index.o
 Source22: vhd-update.o
+Source23: tapdisk-vbd.o
 
 Patch0: %{name}-development.patch
 BuildRoot: %{_tmppath}/%{name}-%{version}-%{release}-buildroot
@@ -69,6 +70,7 @@ cp %{SOURCE19} vhd/lib
 cp %{SOURCE20} vhd
 cp %{SOURCE21} vhd
 cp %{SOURCE22} vhd
+cp %{SOURCE23} drivers
 
 %build
 %{__make} USE_SYSTEM_LIBRARIES=y
