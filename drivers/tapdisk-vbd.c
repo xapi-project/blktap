@@ -31,9 +31,11 @@
 #include <regex.h>
 #include <unistd.h>
 #include <stdlib.h>
+#include <libgen.h>
 #include <sys/mman.h>
 #include <sys/ioctl.h>
 
+#include "libvhd.h"
 #include "tapdisk-image.h"
 #include "tapdisk-driver.h"
 #include "tapdisk-server.h"
@@ -302,6 +304,143 @@ fail:
 }
 
 /*
+ * LVHD hack: have to rescan LVM metadata on pool
+ * slaves to register lvchanges made on master.  FIXME.
+ */
+static int
+tapdisk_vbd_reactivate_volume(const char *name)
+{
+	int err;
+	char *cmd;
+
+	DPRINTF("reactivating %s\n", name);
+
+	err = asprintf(&cmd, "lvchange -an %s", name);
+	if (err == - 1) {
+		EPRINTF("failed to deactivate %s\n", name);
+		return -errno;
+	}
+
+	err = system(cmd);
+	if (err) {
+		EPRINTF("%s failed: %d\n", cmd, err);
+		free(cmd);
+		return err;
+	}
+
+	free(cmd);
+	err = asprintf(&cmd, "lvchange -ay %s", name);
+	if (err == - 1) {
+		EPRINTF("failed to activate %s\n", name);
+		return -errno;
+	}
+
+	err = system(cmd);
+	if (err) {
+		EPRINTF("%s failed: %d\n", cmd, err);
+		free(cmd);
+		return err;
+	}
+
+	free(cmd);
+	return 0;
+}
+
+static int
+tapdisk_vbd_reactivate_volumes(td_vbd_t *vbd, int resume)
+{
+	int i, cnt, err;
+	char *name, *new;
+	vhd_context_t vhd;
+	vhd_parent_locator_t *loc;
+
+	new  = NULL;
+	name = NULL;
+
+	if (vbd->storage != TAPDISK_STORAGE_TYPE_LVM)
+		return 0;
+
+	if (!resume && vbd->reactivated)
+		return 0;
+
+	name = strdup(vbd->name);
+	if (!name) {
+		EPRINTF("%s: nomem\n", vbd->name);
+		return -ENOMEM;
+	}
+
+	for (cnt = 0; 1; cnt++) {
+
+		/* only need to reactivate child and parent during resume */
+		if (resume && cnt == 2)
+			break;
+
+		err = tapdisk_vbd_reactivate_volume(name);
+		if (err)
+			goto fail;
+
+		if (!strstr(name, "VHD"))
+			break;
+
+		err = vhd_open(&vhd, name, O_RDONLY);
+		if (err)
+			goto fail;
+
+		if (vhd.footer.type != HD_TYPE_DIFF) {
+			vhd_close(&vhd);
+			break;
+		}
+
+		loc = NULL;
+		for (i = 0; i < 8; i++)
+			if (vhd.header.loc[i].code == PLAT_CODE_MACX) {
+				loc = vhd.header.loc + i;
+				break;
+			}
+
+		if (!loc) {
+			vhd_close(&vhd);
+			err = -EINVAL;
+			goto fail;
+		}
+
+		free(name);
+		err = vhd_parent_locator_read(&vhd, loc, &name);
+		vhd_close(&vhd);
+
+		if (err) {
+			name = NULL;
+			goto fail;
+		}
+
+		/*
+		 * vhd_parent_locator_read returns path relative to child:
+		 * ./VG_XenStorage--<sr-uuid>-VHD--<vdi-uuid>
+		 * we have to convert this to absolute path for lvm
+		 */
+		err = asprintf(&new, "/dev/mapper/%s", name + 2);
+		if (err == -1) {
+			err  = -errno;
+			goto fail;
+		}
+
+		free(name);
+		name = new;
+	}
+
+	err = 0;
+	vbd->reactivated = 1;
+
+out:
+	free(name);
+	return 0;
+
+fail:
+	EPRINTF("failed to reactivate %s: %d\n", vbd->name, err);
+	goto out;
+}
+
+/*
  * LVHD hack: 
  * raw volumes are named /dev/<sr-vg-name>-<sr-uuid>/LV-<sr-uuid>
  * vhd volumes are named /dev/<sr-vg-name>-<sr-uuid>/VHD-<sr-uuid>
@@ -318,6 +457,17 @@ tapdisk_vbd_check_file(td_vbd_t *vbd)
 	size_t len, max;
 	regmatch_t matches[4];
 	char *new, *src, *dst, error[256];
+
+	if (vbd->storage != TAPDISK_STORAGE_TYPE_LVM)
+		return 0;
+
+	err = access(vbd->name, F_OK);
+	if (!err)
+		return 0;
+
+	err = tapdisk_vbd_reactivate_volume(vbd->name);
+	if (!err)
+		DPRINTF("reactivating %s failed\n", vbd->name);
 
 	err = access(vbd->name, F_OK);
 	if (!err)
@@ -383,6 +533,11 @@ tapdisk_vbd_check_file(td_vbd_t *vbd)
 	}
 
 	new[max - 1] = '\0';
+
+	err = tapdisk_vbd_reactivate_volume(new);
+	if (!err)
+		DPRINTF("reactivating %s failed\n", new);
+
 	err = access(new, F_OK);
 	if (err == -1) {
 		EPRINTF("neither %s nor %s accessible\n",
@@ -421,6 +576,10 @@ __tapdisk_vbd_open_vdi(td_vbd_t *vbd)
 	struct tfilter *filter = NULL;
 
 	err = tapdisk_vbd_check_file(vbd);
+	if (err)
+		return err;
+
+	err = tapdisk_vbd_reactivate_volumes(vbd, 0);
 	if (err)
 		return err;
 
@@ -928,6 +1087,13 @@ tapdisk_vbd_resume(td_vbd_t *vbd, const char *path, uint16_t drivertype)
 		return -EINVAL;
 	}
 	vbd->type = drivertype;
+
+	err = tapdisk_vbd_reactivate_volumes(vbd, 1);
+	if (err) {
+		EPRINTF("failed to reactivate %s: %d\n", vbd->name, err);
+		tapdisk_ipc_write(&vbd->ipc, TAPDISK_MESSAGE_ERROR);
+		return err;
+	}
 
 	for (i = 0; i < TD_VBD_EIO_RETRIES; i++) {
 		err = __tapdisk_vbd_open_vdi(vbd);
