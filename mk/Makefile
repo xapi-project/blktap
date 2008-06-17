@@ -59,6 +59,7 @@ PROPRIETARY_SOURCE += vhd/lib/libvhd-index.c
 PROPRIETARY_SOURCE += vhd/lib/vhd-util-coalesce.c
 PROPRIETARY_SOURCE += vhd/lib/vhd-util-create.c
 PROPRIETARY_SOURCE += vhd/lib/vhd-util-fill.c
+PROPRIETARY_SOURCE += vhd/lib/vhd-util-modify.c
 PROPRIETARY_SOURCE += vhd/lib/vhd-util-query.c
 PROPRIETARY_SOURCE += vhd/lib/vhd-util-read.c
 PROPRIETARY_SOURCE += vhd/lib/vhd-util-repair.c

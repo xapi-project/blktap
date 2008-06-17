@@ -23,11 +23,12 @@ Source15: vhd-util-repair.o
 Source16: vhd-util-resize.o
 Source17: vhd-util-set-field.o
 Source18: vhd-util-snapshot.o
-Source19: relative-path.o
-Source20: vhd-util.o
-Source21: vhd-index.o
-Source22: vhd-update.o
-Source23: tapdisk-vbd.o
+Source19: vhd-util-modify.o
+Source20: relative-path.o
+Source21: vhd-util.o
+Source22: vhd-index.o
+Source23: vhd-update.o
+Source24: tapdisk-vbd.o
 
 Patch0: %{name}-development.patch
 BuildRoot: %{_tmppath}/%{name}-%{version}-%{release}-buildroot
@@ -67,10 +68,11 @@ cp %{SOURCE16} vhd/lib
 cp %{SOURCE17} vhd/lib
 cp %{SOURCE18} vhd/lib
 cp %{SOURCE19} vhd/lib
-cp %{SOURCE20} vhd
+cp %{SOURCE20} vhd/lib
 cp %{SOURCE21} vhd
 cp %{SOURCE22} vhd
-cp %{SOURCE23} drivers
+cp %{SOURCE23} vhd
+cp %{SOURCE24} drivers
 
 %build
 %{__make} USE_SYSTEM_LIBRARIES=y
