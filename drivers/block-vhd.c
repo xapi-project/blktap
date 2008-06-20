@@ -237,17 +237,61 @@ struct vhd_state {
 
 #define bat_entry(s, blk)          ((s)->bat.bat.bat[(blk)])
 
-static char static_zeros[5 << 10];
-static char *
-get_static_zeros(int size, int align)
-{
-	char *z = (char *)(((unsigned long)static_zeros + (align - 1)) & ~(align - 1));
-	ASSERT((sizeof(static_zeros) - (z - static_zeros)) >= size);
-	return z;
-}
-
 static void vhd_complete(void *, struct tiocb *, int);
 static void finish_data_transaction(struct vhd_state *, struct vhd_bitmap *);
+
+static struct vhd_state  *_vhd_master;
+static unsigned long      _vhd_zsize;
+static char              *_vhd_zeros;
+
+static int
+vhd_initialize(struct vhd_state *s)
+{
+	if (_vhd_zeros)
+		return 0;
+
+	_vhd_zsize = 2 * getpagesize();
+	if (test_vhd_flag(s->flags, VHD_FLAG_OPEN_PREALLOCATE))
+		_vhd_zsize += VHD_BLOCK_SIZE;
+
+	_vhd_zeros = mmap(0, _vhd_zsize, PROT_READ,
+			  MAP_SHARED | MAP_ANONYMOUS, -1, 0);
+	if (_vhd_zeros == MAP_FAILED) {
+		EPRINTF("vhd_initialize failed: %d\n", -errno);
+		_vhd_zeros = NULL;
+		_vhd_zsize = 0;
+		return -errno;
+	}
+
+	_vhd_master = s;
+	return 0;
+}
+
+static void
+vhd_free(struct vhd_state *s)
+{
+	if (_vhd_master != s || !_vhd_zeros)
+		return;
+
+	munmap(_vhd_zeros, _vhd_zsize);
+	_vhd_zsize  = 0;
+	_vhd_zeros  = NULL;
+	_vhd_master = NULL;
+}
+
+static char *
+_get_vhd_zeros(const char *func, unsigned long size)
+{
+	if (!_vhd_zeros || _vhd_zsize < size) {
+		EPRINTF("invalid zero request from %s: %lu, %lu, %p\n",
+			func, size, _vhd_zsize, _vhd_zeros);
+		ASSERT(0);
+	}
+
+	return _vhd_zeros;
+}
+
+#define vhd_zeros(size)	_get_vhd_zeros(__func__, size)
 
 static inline void
 set_batmap(struct vhd_state *s, uint32_t blk)
@@ -532,6 +576,10 @@ __vhd_open(td_driver_t *driver, const char *name, vhd_flag_t flags)
 	s->flags  = flags;
 	s->driver = driver;
 
+	err = vhd_initialize(s);
+	if (err)
+		return err;
+
 	o_flags   = O_LARGEFILE | O_DIRECT;
 	o_flags  |= ((test_vhd_flag(flags, VHD_FLAG_OPEN_RDONLY)) ? 
 		     O_RDONLY : O_RDWR);
@@ -589,6 +637,7 @@ __vhd_open(td_driver_t *driver, const char *name, vhd_flag_t flags)
 	vhd_free_bat(s);
 	vhd_free_bitmap_cache(s);
 	vhd_close(&s->vhd);
+	vhd_free(s);
 	return err;
 }
 
@@ -679,6 +728,7 @@ _vhd_close(td_driver_t *driver)
 	vhd_free_bat(s);
 	vhd_free_bitmap_cache(s);
 	vhd_close(&s->vhd);
+	vhd_free(s);
 
 	memset(s, 0, sizeof(struct vhd_state));
 
@@ -1248,8 +1298,7 @@ schedule_zero_bm_write(struct vhd_state *s,
 	req->op        = VHD_OP_ZERO_BM_WRITE;
 	req->treq.sec  = s->bat.pbw_blk * s->spb;
 	req->treq.secs = (s->bat.pbw_offset - lb_end) + s->bm_secs;
-	req->treq.buf  = get_static_zeros(req->treq.secs << VHD_SECTOR_SHIFT,
-					  VHD_SECTOR_SIZE);
+	req->treq.buf  = vhd_zeros(req->treq.secs << VHD_SECTOR_SHIFT);
 	req->next      = NULL;
 
 	DBG(TLOG_DBG, "blk: 0x%04x, writing zero bitmap at 0x%08"PRIx64"\n",
@@ -1295,30 +1344,6 @@ update_bat(struct vhd_state *s, uint32_t blk)
 }
 
 static int
-get_zeros(char **buf, uint64_t size)
-{
-	char *p;
-
-	*buf = NULL;
-
-	p = mmap(0, size, PROT_READ, MAP_SHARED | MAP_ANONYMOUS, -1, 0);
-	if (p == MAP_FAILED) {
-		ERR(errno, "mmap failed\n");
-		return -errno;
-	}
-
-	*buf = p;
-	return 0;
-}
-
-static void
-free_zeros(char *buf, uint64_t size)
-{
-	if (buf && buf != MAP_FAILED)
-		munmap(buf, size);
-}
-
-static int
 allocate_block(struct vhd_state *s, uint32_t blk)
 {
 	char *zeros;
@@ -1356,13 +1381,7 @@ allocate_block(struct vhd_state *s, uint32_t blk)
 	}
 
 	size = ((u64)(s->spb + s->bm_secs + gap)) << VHD_SECTOR_SHIFT;
-	err  = get_zeros(&zeros, size);
-	if (err)
-		return err;
-
-	err = write(s->vhd.fd, zeros, size);
-	free_zeros(zeros, size);
-
+	err  = write(s->vhd.fd, vhd_zeros(size), size);
 	if (err != size) {
 		err = (err == -1 ? -errno : -EIO);
 		ERR(err, "write failed");
