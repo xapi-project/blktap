@@ -2270,7 +2270,7 @@ out:
 	return err;
 }
 
-static int
+static off64_t
 get_file_size(const char *name)
 {
 	int fd;
@@ -2650,7 +2650,7 @@ __vhd_create(const char *name, const char *parent, uint64_t bytes, int type,
 
 out:
 	vhd_close(&ctx);
-	if (err)
+	if (err && !vhd_flag_test(flags, VHD_FLAG_CREAT_FILE_SIZE_FIXED))
 		unlink(name);
 	return err;
 }
