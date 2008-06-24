@@ -360,7 +360,15 @@ tapdisk_vbd_reactivate_volumes(td_vbd_t *vbd, int resume)
 		if (!strstr(name, "VHD"))
 			break;
 
-		err = vhd_open(&vhd, name, O_RDONLY);
+		for (i = 0; i < TD_VBD_EIO_RETRIES; i++) {
+			err = vhd_open(&vhd, name, O_RDONLY);
+			if (!err)
+				break;
+
+			libvhd_set_log_level(1);
+			sleep(TD_VBD_EIO_SLEEP);
+		}
+		libvhd_set_log_level(0);
 		if (err)
 			goto fail;
 
@@ -411,7 +419,7 @@ tapdisk_vbd_reactivate_volumes(td_vbd_t *vbd, int resume)
 
 out:
 	free(name);
-	return 0;
+	return err;
 
 fail:
 	EPRINTF("failed to reactivate %s: %d\n", vbd->name, err);
