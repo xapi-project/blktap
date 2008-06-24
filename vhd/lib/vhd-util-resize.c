@@ -9,16 +9,23 @@
 #include <stdlib.h>
 #include <unistd.h>
 #include <string.h>
+#include <syslog.h>
 #include <inttypes.h>
 #include <sys/mman.h>
 
 #include "libvhd-journal.h"
 
 #if 1
-#define DFPRINTF(_f, _a...) fprintf(stdout, _f , ## _a)
+#define DFPRINTF(_f, _a...) fprintf(stdout, _f, ##_a)
 #else
 #define DFPRINTF(_f, _a...) ((void)0)
 #endif
+
+#define EPRINTF(_f, _a...)					\
+	do {							\
+		syslog(LOG_INFO, "%s: " _f, __func__, ##_a);	\
+		DFPRINTF(_f, _a);				\
+	} while (0)
 
 typedef struct vhd_block {
 	uint32_t block;
@@ -65,24 +72,47 @@ vhd_fixed_shrink(vhd_journal_t *journal, uint64_t secs)
 }
 
 static int
-vhd_fixed_grow(vhd_journal_t *journal, uint64_t secs)
+vhd_write_zeros(vhd_journal_t *journal, off64_t off, uint64_t size)
 {
 	int err;
 	char *buf;
-	size_t size;
+	uint64_t bytes;
 	vhd_context_t *vhd;
-	uint64_t eof, new_eof;
 
-	buf  = NULL;
+	vhd   = &journal->vhd;
+	bytes = MIN(size, VHD_BLOCK_SIZE);
+
+	buf = mmap(0, bytes, PROT_READ, MAP_SHARED | MAP_ANONYMOUS, -1, 0);
+	if (buf == MAP_FAILED)
+		return -errno;
+
+	err = vhd_seek(vhd, off, SEEK_SET);
+	if (err)
+		return err;
+
+	do {
+		err = vhd_write(vhd, buf, bytes);
+		if (err)
+			break;
+
+		size -= bytes;
+		bytes = MIN(size, bytes);
+	} while (size);
+
+	munmap(buf, bytes);
+
+	return err;
+}
+
+static int
+vhd_fixed_grow(vhd_journal_t *journal, uint64_t secs)
+{
+	int err;
+	vhd_context_t *vhd;
+	uint64_t size, eof, new_eof;
+
 	size = secs << VHD_SECTOR_SHIFT;
 	vhd  = &journal->vhd;
-
-	buf  = mmap(0, size, PROT_READ, MAP_SHARED | MAP_ANONYMOUS, -1, 0);
-	if (buf == MAP_FAILED) {
-		buf = NULL;
-		err = -errno;
-		goto out;
-	}
 
 	err = vhd_seek(vhd, 0, SEEK_END);
 	if (err)
@@ -94,12 +124,7 @@ vhd_fixed_grow(vhd_journal_t *journal, uint64_t secs)
 		goto out;
 	}
 
-	eof -= sizeof(vhd_footer_t);
-	err  = vhd_seek(vhd, eof, SEEK_SET);
-	if (err)
-		goto out;
-
-	err = vhd_write(vhd, buf, size);
+	err = vhd_write_zeros(journal, eof - sizeof(vhd_footer_t), size);
 	if (err)
 		goto out;
 
@@ -116,8 +141,6 @@ vhd_fixed_grow(vhd_journal_t *journal, uint64_t secs)
 	err = 0;
 
 out:
-	if (buf)
-		munmap(buf, size);
 	return err;
 }
 
@@ -193,17 +216,23 @@ vhd_move_block(vhd_journal_t *journal, uint32_t src, off64_t offset)
 	char *buf;
 	size_t size;
 	vhd_context_t *vhd;
+	off64_t off, src_off;
 
-	buf = NULL;
-	vhd = &journal->vhd;
+	buf     = NULL;
+	vhd     = &journal->vhd;
+	off     = offset;
+	size    = vhd->bm_secs << VHD_SECTOR_SHIFT;
+	src_off = vhd->bat.bat[src];
 
-	size = vhd->bm_secs << VHD_SECTOR_SHIFT;
+	if (src_off == DD_BLK_UNUSED)
+		return -EINVAL;
+	src_off <<= VHD_SECTOR_SHIFT;
 
 	err  = vhd_read_bitmap(vhd, src, &buf);
 	if (err)
 		goto out;
 
-	err  = vhd_seek(vhd, offset, SEEK_SET);
+	err  = vhd_seek(vhd, off, SEEK_SET);
 	if (err)
 		goto out;
 
@@ -212,21 +241,26 @@ vhd_move_block(vhd_journal_t *journal, uint32_t src, off64_t offset)
 		goto out;
 
 	free(buf);
-	buf     = NULL;
-	offset += size;
-	size    = vhd->spb << VHD_SECTOR_SHIFT;
+	buf   = NULL;
+	off  += size;
+	size  = vhd->spb << VHD_SECTOR_SHIFT;
 
 	err  = vhd_read_block(vhd, src, &buf);
 	if (err)
 		goto out;
 
-	err  = vhd_seek(vhd, offset, SEEK_SET);
+	err  = vhd_seek(vhd, off, SEEK_SET);
 	if (err)
 		goto out;
 
 	err  = vhd_write(vhd, buf, size);
 	if (err)
 		goto out;
+
+	vhd->bat.bat[src] = offset >> VHD_SECTOR_SHIFT;
+
+	err = vhd_write_zeros(journal, src_off,
+			      (vhd->bm_secs + vhd->spb) << VHD_SECTOR_SHIFT);
 
 out:
 	free(buf);
@@ -252,7 +286,6 @@ vhd_clobber_block(vhd_journal_t *journal, uint32_t src, uint32_t dest)
 	if (err)
 		return err;
 
-	vhd->bat.bat[src]  = vhd->bat.bat[dest];
 	vhd->bat.bat[dest] = DD_BLK_UNUSED;
 
 	return 0;
@@ -333,30 +366,6 @@ vhd_defrag_shrink(vhd_journal_t *journal,
 out:
 	free(blocks);
 	free(free_list);
-
-	return err;
-}
-
-static int
-vhd_write_zeros(vhd_journal_t *journal, off64_t off, size_t size)
-{
-	int err;
-	char *buf;
-	vhd_context_t *vhd;
-
-	vhd = &journal->vhd;
-
-	err = vhd_seek(vhd, off, SEEK_SET);
-	if (err)
-		return err;
-
-	buf = mmap(0, size, PROT_READ, MAP_SHARED | MAP_ANONYMOUS, -1, 0);
-	if (buf == MAP_FAILED)
-		return -errno;
-
-	err = vhd_write(vhd, buf, size);
-
-	munmap(buf, size);
 
 	return err;
 }
@@ -511,7 +520,7 @@ vhd_first_data_block(vhd_context_t *vhd, vhd_block_t *block)
 		blk = vhd->bat.bat[i];
 
 		if (blk != DD_BLK_UNUSED) {
-			if (blk > block->offset) {
+			if (!block->offset || blk < block->offset) {
 				block->block  = i;
 				block->offset = blk;
 			}
@@ -537,11 +546,99 @@ vhd_next_block_offset(vhd_context_t *vhd)
 		}
 	}
 
-	/* data region of segment should begin on page boundary */
-	if ((next + vhd->bm_secs) % spp)
-		next += (spp - ((next + vhd->bm_secs) % spp));
-
 	return next;
+}
+
+static inline int
+in_range(off64_t off, off64_t start, off64_t size)
+{
+	return (start <= off && start + size > off);
+}
+
+#define SKIP_HEADER 0x01
+#define SKIP_BAT    0x02
+#define SKIP_BATMAP 0x04
+#define SKIP_PLOC   0x08
+#define SKIP_DATA   0x10
+
+static inline int
+skip_check(int mode, int type)
+{
+	return mode & type;
+}
+
+static int
+vhd_check_for_clobber(vhd_context_t *vhd, off64_t off, int mode)
+{
+	int i, n;
+	char *msg;
+	size_t size;
+	vhd_block_t fb;
+	vhd_parent_locator_t *loc;
+
+	msg = NULL;
+
+	if (!vhd_type_dynamic(vhd))
+		return 0;
+
+	if (off < VHD_SECTOR_SIZE) {
+		msg = "backup footer";
+		goto fail;
+	}
+
+	if (!skip_check(mode, SKIP_HEADER))
+		if (in_range(off,
+			     vhd->footer.data_offset, sizeof(vhd_header_t))) {
+			msg = "header";
+			goto fail;
+		}
+
+	if (!skip_check(mode, SKIP_BAT))
+		if (in_range(off, vhd->header.table_offset,
+			     vhd_bytes_padded(vhd->header.max_bat_size *
+					      sizeof(uint32_t)))) {
+			msg = "bat";
+			goto fail;
+		}
+
+	if (!skip_check(mode, SKIP_BATMAP))
+		if (vhd_has_batmap(vhd) &&
+		    in_range(off, vhd->batmap.header.batmap_offset,
+			     vhd_bytes_padded(vhd->batmap.header.batmap_size))) {
+			msg = "batmap";
+			goto fail;
+		}
+
+	if (!skip_check(mode, SKIP_PLOC)) {
+		n = sizeof(vhd->header.loc) / sizeof(vhd_parent_locator_t);
+		for (i = 0; i < n; i++) {
+			loc = vhd->header.loc + i;
+			if (loc->code == PLAT_CODE_NONE)
+				continue;
+
+			size = vhd_parent_locator_size(loc);
+			if (in_range(off, loc->data_offset, size)) {
+				msg = "parent locator";
+				goto fail;
+			}
+		}
+	}
+
+	if (!skip_check(mode, SKIP_DATA)) {
+		vhd_first_data_block(vhd, &fb);
+		if (fb.offset && in_range(off,
+					  fb.offset << VHD_SECTOR_SHIFT,
+					  VHD_BLOCK_SIZE)) {
+			msg = "data block";
+			goto fail;
+		}
+	}
+
+	return 0;
+
+fail:
+	EPRINTF("write to 0x%08llx would clobber %s\n", off, msg);
+	return -EINVAL;
 }
 
 /*
@@ -559,16 +656,6 @@ vhd_shift_metadata(vhd_journal_t *journal, off64_t eob,
 
 	vhd         = &journal->vhd;
 	size_needed = bat_needed + map_needed;
-
-	err = vhd_get_header(vhd);
-	if (err)
-		return err;
-
-	if (vhd_has_batmap(vhd)) {
-		err = vhd_get_batmap(vhd);
-		if (err)
-			return err;
-	}
 
 	n = sizeof(vhd->header.loc) / sizeof(vhd_parent_locator_t);
 
@@ -616,6 +703,12 @@ vhd_shift_metadata(vhd_journal_t *journal, off64_t eob,
 		off  = loc->data_offset + size_needed;
 		size = vhd_parent_locator_size(loc);
 
+		if (vhd_check_for_clobber(vhd, off + size, SKIP_PLOC)) {
+			EPRINTF("%s: shifting locator %d would clobber data\n",
+				vhd->file, i);
+			return -EINVAL;
+		}
+
 		err  = vhd_seek(vhd, off, SEEK_SET);
 		if (err)
 			goto out;
@@ -651,26 +744,40 @@ static int
 vhd_add_bat_entries(vhd_journal_t *journal, int entries)
 {
 	int i, err;
+	off64_t off;
+	vhd_bat_t new_bat;
 	vhd_context_t *vhd;
 	uint32_t new_entries;
-	vhd_bat_t new_bat;
 	vhd_batmap_t new_batmap;
 	size_t bat_size, new_bat_size, map_size, new_map_size;
 
 	vhd          = &journal->vhd;
 	new_entries  = vhd->header.max_bat_size + entries;
 
-	bat_size     = vhd->header.max_bat_size * sizeof(uint32_t);
-	bat_size     = secs_round_up_no_zero(bat_size) << VHD_SECTOR_SHIFT;
+	bat_size     = vhd_bytes_padded(vhd->header.max_bat_size *
+					sizeof(uint32_t));
+	new_bat_size = vhd_bytes_padded(new_entries * sizeof(uint32_t));
 
-	new_bat_size = new_entries * sizeof(uint32_t);
-	new_bat_size = secs_round_up_no_zero(new_bat_size) << VHD_SECTOR_SHIFT;
+	map_size     = vhd_bytes_padded((vhd->header.max_bat_size >> 3) + 1);
+	new_map_size = vhd_bytes_padded((new_entries >> 3) + 1);
 
-	map_size     = (vhd->header.max_bat_size >> 3) + 1;
-	map_size     = secs_round_up_no_zero(map_size) << VHD_SECTOR_SHIFT;
+	off = vhd->header.table_offset + new_bat_size;
+	if (vhd_check_for_clobber(vhd, off, SKIP_BAT | SKIP_BATMAP)) {
+		EPRINTF("%s: writing new bat of 0x%x bytes at 0x%08llx "
+			"would clobber data\n", vhd->file, new_bat_size,
+			vhd->header.table_offset);
+		return -EINVAL;
+	}
 
-	new_map_size = (new_entries >> 3) + 1;
-	new_map_size = secs_round_up_no_zero(new_map_size) << VHD_SECTOR_SHIFT;
+	if (vhd_has_batmap(vhd)) {
+		off = vhd->batmap.header.batmap_offset + new_bat_size;
+		if (vhd_check_for_clobber(vhd, off, 0)) {
+			EPRINTF("%s: writing new batmap of 0x%x bytes at "
+				"0x%08llx would clobber data\n", vhd->file,
+				new_map_size, vhd->batmap.header.batmap_offset);
+			return -EINVAL;
+		}
+	}
 
 	/* update header */
 	vhd->header.max_bat_size = new_entries;
@@ -681,6 +788,7 @@ vhd_add_bat_entries(vhd_journal_t *journal, int entries)
 	/* update footer */
 	vhd->footer.curr_size = (uint64_t)new_entries * vhd->header.block_size;
 	vhd->footer.geometry  = vhd_chs(vhd->footer.curr_size);
+	vhd->footer.checksum  = vhd_checksum_footer(&vhd->footer);
 	err = vhd_write_footer(vhd, &vhd->footer);
 	if (err)
 		return err;
@@ -698,9 +806,14 @@ vhd_add_bat_entries(vhd_journal_t *journal, int entries)
 
 	/* write new bat */
 	err = vhd_write_bat(vhd, &new_bat);
-	free(new_bat.bat);
-	if (err)
+	if (err) {
+		free(new_bat.bat);
 		return err;
+	}
+
+	/* update in-memory bat */
+	free(vhd->bat.bat);
+	vhd->bat = new_bat;
 
 	if (!vhd_has_batmap(vhd))
 		return 0;
@@ -712,27 +825,34 @@ vhd_add_bat_entries(vhd_journal_t *journal, int entries)
 		return err;
 
 	new_batmap.header = vhd->batmap.header;
-	new_batmap.header.batmap_size = new_map_size >> VHD_SECTOR_SHIFT;
+	new_batmap.header.batmap_size = secs_round_up_no_zero(new_map_size);
 	memcpy(new_batmap.map, vhd->batmap.map, map_size);
 	memset(new_batmap.map + map_size, 0, new_map_size - map_size);
 
 	/* write new batmap */
 	err = vhd_write_batmap(vhd, &new_batmap);
-	free(new_batmap.map);
-	return err;
+	if (err) {
+		free(new_batmap.map);
+		return err;
+	}
+
+	/* update in-memory batmap */
+	free(vhd->batmap.map);
+	vhd->batmap = new_batmap;
+
+	return 0;
 }
 
 static int
 vhd_dynamic_grow(vhd_journal_t *journal, uint64_t secs)
 {
 	int i, err;
-	uint32_t blocks;
 	off64_t eob, eom;
 	vhd_context_t *vhd;
 	vhd_block_t first_block;
-	size_t size_needed;
-	size_t bat_needed, bat_size, bat_avail, bat_bytes, bat_secs;
-	size_t map_needed, map_size, map_avail, map_bytes, map_secs;
+	uint64_t blocks, size_needed;
+	uint64_t bat_needed, bat_size, bat_avail, bat_bytes, bat_secs;
+	uint64_t map_needed, map_size, map_avail, map_bytes, map_secs;
 
 	vhd         = &journal->vhd;
 
@@ -759,8 +879,10 @@ vhd_dynamic_grow(vhd_journal_t *journal, uint64_t secs)
 		map_secs    = vhd->batmap.header.batmap_size;
 		map_size    = map_secs << VHD_SECTOR_SHIFT;
 		map_avail   = map_size - map_bytes;
-	} else
+	} else {
+		map_needed  = 0;
 		map_avail   = 0;
+	}
 
 	/* we have enough space already; just extend the bat */
 	if (bat_needed <= bat_avail && map_needed <= map_avail)
@@ -768,19 +890,17 @@ vhd_dynamic_grow(vhd_journal_t *journal, uint64_t secs)
 
 	/* we need to add new sectors to the bat */
 	if (bat_needed > bat_avail) {
-		bat_needed  -= bat_avail;
-		bat_needed   = secs_round_up_no_zero(bat_needed);
-		bat_needed <<= VHD_SECTOR_SHIFT;
+		bat_needed -= bat_avail;
+		bat_needed  = vhd_bytes_padded(bat_needed);
 	} else
-		bat_needed   = 0;
+		bat_needed  = 0;
 
 	/* we need to add new sectors to the batmap */
 	if (map_needed > map_avail) {
-		map_needed  -= map_avail;
-		map_needed   = secs_round_up_no_zero(map_needed);
-		map_needed <<= VHD_SECTOR_SHIFT;
+		map_needed -= map_avail;
+		map_needed  = vhd_bytes_padded(map_needed);
 	} else
-		map_needed   = 0;
+		map_needed  = 0;
 
 	/* how many additional bytes do we need? */
 	size_needed = bat_needed + map_needed;
@@ -794,7 +914,7 @@ vhd_dynamic_grow(vhd_journal_t *journal, uint64_t secs)
 	vhd_first_data_block(vhd, &first_block);
 
 	/* no blocks allocated; just shift post-bat metadata */
-	if (!first_block.block)
+	if (!first_block.offset)
 		goto shift_metadata;
 
 	/* 
@@ -802,10 +922,22 @@ vhd_dynamic_grow(vhd_journal_t *journal, uint64_t secs)
 	 * move vhd data blocks to the end of the file to make room 
 	 */
 	do {
-		off64_t new_off;
+		off64_t new_off, bm_size, gap_size;
 
-		new_off  = vhd_next_block_offset(vhd);
+		new_off   = vhd_next_block_offset(vhd);
 		new_off <<= VHD_SECTOR_SHIFT;
+
+		/* data region of segment should begin on page boundary */
+		bm_size = vhd->bm_secs << VHD_SECTOR_SHIFT;
+		if ((new_off + bm_size) % 4096) {
+			gap_size = 4096 - ((new_off + bm_size) % 4096);
+
+			err = vhd_write_zeros(journal, new_off, gap_size);
+			if (err)
+				return err;
+
+			new_off += gap_size;
+		}
 		
 		err = vhd_move_block(journal, first_block.block, new_off);
 		if (err)
@@ -896,6 +1028,7 @@ vhd_util_resize(int argc, char **argv)
 	if (err || !name || argc != optind)
 		goto usage;
 
+	libvhd_set_log_level(1);
 	err = vhd_journal_create(&journal, name);
 
 	if (err == -EEXIST) {

@@ -994,6 +994,7 @@ vhd_journal_disable_vhd(vhd_journal_t *j)
 
 	memcpy(&vhd->footer.cookie,
 	       VHD_POISON_COOKIE, sizeof(vhd->footer.cookie));
+	vhd->footer.checksum = vhd_checksum_footer(&vhd->footer);
 
 	err = vhd_write_footer(vhd, &vhd->footer);
 	if (err)
@@ -1015,6 +1016,7 @@ vhd_journal_enable_vhd(vhd_journal_t *j)
 		return err;
 
 	memcpy(&vhd->footer.cookie, HD_COOKIE, sizeof(vhd->footer.cookie));
+	vhd->footer.checksum = vhd_checksum_footer(&vhd->footer);
 
 	err = vhd_write_footer(vhd, &vhd->footer);
 	if (err)
