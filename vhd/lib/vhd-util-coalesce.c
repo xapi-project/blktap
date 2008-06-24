@@ -13,8 +13,34 @@
 #include "libvhd.h"
 
 static int
-vhd_util_coalesce_block(vhd_context_t *vhd,
-			vhd_context_t *parent, uint64_t block)
+__raw_io_write(int fd, char* buf, uint64_t sec, uint32_t secs)
+{
+	off64_t off;
+	size_t ret;
+
+	errno = 0;
+	off = lseek64(fd, sec << VHD_SECTOR_SHIFT, SEEK_SET);
+	if (off == (off64_t)-1) {
+		printf("raw parent: seek(0x%08llx) failed: %d\n",
+				sec << VHD_SECTOR_SHIFT, -errno);
+		return -errno;
+	}
+
+	ret = write(fd, buf, secs << VHD_SECTOR_SHIFT);
+	if (ret == secs << VHD_SECTOR_SHIFT)
+		return 0;
+
+	printf("raw parent: write of %u returned %d, errno: %d\n",
+			secs << VHD_SECTOR_SHIFT, ret, -errno);
+	return (errno ? -errno : -EIO);
+}
+
+/*
+ * Use 'parent' if the parent is VHD, and 'parent_fd' if the parent is raw
+ */
+static int
+vhd_util_coalesce_block(vhd_context_t *vhd, vhd_context_t *parent,
+		int parent_fd, uint64_t block)
 {
 	int i, err;
 	char *buf, *map;
@@ -36,7 +62,10 @@ vhd_util_coalesce_block(vhd_context_t *vhd,
 		goto done;
 
 	if (vhd_has_batmap(vhd) && vhd_batmap_test(vhd, &vhd->batmap, block)) {
-		err = vhd_io_write(parent, buf, sec, vhd->spb);
+		if (parent->file)
+			err = vhd_io_write(parent, buf, sec, vhd->spb);
+		else
+			err = __raw_io_write(parent_fd, buf, sec, vhd->spb);
 		goto done;
 	}
 
@@ -52,9 +81,14 @@ vhd_util_coalesce_block(vhd_context_t *vhd,
 			if (!vhd_bitmap_test(vhd, map, i + secs))
 				break;
 
-		err = vhd_io_write(parent,
-				   buf + (i << VHD_SECTOR_SHIFT),
-				   sec + i, secs);
+		if (parent->file)
+			err = vhd_io_write(parent,
+					buf + (i << VHD_SECTOR_SHIFT),
+					sec + i, secs);
+		else
+			err = __raw_io_write(parent_fd,
+					buf + (i << VHD_SECTOR_SHIFT),
+					sec + i, secs);
 		if (err)
 			goto done;
 
@@ -76,9 +110,11 @@ vhd_util_coalesce(int argc, char **argv)
 	uint64_t i;
 	char *name, *pname;
 	vhd_context_t vhd, parent;
+	int parent_fd = -1;
 
 	name  = NULL;
 	pname = NULL;
+	parent.file = NULL;
 
 	if (!argc || !argv)
 		goto usage;
@@ -111,12 +147,22 @@ vhd_util_coalesce(int argc, char **argv)
 		return err;
 	}
 
-	err = vhd_open(&parent, pname, O_RDWR | O_DIRECT);
-	if (err) {
-		printf("error opening %s: %d\n", pname, err);
-		free(pname);
-		vhd_close(&vhd);
-		return err;
+	if (vhd_parent_raw(&vhd)) {
+		parent_fd = open(pname, O_RDWR | O_DIRECT | O_LARGEFILE, 0644);
+		if (parent_fd == -1) {
+			err = -errno;
+			printf("failed to open parent %s: %d\n", pname, err);
+			vhd_close(&vhd);
+			return err;
+		}
+	} else {
+		err = vhd_open(&parent, pname, O_RDWR | O_DIRECT);
+		if (err) {
+			printf("error opening %s: %d\n", pname, err);
+			free(pname);
+			vhd_close(&vhd);
+			return err;
+		}
 	}
 
 	err = vhd_get_bat(&vhd);
@@ -130,7 +176,7 @@ vhd_util_coalesce(int argc, char **argv)
 	}
 
 	for (i = 0; i < vhd.bat.entries; i++) {
-		err = vhd_util_coalesce_block(&vhd, &parent, i);
+		err = vhd_util_coalesce_block(&vhd, &parent, parent_fd, i);
 		if (err)
 			goto done;
 	}
@@ -140,7 +186,10 @@ vhd_util_coalesce(int argc, char **argv)
  done:
 	free(pname);
 	vhd_close(&vhd);
-	vhd_close(&parent);
+	if (parent.file)
+		vhd_close(&parent);
+	else
+		close(parent_fd);
 	return err;
 
 usage:

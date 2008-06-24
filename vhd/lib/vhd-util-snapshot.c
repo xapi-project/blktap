@@ -44,7 +44,7 @@ vhd_util_find_snapshot_target(const char *name, char **result, int *parent_raw)
 		if (err)
 			goto out;
 
-		if (uuid_is_null(vhd.header.prt_uuid))
+		if (vhd_parent_raw(&vhd))
 			*parent_raw = 1;
 			goto out;
 

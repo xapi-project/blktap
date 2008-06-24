@@ -2692,7 +2692,7 @@ __vhd_io_dynamic_copy_data(vhd_context_t *ctx,
 		if (test_bit(map, map_off + i))
 			goto next;
 
-		if (!vhd_bitmap_test(ctx, bitmap, bitmap_off + i))
+		if (ctx && !vhd_bitmap_test(ctx, bitmap, bitmap_off + i))
 			goto next;
 
 		memcpy(dst, src, VHD_SECTOR_SIZE);
@@ -2760,6 +2760,53 @@ __vhd_io_dynamic_read_link(vhd_context_t *ctx, char *map,
 }
 
 static int
+__raw_read_link(char *filename,
+		char *map, char *buf, uint64_t sec, uint32_t secs)
+{
+	int fd, err;
+	off64_t off;
+	uint64_t size;
+	char *data;
+
+	err = 0;
+	errno = 0;
+	fd = open(filename, O_RDONLY | O_DIRECT | O_LARGEFILE);
+	if (fd == -1) {
+		VHDLOG("%s: failed to open: %d\n", filename, -errno);
+		return -errno;
+	}
+
+	off = lseek64(fd, sec << VHD_SECTOR_SHIFT, SEEK_SET);
+	if (off == (off64_t)-1) {
+		VHDLOG("%s: seek(0x%08llx) failed: %d\n",
+				filename, sec << VHD_SECTOR_SHIFT, -errno);
+		err = -errno;
+		goto close;
+	}
+
+	size = secs << VHD_SECTOR_SHIFT;
+	err = posix_memalign((void **)&data, VHD_SECTOR_SIZE, size);
+	if (err)
+		goto close;
+
+	err = read(fd, data, size);
+	if (err != size) {
+		VHDLOG("%s: reading of %llu returned %d, errno: %d\n",
+				filename, size, err, -errno);
+		free(data);
+		err = errno ? -errno : -EIO;
+		goto close;
+	}
+	__vhd_io_dynamic_copy_data(NULL, map, 0, NULL, 0, buf, data, secs);
+	free(data);
+	err = 0;
+
+close:
+	close(fd);
+	return err;
+}
+
+static int
 __vhd_io_dynamic_read(vhd_context_t *ctx,
 		      char *buf, uint64_t sec, uint32_t secs)
 {
@@ -2785,20 +2832,25 @@ __vhd_io_dynamic_read(vhd_context_t *ctx,
 		if (err)
 			goto close;
 
-		if (vhd->footer.type == HD_TYPE_DIFF) {
-			err = vhd_parent_locator_get(vhd, &next);
-			if (err)
-				goto close;
-		} else {
-			err = 0;
-			goto close;
-		}
-
 		for (done = 0, i = 0; i < secs; i++)
 			if (test_bit(map, i))
 				done++;
 
 		if (done == secs) {
+			err = 0;
+			goto close;
+		}
+
+		if (vhd->footer.type == HD_TYPE_DIFF) {
+			err = vhd_parent_locator_get(vhd, &next);
+			if (err)
+				goto close;
+			if (vhd_parent_raw(vhd)) {
+				err = __raw_read_link(next, map, buf, sec,
+						secs);
+				goto close;
+			}
+		} else {
 			err = 0;
 			goto close;
 		}
