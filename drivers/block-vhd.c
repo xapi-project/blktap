@@ -748,7 +748,7 @@ vhd_validate_parent(td_driver_t *child_driver,
 			return -EINVAL;
 		if (child->vhd.footer.type != HD_TYPE_DIFF)
 			return -EINVAL;
-		if (!uuid_is_null(child->vhd.header.prt_uuid))
+		if (!vhd_parent_raw(&child->vhd))
 			return -EINVAL;
 		return 0;
 	}
@@ -806,7 +806,7 @@ vhd_get_parent_id(td_driver_t *driver, td_disk_id_t *id)
 
 	id->name       = parent;
 	id->drivertype = DISK_TYPE_VHD;
-	if (uuid_is_null(s->vhd.header.prt_uuid)) {
+	if (vhd_parent_raw(&s->vhd)) {
 		DPRINTF("VHD: parent is raw\n");
 		id->drivertype = DISK_TYPE_AIO;
 	}
