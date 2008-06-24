@@ -2385,7 +2385,7 @@ vhd_write_parent_locators(vhd_context_t *ctx, const char *parent)
 }
 
 int
-vhd_change_parent(vhd_context_t *child, char *parent_path)
+vhd_change_parent(vhd_context_t *child, char *parent_path, int raw)
 {
 	int i, err;
 	struct stat stats;
@@ -2395,15 +2395,17 @@ vhd_change_parent(vhd_context_t *child, char *parent_path)
 	if (err == -1)
 		return -errno;
 
-	err = vhd_open(&parent, parent_path, O_RDONLY | O_DIRECT);
-	if (err)
-		return err;
-
-	uuid_copy(child->header.prt_uuid, parent.footer.uuid);
+	if (raw) {
+		uuid_clear(child->header.prt_uuid);
+	} else {
+		err = vhd_open(&parent, parent_path, O_RDONLY | O_DIRECT);
+		if (err)
+			return err;
+		uuid_copy(child->header.prt_uuid, parent.footer.uuid);
+		vhd_close(&parent);
+	}
 	vhd_initialize_header_parent_name(child, parent_path);
 	child->header.prt_ts = vhd_time(stats.st_mtime);
-
-	vhd_close(&parent);
 
 	for (i = 0; i < vhd_parent_locator_count(child); i++) {
 		off64_t off = child->header.loc[i].data_offset;

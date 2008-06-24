@@ -201,7 +201,7 @@ int vhd_parent_locator_write_at(vhd_context_t *, const char *,
 #define vhd_parent_raw(vhd) (uuid_is_null((vhd)->header.prt_uuid))
 
 int vhd_header_decode_parent(vhd_context_t *, vhd_header_t *, char **);
-int vhd_change_parent(vhd_context_t *, char *parent_path);
+int vhd_change_parent(vhd_context_t *, char *parent_path, int raw);
 
 int vhd_read_footer(vhd_context_t *, vhd_footer_t *);
 int vhd_read_footer_at(vhd_context_t *, vhd_footer_t *, off64_t);

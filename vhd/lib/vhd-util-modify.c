@@ -32,19 +32,20 @@ vhd_util_modify(int argc, char **argv)
 {
 	char *name;
 	vhd_context_t vhd;
-	int err, c, size, parent;
+	int err, c, size, parent, parent_raw;
 	off64_t newsize = 0;
 	char *newparent = NULL;
 
-	name   = NULL;
-	size   = 0;
-	parent = 0;
+	name       = NULL;
+	size       = 0;
+	parent     = 0;
+	parent_raw = 0;
 
 	if (!argc || !argv)
 		goto usage;
 
 	optind = 0;
-	while ((c = getopt(argc, argv, "n:s:p:h")) != -1) {
+	while ((c = getopt(argc, argv, "n:s:p:mh")) != -1) {
 		switch (c) {
 		case 'n':
 			name = optarg;
@@ -61,6 +62,9 @@ vhd_util_modify(int argc, char **argv)
 		case 'p':
 			parent = 1;
 			newparent = optarg;
+			break;
+		case 'm':
+			parent_raw = 1;
 			break;
 
 		case 'h':
@@ -86,7 +90,7 @@ vhd_util_modify(int argc, char **argv)
 	}
 
 	if (parent) {
-		err = vhd_change_parent(&vhd, newparent);
+		err = vhd_change_parent(&vhd, newparent, parent_raw);
 		if (err)
 			printf("failed to set parent to '%s': %d\n",
 					newparent, err);
@@ -98,7 +102,7 @@ vhd_util_modify(int argc, char **argv)
 
 usage:
 	printf("*** Dangerous operations, use with care ***\n");
-	printf("options: <-n name> [-p NEW_PARENT set parent] "
+	printf("options: <-n name> [-p NEW_PARENT set parent [-m raw]] "
 			"[-s NEW_SIZE set size] [-h help]\n");
 	return -EINVAL;
 }
