@@ -1309,6 +1309,26 @@ __tapdisk_vbd_reissue_td_request(td_vbd_t *vbd,
 	parent     = tapdisk_vbd_next_image(image);
 	treq.image = parent;
 
+	/* return zeros for requests that extend beyond end of parent image */
+	if (treq.sec + treq.secs > parent->info.size) {
+		td_request_t clone  = treq;
+
+		if (parent->info.size > treq.sec) {
+			int secs    = parent->info.size - treq.sec;
+			clone.sec  += secs;
+			clone.secs -= secs;
+			clone.buf  += (secs << SECTOR_SHIFT);
+			treq.secs   = secs;
+		} else
+			treq.secs   = 0;
+
+		memset(clone.buf, 0, clone.secs << SECTOR_SHIFT);
+		td_complete_request(clone, 0);
+
+		if (!treq.secs)
+			goto done;
+	}
+
 	switch (treq.op) {
 	case TD_OP_WRITE:
 		td_queue_write(parent, treq);
