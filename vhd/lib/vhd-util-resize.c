@@ -552,7 +552,7 @@ vhd_next_block_offset(vhd_context_t *vhd)
 static inline int
 in_range(off64_t off, off64_t start, off64_t size)
 {
-	return (start <= off && start + size > off);
+	return (start < off && start + size > off);
 }
 
 #define SKIP_HEADER 0x01
@@ -749,7 +749,7 @@ vhd_add_bat_entries(vhd_journal_t *journal, int entries)
 	vhd_context_t *vhd;
 	uint32_t new_entries;
 	vhd_batmap_t new_batmap;
-	size_t bat_size, new_bat_size, map_size, new_map_size;
+	uint64_t bat_size, new_bat_size, map_size, new_map_size;
 
 	vhd          = &journal->vhd;
 	new_entries  = vhd->header.max_bat_size + entries;
@@ -763,16 +763,16 @@ vhd_add_bat_entries(vhd_journal_t *journal, int entries)
 
 	off = vhd->header.table_offset + new_bat_size;
 	if (vhd_check_for_clobber(vhd, off, SKIP_BAT | SKIP_BATMAP)) {
-		EPRINTF("%s: writing new bat of 0x%x bytes at 0x%08llx "
+		EPRINTF("%s: writing new bat of 0x%llx bytes at 0x%08llx "
 			"would clobber data\n", vhd->file, new_bat_size,
 			vhd->header.table_offset);
 		return -EINVAL;
 	}
 
 	if (vhd_has_batmap(vhd)) {
-		off = vhd->batmap.header.batmap_offset + new_bat_size;
+		off = vhd->batmap.header.batmap_offset + new_map_size;
 		if (vhd_check_for_clobber(vhd, off, 0)) {
-			EPRINTF("%s: writing new batmap of 0x%x bytes at "
+			EPRINTF("%s: writing new batmap of 0x%llx bytes at "
 				"0x%08llx would clobber data\n", vhd->file,
 				new_map_size, vhd->batmap.header.batmap_offset);
 			return -EINVAL;
