@@ -451,6 +451,9 @@ vhd_dynamic_shrink(vhd_journal_t *journal, uint64_t secs)
 	int i, j, err, free_cnt;
 	struct vhd_block *free_list;
 
+	printf("dynamic shrink not fully implemented\n");
+	return -ENOSYS;
+
 	eof       = 0;
 	free_cnt  = 0;
 	free_list = NULL;
