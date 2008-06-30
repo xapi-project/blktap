@@ -1209,8 +1209,10 @@ tapdisk_channel_open(tapdisk_channel_t **_channel,
 		     int blktap_fd, uint16_t cookie)
 {
 	int err;
+	char *msg;
 	tapdisk_channel_t *channel;
 
+	msg       = NULL;
 	*_channel = NULL;
 
 	channel = calloc(1, sizeof(tapdisk_channel_t));
@@ -1231,34 +1233,46 @@ tapdisk_channel_open(tapdisk_channel_t **_channel,
 	}
 
 	err = tapdisk_channel_init(channel);
-	if (err)
+	if (err) {
+		msg = "allocating device";
 		goto fail;
+	}
 
 	err = tapdisk_channel_check_uuid(channel);
-	if (err)
+	if (err) {
+		msg = "checking uuid";
 		goto fail;
+	}
 
 	err = tapdisk_channel_gather_info(channel);
-	if (err)
+	if (err) {
+		msg = "gathering parameters";
 		goto fail;
+	}
 
 	err = tapdisk_channel_verify_start_request(channel);
-	if (err)
+	if (err) {
+		msg = "invalid start request";
 		goto fail;
+	}
 
 	err = tapdisk_channel_set_watches(channel);
-	if (err)
+	if (err) {
+		msg = "registering xenstore watches";
 		goto fail;
+	}
 
 	err = tapdisk_channel_connect(channel);
-	if (err)
+	if (err) {
+		msg = "connecting to tapdisk";
 		goto fail;
+	}
 
 	*_channel = channel;
 	return 0;
 
 fail:
-	tapdisk_channel_close(channel);
+	tapdisk_channel_fatal(channel, "%s: %d", (msg ? : "failure"), err);
 	return err;
 }
 
