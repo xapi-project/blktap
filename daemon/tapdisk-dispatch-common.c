@@ -54,7 +54,13 @@ make_blktap_device(char *devname, int major, int minor, int perm)
 	int err;
 	struct stat st;
 	
-	if (lstat(devname, &st) == 0) {
+	err = lstat(devname, &st);
+	if (err == -1 && errno != ENOENT) {
+		EPRINTF("stating %s failed: %d\n", devname, -errno);
+		return -errno;
+	}
+
+	if (err == 0) {
 		DPRINTF("%s device already exists\n", devname);
 
 		/* it already exists, but is it the same major number */
