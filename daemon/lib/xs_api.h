@@ -41,6 +41,7 @@ struct xenbus_watch
         struct list_head  list;
         char             *node;
 	void             *data;
+	long              nonce;
         void (*callback) (struct xs_handle *h, 
 			  struct xenbus_watch *, 
 			  const  char *node);

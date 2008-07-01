@@ -32,6 +32,7 @@
  *
  */
 
+#include <time.h>
 #include <stdio.h>
 #include <errno.h>
 #include <stdlib.h>
@@ -214,14 +215,23 @@ get_dom_domid(struct xs_handle *h)
  */
 static struct xenbus_watch *find_watch(const char *token)
 {
+	int ret;
+	long nonce;
+	unsigned long addr;
 	struct xenbus_watch *i, *cmp;
 
-	cmp = (void *)strtoul(token, NULL, 16);
+	ret = sscanf(token, "%lX:%lX", &addr, &nonce);
+	if (ret != 2) {
+		EPRINTF("invalid watch token %s\n", token);
+		return NULL;
+	}
 
+	cmp = (struct xenbus_watch *)addr;
 	list_for_each_entry(i, &watches, list)
-		if (i == cmp)
+		if (i == cmp && i->nonce == nonce)
 			return i;
 
+	EPRINTF("couldn't find watch for token %s\n", token);
 	return NULL;
 }
 
@@ -232,9 +242,12 @@ static struct xenbus_watch *find_watch(const char *token)
 int register_xenbus_watch(struct xs_handle *h, struct xenbus_watch *watch)
 {
 	/* Pointer in ascii is the token. */
-	char token[sizeof(watch) * 2 + 1];
+	char token[(sizeof(watch) + sizeof(long)) * 2 + 2];
 
-	sprintf(token, "%lX", (long)watch);
+	/* 1-second granularity should suffice here */
+	watch->nonce = time(NULL);
+
+	sprintf(token, "%lX:%lX", (long)watch, watch->nonce);
 	if (find_watch(token)) {
 		EPRINTF("watch collision!\n");
 		return -EINVAL;
@@ -252,9 +265,9 @@ int register_xenbus_watch(struct xs_handle *h, struct xenbus_watch *watch)
 
 int unregister_xenbus_watch(struct xs_handle *h, struct xenbus_watch *watch)
 {
-	char token[sizeof(watch) * 2 + 1];
+	char token[(sizeof(watch) + sizeof(long)) * 2 + 2];
 
-	sprintf(token, "%lX", (long)watch);
+	sprintf(token, "%lX:%lX", (long)watch, watch->nonce);
 	if (!find_watch(token)) {
 		EPRINTF("no such watch!\n");
 		return -EINVAL;
@@ -274,10 +287,10 @@ int unregister_xenbus_watch(struct xs_handle *h, struct xenbus_watch *watch)
 void reregister_xenbus_watches(struct xs_handle *h)
 {
 	struct xenbus_watch *watch;
-	char token[sizeof(watch) * 2 + 1];
+	char token[(sizeof(watch) + sizeof(long)) * 2 + 2];
 
 	list_for_each_entry(watch, &watches, list) {
-		sprintf(token, "%lX", (long)watch);
+		sprintf(token, "%lX:%lX", (long)watch, watch->nonce);
 		xs_watch(h, watch->node, token);
 	}
 }
