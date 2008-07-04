@@ -231,7 +231,6 @@ static struct xenbus_watch *find_watch(const char *token)
 		if (i == cmp && i->nonce == nonce)
 			return i;
 
-	EPRINTF("couldn't find watch for token %s\n", token);
 	return NULL;
 }
 
@@ -315,6 +314,9 @@ int xs_fire_next_watch(struct xs_handle *h)
 	w = find_watch(token);
 	if (w) 
 		w->callback(h, w, node);
+	else
+		EPRINTF("couldn't find watch for token %s\n", token);
+
 	DPRINTF("handled watch %s on %s\n", token, node);
 
 	free(res);
