@@ -86,8 +86,23 @@ make_blktap_device(char *devname, int major, int minor, int perm)
 
 	err = mknod(devname, perm, makedev(major, minor));
 	if (err) {
+		int ret = -errno;
 		EPRINTF("mknod %s failed: %d\n", devname, -errno);
-		return -errno;
+
+		err = lstat(devname, &st);
+		if (err) {
+			DPRINTF("lstat %s failed: %d\n", devname, -errno);
+			err = access(devname, F_OK);
+			if (err)
+				DPRINTF("access %s failed: %d\n", devname, -errno);
+			else
+				DPRINTF("access %s succeeded\n", devname);
+		} else
+			DPRINTF("lstat %s: %u:%u\n", devname,
+				(unsigned int)st.st_rdev >> 8,
+				(unsigned int)st.st_rdev & 0xff);
+
+		return ret;
 	}
 
 	DPRINTF("Created %s device\n", devname);
