@@ -301,9 +301,15 @@ tapdisk_vbd_reactivate_volume(const char *name)
 
 	err = system(cmd);
 	if (err) {
-		EPRINTF("%s failed: %d\n", cmd, err);
-		free(cmd);
-		return err;
+		/* 
+		 * Assume that LV deactivation failed because the LV is open, 
+		 * in which case the LVM information should be up-to-date and 
+		 * we don't need this step anyways (so ignore the error). If 
+		 * the failure is due to a non-existent LV, the next command 
+		 * (lvchange -ay) will catch it.
+		 * If we want to be more prudent/paranoid, we can instead check 
+		 * whether the LV is currently open (a bit more work).
+		 */
 	}
 
 	free(cmd);
