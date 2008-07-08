@@ -851,6 +851,7 @@ tapdisk_vbd_shutdown(td_vbd_t *vbd)
 	if (!list_empty(&vbd->pending_requests))
 		return -EAGAIN;
 
+	tapdisk_vbd_kick(vbd);
 	tapdisk_vbd_queue_count(vbd, &new, &pending, &failed, &completed);
 
 	DPRINTF("%s: state: 0x%08x, new: 0x%02x, pending: 0x%02x, "
