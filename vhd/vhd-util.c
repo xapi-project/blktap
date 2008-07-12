@@ -8,6 +8,7 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "libvhd.h"
 #include "vhd-util.h"
 
 #if 1
@@ -77,8 +78,8 @@ int
 main(int argc, char *argv[])
 {
 	char **cargv;
-	int cargc, i, ret;
 	struct command *cmd;
+	int cargc, i, cnt, ret;
 
 #ifdef CORE_DUMP
 	#include <sys/resource.h>
@@ -105,11 +106,20 @@ main(int argc, char *argv[])
 	if (!cargv)
 		exit(ENOMEM);
 
+	cnt      = 1;
 	cargv[0] = cmd->name;
-	for (i = 1; i < cargc; i++)
-		cargv[i] = argv[i + (argc - cargc)];
+	for (i = 1; i < cargc; i++) {
+		char *arg = argv[i + (argc - cargc)];
 
-	ret = cmd->func(cargc, cargv);
+		if (!strcmp(arg, "--debug")) {
+			libvhd_set_log_level(1);
+			continue;
+		}
+
+		cargv[cnt++] = arg;
+	}
+
+	ret = cmd->func(cnt, cargv);
 
 	free(cargv);
 
