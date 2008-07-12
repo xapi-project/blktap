@@ -481,7 +481,7 @@ vhd_bitmap_clear(vhd_context_t *ctx, char *map, uint32_t block)
 int
 vhd_end_of_headers(vhd_context_t *ctx, off64_t *end)
 {
-	off64_t eom;
+	off64_t eom, bat_end;
 	vhd_parent_locator_t *loc;
 	int err, i, n, bat_secs, bat_bytes;
 
@@ -490,11 +490,13 @@ vhd_end_of_headers(vhd_context_t *ctx, off64_t *end)
 	if (!vhd_type_dynamic(ctx))
 		return 0;
 
-	eom       = 3 << VHD_SECTOR_SHIFT; /* copy of footer and header */
+	eom       = ctx->footer.data_offset + sizeof(vhd_header_t);
 
 	bat_bytes = ctx->header.max_bat_size * sizeof(uint32_t);
 	bat_secs  = secs_round_up_no_zero(bat_bytes);
-	eom      += bat_secs << VHD_SECTOR_SHIFT; /* bat table */
+	bat_end   = ctx->header.table_offset + (bat_secs << VHD_SECTOR_SHIFT);
+
+	eom       = MAX(eom, bat_end);
 
 	if (vhd_has_batmap(ctx)) {
 		off64_t hdr_end, hdr_secs, map_end, map_secs;
