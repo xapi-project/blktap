@@ -387,7 +387,7 @@ vhdi_file_table_entry_validate_vhd(vhdi_file_table_entry_t *entry,
 	if (entry->vhd_timestamp != vhd_time(stats.st_mtime))
 		return -EINVAL;
 
-	err = vhd_open(&vhd, path, O_RDONLY | O_LARGEFILE);
+	err = vhd_open(&vhd, path, VHD_OPEN_RDONLY);
 	if (err)
 		return err;
 
@@ -692,7 +692,7 @@ vhdi_bat_create(const char *name, const char *vhd,
 	if (!err || errno != ENOENT)
 		return (err ? -err : -EEXIST);
 
-	err = vhd_open(&ctx, vhd, O_RDONLY | O_LARGEFILE);
+	err = vhd_open(&ctx, vhd, VHD_OPEN_RDONLY);
 	if (err)
 		return err;
 
@@ -1071,7 +1071,7 @@ vhdi_file_table_entry_initialize(vhdi_file_table_entry_t *entry,
 	entry->file_id       = fid;
 	entry->vhd_timestamp = vhd_time(stats.st_mtime);
 
-	err = vhd_open(&vhd, file, O_RDONLY | O_LARGEFILE);
+	err = vhd_open(&vhd, file, VHD_OPEN_RDONLY);
 	if (err)
 		goto out;
 

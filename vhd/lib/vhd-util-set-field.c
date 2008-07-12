@@ -66,7 +66,7 @@ vhd_util_set_field(int argc, char **argv)
 		goto usage;
 	}
 
-	err = vhd_open(&vhd, name, O_RDWR | O_DIRECT);
+	err = vhd_open(&vhd, name, VHD_OPEN_RDWR);
 	if (err) {
 		printf("error opening %s: %d\n", name, err);
 		return err;

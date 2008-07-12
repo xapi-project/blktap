@@ -134,7 +134,7 @@ vhd_util_coalesce(int argc, char **argv)
 	if (!name || optind != argc)
 		goto usage;
 
-	err = vhd_open(&vhd, name, O_RDONLY | O_DIRECT);
+	err = vhd_open(&vhd, name, VHD_OPEN_RDONLY);
 	if (err) {
 		printf("error opening %s: %d\n", name, err);
 		return err;
@@ -156,7 +156,7 @@ vhd_util_coalesce(int argc, char **argv)
 			return err;
 		}
 	} else {
-		err = vhd_open(&parent, pname, O_RDWR | O_DIRECT);
+		err = vhd_open(&parent, pname, VHD_OPEN_RDWR);
 		if (err) {
 			printf("error opening %s: %d\n", pname, err);
 			free(pname);

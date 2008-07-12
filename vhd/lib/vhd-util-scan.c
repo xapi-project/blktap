@@ -149,8 +149,7 @@ vhd_util_scan_directory(const char *target,
 			break;
 		}
 
-		err = vhd_open(&vhd, image.name,
-			       O_RDONLY | O_LARGEFILE | O_DIRECT);
+		err = vhd_open(&vhd, image.name, VHD_OPEN_RDONLY);
 		if (err) {
 			printf("error opening %s %d\n", image.name, err);
 			free(image.name);

@@ -421,7 +421,7 @@ vhd_index_add_bat(vhdi_name_t *name,
 	}
 
 	for (;;) {
-		err = vhd_open(&vhd, vhd_file, O_RDONLY | O_LARGEFILE);
+		err = vhd_open(&vhd, vhd_file, VHD_OPEN_RDONLY);
 		if (err)
 			goto out;
 
@@ -527,7 +527,7 @@ vhd_index_clone_bat(vhdi_name_t *name, const char *parent)
 	if (err)
 		goto out_ft;
 
-	err = vhd_open(&vhd, name->vhd, O_RDONLY | O_LARGEFILE);
+	err = vhd_open(&vhd, name->vhd, VHD_OPEN_RDONLY);
 	if (err)
 		goto out_ft;
 
@@ -593,7 +593,7 @@ vhd_index_update_bat(vhdi_name_t *name)
 	if (err)
 		goto out_vhdi;
 
-	err = vhd_open(&vhd, name->vhd, O_RDONLY | O_LARGEFILE);
+	err = vhd_open(&vhd, name->vhd, VHD_OPEN_RDONLY);
 	if (err)
 		goto out_ft;
 
@@ -637,7 +637,7 @@ vhd_index_create(vhdi_name_t *name)
 	if (!access(name->index, F_OK) || !access(name->files, F_OK))
 		return -EEXIST;
 
-	err = vhd_open(&ctx, name->vhd, O_RDONLY | O_LARGEFILE);
+	err = vhd_open(&ctx, name->vhd, VHD_OPEN_RDONLY);
 	if (err)
 		return err;
 
@@ -683,7 +683,7 @@ vhd_index(vhdi_name_t *name)
 	new_index = 0;
 
 	/* find vhd's parent -- we only index read-only vhds */
-	err = vhd_open(&ctx, name->vhd, O_RDONLY | O_LARGEFILE);
+	err = vhd_open(&ctx, name->vhd, VHD_OPEN_RDONLY);
 	if (err)
 		return err;
 
@@ -716,7 +716,7 @@ vhd_index(vhdi_name_t *name)
 		return err;
 
 	/* get basic vhd info */
-	err = vhd_open(&ctx, name->vhd, O_RDONLY | O_LARGEFILE);
+	err = vhd_open(&ctx, name->vhd, VHD_OPEN_RDONLY);
 	if (err)
 		goto out;
 

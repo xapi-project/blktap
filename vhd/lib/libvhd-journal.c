@@ -1097,7 +1097,7 @@ vhd_journal_open(vhd_journal_t *j, const char *file)
 	free(vhd->bat.bat);
 	free(vhd->batmap.map);
 
-	err = vhd_open(vhd, file, O_LARGEFILE | O_RDWR | O_DIRECT);
+	err = vhd_open(vhd, file, VHD_OPEN_RDWR);
 	if (err)
 		goto fail;
 
@@ -1150,7 +1150,7 @@ vhd_journal_create(vhd_journal_t *j, const char *file)
 		goto fail1;
 	}
 
-	err = vhd_open(&j->vhd, file, O_LARGEFILE | O_RDWR | O_DIRECT);
+	err = vhd_open(&j->vhd, file, VHD_OPEN_RDWR);
 	if (err)
 		goto fail1;
 

@@ -24,7 +24,7 @@ vhd_util_find_snapshot_target(const char *name, char **result, int *parent_raw)
 	target  = strdup(name);
 
 	for (;;) {
-		err = vhd_open(&vhd, target, O_RDONLY | O_DIRECT);
+		err = vhd_open(&vhd, target, VHD_OPEN_RDONLY);
 		if (err)
 			return err;
 

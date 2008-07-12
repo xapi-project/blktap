@@ -40,7 +40,7 @@ vhd_util_repair(int argc, char **argv)
 	if (!name || optind != argc)
 		goto usage;
 
-	err = vhd_open(&vhd, name, O_RDWR | O_DIRECT);
+	err = vhd_open(&vhd, name, VHD_OPEN_RDWR);
 	if (err) {
 		printf("error opening %s: %d\n", name, err);
 		return err;

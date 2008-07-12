@@ -408,7 +408,7 @@ td_query(int type, int argc, char *argv[])
 	if (type == TD_TYPE_VHD) {
 		vhd_context_t vhd;
 
-		err = vhd_open(&vhd, name, O_RDONLY | O_DIRECT);
+		err = vhd_open(&vhd, name, VHD_OPEN_RDONLY);
 		if (err) {
 			printf("failed opening %s: %d\n", name, err);
 			return err;

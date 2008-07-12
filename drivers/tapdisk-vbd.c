@@ -367,7 +367,7 @@ tapdisk_vbd_reactivate_volumes(td_vbd_t *vbd, int resume)
 			break;
 
 		for (i = 0; i < TD_VBD_EIO_RETRIES; i++) {
-			err = vhd_open(&vhd, name, O_RDONLY);
+			err = vhd_open(&vhd, name, VHD_OPEN_RDONLY);
 			if (!err)
 				break;
 

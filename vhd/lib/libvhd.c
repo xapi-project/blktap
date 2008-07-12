@@ -844,32 +844,10 @@ vhd_read_footer(vhd_context_t *ctx, vhd_footer_t *footer)
 	if (err != -EINVAL)
 		return err;
 
+	if (ctx->oflags & VHD_OPEN_STRICT)
+		return -EINVAL;
+
 	return vhd_read_footer_at(ctx, footer, 0);
-}
-
-/*
- * only try reading the footer at the bottom of the file
- * if this fails, it's likely because tapdisk the file open
- */
-int
-vhd_read_footer_strict(vhd_context_t *ctx, vhd_footer_t *footer)
-{
-	int err;
-	off64_t off;
-
-	err = vhd_seek(ctx, 0, SEEK_END);
-	if (err)
-		return err;
-
-	off = vhd_position(ctx);
-	if (off == (off64_t)-1)
-		return -errno;
-
-	err = vhd_read_footer_at(ctx, footer, off - 512);
-	if (err != -EINVAL)
-		return err;
-
-	return vhd_read_short_footer(ctx, footer);
 }
 
 int
@@ -2149,22 +2127,86 @@ vhd_offset(vhd_context_t *ctx, uint32_t sector, uint32_t *offset)
 }
 
 int
-vhd_open(vhd_context_t *ctx, const char *file, int flags)
+vhd_open_fast(vhd_context_t *ctx)
 {
 	int err;
+	char *buf;
+	size_t size;
+
+	size = sizeof(vhd_footer_t) + sizeof(vhd_header_t);
+	err  = posix_memalign((void **)&buf, VHD_SECTOR_SIZE, size);
+	if (err) {
+		VHDLOG("failed allocating %s: %d\n", ctx->file, -err);
+		return -err;
+	}
+
+	err = vhd_read(ctx, buf, size);
+	if (err) {
+		VHDLOG("failed reading %s: %d\n", ctx->file, err);
+		goto out;
+	}
+
+	memcpy(&ctx->footer, buf, sizeof(vhd_footer_t));
+	vhd_footer_in(&ctx->footer);
+	err = vhd_validate_footer(&ctx->footer);
+	if (err)
+		goto out;
+
+	if (vhd_type_dynamic(ctx)) {
+		if (ctx->footer.data_offset != sizeof(vhd_footer_t))
+			err = vhd_read_header(ctx, &ctx->header);
+		else {
+			memcpy(&ctx->header,
+			       buf + sizeof(vhd_footer_t),
+			       sizeof(vhd_header_t));
+			vhd_header_in(&ctx->header);
+			err = vhd_validate_header(&ctx->header);
+		}
+
+		if (err)
+			goto out;
+
+		ctx->spb     = ctx->header.block_size >> VHD_SECTOR_SHIFT;
+		ctx->bm_secs = secs_round_up_no_zero(ctx->spb >> 3);
+	}
+
+out:
+	free(buf);
+	return err;
+}
+
+int
+vhd_open(vhd_context_t *ctx, const char *file, int flags)
+{
+	int err, oflags;
 
 	memset(ctx, 0, sizeof(vhd_context_t));
-	ctx->fd = -1;
+	ctx->fd     = -1;
+	ctx->oflags = flags;
 
 	err = namedup(&ctx->file, file);
 	if (err)
 		return err;
 
-	ctx->fd = open(ctx->file, flags | O_DIRECT | O_LARGEFILE, 0644);
+	oflags = O_DIRECT | O_LARGEFILE;
+	if (flags & VHD_OPEN_RDONLY)
+		oflags |= O_RDONLY;
+	if (flags & VHD_OPEN_RDWR)
+		oflags |= O_RDWR;
+
+	ctx->fd = open(ctx->file, oflags, 0644);
 	if (ctx->fd == -1) {
 		err = -errno;
 		VHDLOG("failed to open %s: %d\n", ctx->file, err);
 		goto fail;
+	}
+
+	if (flags & VHD_OPEN_FAST) {
+		err = vhd_open_fast(ctx);
+		if (err)
+			goto fail;
+
+		return 0;
 	}
 
 	err = vhd_read_footer(ctx, &ctx->footer);
@@ -2326,7 +2368,7 @@ vhd_initialize_header(vhd_context_t *ctx, const char *parent_path, int raw)
 		ctx->header.prt_ts       = vhd_time(stats.st_mtime);
 	}
 	else {
-		err = vhd_open(&parent, parent_path, O_RDONLY | O_DIRECT);
+		err = vhd_open(&parent, parent_path, VHD_OPEN_RDONLY);
 		if (err)
 			return err;
 
@@ -2398,7 +2440,7 @@ vhd_change_parent(vhd_context_t *child, char *parent_path, int raw)
 	if (raw) {
 		uuid_clear(child->header.prt_uuid);
 	} else {
-		err = vhd_open(&parent, parent_path, O_RDONLY | O_DIRECT);
+		err = vhd_open(&parent, parent_path, VHD_OPEN_RDONLY);
 		if (err)
 			return err;
 		uuid_copy(child->header.prt_uuid, parent.footer.uuid);
@@ -2861,7 +2903,7 @@ __vhd_io_dynamic_read(vhd_context_t *ctx,
 			vhd_close(vhd);
 		vhd = &parent;
 
-		err = vhd_open(vhd, next, O_RDONLY | O_DIRECT);
+		err = vhd_open(vhd, next, VHD_OPEN_RDONLY);
 		if (err)
 			goto out;
 

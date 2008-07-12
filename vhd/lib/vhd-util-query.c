@@ -57,7 +57,7 @@ vhd_util_query(int argc, char **argv)
 	if (!name || optind != argc)
 		goto usage;
 
-	err = vhd_open(&vhd, name, O_RDONLY | O_DIRECT);
+	err = vhd_open(&vhd, name, VHD_OPEN_RDONLY);
 	if (err) {
 		printf("error opening %s: %d\n", name, err);
 		return err;

@@ -40,6 +40,11 @@
 #define UTF_16LE                   "UTF-16LE"
 #define UTF_16BE                   "UTF-16BE"
 
+#define VHD_OPEN_RDONLY            0x00001
+#define VHD_OPEN_RDWR              0x00002
+#define VHD_OPEN_FAST              0x00004
+#define VHD_OPEN_STRICT            0x00008
+
 #define VHD_FLAG_CREAT_FILE_SIZE_FIXED   0x00001
 #define VHD_FLAG_CREAT_PARENT_RAW        0x00002
 
@@ -72,6 +77,7 @@ struct vhd_batmap {
 struct vhd_context {
 	int                        fd;
 	char                      *file;
+	int                        oflags;
 
 	uint32_t                   spb;
 	uint32_t                   bm_secs;

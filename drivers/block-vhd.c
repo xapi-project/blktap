@@ -580,9 +580,8 @@ __vhd_open(td_driver_t *driver, const char *name, vhd_flag_t flags)
 	if (err)
 		return err;
 
-	o_flags   = O_LARGEFILE | O_DIRECT;
-	o_flags  |= ((test_vhd_flag(flags, VHD_FLAG_OPEN_RDONLY)) ? 
-		     O_RDONLY : O_RDWR);
+	o_flags = ((test_vhd_flag(flags, VHD_FLAG_OPEN_RDONLY)) ? 
+		   VHD_OPEN_RDONLY : VHD_OPEN_RDWR);
 
 	err = vhd_open(&s->vhd, name, o_flags);
 	if (err) {
