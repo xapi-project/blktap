@@ -268,6 +268,34 @@ vhd_print_headers(vhd_context_t *vhd, int hex)
 }
 
 static int
+vhd_dump_headers(const char *name, int hex)
+{
+	vhd_context_t vhd;
+
+	libvhd_set_log_level(1);
+	memset(&vhd, 0, sizeof(vhd));
+
+	printf("\n%s appears invalid; dumping headers\n\n", name);
+
+	vhd.fd = open(name, O_DIRECT | O_LARGEFILE | O_RDONLY);
+	if (vhd.fd == -1)
+		return -errno;
+
+	vhd.file = strdup(name);
+
+	vhd_read_footer(&vhd, &vhd.footer);
+	vhd_read_header(&vhd, &vhd.header);
+
+	vhd_print_footer(&vhd.footer, hex);
+	vhd_print_header(&vhd, &vhd.header, hex);
+
+	close(vhd.fd);
+	free(vhd.file);
+
+	return 0;
+}
+
+static int
 vhd_print_logical_to_physical(vhd_context_t *vhd,
 			      uint64_t sector, int count, int hex)
 {
@@ -585,6 +613,7 @@ vhd_util_read(int argc, char **argv)
 	err = vhd_open(&vhd, name, VHD_OPEN_RDONLY);
 	if (err) {
 		printf("Failed to open %s: %d\n", name, err);
+		vhd_dump_headers(name, hex);
 		return err;
 	}
 
