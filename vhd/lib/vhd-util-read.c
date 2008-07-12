@@ -138,6 +138,7 @@ vhd_print_footer(vhd_footer_t *f, int hex)
 	printf("UUID                : %s\n", uuid);
 
 	printf("Saved state         : %s\n", f->saved == 0 ? "No" : "Yes");
+	printf("Hidden              : %d\n", f->hidden);
 	printf("\n");
 }
 
