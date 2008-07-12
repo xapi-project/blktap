@@ -224,6 +224,23 @@ vhd_validate_footer(vhd_footer_t *footer)
 
 	checksum = vhd_checksum_footer(footer);
 	if (checksum != footer->checksum) {
+		/*
+		 * early td-util did not re-calculate
+		 * checksum when marking vhds 'hidden'
+		 */
+		if (footer->hidden &&
+		    !strncmp(footer->crtr_app, "tap", 3) &&
+		    (footer->crtr_ver == VHD_VERSION(0, 1) ||
+		     footer->crtr_ver == VHD_VERSION(1, 1))) {
+			char tmp = footer->hidden;
+			footer->hidden = 0;
+			checksum = vhd_checksum_footer(footer);
+			footer->hidden = tmp;
+
+			if (checksum == footer->checksum)
+				return 0;
+		}
+
 		VHDLOG("invalid footer checksum: "
 		       "footer = 0x%08x, calculated = 0x%08x\n",
 		       footer->checksum, checksum);
@@ -1355,9 +1372,15 @@ vhd_w2u_decode_location(char *in, char *out, int len, char *utf_type)
 int
 vhd_header_decode_parent(vhd_context_t *ctx, vhd_header_t *header, char **buf)
 {
-	char out[512];
+	char *code, out[512];
 
-	*buf = vhd_w2u_decode_location(header->prt_name, out, 512, UTF_16BE);
+	if (vhd_creator_tapdisk(ctx) &&
+	    ctx->footer.crtr_ver == VHD_VERSION(0, 1))
+		code = UTF_16;
+	else
+		code = UTF_16BE;
+
+	*buf = vhd_w2u_decode_location(header->prt_name, out, 512, code);
 	return (*buf == NULL ? -EINVAL : 0);
 }
 
