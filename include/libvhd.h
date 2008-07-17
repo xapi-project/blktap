@@ -212,7 +212,8 @@ int vhd_parent_locator_count(vhd_context_t *);
 int vhd_parent_locator_get(vhd_context_t *, char **);
 int vhd_parent_locator_read(vhd_context_t *, vhd_parent_locator_t *, char **);
 int vhd_parent_locator_write_at(vhd_context_t *, const char *,
-				off64_t, uint32_t, vhd_parent_locator_t *);
+				off64_t, uint32_t, size_t,
+				vhd_parent_locator_t *);
 
 int vhd_header_decode_parent(vhd_context_t *, vhd_header_t *, char **);
 int vhd_change_parent(vhd_context_t *, char *parent_path, int raw);

@@ -20,8 +20,11 @@ vhd_util_find_snapshot_target(const char *name, char **result, int *parent_raw)
 	vhd_context_t vhd;
 
 	*parent_raw = 0;
-	*result = NULL;
-	target  = strdup(name);
+	*result     = NULL;
+
+	target = strdup(name);
+	if (!target)
+		return -ENOMEM;
 
 	for (;;) {
 		err = vhd_open(&vhd, target, VHD_OPEN_RDONLY);
@@ -44,9 +47,10 @@ vhd_util_find_snapshot_target(const char *name, char **result, int *parent_raw)
 		if (err)
 			goto out;
 
-		if (vhd_parent_raw(&vhd))
+		if (vhd_parent_raw(&vhd)) {
 			*parent_raw = 1;
 			goto out;
+		}
 
 		vhd_close(&vhd);
 	}
@@ -65,15 +69,19 @@ int
 vhd_util_snapshot(int argc, char **argv)
 {
 	int c, err, prt_raw;
-	char *name, *pname, *backing;
 	vhd_flag_creat_t flags;
+	char *name, *pname, *ppath, *backing;
 
-	name  = NULL;
-	pname = NULL;
-	flags = 0;
+	name    = NULL;
+	pname   = NULL;
+	ppath   = NULL;
+	backing = NULL;
+	flags   = 0;
 
-	if (!argc || !argv)
+	if (!argc || !argv) {
+		err = -EINVAL;
 		goto usage;
+	}
 
 	optind = 0;
 	while ((c = getopt(argc, argv, "n:p:bmh")) != -1) {
@@ -91,28 +99,50 @@ vhd_util_snapshot(int argc, char **argv)
 			vhd_flag_set(flags, VHD_FLAG_CREAT_PARENT_RAW);
 			break;
 		case 'h':
+			err = 0;
+			goto usage;
 		default:
+			err = -EINVAL;
 			goto usage;
 		}
 	}
 
-	if (!name || !pname || optind != argc)
+	if (!name || !pname || optind != argc) {
+		err = -EINVAL;
 		goto usage;
+	}
+
+	ppath = realpath(pname, NULL);
+	if (!ppath)
+		return -errno;
 
 	if (vhd_flag_test(flags, VHD_FLAG_CREAT_PARENT_RAW)) {
-		backing = strdup(pname);
+		backing = strdup(ppath);
+		if (!backing) {
+			err = -ENOMEM;
+			goto out;
+		}
 	} else {
-		err = vhd_util_find_snapshot_target(pname, &backing, &prt_raw);
-		if (err)
-			return err;
+		err = vhd_util_find_snapshot_target(ppath, &backing, &prt_raw);
+		if (err) {
+			backing = NULL;
+			goto out;
+		}
+
 		if (prt_raw)
 			vhd_flag_set(flags, VHD_FLAG_CREAT_PARENT_RAW);
 	}
 
-	return vhd_snapshot(name, backing, flags);
+	err = vhd_snapshot(name, backing, flags);
+
+out:
+	free(ppath);
+	free(backing);
+
+	return err;
 
 usage:
 	printf("options: <-n name> <-p parent name> [-b file_is_fixed_size] "
 			"[-m parent_is_raw] [-h help]\n");
-	return -EINVAL;
+	return err;
 }

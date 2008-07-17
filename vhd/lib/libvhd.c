@@ -1541,10 +1541,11 @@ vhd_parent_locator_get(vhd_context_t *ctx, char **parent)
 int
 vhd_parent_locator_write_at(vhd_context_t *ctx,
 			    const char *parent, off64_t off, uint32_t code,
-			    vhd_parent_locator_t *loc)
+			    size_t max_bytes, vhd_parent_locator_t *loc)
 {
+	struct stat stats;
 	int err, len, size;
-	char *file, *absolute_path, *relative_path, *encoded, *block;
+	char *absolute_path, *relative_path, *encoded, *block;
 
 	memset(loc, 0, sizeof(vhd_parent_locator_t));
 
@@ -1554,7 +1555,7 @@ vhd_parent_locator_write_at(vhd_context_t *ctx,
 	absolute_path = NULL;
 	relative_path = NULL;
 	encoded       = NULL;
-	block         = 0;
+	block         = NULL;
 	size          = 0;
 	len           = 0;
 
@@ -1567,17 +1568,20 @@ vhd_parent_locator_write_at(vhd_context_t *ctx,
 		return -EINVAL;
 	}
 
-	file          = basename((char *)parent); /* GNU basename */
 	absolute_path = realpath(parent, NULL);
-
-	if (!absolute_path || !strcmp(file, "")) {
-		err = (errno ? -errno : -EINVAL);
+	if (!absolute_path) {
+		err = -errno;
 		goto out;
 	}
 
-	err = access(absolute_path, R_OK);
+	err = stat(absolute_path, &stats);
 	if (err) {
 		err = -errno;
+		goto out;
+	}
+
+	if (!S_ISREG(stats.st_mode) && !S_ISBLK(stats.st_mode)) {
+		err = -EINVAL;
 		goto out;
 	}
 
@@ -1607,6 +1611,12 @@ vhd_parent_locator_write_at(vhd_context_t *ctx,
 		goto out;
 
 	size = secs_round_up_no_zero(len) << VHD_SECTOR_SHIFT;
+
+	if (max_bytes && size > max_bytes) {
+		err = -ENAMETOOLONG;
+		goto out;
+	}
+
 	err  = posix_memalign((void **)&block, VHD_SECTOR_SIZE, size);
 	if (err) {
 		block = NULL;
@@ -2353,6 +2363,8 @@ vhd_initialize_header_parent_name(vhd_context_t *ctx, const char *parent_path)
 	obl = sizeof(ctx->header.prt_name);
 	dst = ctx->header.prt_name;
 
+	memset(dst, 0, obl);
+
 	if (iconv(cd, &pname, &ibl, &dst, &obl) == (size_t)-1 || ibl)
 		err = (errno ? -errno : -EINVAL);
 
@@ -2465,8 +2477,8 @@ vhd_write_parent_locators(vhd_context_t *ctx, const char *parent)
 			break;
 		}
 
-		err = vhd_parent_locator_write_at(ctx, parent, off,
-						  code, ctx->header.loc + i);
+		err = vhd_parent_locator_write_at(ctx, parent, off, code,
+						  0, ctx->header.loc + i);
 		if (err)
 			return err;
 
@@ -2480,34 +2492,78 @@ int
 vhd_change_parent(vhd_context_t *child, char *parent_path, int raw)
 {
 	int i, err;
+	char *ppath;
 	struct stat stats;
 	vhd_context_t parent;
 
-	err = stat(parent_path, &stats);
-	if (err == -1)
+	ppath = realpath(parent_path, NULL);
+	if (!ppath) {
+		VHDLOG("error resolving parent path %s for %s: %d\n",
+		       parent_path, child->file, errno);
 		return -errno;
+	}
+
+	err = stat(ppath, &stats);
+	if (err == -1) {
+		err = -errno;
+		goto out;
+	}
+
+	if (!S_ISREG(stats.st_mode) && !S_ISBLK(stats.st_mode)) {
+		err = -EINVAL;
+		goto out;
+	}
 
 	if (raw) {
 		uuid_clear(child->header.prt_uuid);
 	} else {
-		err = vhd_open(&parent, parent_path, VHD_OPEN_RDONLY);
-		if (err)
-			return err;
+		err = vhd_open(&parent, ppath, VHD_OPEN_RDONLY);
+		if (err) {
+			VHDLOG("error opening parent %s for %s: %d\n",
+			       ppath, child->file, err);
+			goto out;
+		}
 		uuid_copy(child->header.prt_uuid, parent.footer.uuid);
 		vhd_close(&parent);
 	}
-	vhd_initialize_header_parent_name(child, parent_path);
+
+	vhd_initialize_header_parent_name(child, ppath);
 	child->header.prt_ts = vhd_time(stats.st_mtime);
 
 	for (i = 0; i < vhd_parent_locator_count(child); i++) {
-		off64_t off = child->header.loc[i].data_offset;
-		int code = child->header.loc[i].code;
-		vhd_parent_locator_write_at(child, parent_path, off, code,
-				child->header.loc + i);
+		vhd_parent_locator_t *loc = child->header.loc + i;
+		size_t max = vhd_parent_locator_size(loc);
+
+		switch (loc->code) {
+		case PLAT_CODE_MACX:
+		case PLAT_CODE_W2KU:
+		case PLAT_CODE_W2RU:
+			break;
+		default:
+			continue;
+		}
+
+		err = vhd_parent_locator_write_at(child, ppath,
+						  loc->data_offset,
+						  loc->code, max, loc);
+		if (err) {
+			VHDLOG("error writing parent locator %d for %s: %d\n",
+			       i, child->file, err);
+			goto out;
+		}
 	}
-	vhd_write_header(child, &child->header);
-	vhd_write_footer(child, &child->footer);
-	return 0;
+
+	err = vhd_write_header(child, &child->header);
+	if (err) {
+		VHDLOG("error writing header for %s: %d\n", child->file, err);
+		goto out;
+	}
+
+	err = 0;
+
+out:
+	free(ppath);
+	return err;
 }
 
 static int
