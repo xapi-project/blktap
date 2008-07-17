@@ -1005,6 +1005,9 @@ vhd_util_resize(int argc, char **argv)
 	vhd_journal_t journal;
 	vhd_context_t *vhd;
 
+	printf("resize not yet implemented\n");
+	return -ENOSYS;
+
 	err  = -EINVAL;
 	size = 0;
 	name = NULL;
