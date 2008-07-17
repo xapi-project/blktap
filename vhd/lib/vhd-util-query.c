@@ -90,8 +90,17 @@ vhd_util_query(int argc, char **argv)
 		}
 	}
 
-	if (fields)
-		printf("hidden: %d\n", vhd.footer.hidden);
+	if (fields) {
+		int hidden;
+
+		err = vhd_hidden(&vhd, &hidden);
+		if (err) {
+			printf("error checking 'hidden' field: %d\n", err);
+			goto done;
+		}
+
+		printf("hidden: %d\n", hidden);
+	}
 		
  done:
 	vhd_close(&vhd);

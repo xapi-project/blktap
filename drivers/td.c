@@ -435,8 +435,17 @@ td_query(int type, int argc, char *argv[])
 		}
 
 		if (fields) {
-			printf("%s: %d\n", td_vdi_fields[TD_FIELD_HIDDEN].name,
-			       vhd.footer.hidden);
+			int ret, hidden;
+
+			ret = vhd_hidden(&vhd, &hidden);
+			if (ret) {
+				printf("failed checking 'hidden' field: %d\n",
+				       ret);
+				err = (err ? : ret);
+			} else
+				printf("%s: %d\n",
+				       td_vdi_fields[TD_FIELD_HIDDEN].name,
+				       hidden);
 		}
 
 		vhd_close(&vhd);

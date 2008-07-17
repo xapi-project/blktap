@@ -409,6 +409,31 @@ vhd_parent_locator_count(vhd_context_t *ctx)
 }
 
 int
+vhd_hidden(vhd_context_t *ctx, int *hidden)
+{
+	int err;
+
+	*hidden = 0;
+
+	if (vhd_type_dynamic(ctx) && vhd_creator_tapdisk(ctx) &&
+	    (ctx->footer.crtr_ver == VHD_VERSION(0, 1) ||
+	     ctx->footer.crtr_ver == VHD_VERSION(1, 1))) {
+		vhd_footer_t copy;
+
+		err = vhd_read_footer_at(ctx, &copy, 0);
+		if (err) {
+			VHDLOG("error reading backup footer of %s: %d\n",
+			       ctx->file, err);
+			return err;
+		}
+		*hidden = copy.hidden;
+	} else
+		*hidden = ctx->footer.hidden;
+
+	return 0;
+}
+
+int
 vhd_batmap_test(vhd_context_t *ctx, vhd_batmap_t *batmap, uint32_t block)
 {
 	if (!vhd_has_batmap(ctx) || !batmap->map)

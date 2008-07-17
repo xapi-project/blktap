@@ -110,7 +110,7 @@ vhd_util_scan_files(int cnt, char **files)
 {
 	vhd_context_t vhd;
 	struct vhd_image image;
-	int i, ret, err, vhd_flags;
+	int i, ret, err, hidden, vhd_flags;
 
 	ret = 0;
 	err = 0;
@@ -134,7 +134,6 @@ vhd_util_scan_files(int cnt, char **files)
 			goto end;
 		}
 
-		image.hidden   = vhd.footer.hidden;
 		image.capacity = vhd.footer.curr_size;
 
 		if (flags & VHD_SCAN_VOLUMES)
@@ -151,6 +150,15 @@ vhd_util_scan_files(int cnt, char **files)
 			image.error   = err;
 			goto end;
 		}
+
+		err = vhd_hidden(&vhd, &hidden);
+		if (err) {
+			ret           = -EAGAIN;
+			image.message = "checking 'hidden' field";
+			image.error   = err;
+			goto end;
+		}
+		image.hidden = hidden;
 
 		if (vhd.footer.type == HD_TYPE_DIFF) {
 			err = vhd_util_scan_get_parent(&vhd, &image.parent);

@@ -9,6 +9,7 @@
 #include <string.h>
 #include <endian.h>
 #include <byteswap.h>
+#include <uuid/uuid.h>
 
 #include "vhd.h"
 
@@ -135,6 +136,12 @@ vhd_parent_locator_size(vhd_parent_locator_t *loc)
 		return 0;
 }
 
+static inline int
+vhd_parent_raw(vhd_context_t *ctx)
+{
+	return uuid_is_null(ctx->header.prt_uuid);
+}
+
 void libvhd_set_log_level(int);
 
 uint32_t vhd_time(time_t time);
@@ -164,6 +171,8 @@ int vhd_open(vhd_context_t *, const char *file, int flags);
 void vhd_close(vhd_context_t *);
 int vhd_create(const char *name, uint64_t bytes, int type, vhd_flag_creat_t);
 int vhd_snapshot(const char *snapshot, const char *parent, vhd_flag_creat_t);
+
+int vhd_hidden(vhd_context_t *, int *);
 
 off64_t vhd_position(vhd_context_t *);
 int vhd_seek(vhd_context_t *, off64_t, int);
@@ -204,7 +213,6 @@ int vhd_parent_locator_get(vhd_context_t *, char **);
 int vhd_parent_locator_read(vhd_context_t *, vhd_parent_locator_t *, char **);
 int vhd_parent_locator_write_at(vhd_context_t *, const char *,
 				off64_t, uint32_t, vhd_parent_locator_t *);
-#define vhd_parent_raw(vhd) (uuid_is_null((vhd)->header.prt_uuid))
 
 int vhd_header_decode_parent(vhd_context_t *, vhd_header_t *, char **);
 int vhd_change_parent(vhd_context_t *, char *parent_path, int raw);
