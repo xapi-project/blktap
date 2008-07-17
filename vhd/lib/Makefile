@@ -36,6 +36,7 @@ LIB-SRCS        += vhd-util-resize.c
 LIB-SRCS        += vhd-util-set-field.c
 LIB-SRCS        += vhd-util-snapshot.c
 LIB-SRCS        += vhd-util-scan.c
+LIB-SRCS        += vhd-util-check.c
 LIB-SRCS        += relative-path.c
 LIB-SRCS        += atomicio.c
 

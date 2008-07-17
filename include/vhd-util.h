@@ -17,5 +17,6 @@ int vhd_util_resize(int argc, char **argv);
 int vhd_util_coalesce(int argc, char **argv);
 int vhd_util_modify(int argc, char **argv);
 int vhd_util_scan(int argc, char **argv);
+int vhd_util_check(int argc, char **argv);
 
 #endif
