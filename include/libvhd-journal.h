@@ -19,9 +19,12 @@
 typedef struct vhd_journal_header {
 	char                       cookie[8];
 	uuid_t                     uuid;
-	uint32_t                   entries;
-	uint64_t                   footer_offset;
-	char                       pad[476];
+	uint64_t                   vhd_footer_offset;
+	uint32_t                   journal_data_entries;
+	uint32_t                   journal_metadata_entries;
+	uint64_t                   journal_data_offset;
+	uint64_t                   journal_metadata_offset;
+	char                       pad[460];
 } vhd_journal_header_t;
 
 typedef struct vhd_journal {

@@ -76,30 +76,31 @@ vhd_write_zeros(vhd_journal_t *journal, off64_t off, uint64_t size)
 {
 	int err;
 	char *buf;
-	uint64_t bytes;
 	vhd_context_t *vhd;
+	uint64_t bytes, map;
 
-	vhd   = &journal->vhd;
-	bytes = MIN(size, VHD_BLOCK_SIZE);
-
-	buf = mmap(0, bytes, PROT_READ, MAP_SHARED | MAP_ANONYMOUS, -1, 0);
-	if (buf == MAP_FAILED)
-		return -errno;
+	vhd = &journal->vhd;
+	map = MIN(size, VHD_BLOCK_SIZE);
 
 	err = vhd_seek(vhd, off, SEEK_SET);
 	if (err)
 		return err;
 
+	buf = mmap(0, map, PROT_READ, MAP_SHARED | MAP_ANONYMOUS, -1, 0);
+	if (buf == MAP_FAILED)
+		return -errno;
+
 	do {
+		bytes = MIN(size, map);
+
 		err = vhd_write(vhd, buf, bytes);
 		if (err)
 			break;
 
 		size -= bytes;
-		bytes = MIN(size, bytes);
 	} while (size);
 
-	munmap(buf, bytes);
+	munmap(buf, map);
 
 	return err;
 }
@@ -227,6 +228,11 @@ vhd_move_block(vhd_journal_t *journal, uint32_t src, off64_t offset)
 	if (src_off == DD_BLK_UNUSED)
 		return -EINVAL;
 	src_off <<= VHD_SECTOR_SHIFT;
+
+	err  = vhd_journal_add_block(journal, src,
+				     VHD_JOURNAL_DATA | VHD_JOURNAL_METADATA);
+	if (err)
+		goto out;
 
 	err  = vhd_read_bitmap(vhd, src, &buf);
 	if (err)
@@ -941,7 +947,7 @@ vhd_dynamic_grow(vhd_journal_t *journal, uint64_t secs)
 
 			new_off += gap_size;
 		}
-		
+
 		err = vhd_move_block(journal, first_block.block, new_off);
 		if (err)
 			return err;
@@ -996,12 +1002,33 @@ vhd_dynamic_resize(vhd_journal_t *journal, uint64_t size)
 	return err;
 }
 
+static int
+vhd_util_resize_check_creator(const char *name)
+{
+	int err;
+	vhd_context_t vhd;
+
+	err = vhd_open(&vhd, name, VHD_OPEN_RDONLY | VHD_OPEN_STRICT);
+	if (err) {
+		printf("error opening %s: %d\n", name, err);
+		return err;
+	}
+
+	if (!vhd_creator_tapdisk(&vhd)) {
+		printf("%s not created by xen; resize not supported\n", name);
+		err = -EINVAL;
+	}
+
+	vhd_close(&vhd);
+	return err;
+}
+
 int
 vhd_util_resize(int argc, char **argv)
 {
-	int c, err;
 	char *name;
 	uint64_t size;
+	int c, err, jerr;
 	vhd_journal_t journal;
 	vhd_context_t *vhd;
 
@@ -1031,17 +1058,26 @@ vhd_util_resize(int argc, char **argv)
 	if (err || !name || argc != optind)
 		goto usage;
 
+	err = vhd_util_resize_check_creator(name);
+	if (err)
+		return err;
+
 	libvhd_set_log_level(1);
 	err = vhd_journal_create(&journal, name);
 
 	if (err == -EEXIST) {
+		printf("existing journal found\n");
+
 		/* journal already exists due to previous failure */
 		err = vhd_journal_open(&journal, name);
-		if (err)
+		if (err) {
+			printf("opening journal failed: %d\n", err);
 			return err;
+		}
 
 		err = vhd_journal_revert(&journal);
 		if (err) {
+			printf("reverting journal failed: %d\n", err);
 			vhd_journal_close(&journal);
 			return err;
 		}
@@ -1050,8 +1086,10 @@ vhd_util_resize(int argc, char **argv)
 		err = vhd_journal_create(&journal, name);
 	}
 
-	if (err)
+	if (err) {
+		printf("creating journal failed: %d\n", err);
 		return err;
+	}
 
 	vhd = &journal.vhd;
 
@@ -1065,19 +1103,21 @@ vhd_util_resize(int argc, char **argv)
 		err = vhd_fixed_resize(&journal, size);
 
 out:
-	if (err)
-		err = vhd_journal_revert(&journal);
-	else
-		err = vhd_journal_commit(&journal);
+	if (err) {
+		printf("resize failed: %d\n", err);
+		jerr = vhd_journal_revert(&journal);
+	} else
+		jerr = vhd_journal_commit(&journal);
 
-	if (err)
+	if (jerr) {
+		printf("closing journal failed: %d\n", jerr);
 		vhd_journal_close(&journal);
-	else
+	} else
 		vhd_journal_remove(&journal);
 
-	return err;
+	return (err ? : jerr);
 
 usage:
-	printf("options: <-n name> <-s size> [-h help]\n");
+	printf("options: <-n name> <-s size (in MB)> [-h help]\n");
 	return -EINVAL;
 }

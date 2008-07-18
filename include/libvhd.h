@@ -120,6 +120,13 @@ vhd_creator_tapdisk(vhd_context_t *ctx)
 	return !strncmp(ctx->footer.crtr_app, "tap", 3);
 }
 
+static inline int
+vhd_disabled(vhd_context_t *ctx)
+{
+	return (!memcmp(ctx->footer.cookie,
+			VHD_POISON_COOKIE, sizeof(ctx->footer.cookie)));
+}
+
 static inline size_t
 vhd_parent_locator_size(vhd_parent_locator_t *loc)
 {

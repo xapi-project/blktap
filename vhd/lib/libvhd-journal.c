@@ -13,19 +13,20 @@
 #include "atomicio.h"
 #include "libvhd-journal.h"
 
-#define VHD_JOURNAL_ENTRY_TYPE_FOOTER    0
-#define VHD_JOURNAL_ENTRY_TYPE_HEADER    1
-#define VHD_JOURNAL_ENTRY_TYPE_LOCATOR   2
-#define VHD_JOURNAL_ENTRY_TYPE_BAT       3
-#define VHD_JOURNAL_ENTRY_TYPE_BATMAP_H  4
-#define VHD_JOURNAL_ENTRY_TYPE_BATMAP_M  5
-#define VHD_JOURNAL_ENTRY_TYPE_DATA      6
+#define VHD_JOURNAL_ENTRY_TYPE_FOOTER_P  1
+#define VHD_JOURNAL_ENTRY_TYPE_FOOTER_C  2
+#define VHD_JOURNAL_ENTRY_TYPE_HEADER    3
+#define VHD_JOURNAL_ENTRY_TYPE_LOCATOR   4
+#define VHD_JOURNAL_ENTRY_TYPE_BAT       5
+#define VHD_JOURNAL_ENTRY_TYPE_BATMAP_H  6
+#define VHD_JOURNAL_ENTRY_TYPE_BATMAP_M  7
+#define VHD_JOURNAL_ENTRY_TYPE_DATA      8
 
 typedef struct vhd_journal_entry {
+	uint64_t                         cookie;
 	uint32_t                         type;
 	uint32_t                         size;
 	uint64_t                         offset;
-	uint64_t                         cookie;
 	uint32_t                         checksum;
 } vhd_journal_entry_t;
 
@@ -90,24 +91,45 @@ vhd_journal_truncate(vhd_journal_t *j, off64_t length)
 static inline void
 vhd_journal_header_in(vhd_journal_header_t *header)
 {
-	BE32_IN(&header->entries);
-	BE64_IN(&header->footer_offset);
+	BE64_IN(&header->vhd_footer_offset);
+	BE32_IN(&header->journal_data_entries);
+	BE32_IN(&header->journal_metadata_entries);
+	BE64_IN(&header->journal_data_offset);
+	BE64_IN(&header->journal_metadata_offset);
 }
 
 static inline void
 vhd_journal_header_out(vhd_journal_header_t *header)
 {
-	BE32_OUT(&header->entries);
-	BE64_OUT(&header->footer_offset);
+	BE64_OUT(&header->vhd_footer_offset);
+	BE32_OUT(&header->journal_data_entries);
+	BE32_OUT(&header->journal_metadata_entries);
+	BE64_OUT(&header->journal_data_offset);
+	BE64_OUT(&header->journal_metadata_offset);
 }
 
 static int
 vhd_journal_validate_header(vhd_journal_t *j, vhd_journal_header_t *header)
 {
 	int err;
+	off64_t eof;
 
 	if (memcmp(header->cookie,
 		   VHD_JOURNAL_HEADER_COOKIE, sizeof(header->cookie)))
+		return -EINVAL;
+
+	err = vhd_journal_seek(j, 0, SEEK_END);
+	if (err)
+		return err;
+
+	eof = vhd_journal_position(j);
+	if (eof == (off64_t)-1)
+		return -errno;
+
+	if (j->header.journal_data_offset > eof)
+		return -EINVAL;
+
+	if (j->header.journal_metadata_offset > eof)
 		return -EINVAL;
 
 	return 0;
@@ -142,16 +164,16 @@ vhd_journal_write_header(vhd_journal_t *j, vhd_journal_header_t *header)
 
 	memcpy(&h, header, sizeof(vhd_journal_header_t));
 
-	size = sizeof(vhd_journal_header_t);
-	err  = vhd_journal_seek(j, 0, SEEK_SET);
-	if (err)
-		return err;
-
 	err = vhd_journal_validate_header(j, &h);
 	if (err)
 		return err;
 
 	vhd_journal_header_out(&h);
+	size = sizeof(vhd_journal_header_t);
+
+	err  = vhd_journal_seek(j, 0, SEEK_SET);
+	if (err)
+		return err;
 
 	err = vhd_journal_write(j, &h, size);
 	if (err)
@@ -185,7 +207,7 @@ vhd_journal_add_journal_header(vhd_journal_t *j)
 	uuid_copy(j->header.uuid, vhd->footer.uuid);
 	memcpy(j->header.cookie,
 	       VHD_JOURNAL_HEADER_COOKIE, sizeof(j->header.cookie));
-	j->header.footer_offset = off - sizeof(vhd_footer_t);
+	j->header.vhd_footer_offset = off - sizeof(vhd_footer_t);
 
 	return vhd_journal_write_header(j, &j->header);
 }
@@ -302,6 +324,8 @@ vhd_journal_update(vhd_journal_t *j, off64_t offset,
 {
 	int err;
 	off64_t eof;
+	uint64_t *off;
+	uint32_t *entries;
 	vhd_journal_entry_t entry;
 
 	entry.type     = type;
@@ -326,10 +350,21 @@ vhd_journal_update(vhd_journal_t *j, off64_t offset,
 	if (err)
 		goto fail;
 
-	j->header.entries++;
+	if (type == VHD_JOURNAL_ENTRY_TYPE_DATA) {
+		off     = &j->header.journal_data_offset;
+		entries = &j->header.journal_data_entries;
+	} else {
+		off     = &j->header.journal_metadata_offset;
+		entries = &j->header.journal_metadata_entries;
+	}
+
+	if (!(*entries)++)
+		*off = eof;
+
 	err = vhd_journal_write_header(j, &j->header);
 	if (err) {
-		j->header.entries--;
+		if (!--(*entries))
+			*off = 0;
 		goto fail;
 	}
 
@@ -350,10 +385,6 @@ vhd_journal_add_footer(vhd_journal_t *j)
 
 	vhd = &j->vhd;
 
-	err = vhd_read_footer(vhd, &footer);
-	if (err)
-		return err;
-
 	err = vhd_seek(vhd, 0, SEEK_END);
 	if (err)
 		return err;
@@ -362,11 +393,30 @@ vhd_journal_add_footer(vhd_journal_t *j)
 	if (off == (off64_t)-1)
 		return -errno;
 
+	err = vhd_read_footer_at(vhd, &footer, off - sizeof(vhd_footer_t));
+	if (err)
+		return err;
+
 	vhd_footer_out(&footer);
 	err = vhd_journal_update(j, off - sizeof(vhd_footer_t),
 				 (char *)&footer,
 				 sizeof(vhd_footer_t),
-				 VHD_JOURNAL_ENTRY_TYPE_FOOTER);
+				 VHD_JOURNAL_ENTRY_TYPE_FOOTER_P);
+	if (err)
+		return err;
+
+	if (!vhd_type_dynamic(vhd))
+		return 0;
+
+	err = vhd_read_footer_at(vhd, &footer, 0);
+	if (err)
+		return err;
+
+	vhd_footer_out(&footer);
+	err = vhd_journal_update(j, 0,
+				 (char *)&footer,
+				 sizeof(vhd_footer_t),
+				 VHD_JOURNAL_ENTRY_TYPE_FOOTER_C);
 
 	return err;
 }
@@ -530,9 +580,7 @@ static int
 vhd_journal_add_metadata(vhd_journal_t *j)
 {
 	int err;
-	char *buf;
-	size_t size;
-	off64_t off, eof;
+	off64_t eof;
 	vhd_context_t *vhd;
 
 	vhd = &j->vhd;
@@ -562,11 +610,21 @@ vhd_journal_add_metadata(vhd_journal_t *j)
 			return err;
 	}
 
-	return 0;
+	err = vhd_journal_seek(j, 0, SEEK_END);
+	if (err)
+		return err;
+
+	eof = vhd_journal_position(j);
+	if (eof == (off64_t)-1)
+		return -errno;
+
+	j->header.journal_data_offset = eof;
+	return vhd_journal_write_header(j, &j->header);
 }
 
 static int
-vhd_journal_read_footer(vhd_journal_t *j, vhd_footer_t *footer)
+__vhd_journal_read_footer(vhd_journal_t *j,
+			  vhd_footer_t *footer, uint32_t type)
 {
 	int err;
 	vhd_journal_entry_t entry;
@@ -575,7 +633,7 @@ vhd_journal_read_footer(vhd_journal_t *j, vhd_footer_t *footer)
 	if (err)
 		return err;
 
-	if (entry.type != VHD_JOURNAL_ENTRY_TYPE_FOOTER)
+	if (entry.type != type)
 		return -EINVAL;
 
 	if (entry.size != sizeof(vhd_footer_t))
@@ -587,6 +645,20 @@ vhd_journal_read_footer(vhd_journal_t *j, vhd_footer_t *footer)
 
 	vhd_footer_in(footer);
 	return vhd_validate_footer(footer);
+}
+
+static int
+vhd_journal_read_footer(vhd_journal_t *j, vhd_footer_t *footer)
+{
+	return __vhd_journal_read_footer(j, footer,
+					 VHD_JOURNAL_ENTRY_TYPE_FOOTER_P);
+}
+
+static int
+vhd_journal_read_footer_copy(vhd_journal_t *j, vhd_footer_t *footer)
+{
+	return __vhd_journal_read_footer(j, footer,
+					 VHD_JOURNAL_ENTRY_TYPE_FOOTER_C);
 }
 
 static int
@@ -726,6 +798,7 @@ static int
 vhd_journal_read_batmap_header(vhd_journal_t *j, vhd_batmap_t *batmap)
 {
 	int err;
+	char *buf;
 	size_t size, secs;
 	vhd_journal_entry_t entry;
 
@@ -742,9 +815,17 @@ vhd_journal_read_batmap_header(vhd_journal_t *j, vhd_batmap_t *batmap)
 	if (entry.size != size)
 		return -EINVAL;
 
-	err = vhd_journal_read(j, &batmap->header, entry.size);
+	err = posix_memalign((void **)&buf, VHD_SECTOR_SIZE, size);
 	if (err)
 		return err;
+
+	err = vhd_journal_read(j, buf, entry.size);
+	if (err) {
+		free(buf);
+		return err;
+	}
+
+	memcpy(&batmap->header, buf, sizeof(batmap->header));
 
 	vhd_batmap_header_in(batmap);
 	return vhd_validate_batmap_header(batmap);
@@ -810,19 +891,14 @@ vhd_journal_read_batmap(vhd_journal_t *j, vhd_batmap_t *batmap)
 static int
 vhd_journal_restore_footer(vhd_journal_t *j, vhd_footer_t *footer)
 {
-	int err;
-	vhd_context_t *vhd;
+	return vhd_write_footer_at(&j->vhd, footer,
+				   j->header.vhd_footer_offset);
+}
 
-	vhd = &j->vhd;
-
-	err = vhd_write_footer_at(vhd, footer, j->header.footer_offset);
-	if (err)
-		return err;
-
-	if (!vhd_type_dynamic(vhd))
-		return 0;
-
-	return vhd_write_footer_at(vhd, footer, 0);
+static int
+vhd_journal_restore_footer_copy(vhd_journal_t *j, vhd_footer_t *footer)
+{
+	return vhd_write_footer_at(&j->vhd, footer, 0);
 }
 
 static int
@@ -883,7 +959,9 @@ vhd_journal_restore_batmap(vhd_journal_t *j, vhd_batmap_t *batmap)
 static int
 vhd_journal_restore_metadata(vhd_journal_t *j)
 {
+	off64_t off;
 	char **locators;
+	vhd_footer_t copy;
 	vhd_context_t *vhd;
 	int i, locs, hlocs, err;
 
@@ -902,7 +980,11 @@ vhd_journal_restore_metadata(vhd_journal_t *j)
 
 	if (!vhd_type_dynamic(vhd))
 		goto restore;
-	
+
+	err  = vhd_journal_read_footer_copy(j, &copy);
+	if (err)
+		return err;
+
 	err  = vhd_journal_read_header(j, &vhd->header);
 	if (err)
 		return err;
@@ -937,11 +1019,22 @@ vhd_journal_restore_metadata(vhd_journal_t *j)
 	}
 
 restore:
+	off  = vhd_journal_position(j);
+	if (off == (off64_t)-1)
+		return -errno;
+
+	if (j->header.journal_data_offset != off)
+		return -EINVAL;
+
 	err  = vhd_journal_restore_footer(j, &vhd->footer);
 	if (err)
 		goto out;
 
 	if (!vhd_type_dynamic(vhd))
+		goto out;
+
+	err  = vhd_journal_restore_footer_copy(j, &copy);
+	if (err)
 		goto out;
 
 	err  = vhd_journal_restore_header(j, &vhd->header);
@@ -975,7 +1068,8 @@ out:
 
 	if (!err)
 		ftruncate(vhd->fd,
-			  j->header.footer_offset + sizeof(vhd_footer_t));
+			  j->header.vhd_footer_offset +
+			  sizeof(vhd_footer_t));
 
 	return err;
 }
@@ -1014,6 +1108,9 @@ vhd_journal_enable_vhd(vhd_journal_t *j)
 	err = vhd_get_footer(vhd);
 	if (err)
 		return err;
+
+	if (!vhd_disabled(vhd))
+		return 0;
 
 	memcpy(&vhd->footer.cookie, HD_COOKIE, sizeof(vhd->footer.cookie));
 	vhd->footer.checksum = vhd_checksum_footer(&vhd->footer);
@@ -1150,9 +1247,14 @@ vhd_journal_create(vhd_journal_t *j, const char *file)
 		goto fail1;
 	}
 
-	err = vhd_open(&j->vhd, file, VHD_OPEN_RDWR);
+	err = vhd_open(&j->vhd, file, VHD_OPEN_RDWR | VHD_OPEN_STRICT);
 	if (err)
 		goto fail1;
+
+	if (vhd_disabled(&j->vhd)) {
+		err = -EINVAL;
+		goto fail2;
+	}
 
 	err = vhd_get_bat(&j->vhd);
 	if (err)
@@ -1266,7 +1368,11 @@ vhd_journal_commit(vhd_journal_t *j)
 {
 	int err;
 
-	j->header.entries = 0;
+	j->header.journal_data_entries     = 0;
+	j->header.journal_metadata_entries = 0;
+	j->header.journal_data_offset      = 0;
+	j->header.journal_metadata_offset  = 0;
+
 	err = vhd_journal_write_header(j, &j->header);
 	if (err)
 		return err;
@@ -1285,20 +1391,44 @@ vhd_journal_commit(vhd_journal_t *j)
 int
 vhd_journal_revert(vhd_journal_t *j)
 {
-	char *buf;
 	int i, err;
+	char *buf, *file;
 	vhd_context_t *vhd;
 	vhd_journal_entry_t entry;
 
-	err = 0;
-	vhd = &j->vhd;
-	buf = NULL;
+	err  = 0;
+	vhd  = &j->vhd;
+	buf  = NULL;
 
-	err = vhd_journal_seek(j, sizeof(vhd_journal_header_t), SEEK_SET);
+	file = strdup(vhd->file);
+	if (!file)
+		return -ENOMEM;
+
+	vhd_close(&j->vhd);
+	j->vhd.fd = open(file, O_RDWR | O_DIRECT | O_LARGEFILE);
+	if (j->vhd.fd == -1)
+		return -errno;
+
+	err  = vhd_journal_restore_metadata(j);
+	if (err) {
+		free(file);
+		return err;
+	}
+
+	close(vhd->fd);
+	free(vhd->bat.bat);
+	free(vhd->batmap.map);
+
+	err = vhd_open(vhd, file, VHD_OPEN_RDWR);
+	free(file);
 	if (err)
 		return err;
 
-	for (i = 0; i < j->header.entries; i++) {
+	err = vhd_journal_seek(j, j->header.journal_data_offset, SEEK_SET);
+	if (err)
+		return err;
+
+	for (i = 0; i < j->header.journal_data_entries; i++) {
 		err = vhd_journal_read_entry(j, &entry);
 		if (err)
 			goto end;
@@ -1340,7 +1470,7 @@ vhd_journal_revert(vhd_journal_t *j)
 		return err;
 
 	err = ftruncate(vhd->fd,
-			j->header.footer_offset + sizeof(vhd_footer_t));
+			j->header.vhd_footer_offset + sizeof(vhd_footer_t));
 	if (err)
 		err = -errno;
 
