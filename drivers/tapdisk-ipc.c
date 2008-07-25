@@ -25,6 +25,7 @@
  * NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
  * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
+#include <stdio.h>
 #include <errno.h>
 #include <unistd.h>
 #include <string.h>
@@ -89,6 +90,19 @@ tapdisk_ipc_write(td_ipc_t *ipc, int type)
 	memset(&message, 0, sizeof(tapdisk_message_t));
 	message.type   = type;
 	message.cookie = ipc->uuid;
+
+	return tapdisk_ipc_write_message(ipc->wfd, &message, 2);
+}
+
+int
+tapdisk_ipc_write_error(td_ipc_t *ipc, const char *text)
+{
+	tapdisk_message_t message;
+
+	memset(&message, 0, sizeof(message));
+	message.type   = TAPDISK_MESSAGE_RUNTIME_ERROR;
+	message.cookie = ipc->uuid;
+	snprintf(message.u.string.text, sizeof(message.u.string.text), text);
 
 	return tapdisk_ipc_write_message(ipc->wfd, &message, 2);
 }

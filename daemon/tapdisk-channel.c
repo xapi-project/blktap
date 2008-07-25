@@ -117,6 +117,13 @@ tapdisk_channel_validate_message(tapdisk_channel_t *channel,
 		if (channel->state != TAPDISK_CHANNEL_WAIT_CLOSE)
 			return -EINVAL;
 		break;
+
+	case TAPDISK_MESSAGE_RUNTIME_ERROR:
+		/*
+		 * runtime errors can be received at any time
+		 * and should not affect the state machine
+		 */
+		return 0;
 	}
 
 	channel->state = TAPDISK_CHANNEL_IDLE;
@@ -463,6 +470,15 @@ tapdisk_channel_receive_shutdown_response(tapdisk_channel_t *channel,
 	channel->open  = 0;
 	channel->state = TAPDISK_CHANNEL_CLOSED;
 	tapdisk_channel_close(channel);
+	return 0;
+}
+
+static int
+tapdisk_channel_receive_runtime_error(tapdisk_channel_t *channel,
+				      tapdisk_message_t *message)
+{
+	tapdisk_channel_error(channel,
+			      "runtime error: %s", message->u.string.text);
 	return 0;
 }
 
@@ -1300,6 +1316,9 @@ tapdisk_channel_receive_message(tapdisk_channel_t *c, tapdisk_message_t *m)
 
 	case TAPDISK_MESSAGE_CLOSE_RSP:
 		return tapdisk_channel_receive_shutdown_response(c, m);
+
+	case TAPDISK_MESSAGE_RUNTIME_ERROR:
+		return tapdisk_channel_receive_runtime_error(c, m);
 	}
 
 fail:

@@ -217,6 +217,24 @@ tapdisk_server_check_vbds(void)
 }
 
 static void
+tapdisk_server_stop_vbds(void)
+{
+	td_vbd_t *vbd, *tmp;
+
+	tapdisk_server_for_each_vbd(vbd, tmp)
+		tapdisk_vbd_kill_queue(vbd);
+}
+
+static void
+tapdisk_server_send_error(const char *message)
+{
+	td_vbd_t *vbd, *tmp;
+
+	tapdisk_server_for_each_vbd(vbd, tmp)
+		tapdisk_ipc_write_error(&vbd->ipc, message);
+}
+
+static void
 tapdisk_server_read_ipc_message(event_id_t id, char mode, void *private)
 {
 	tapdisk_ipc_read(&server.ipc);
@@ -346,10 +364,22 @@ tapdisk_server_run(void)
 static void
 tapdisk_server_signal_handler(int signal)
 {
+	static int xfsz_error_sent = 0;
+
 	switch (signal) {
 	case SIGBUS:
 	case SIGINT:
 		tapdisk_server_check_state();
+		break;
+
+	case SIGXFSZ:
+		ERR(EFBIG, "received SIGXFSZ");
+		tapdisk_server_stop_vbds();
+		if (xfsz_error_sent)
+			break;
+
+		tapdisk_server_send_error("received SIGXFSZ, closing queues");
+		xfsz_error_sent = 1;
 		break;
 
 	case SIGUSR1:
@@ -413,6 +443,7 @@ main(int argc, char *argv[])
 	signal(SIGBUS, tapdisk_server_signal_handler);
 	signal(SIGINT, tapdisk_server_signal_handler);
 	signal(SIGUSR1, tapdisk_server_signal_handler);
+	signal(SIGXFSZ, tapdisk_server_signal_handler);
 
 	tapdisk_server_run();
 

@@ -30,6 +30,7 @@
 #include <inttypes.h>
 
 #define TAPDISK_MESSAGE_MAX_PATH_LENGTH  256
+#define TAPDISK_MESSAGE_STRING_LENGTH    256
 
 #define TAPDISK_MESSAGE_FLAG_SHARED      0x01
 #define TAPDISK_MESSAGE_FLAG_RDONLY      0x02
@@ -41,6 +42,7 @@ typedef struct tapdisk_message           tapdisk_message_t;
 typedef uint8_t                          tapdisk_message_flag_t;
 typedef struct tapdisk_message_image     tapdisk_message_image_t;
 typedef struct tapdisk_message_params    tapdisk_message_params_t;
+typedef struct tapdisk_message_string    tapdisk_message_string_t;
 
 struct tapdisk_message_params {
 	tapdisk_message_flag_t           flags;
@@ -58,6 +60,10 @@ struct tapdisk_message_image {
 	uint32_t                         info;
 };
 
+struct tapdisk_message_string {
+	char                             text[TAPDISK_MESSAGE_STRING_LENGTH];
+};
+
 struct tapdisk_message {
 	uint16_t                         type;
 	uint16_t                         cookie;
@@ -67,11 +73,13 @@ struct tapdisk_message {
 		pid_t                    tapdisk_pid;
 		tapdisk_message_image_t  image;
 		tapdisk_message_params_t params;
+		tapdisk_message_string_t string;
 	} u;
 };
 
-enum  tapdisk_message_id {
+enum tapdisk_message_id {
 	TAPDISK_MESSAGE_ERROR = 1,
+	TAPDISK_MESSAGE_RUNTIME_ERROR,
 	TAPDISK_MESSAGE_PID,
 	TAPDISK_MESSAGE_PID_RSP,
 	TAPDISK_MESSAGE_OPEN,

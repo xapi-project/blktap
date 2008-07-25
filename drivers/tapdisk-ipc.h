@@ -38,5 +38,6 @@ typedef struct td_ipc_handle {
 
 int tapdisk_ipc_read(td_ipc_t *ipc);
 int tapdisk_ipc_write(td_ipc_t *ipc, int type);
+int tapdisk_ipc_write_error(td_ipc_t *ipc, const char *message);
 
 #endif

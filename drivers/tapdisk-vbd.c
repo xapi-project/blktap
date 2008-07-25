@@ -998,6 +998,14 @@ tapdisk_vbd_start_queue(td_vbd_t *vbd)
 	return 0;
 }
 
+int
+tapdisk_vbd_kill_queue(td_vbd_t *vbd)
+{
+	tapdisk_vbd_quiesce_queue(vbd);
+	td_flag_set(vbd->state, TD_VBD_DEAD);
+	return 0;
+}
+
 static int
 tapdisk_vbd_open_image(td_vbd_t *vbd, td_image_t *image)
 {
