@@ -168,7 +168,7 @@ vhd_util_snapshot(int argc, char **argv)
 			vhd_flag_set(flags, VHD_FLAG_CREAT_PARENT_RAW);
 	}
 
-	if (limit) {
+	if (limit && !vhd_flag_test(flags, VHD_FLAG_CREAT_PARENT_RAW)) {
 		int depth;
 
 		err = vhd_util_check_depth(backing, &depth);
