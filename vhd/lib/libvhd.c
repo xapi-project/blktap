@@ -434,6 +434,60 @@ vhd_hidden(vhd_context_t *ctx, int *hidden)
 }
 
 int
+vhd_chain_depth(vhd_context_t *ctx, int *depth)
+{
+	char *file;
+	int err, cnt;
+	vhd_context_t vhd, *cur;
+
+	err    = 0;
+	cnt    = 0;
+	*depth = 0;
+	file   = NULL;
+	cur    = ctx;
+
+	for (;;) {
+		cnt++;
+
+		if (cur->footer.type != HD_TYPE_DIFF)
+			break;
+
+		if (vhd_parent_raw(cur)) {
+			cnt++;
+			break;
+		}
+
+		err = vhd_parent_locator_get(cur, &file);
+		if (err) {
+			file = NULL;
+			break;
+		}
+
+		if (cur != ctx) {
+			vhd_close(cur);
+			cur = NULL;
+		}
+
+		err = vhd_open(&vhd, file, VHD_OPEN_RDONLY);
+		if (err)
+			break;
+
+		cur = &vhd;
+		free(file);
+		file = NULL;
+	}
+
+	free(file);
+	if (cur && cur != ctx)
+		vhd_close(cur);
+
+	if (!err)
+		*depth = cnt;
+
+	return err;
+}
+
+int
 vhd_batmap_test(vhd_context_t *ctx, vhd_batmap_t *batmap, uint32_t block)
 {
 	if (!vhd_has_batmap(ctx) || !batmap->map)

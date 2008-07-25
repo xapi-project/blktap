@@ -17,20 +17,23 @@ vhd_util_query(int argc, char **argv)
 {
 	char *name;
 	vhd_context_t vhd;
-	int err, c, size, physize, parent, fields;
 	off64_t currsize;
+	int ret, err, c, size, physize, parent, fields, depth;
 
 	name    = NULL;
 	size    = 0;
 	physize = 0;
 	parent  = 0;
 	fields  = 0;
+	depth   = 0;
 
-	if (!argc || !argv)
+	if (!argc || !argv) {
+		err = -EINVAL;
 		goto usage;
+	}
 
 	optind = 0;
-	while ((c = getopt(argc, argv, "n:vspfh")) != -1) {
+	while ((c = getopt(argc, argv, "n:vspfdh")) != -1) {
 		switch (c) {
 		case 'n':
 			name = optarg;
@@ -47,15 +50,22 @@ vhd_util_query(int argc, char **argv)
 		case 'f':
 			fields = 1;
 			break;
-
+		case 'd':
+			depth = 1;
+			break;
 		case 'h':
+			err = 0;
+			goto usage;
 		default:
+			err = -EINVAL;
 			goto usage;
 		}
 	}
 
-	if (!name || optind != argc)
+	if (!name || optind != argc) {
+		err = -EINVAL;
 		goto usage;
+	}
 
 	err = vhd_open(&vhd, name, VHD_OPEN_RDONLY);
 	if (err) {
@@ -75,40 +85,55 @@ vhd_util_query(int argc, char **argv)
 	}
 
 	if (parent) {
+		ret = 0;
+
 		if (vhd.footer.type != HD_TYPE_DIFF)
 			printf("%s has no parent\n", name);
 		else {
 			char *pname;
 
-			err = vhd_parent_locator_get(&vhd, &pname);
-			if (err)
+			ret = vhd_parent_locator_get(&vhd, &pname);
+			if (ret)
 				printf("query failed\n");
 			else {
 				printf("%s\n", pname);
 				free(pname);
 			}
 		}
+
+		err = (err ? : ret);
 	}
 
 	if (fields) {
 		int hidden;
 
-		err = vhd_hidden(&vhd, &hidden);
-		if (err) {
-			printf("error checking 'hidden' field: %d\n", err);
-			goto done;
-		}
+		ret = vhd_hidden(&vhd, &hidden);
+		if (ret)
+			printf("error checking 'hidden' field: %d\n", ret);
+		else
+			printf("hidden: %d\n", hidden);
 
-		printf("hidden: %d\n", hidden);
+		err = (err ? : ret);
+	}
+
+	if (depth) {
+		int length;
+
+		ret = vhd_chain_depth(&vhd, &length);
+		if (ret)
+			printf("error checking chain depth: %d\n", ret);
+		else
+			printf("chain depth: %d\n", length);
+
+		err = (err ? : ret);
 	}
 		
- done:
 	vhd_close(&vhd);
 	return err;
 
 usage:
 	printf("options: <-n name> [-v print virtual size (blocks)] "
-			"[-s print physical utilization (bytes)] "
-			"[-p print parent] [-f print fields] [-h help]\n");
-	return -EINVAL;
+	       "[-s print physical utilization (bytes)] [-p print parent] "
+	       "[-f print fields] [-d print chain depth] [-h help]\n");
+	return err;
 }

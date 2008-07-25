@@ -263,7 +263,7 @@ td_snapshot(int type, int argc, char *argv[])
 	char *cargv[10];
 	int c, err, cargc;
 	struct stat stats;
-	char *name, *backing;
+	char *name, *backing, *limit = NULL;
 	int fixedsize = 0, rawparent = 0;
 
 	if (type != TD_TYPE_VHD) {
@@ -272,23 +272,30 @@ td_snapshot(int type, int argc, char *argv[])
 		return EINVAL;
 	}
 
-	while ((c = getopt(argc, argv, "hbm")) != -1) {
+	while ((c = getopt(argc, argv, "hbml:")) != -1) {
 		switch(c) {
-		default:
-			fprintf(stderr, "Unknown option %c\n", (char)c);
 		case 'b':
 			fixedsize = 1;
 			break;
 		case 'm':
 			rawparent = 1;
 			break;
+		case 'l':
+			limit = optarg;
+			break;
 		case 'h':
+			err = 0;
+			goto usage;
+		default:
+			err = EINVAL;
 			goto usage;
 		}
 	}
 
-	if (optind != (argc - 2))
+	if (optind != (argc - 2)) {
+		err = EINVAL;
 		goto usage;
+	}
 
 	name    = argv[optind++];
 	backing = argv[optind++];
@@ -315,13 +322,17 @@ td_snapshot(int type, int argc, char *argv[])
 		cargv[cargc++] = "-b";
 	if (rawparent)
 		cargv[cargc++] = "-m";
+	if (limit) {
+		cargv[cargc++] = "-l";
+		cargv[cargc++] = limit;
+	}
 	return vhd_util_snapshot(cargc, cargv);
 
  usage:
-	fprintf(stderr, "usage: td-util snapshot %s [-h help] "
-			"[-b file_is_fixed_size] [-m parent_raw] "
+	fprintf(stderr, "usage: td-util snapshot %s [-h help] [-m parent_raw] "
+		"[-b file_is_fixed_size] [-l snapshot depth limit] "
 		"<FILENAME> <BACKING_FILENAME>\n", td_disk_types[type]);
-	return EINVAL;
+	return err;
 }
 
 int
@@ -376,9 +387,9 @@ int
 td_query(int type, int argc, char *argv[])
 {
 	char *name;
-	int c, size = 0, parent = 0, fields = 0, err = 0;
+	int c, size = 0, parent = 0, fields = 0, depth = 0, err = 0;
 
-	while ((c = getopt(argc, argv, "hvpfsr:t:")) != -1) {
+	while ((c = getopt(argc, argv, "hvpfd")) != -1) {
 		switch(c) {
 		case 'v':
 			size = 1;
@@ -389,14 +400,22 @@ td_query(int type, int argc, char *argv[])
 		case 'f':
 			fields = 1;
 			break;
-		default:
+		case 'd':
+			depth = 1;
+			break;
 		case 'h':
+			err = 0;
+			goto usage;
+		default:
+			err = EINVAL;
 			goto usage;
 		}
 	}
 
-	if (optind != (argc - 1))
+	if (optind != (argc - 1)) {
+		err = EINVAL;
 		goto usage;
+	}
 
 	name = argv[optind++];
 
@@ -448,6 +467,18 @@ td_query(int type, int argc, char *argv[])
 				       hidden);
 		}
 
+		if (depth) {
+			int ret, length;
+
+			ret = vhd_chain_depth(&vhd, &length);
+			if (ret)
+				printf("error checking chain depth: %d\n", ret);
+			else
+				printf("chain depth: %d\n", length);
+
+			err = (err ? : ret);
+		}
+
 		vhd_close(&vhd);
 
 	} else if (type == TD_TYPE_AIO) {
@@ -490,7 +521,7 @@ td_query(int type, int argc, char *argv[])
  usage:
 	fprintf(stderr, "usage: td-util query %s [-h help] [-v virtsize] "
 		"[-p parent] [-f fields]  <FILENAME>\n", td_disk_types[type]);
-	return EINVAL;
+	return err;
 }
 
 int

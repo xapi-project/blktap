@@ -180,6 +180,7 @@ int vhd_create(const char *name, uint64_t bytes, int type, vhd_flag_creat_t);
 int vhd_snapshot(const char *snapshot, const char *parent, vhd_flag_creat_t);
 
 int vhd_hidden(vhd_context_t *, int *);
+int vhd_chain_depth(vhd_context_t *, int *);
 
 off64_t vhd_position(vhd_context_t *);
 int vhd_seek(vhd_context_t *, off64_t, int);

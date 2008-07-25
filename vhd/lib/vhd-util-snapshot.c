@@ -65,11 +65,27 @@ out:
 	return err;
 }
 
+static int
+vhd_util_check_depth(const char *name, int *depth)
+{
+	int err;
+	vhd_context_t vhd;
+
+	err = vhd_open(&vhd, name, VHD_OPEN_RDONLY);
+	if (err)
+		return err;
+
+	err = vhd_chain_depth(&vhd, depth);
+	vhd_close(&vhd);
+
+	return err;
+}
+
 int
 vhd_util_snapshot(int argc, char **argv)
 {
-	int c, err, prt_raw;
 	vhd_flag_creat_t flags;
+	int c, err, prt_raw, limit;
 	char *name, *pname, *ppath, *backing;
 
 	name    = NULL;
@@ -77,6 +93,7 @@ vhd_util_snapshot(int argc, char **argv)
 	ppath   = NULL;
 	backing = NULL;
 	flags   = 0;
+	limit   = 0;
 
 	if (!argc || !argv) {
 		err = -EINVAL;
@@ -84,13 +101,16 @@ vhd_util_snapshot(int argc, char **argv)
 	}
 
 	optind = 0;
-	while ((c = getopt(argc, argv, "n:p:bmh")) != -1) {
+	while ((c = getopt(argc, argv, "n:p:l:bmh")) != -1) {
 		switch (c) {
 		case 'n':
 			name = optarg;
 			break;
 		case 'p':
 			pname = optarg;
+			break;
+		case 'l':
+			limit = strtol(optarg, NULL, 10);
 			break;
 		case 'b':
 			vhd_flag_set(flags, VHD_FLAG_CREAT_FILE_SIZE_FIXED);
@@ -133,6 +153,22 @@ vhd_util_snapshot(int argc, char **argv)
 			vhd_flag_set(flags, VHD_FLAG_CREAT_PARENT_RAW);
 	}
 
+	if (limit) {
+		int depth;
+
+		err = vhd_util_check_depth(backing, &depth);
+		if (err)
+			printf("error checking snapshot depth: %d\n", err);
+		else if (depth + 1 > limit) {
+			err = -ENOSPC;
+			printf("snapshot depth exceeded: "
+			       "current depth: %d, limit: %d\n", depth, limit);
+		}
+
+		if (err)
+			goto out;
+	}
+
 	err = vhd_snapshot(name, backing, flags);
 
 out:
@@ -142,7 +178,7 @@ out:
 	return err;
 
 usage:
-	printf("options: <-n name> <-p parent name> [-b file_is_fixed_size] "
-			"[-m parent_is_raw] [-h help]\n");
+	printf("options: <-n name> <-p parent name> [-l snapshot depth limit]"
+	       " [-b file_is_fixed_size] [-m parent_is_raw] [-h help]\n");
 	return err;
 }
