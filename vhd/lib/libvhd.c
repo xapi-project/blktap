@@ -2445,7 +2445,8 @@ get_file_size(const char *name)
 }
 
 static int
-vhd_initialize_header(vhd_context_t *ctx, const char *parent_path, int raw)
+vhd_initialize_header(vhd_context_t *ctx, const char *parent_path, 
+		uint64_t size, int raw)
 {
 	int err;
 	struct stat stats;
@@ -2475,28 +2476,26 @@ vhd_initialize_header(vhd_context_t *ctx, const char *parent_path, int raw)
 		return -errno;
 
 	if (raw) {
-		off64_t size = get_file_size(parent_path);
-		ctx->footer.orig_size    = size;
-		ctx->footer.curr_size    = size;
-		ctx->footer.geometry     = vhd_chs(size);
-		ctx->header.max_bat_size = 
-			(size + VHD_BLOCK_SIZE - 1) >> VHD_BLOCK_SHIFT;
-		ctx->header.prt_ts       = vhd_time(stats.st_mtime);
+		ctx->header.prt_ts = vhd_time(stats.st_mtime);
+		if (!size)
+			size = get_file_size(parent_path);
 	}
 	else {
 		err = vhd_open(&parent, parent_path, VHD_OPEN_RDONLY);
 		if (err)
 			return err;
 
-		ctx->footer.orig_size    = parent.footer.curr_size;
-		ctx->footer.curr_size    = parent.footer.curr_size;
-		ctx->footer.geometry     = parent.footer.geometry;
-		ctx->header.max_bat_size = (parent.footer.curr_size +
-				VHD_BLOCK_SIZE - 1) >> VHD_BLOCK_SHIFT;
-		ctx->header.prt_ts       = vhd_time(stats.st_mtime);
+		ctx->header.prt_ts = vhd_time(stats.st_mtime);
 		uuid_copy(ctx->header.prt_uuid, parent.footer.uuid);
+		if (!size)
+			size = parent.footer.curr_size;
 		vhd_close(&parent);
 	}
+	ctx->footer.orig_size    = size;
+	ctx->footer.curr_size    = size;
+	ctx->footer.geometry     = vhd_chs(size);
+	ctx->header.max_bat_size = 
+		(size + VHD_BLOCK_SIZE - 1) >> VHD_BLOCK_SHIFT;
 
 	return vhd_initialize_header_parent_name(ctx, parent_path);
 }
@@ -2800,8 +2799,8 @@ __vhd_create(const char *name, const char *parent, uint64_t bytes, int type,
 		if (err)
 			goto out;
 	} else {
-		err = vhd_initialize_header(&ctx, parent, vhd_flag_test(flags,
-					VHD_FLAG_CREAT_PARENT_RAW));
+		int raw = vhd_flag_test(flags, VHD_FLAG_CREAT_PARENT_RAW);
+		err = vhd_initialize_header(&ctx, parent, size, raw);
 		if (err)
 			goto out;
 
@@ -2866,9 +2865,10 @@ vhd_create(const char *name, uint64_t bytes, int type, vhd_flag_creat_t flags)
 }
 
 int
-vhd_snapshot(const char *name, const char *parent, vhd_flag_creat_t flags)
+vhd_snapshot(const char *name, uint64_t bytes, const char *parent,
+		vhd_flag_creat_t flags)
 {
-	return __vhd_create(name, parent, 0, HD_TYPE_DIFF, flags);
+	return __vhd_create(name, parent, bytes, HD_TYPE_DIFF, flags);
 }
 
 static int

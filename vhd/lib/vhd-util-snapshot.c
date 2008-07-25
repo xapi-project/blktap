@@ -87,11 +87,14 @@ vhd_util_snapshot(int argc, char **argv)
 	vhd_flag_creat_t flags;
 	int c, err, prt_raw, limit;
 	char *name, *pname, *ppath, *backing;
+	uint64_t size;
+	vhd_context_t vhd;
 
 	name    = NULL;
 	pname   = NULL;
 	ppath   = NULL;
 	backing = NULL;
+	size    = 0;
 	flags   = 0;
 	limit   = 0;
 
@@ -149,6 +152,18 @@ vhd_util_snapshot(int argc, char **argv)
 			goto out;
 		}
 
+		/* 
+		 * if the sizes of the parent chain are non-uniform, we need to 
+		 * pick the right size: that of the supplied parent
+		 */
+		if (strcmp(ppath, backing)) {
+			err = vhd_open(&vhd, ppath, VHD_OPEN_RDONLY);
+			if (err)
+				goto out;
+			size = vhd.footer.curr_size;
+			vhd_close(&vhd);
+		}
+
 		if (prt_raw)
 			vhd_flag_set(flags, VHD_FLAG_CREAT_PARENT_RAW);
 	}
@@ -169,7 +184,7 @@ vhd_util_snapshot(int argc, char **argv)
 			goto out;
 	}
 
-	err = vhd_snapshot(name, backing, flags);
+	err = vhd_snapshot(name, size, backing, flags);
 
 out:
 	free(ppath);

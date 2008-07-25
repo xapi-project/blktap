@@ -177,7 +177,10 @@ int vhd_validate_platform_code(uint32_t code);
 int vhd_open(vhd_context_t *, const char *file, int flags);
 void vhd_close(vhd_context_t *);
 int vhd_create(const char *name, uint64_t bytes, int type, vhd_flag_creat_t);
-int vhd_snapshot(const char *snapshot, const char *parent, vhd_flag_creat_t);
+/* vhd_snapshot: the bytes parameter is optional and can be 0 if the snapshot 
+ * is to have the same size as the (first non-empty) parent */
+int vhd_snapshot(const char *snapshot, uint64_t bytes, const char *parent,
+		vhd_flag_creat_t);
 
 int vhd_hidden(vhd_context_t *, int *);
 int vhd_chain_depth(vhd_context_t *, int *);
