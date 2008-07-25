@@ -17,9 +17,8 @@
 
 #define VHD_SCAN_FAST        0x01
 #define VHD_SCAN_PRETTY      0x02
-#define VHD_SCAN_VOLUMES     0x04
-#define VHD_SCAN_NOFAIL      0x08
-#define VHD_SCAN_VERBOSE     0x10
+#define VHD_SCAN_NOFAIL      0x04
+#define VHD_SCAN_VERBOSE     0x08
 
 struct vhd_image {
 	char                *name;
@@ -373,15 +372,9 @@ vhd_util_scan_files(int cnt, char **files)
 
 		image.capacity = vhd.footer.curr_size;
 
-		if (flags & VHD_SCAN_VOLUMES)
-			err = vhd_get_phys_size(&vhd, &image.size);
-		else {
-			image.size = lseek64(vhd.fd, 0, SEEK_END);
-			if (image.size == (off64_t)-1)
-				err = -errno;
-		}
-
-		if (err) {
+		image.size = lseek64(vhd.fd, 0, SEEK_END);
+		if (image.size == (off64_t)-1) {
+			err           = -errno;
 			ret           = -EAGAIN;
 			image.message = "getting physical size";
 			image.error   = err;
@@ -442,7 +435,7 @@ vhd_util_scan(int argc, char **argv)
 	filter = NULL;
 
 	optind = 0;
-	while ((c = getopt(argc, argv, "m:fclpvh")) != -1) {
+	while ((c = getopt(argc, argv, "m:fcpvh")) != -1) {
 		switch (c) {
 		case 'm':
 			filter = optarg;
@@ -452,9 +445,6 @@ vhd_util_scan(int argc, char **argv)
 			break;
 		case 'c':
 			flags |= VHD_SCAN_NOFAIL;
-			break;
-		case 'l':
-			flags |= VHD_SCAN_VOLUMES;
 			break;
 		case 'p':
 			flags |= VHD_SCAN_PRETTY;
@@ -524,6 +514,6 @@ vhd_util_scan(int argc, char **argv)
 usage:
 	printf("usage: [OPTIONS] FILES\n"
 	       "options: [-m match filter] [-f fast] [-c continue on failure] "
-	       "[-l LVM volumes] [-p pretty print] [-v verbose] [-h help]\n");
+	       "[-p pretty print] [-v verbose] [-h help]\n");
 	return err;
 }

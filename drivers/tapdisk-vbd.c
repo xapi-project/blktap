@@ -320,14 +320,10 @@ tapdisk_vbd_reactivate_volume(const char *name)
 	}
 
 	err = system(cmd);
-	if (err) {
+	if (err)
 		EPRINTF("%s failed: %d\n", cmd, err);
-		free(cmd);
-		return err;
-	}
-
 	free(cmd);
-	return 0;
+	return err;
 }
 
 static int
@@ -453,17 +449,11 @@ tapdisk_vbd_check_file(td_vbd_t *vbd)
 	if (vbd->storage != TAPDISK_STORAGE_TYPE_LVM)
 		return 0;
 
-	err = access(vbd->name, F_OK);
-	if (!err)
-		return 0;
-
 	err = tapdisk_vbd_reactivate_volume(vbd->name);
 	if (!err)
-		DPRINTF("reactivating %s failed\n", vbd->name);
-
-	err = access(vbd->name, F_OK);
-	if (!err)
 		return 0;
+	else
+		DPRINTF("reactivating %s failed\n", vbd->name);
 
 #define HEX   "[A-Za-z0-9]"
 #define UUID  HEX"\\{8\\}-"HEX"\\{4\\}-"HEX"\\{4\\}-"HEX"\\{4\\}-"HEX"\\{12\\}"
@@ -524,10 +514,10 @@ tapdisk_vbd_check_file(td_vbd_t *vbd)
 		src += len;
 	}
 
-	new[max - 1] = '\0';
+	*src = '\0';
 
 	err = tapdisk_vbd_reactivate_volume(new);
-	if (!err)
+	if (err)
 		DPRINTF("reactivating %s failed\n", new);
 
 	err = access(new, F_OK);
@@ -566,10 +556,6 @@ __tapdisk_vbd_open_vdi(td_vbd_t *vbd)
 	td_disk_id_t id;
 	td_image_t *image, *tmp;
 	struct tfilter *filter = NULL;
-
-	err = tapdisk_vbd_check_file(vbd);
-	if (err)
-		return err;
 
 	err = tapdisk_vbd_reactivate_volumes(vbd, 0);
 	if (err)
@@ -1089,18 +1075,23 @@ tapdisk_vbd_resume(td_vbd_t *vbd, const char *path, uint16_t drivertype)
 	}
 	vbd->type = drivertype;
 
-	err = tapdisk_vbd_reactivate_volumes(vbd, 1);
-	if (err) {
-		EPRINTF("failed to reactivate %s: %d\n", vbd->name, err);
-		tapdisk_ipc_write(&vbd->ipc, TAPDISK_MESSAGE_ERROR);
-		return err;
-	}
-
 	for (i = 0; i < TD_VBD_EIO_RETRIES; i++) {
+		err = tapdisk_vbd_check_file(vbd);
+		if (err)
+			goto sleep;
+
+		err = tapdisk_vbd_reactivate_volumes(vbd, 1);
+		if (err) {
+			EPRINTF("failed to reactivate %s: %d\n",
+				vbd->name, err);
+			goto sleep;
+		}
+
 		err = __tapdisk_vbd_open_vdi(vbd);
-		if (err != -EIO)
+		if (!err)
 			break;
 
+	sleep:
 		sleep(TD_VBD_EIO_SLEEP);
 	}
 

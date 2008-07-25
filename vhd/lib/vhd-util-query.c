@@ -132,7 +132,7 @@ vhd_util_query(int argc, char **argv)
 	return err;
 
 usage:
-	printf("options: <-n name> [-v print virtual size (blocks)] "
+	printf("options: <-n name> [-v print virtual size (in MB)] "
 	       "[-s print physical utilization (bytes)] [-p print parent] "
 	       "[-f print fields] [-d print chain depth] [-h help]\n");
 	return err;
