@@ -222,6 +222,7 @@ void vhd_bitmap_clear(vhd_context_t *, char *, uint32_t);
 int vhd_parent_locator_count(vhd_context_t *);
 int vhd_parent_locator_get(vhd_context_t *, char **);
 int vhd_parent_locator_read(vhd_context_t *, vhd_parent_locator_t *, char **);
+int vhd_find_parent(vhd_context_t *, const char *, char **);
 int vhd_parent_locator_write_at(vhd_context_t *, const char *,
 				off64_t, uint32_t, size_t,
 				vhd_parent_locator_t *);

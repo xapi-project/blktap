@@ -1208,42 +1208,58 @@ vhd_file_size_fixed(vhd_context_t *ctx)
 	return (ctx->footer.crtr_app[3] == 'B');
 }
 
-static char *
-vhd_find_parent(char *child, char *parent)
+int
+vhd_find_parent(vhd_context_t *ctx, const char *parent, char **_location)
 {
+	int err;
 	char *location, *cpath, *cdir, *path;
 
-	path     = NULL;
-	cpath    = NULL;
-	location = NULL;
+	err        = 0;
+	path       = NULL;
+	cpath      = NULL;
+	location   = NULL;
+	*_location = NULL;
 
-	if (!child || !parent)
-		return NULL;
+	if (!parent)
+		return -EINVAL;
 
 	if (parent[0] == '/') {
-		if (!access(parent, R_OK))
-			return strdup(parent);
-		return NULL;
+		if (!access(parent, R_OK)) {
+			path = strdup(parent);
+			if (!path)
+				return -ENOMEM;
+			*_location = path;
+			return 0;
+		}
 	}
 
 	/* check parent path relative to child's directory */
-	cpath = realpath(child, NULL);
-	if (!cpath)
+	cpath = realpath(ctx->file, NULL);
+	if (!cpath) {
+		err = -errno;
 		goto out;
+	}
 
 	cdir = dirname(cpath);
 	if (asprintf(&location, "%s/%s", cdir, parent) == -1) {
+		err = -errno;
 		location = NULL;
 		goto out;
 	}
 
-	if (!access(location, R_OK))
+	if (!access(location, R_OK)) {
 		path = realpath(location, NULL);
+		if (path) {
+			*_location = path;
+			return 0;
+		}
+	}
+	err = -errno;
 
 out:
 	free(location);
 	free(cpath);
-	return path;
+	return err;
 }
 
 static int 
@@ -1573,20 +1589,16 @@ vhd_parent_locator_get(vhd_context_t *ctx, char **parent)
 		if (err)
 			continue;
 
-		location = vhd_find_parent(ctx->file, name);
-
-		if (!location)
-			VHDLOG("%s: couldn't find parent %s\n",
-			       ctx->file, name);
-
+		err = vhd_find_parent(ctx, name, &location);
+		if (err)
+			VHDLOG("%s: couldn't find parent %s (%d)\n",
+			       ctx->file, name, err);
 		free(name);
 
-		if (location) {
+		if (!err) {
 			*parent = location;
 			return 0;
 		}
-
-		err = -ENOENT;
 	}
 
 	return err;

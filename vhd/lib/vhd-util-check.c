@@ -91,7 +91,7 @@ ok:
 		return "invalid data offset";
 
 	now = vhd_time(time(NULL));
-	if (footer->timestamp >= now)
+	if (footer->timestamp > now)
 		return "creation time in future";
 
 	if (!strncmp(footer->crtr_app, "tap", 3) &&
@@ -287,6 +287,9 @@ vhd_util_check_validate_parent(vhd_context_t *vhd, const char *ppath)
 	vhd_context_t parent;
 
 	msg = NULL;
+
+	if (vhd_parent_raw(vhd))
+		return msg;
 
 	if (vhd_open(&parent, ppath, VHD_OPEN_RDONLY))
 		return "error opening parent";
@@ -617,18 +620,19 @@ vhd_util_check_parent_locators(vhd_context_t *vhd)
 {
 	int i, n, err;
 	vhd_parent_locator_t *loc;
-	char *msg, *file, *ppath, *pname;
+	char *msg, *file, *ppath, *location, *pname;
 	int mac, macx, w2ku, w2ru, wi2r, wi2k, found;
 
-	mac   = 0;
-	macx  = 0;
-	w2ku  = 0;
-	w2ru  = 0;
-	wi2r  = 0;
-	wi2k  = 0;
-	found = 0;
-	ppath = NULL;
-	pname = NULL;
+	mac      = 0;
+	macx     = 0;
+	w2ku     = 0;
+	w2ru     = 0;
+	wi2r     = 0;
+	wi2k     = 0;
+	found    = 0;
+	pname    = NULL;
+	ppath    = NULL;
+	location = NULL;
 
 	err = vhd_header_decode_parent(vhd, &vhd->header, &pname);
 	if (err) {
@@ -638,6 +642,8 @@ vhd_util_check_parent_locators(vhd_context_t *vhd)
 
 	n = sizeof(vhd->header.loc) / sizeof(vhd->header.loc[0]);
 	for (i = 0; i < n; i++) {
+		ppath    = NULL;
+		location = NULL;
 		loc = vhd->header.loc + i;
 
 		msg = vhd_util_check_validate_parent_locator(vhd, loc);
@@ -706,24 +712,32 @@ vhd_util_check_parent_locators(vhd_context_t *vhd)
 			goto out;
 		}
 
-		err = access(ppath, R_OK);
-		if (err && loc->code == PLAT_CODE_MACX) {
-			err = -errno;
-			printf("parent locator %d points to missing file %s\n",
-			       i, ppath);
+		err = vhd_find_parent(vhd, ppath, &location);
+		if (err) {
+			printf("error resolving %s: %d\n", ppath, err);
 			goto out;
 		}
 
-		msg = vhd_util_check_validate_parent(vhd, ppath);
+		err = access(location, R_OK);
+		if (err && loc->code == PLAT_CODE_MACX) {
+			err = -errno;
+			printf("parent locator %d points to missing file %s "
+				"(resolved to %s)\n", i, ppath, location);
+			goto out;
+		}
+
+		msg = vhd_util_check_validate_parent(vhd, location);
 		if (msg) {
 			err = -EINVAL;
-			printf("invalid parent %s: %s\n", ppath, msg);
+			printf("invalid parent %s: %s\n", location, msg);
 			goto out;
 		}
 
 		found++;
 		free(ppath);
+		free(location);
 		ppath = NULL;
+		location = NULL;
 
 		continue;
 
@@ -745,6 +759,7 @@ vhd_util_check_parent_locators(vhd_context_t *vhd)
 out:
 	free(pname);
 	free(ppath);
+	free(location);
 	return err;
 }
 
