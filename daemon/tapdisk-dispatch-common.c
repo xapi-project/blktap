@@ -52,29 +52,11 @@ int
 make_blktap_device(char *devname, int major, int minor, int perm)
 {
 	int err;
-	struct stat st;
-	
-	err = lstat(devname, &st);
-	if (err == -1 && errno != ENOENT) {
-		EPRINTF("stating %s failed: %d\n", devname, -errno);
+
+	err = unlink(devname);
+	if (err && errno != ENOENT) {
+		EPRINTF("unlink %s failed: %d\n", devname, errno);
 		return -errno;
-	}
-
-	if (err == 0) {
-		DPRINTF("%s device already exists\n", devname);
-
-		/* it already exists, but is it the same major number */
-		if (((st.st_rdev>>8) & 0xff) == major)
-			return 0;
-
-		DPRINTF("%s has old major %d\n", devname,
-			(unsigned int)((st.st_rdev >> 8) & 0xff));
-
-		if (unlink(devname)) {
-			EPRINTF("unlink %s failed: %d\n", devname, errno);
-			/* only try again if we succed in deleting it */
-			return -errno;
-		}
 	}
 
 	/* Need to create device */
@@ -87,6 +69,8 @@ make_blktap_device(char *devname, int major, int minor, int perm)
 	err = mknod(devname, perm, makedev(major, minor));
 	if (err) {
 		int ret = -errno;
+		struct stat st;
+
 		EPRINTF("mknod %s failed: %d\n", devname, -errno);
 
 		err = lstat(devname, &st);
