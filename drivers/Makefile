@@ -25,7 +25,7 @@ tapdisk td-util: LIBS += -L$(LIBVHDDIR) -lvhd -luuid
 ifneq ($(USE_SYSTEM_LIBRARIES),y)
 LIBAIO_DIR = $(XEN_ROOT)/tools/libaio/src
 tapdisk: AIOLIBS := $(LIBAIO_DIR)/libaio.a
-tapdisk: CFLAGS  += -I$(LIBAIO_DIR) -I$(XEN_LIBXC)
+tapdisk tapdisk-client: CFLAGS  += -I$(LIBAIO_DIR) -I$(XEN_LIBXC)
 else
 tapdisk: AIOLIBS := -laio
 endif

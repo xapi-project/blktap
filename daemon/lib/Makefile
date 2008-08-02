@@ -23,7 +23,7 @@ CFLAGS   += -fno-strict-aliasing -fPIC
 # get asprintf():
 CFLAGS   += -D _GNU_SOURCE
 CFLAGS   += -g
-CFLAGS   += -I../../include
+CFLAGS   += -I../../include $(INCLUDES)
 
 # Get gcc to generate the dependencies for us.
 CFLAGS  += -Wp,-MD,.$(@F).d

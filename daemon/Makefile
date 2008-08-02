@@ -22,7 +22,7 @@ OBJS         += tapdisk-channel.o
 CFLAGS       += -Werror
 CFLAGS       += -Wno-unused
 CFLAGS       += -fno-strict-aliasing -fPIC
-CFLAGS       += -Ilib -I../include -I../drivers
+CFLAGS       += -Ilib -I../include -I../drivers $(INCLUDES)
 CFLAGS       += -D_GNU_SOURCE
 CFLAGS       += -g
 
