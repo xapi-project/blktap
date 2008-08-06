@@ -397,8 +397,7 @@ int await_responses(struct writelog* wl, int fd)
   }
 
   if (strncmp(msg.msg, LOGCMD_KICK, 4)) {
-    msg.msg[5] = '\0';
-    BWPRINTF("Unknown message received: %s", msg.msg);
+    BWPRINTF("Unknown message received: %.4s", msg.msg);
     return -1;
   }
 

@@ -559,9 +559,7 @@ static int ctl_do_request(struct tdlog_state* s, int fd, struct log_ctlmsg* msg)
     return ctl_kick(s, fd);
   }
 
-  /* very naughty! */
-  msg->msg[5] = '\0';
-  BWPRINTF("unknown control request %s", msg->msg);
+  BWPRINTF("unknown control request %.4s", msg->msg);
   return -1;
 }
 
