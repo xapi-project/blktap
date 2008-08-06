@@ -85,8 +85,8 @@ vhd_util_modify(int argc, char **argv)
 	if (size) {
 		err = vhd_set_phys_size(&vhd, newsize);
 		if (err)
-			printf("failed to set physical size to %llu: %d\n",
-					newsize, err);
+			printf("failed to set physical size to %"PRIx64":"
+			       " %d\n", newsize, err);
 	}
 
 	if (parent) {

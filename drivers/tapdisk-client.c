@@ -126,7 +126,7 @@ static int ctl_talk(int fd, struct log_ctlmsg* msg, char* rsp, int rsplen)
     BWPRINTF("error sending ctl request: %s", strerror(errno));
     return -1;
   } else if (rc < sizeof(*msg)) {
-    BWPRINTF("short ctl write (%d/%d bytes)", rc, sizeof(*msg));
+    BWPRINTF("short ctl write (%d/%zd bytes)", rc, sizeof(*msg));
     return -1;
   }
 
@@ -277,7 +277,7 @@ static int writelog_dump(struct writelog* wl)
     if (!range->count)
       break;
 
-    BDPRINTF("dirty extent: %llu:%u",
+    BDPRINTF("dirty extent: %"PRIu64":%u",
 	     range->sector, range->count);
   }
 
@@ -305,7 +305,7 @@ static int writelog_enqueue_requests(struct writelog* wl)
     /* 1. get next request slot from ring */
     /* 2. ensure enough shm space is available */
     
-    BDPRINTF("enqueueing dirty extent: %llu:%u (ring space: %d/%d)",
+    BDPRINTF("enqueueing dirty extent: %"PRIu64":%u (ring space: %d/%d)",
 	     range->sector, range->count, RING_FREE_REQUESTS(&wl->fring),
 	     RING_SIZE(&wl->fring));
 
@@ -340,7 +340,7 @@ static int writelog_dequeue_responses(struct writelog* wl)
 
   while (rstart != rend) {
     memcpy(&rsp, RING_GET_RESPONSE(&wl->fring, rstart), sizeof(rsp));
-    BDPRINTF("ctl: read response %llu:%u", rsp.sector, rsp.count);
+    BDPRINTF("ctl: read response %"PRIu64":%u", rsp.sector, rsp.count);
     wl->fring.rsp_cons = ++rstart;
     wl->inflight--;
   }

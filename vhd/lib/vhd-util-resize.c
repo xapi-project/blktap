@@ -646,7 +646,7 @@ vhd_check_for_clobber(vhd_context_t *vhd, off64_t off, int mode)
 	return 0;
 
 fail:
-	EPRINTF("write to 0x%08llx would clobber %s\n", off, msg);
+	EPRINTF("write to 0x%08"PRIx64" would clobber %s\n", off, msg);
 	return -EINVAL;
 }
 
@@ -772,17 +772,17 @@ vhd_add_bat_entries(vhd_journal_t *journal, int entries)
 
 	off = vhd->header.table_offset + new_bat_size;
 	if (vhd_check_for_clobber(vhd, off, SKIP_BAT | SKIP_BATMAP)) {
-		EPRINTF("%s: writing new bat of 0x%llx bytes at 0x%08llx "
-			"would clobber data\n", vhd->file, new_bat_size,
-			vhd->header.table_offset);
+		EPRINTF("%s: writing new bat of 0x%"PRIx64" bytes "
+			"at 0x%08llx would clobber data\n", 
+			vhd->file, new_bat_size, vhd->header.table_offset);
 		return -EINVAL;
 	}
 
 	if (vhd_has_batmap(vhd)) {
 		off = vhd->batmap.header.batmap_offset + new_map_size;
 		if (vhd_check_for_clobber(vhd, off, 0)) {
-			EPRINTF("%s: writing new batmap of 0x%llx bytes at "
-				"0x%08llx would clobber data\n", vhd->file,
+			EPRINTF("%s: writing new batmap of 0x%"PRIx64" bytes"
+				" at 0x%08llx would clobber data\n", vhd->file,
 				new_map_size, vhd->batmap.header.batmap_offset);
 			return -EINVAL;
 		}

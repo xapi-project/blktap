@@ -206,7 +206,7 @@ td_create(int type, int argc, char *argv[])
 		size >>= 20;
 
 		memset(cargv, 0, sizeof(cargv));
-		snprintf(sbuf, sizeof(sbuf) - 1, "%llu", size);
+		snprintf(sbuf, sizeof(sbuf) - 1, "%"PRIu64, size);
 		cargv[cargc++] = "create";
 		cargv[cargc++] = "-n";
 		cargv[cargc++] = name;
@@ -502,7 +502,7 @@ td_query(int type, int argc, char *argv[])
 				return err;
 			}
 
-			printf("%llu\n", secs >> 11);
+			printf("%"PRIu64"\n", secs >> 11);
 		}
 
 		if (parent)

@@ -461,12 +461,14 @@ radix_tree_prune(radix_tree_t *tree)
 	if (!tree->root)
 		return;
 
-	DPRINTF("tree %s has %llu bytes\n", tree->cache->name, tree->size);
+	DPRINTF("tree %s has %"PRIu64" bytes\n",
+		tree->cache->name, tree->size);
 
 	gettimeofday(&now, NULL);
 	radix_tree_prune_branch(tree, tree->root, now.tv_sec);
 
-	DPRINTF("tree %s now has %llu bytes\n", tree->cache->name, tree->size);
+	DPRINTF("tree %s now has %"PRIu64" bytes\n",
+		tree->cache->name, tree->size);
 }
 
 static inline int
@@ -552,7 +554,8 @@ block_cache_open(td_driver_t *driver, const char *name, td_flag_t flags)
 	if (cache->timeout_id < 0)
 		goto fail;
 
-	DPRINTF("opening cache for %s, sectors: %llu, tree: %p, height: %d\n",
+	DPRINTF("opening cache for %s, sectors: %"PRIu64", "
+		"tree: %p, height: %d\n",
 		cache->name, cache->sectors, tree, tree->height);
 
 	if (mlockall(MCL_CURRENT | MCL_FUTURE))

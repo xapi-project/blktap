@@ -843,9 +843,10 @@ tapdisk_vbd_shutdown(td_vbd_t *vbd)
 	DPRINTF("%s: state: 0x%08x, new: 0x%02x, pending: 0x%02x, "
 		"failed: 0x%02x, completed: 0x%02x\n", 
 		vbd->name, vbd->state, new, pending, failed, completed);
-	DPRINTF("last activity: %010ld.%06ld, errors: 0x%04llx, "
-		"retries: 0x%04llx, received: 0x%08llx, returned: 0x%08llx, "
-		"kicked: 0x%08llx\n",vbd->ts.tv_sec, vbd->ts.tv_usec,
+	DPRINTF("last activity: %010ld.%06ld, errors: 0x%04"PRIx64", "
+		"retries: 0x%04"PRIx64", received: 0x%08"PRIx64", "
+		"returned: 0x%08"PRIx64", kicked: 0x%08"PRIx64"\n",
+		vbd->ts.tv_sec, vbd->ts.tv_usec,
 		vbd->errors, vbd->retries, vbd->received, vbd->returned,
 		vbd->kicked);
 

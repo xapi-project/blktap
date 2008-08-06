@@ -506,7 +506,7 @@ vhd_util_check_bat(vhd_context_t *vhd)
 	/* adjust eof for vhds with short footers */
 	if (eof % 512) {
 		if (eof % 512 != 511) {
-			printf("invalid file size: 0x%llx\n", eof);
+			printf("invalid file size: 0x%"PRIx64"\n", eof);
 			return -EINVAL;
 		}
 

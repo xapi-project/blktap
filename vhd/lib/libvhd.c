@@ -914,7 +914,7 @@ vhd_read_footer_at(vhd_context_t *ctx, vhd_footer_t *footer, off64_t off)
 
 out:
 	if (err)
-		VHDLOG("%s: reading footer at 0x%08llx failed: %d\n",
+		VHDLOG("%s: reading footer at 0x%08"PRIx64" failed: %d\n",
 		       ctx->file, off, err);
 	free(buf);
 	return err;
@@ -984,7 +984,7 @@ vhd_read_header_at(vhd_context_t *ctx, vhd_header_t *header, off64_t off)
 
 out:
 	if (err)
-		VHDLOG("%s: reading header at 0x%08llx failed: %d\n",
+		VHDLOG("%s: reading header at 0x%08"PRIx64" failed: %d\n",
 		       ctx->file, off, err);
 	free(buf);
 	return err;
@@ -1874,7 +1874,7 @@ vhd_write_footer_at(vhd_context_t *ctx, vhd_footer_t *footer, off64_t off)
 
 out:
 	if (err)
-		VHDLOG("%s: failed writing footer at 0x%08llx: %d\n",
+		VHDLOG("%s: failed writing footer at 0x%08"PRIx64": %d\n",
 		       ctx->file, off, err);
 	free(f);
 	return err;
@@ -1941,7 +1941,7 @@ vhd_write_header_at(vhd_context_t *ctx, vhd_header_t *header, off64_t off)
 
 out:
 	if (err)
-		VHDLOG("%s: failed writing header at 0x%08llx: %d\n",
+		VHDLOG("%s: failed writing header at 0x%08"PRIx64": %d\n",
 		       ctx->file, off, err);
 	free(h);
 	return err;
@@ -2181,7 +2181,7 @@ vhd_seek(vhd_context_t *ctx, off64_t offset, int whence)
 
 	off = lseek64(ctx->fd, offset, whence);
 	if (off == (off64_t)-1) {
-		VHDLOG("%s: seek(0x%08llx, %d) failed: %d\n",
+		VHDLOG("%s: seek(0x%08"PRIx64", %d) failed: %d\n",
 		       ctx->file, offset, whence, -errno);
 		return -errno;
 	}
@@ -2206,7 +2206,7 @@ vhd_read(vhd_context_t *ctx, void *buf, size_t size)
 	if (ret == size)
 		return 0;
 
-	VHDLOG("%s: read of %u returned %d, errno: %d\n",
+	VHDLOG("%s: read of %zu returned %zd, errno: %d\n",
 	       ctx->file, size, ret, -errno);
 
 	return (errno ? -errno : -EIO);
@@ -2223,7 +2223,7 @@ vhd_write(vhd_context_t *ctx, void *buf, size_t size)
 	if (ret == size)
 		return 0;
 
-	VHDLOG("%s: write of %u returned %d, errno: %d\n",
+	VHDLOG("%s: write of %zu returned %zd, errno: %d\n",
 	       ctx->file, size, ret, -errno);
 
 	return (errno ? -errno : -EIO);
@@ -2753,7 +2753,7 @@ vhd_set_phys_size(vhd_context_t *ctx, off64_t size)
 		return err;
 	if (size < phys_size) {
 		// would result in data loss
-		VHDLOG("ERROR: new size (%llu) < phys size (%llu)\n", 
+		VHDLOG("ERROR: new size (%"PRIu64") < phys size (%"PRIu64")\n",
 				size, phys_size);
 		return -EINVAL;
 	}
@@ -2994,7 +2994,7 @@ __raw_read_link(char *filename,
 
 	off = lseek64(fd, sec << VHD_SECTOR_SHIFT, SEEK_SET);
 	if (off == (off64_t)-1) {
-		VHDLOG("%s: seek(0x%08llx) failed: %d\n",
+		VHDLOG("%s: seek(0x%08"PRIx64") failed: %d\n",
 				filename, sec << VHD_SECTOR_SHIFT, -errno);
 		err = -errno;
 		goto close;
@@ -3007,7 +3007,7 @@ __raw_read_link(char *filename,
 
 	err = read(fd, data, size);
 	if (err != size) {
-		VHDLOG("%s: reading of %llu returned %d, errno: %d\n",
+		VHDLOG("%s: reading of %"PRIu64" returned %d, errno: %d\n",
 				filename, size, err, -errno);
 		free(data);
 		err = errno ? -errno : -EIO;

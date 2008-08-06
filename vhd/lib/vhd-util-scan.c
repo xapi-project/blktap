@@ -169,7 +169,7 @@ vhd_util_scan_print_image_indent(struct vhd_image *image, int tab)
 		printf("%*svhd=%s scan-error=%d error-message='%s'\n",
 		       tab, pad, image->name, image->error, image->message);
 	else
-		printf("%*svhd=%s capacity=%llu size=%llu hidden=%u "
+		printf("%*svhd=%s capacity=%"PRIu64" size=%"PRIu64" hidden=%u "
 		       "parent=%s%s\n", tab, pad, name, image->capacity,
 		       image->size, image->hidden, parent, pmsg);
 }

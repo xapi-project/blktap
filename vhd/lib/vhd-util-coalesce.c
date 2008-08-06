@@ -21,7 +21,7 @@ __raw_io_write(int fd, char* buf, uint64_t sec, uint32_t secs)
 	errno = 0;
 	off = lseek64(fd, sec << VHD_SECTOR_SHIFT, SEEK_SET);
 	if (off == (off64_t)-1) {
-		printf("raw parent: seek(0x%08llx) failed: %d\n",
+		printf("raw parent: seek(0x%08"PRIx64") failed: %d\n",
 				sec << VHD_SECTOR_SHIFT, -errno);
 		return -errno;
 	}
@@ -30,7 +30,7 @@ __raw_io_write(int fd, char* buf, uint64_t sec, uint32_t secs)
 	if (ret == secs << VHD_SECTOR_SHIFT)
 		return 0;
 
-	printf("raw parent: write of %u returned %d, errno: %d\n",
+	printf("raw parent: write of %u returned %zd, errno: %d\n",
 			secs << VHD_SECTOR_SHIFT, ret, -errno);
 	return (errno ? -errno : -EIO);
 }

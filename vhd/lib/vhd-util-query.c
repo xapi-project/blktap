@@ -81,7 +81,7 @@ vhd_util_query(int argc, char **argv)
 		if (err)
 			printf("failed to get physical size: %d\n", err);
 		else
-			printf("%llu\n", currsize);
+			printf("%"PRIx64"\n", currsize);
 	}
 
 	if (parent) {

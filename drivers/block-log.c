@@ -121,10 +121,10 @@ static int writelog_create(struct tdlog_state *s)
 
   bmsize = bitmap_size(s->size);
 
-  BDPRINTF("allocating %llu bytes for dirty bitmap", bmsize);
+  BDPRINTF("allocating %"PRIu64" bytes for dirty bitmap", bmsize);
 
   if (!(s->writelog = calloc(bmsize, 1))) {
-    BWPRINTF("could not allocate dirty bitmap of size %llu", bmsize);
+    BWPRINTF("could not allocate dirty bitmap of size %"PRIu64, bmsize);
     return -1;
   }
 
@@ -173,7 +173,7 @@ static uint64_t writelog_export(struct tdlog_state* s)
   struct disk_range* range = s->shm;
   uint64_t i = 0;
 
-  BDPRINTF("sector count: %llu", s->size);
+  BDPRINTF("sector count: %"PRIu64, s->size);
 
   for (i = 0; i < s->size; i++) {
     if (test_bit(i, s->writelog)) {
@@ -184,12 +184,13 @@ static uint64_t writelog_export(struct tdlog_state* s)
       for (i++; i < s->size && test_bit(i, s->writelog); i++)
 	range->count++;
 
-      BDPRINTF("export: dirty extent %llu:%u", range->sector, range->count);
+      BDPRINTF("export: dirty extent %"PRIu64":%u",
+	       range->sector, range->count);
       range++;
 
       /* out of space in shared memory region */
       if ((void*)range >= bmend(s->shm)) {
-	BDPRINTF("out of space in shm region at sector %llu", i);
+	BDPRINTF("out of space in shm region at sector %"PRIu64, i);
 	return i;
       }
 
@@ -521,7 +522,7 @@ static int ctl_kick(struct tdlog_state* s, int fd)
   while (reqstart != reqend) {
     /* XXX actually submit these! */
     memcpy(&req, RING_GET_REQUEST(&s->bring, reqstart), sizeof(req));
-    BDPRINTF("ctl: read request %llu:%u", req.sector, req.count);
+    BDPRINTF("ctl: read request %"PRIu64":%u", req.sector, req.count);
     s->bring.req_cons = ++reqstart;
 
     rsp.sector = req.sector;
@@ -538,7 +539,7 @@ static int ctl_kick(struct tdlog_state* s, int fd)
     BWPRINTF("error sending notify: %s", strerror(errno));
     return -1;
   } else if (rc < sizeof(msg)) {
-    BWPRINTF("short notify write (%d/%d)", rc, sizeof(msg));
+    BWPRINTF("short notify write (%d/%zd)", rc, sizeof(msg));
     return -1;
   }
 
@@ -595,7 +596,7 @@ static void ctl_request(event_id_t id, char mode, void *private)
     ctl_close_sock(s, fd);
     return;
   } else if (rc < sizeof(msg)) {
-    BWPRINTF("short request received (%d/%d bytes), ignoring", rc,
+    BWPRINTF("short request received (%d/%zd bytes), ignoring", rc,
 	     sizeof(msg));
     return;
   }

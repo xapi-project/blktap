@@ -797,7 +797,7 @@ vhd_index_print_bat_header(const char *name, vhdi_bat_t *bat)
 {
 	printf("VHD INDEX BAT      : %s\n", name);
 	printf("--------------------\n");
-	printf("blocks             : %llu\n", bat->vhd_blocks);
+	printf("blocks             : %"PRIu64"\n", bat->vhd_blocks);
 	printf("block size         : %u\n", bat->vhd_block_size);
 	printf("vhd path           : %s\n", bat->vhd_path);
 	printf("index path         : %s\n", bat->index_path);
@@ -842,7 +842,7 @@ vhd_index_print_vhd_block_summary(vhdi_name_t *name, uint32_t block)
 	vhd_index_print_bat_header(name->bat, &bat);
 
 	if (block > bat.vhd_blocks) {
-		printf("block %u past end of bat (%llu)\n",
+		printf("block %u past end of bat (%"PRIu64")\n",
 		       block, bat.vhd_blocks);
 		err = -EINVAL;
 		goto out;
