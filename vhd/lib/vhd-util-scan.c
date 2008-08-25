@@ -280,8 +280,10 @@ vhd_util_scan_error(const char *file, int err)
 
 	vhd_util_scan_print_image(&image);
 
+	/*
 	if (flags & VHD_SCAN_NOFAIL)
 		return 0;
+	*/
 
 	return err;
 }
@@ -470,11 +472,10 @@ vhd_util_scan(int argc, char **argv)
 	if (filter) {
 		int gflags = ((flags & VHD_SCAN_FAST) ? GLOB_NOSORT : 0);
 		err = glob(filter, gflags, vhd_util_scan_error, &g);
-		if (err == GLOB_NOSPACE) {
-			ret = -EAGAIN;
-			vhd_util_scan_error(filter, ENOMEM);
-			if (!(flags & VHD_SCAN_NOFAIL))
-				return ENOMEM;
+		if (err == GLOB_NOSPACE || err == GLOB_ABORTED) {
+			err = (err == GLOB_NOSPACE ? -ENOMEM : -EIO);
+			vhd_util_scan_error(filter, err);
+			return err;
 		}
 
 		cnt   = g.gl_pathc;
