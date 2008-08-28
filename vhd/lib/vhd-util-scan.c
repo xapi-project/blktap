@@ -471,9 +471,23 @@ vhd_util_scan(int argc, char **argv)
 
 	if (filter) {
 		int gflags = ((flags & VHD_SCAN_FAST) ? GLOB_NOSORT : 0);
-		err = glob(filter, gflags, vhd_util_scan_error, &g);
-		if (err == GLOB_NOSPACE || err == GLOB_ABORTED) {
-			err = (err == GLOB_NOSPACE ? -ENOMEM : -EIO);
+
+		errno = 0;
+		err   = glob(filter, gflags, vhd_util_scan_error, &g);
+
+		switch (err) {
+		case GLOB_NOSPACE:
+			err = -ENOMEM;
+			break;
+		case GLOB_ABORTED:
+			err = -EIO;
+			break;
+		case GLOB_NOMATCH:
+			err = -errno;
+			break;
+		}
+
+		if (err) {
 			vhd_util_scan_error(filter, err);
 			return err;
 		}
