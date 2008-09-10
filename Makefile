@@ -3,6 +3,7 @@ include $(BLKTAP_ROOT)/Rules.mk
 
 SUBDIRS-y :=
 SUBDIRS-y += include
+SUBDIRS-y += lvm
 SUBDIRS-y += vhd
 SUBDIRS-y += drivers
 SUBDIRS-y += daemon

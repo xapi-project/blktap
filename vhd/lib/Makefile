@@ -5,6 +5,8 @@ LIBVHD-MAJOR     = 1.0
 LIBVHD-MINOR     = 0
 LIBVHD-SONAME    = libvhd.so.$(LIBVHD-MAJOR)
 
+LVM-UTIL-OBJ    := $(BLKTAP_ROOT)lvm/lvm-util.o
+
 LIBVHD-BUILD    := libvhd.a
 
 INST-DIR         = /usr/lib
@@ -41,6 +43,7 @@ LIB-SRCS        += relative-path.c
 LIB-SRCS        += atomicio.c
 
 LIB-OBJS         = $(patsubst %.c,%.o,$(LIB-SRCS))
+LIB-OBJS        += $(LVM-UTIL-OBJ)
 
 LIBVHD           = libvhd.a libvhd.so.$(LIBVHD-MAJOR).$(LIBVHD-MINOR)
 
