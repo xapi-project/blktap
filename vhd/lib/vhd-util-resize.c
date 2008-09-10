@@ -767,8 +767,8 @@ vhd_add_bat_entries(vhd_journal_t *journal, int entries)
 					sizeof(uint32_t));
 	new_bat_size = vhd_bytes_padded(new_entries * sizeof(uint32_t));
 
-	map_size     = vhd_bytes_padded((vhd->header.max_bat_size >> 3) + 1);
-	new_map_size = vhd_bytes_padded((new_entries >> 3) + 1);
+	map_size     = vhd_bytes_padded((vhd->header.max_bat_size + 7) >> 3);
+	new_map_size = vhd_bytes_padded((new_entries + 7) >> 3);
 
 	off = vhd->header.table_offset + new_bat_size;
 	if (vhd_check_for_clobber(vhd, off, SKIP_BAT | SKIP_BATMAP)) {
@@ -884,7 +884,7 @@ vhd_dynamic_grow(vhd_journal_t *journal, uint64_t secs)
 
 	if (vhd_has_batmap(vhd)) {
 		/* avaliable bytes in current batmap */
-		map_bytes   = (vhd->header.max_bat_size >> 3) + 1;
+		map_bytes   = (vhd->header.max_bat_size + 7) >> 3;
 		map_secs    = vhd->batmap.header.batmap_size;
 		map_size    = map_secs << VHD_SECTOR_SHIFT;
 		map_avail   = map_size - map_bytes;
