@@ -22,6 +22,24 @@
 #define VHD_SCAN_VOLUME      0x04
 #define VHD_SCAN_NOFAIL      0x08
 #define VHD_SCAN_VERBOSE     0x10
+#define VHD_SCAN_PARENTS     0x20
+
+#define VHD_TYPE_RAW_FILE    0x01
+#define VHD_TYPE_VHD_FILE    0x02
+#define VHD_TYPE_RAW_VOLUME  0x04
+#define VHD_TYPE_VHD_VOLUME  0x08
+
+static inline int
+target_volume(uint8_t type)
+{
+	return (type == VHD_TYPE_RAW_VOLUME || type == VHD_TYPE_VHD_VOLUME);
+}
+
+static inline int
+target_vhd(uint8_t type)
+{
+	return (type == VHD_TYPE_VHD_FILE || type == VHD_TYPE_VHD_VOLUME);
+}
 
 struct target {
 	char                 name[VHD_MAX_NAME_LEN];
@@ -29,6 +47,14 @@ struct target {
 	uint64_t             size;
 	uint64_t             start;
 	uint64_t             end;
+	uint8_t              type;
+};
+
+struct iterator {
+	int                  cur;
+	int                  cur_size;
+	int                  max_size;
+	struct target       *targets;
 };
 
 struct vhd_image {
@@ -50,30 +76,43 @@ struct vhd_image {
 struct vhd_scan {
 	int                  cur;
 	int                  size;
+
+	int                  lists_cur;
+	int                  lists_size;
+
 	struct vhd_image   **images;
+	struct vhd_image   **lists;
 };
 
 static int flags;
+static struct vg vg;
 static struct vhd_scan scan;
 
 static int
 vhd_util_scan_pretty_allocate_list(int cnt)
 {
 	int i;
+	struct vhd_image *list;
+
+	memset(&scan, 0, sizeof(scan));
+
+	scan.lists_cur  = 1;
+	scan.lists_size = 10;
+
+	scan.lists = calloc(scan.lists_size, sizeof(struct vhd_image *));
+	if (!scan.lists)
+		goto fail;
+
+	scan.lists[0] = calloc(cnt, sizeof(struct vhd_image));
+	if (!scan.lists[0])
+		goto fail;
 
 	scan.images = calloc(cnt, sizeof(struct vhd_image *));
 	if (!scan.images)
-		return -ENOMEM;
+		goto fail;
 
-	/* 
-	 * allocate each image individually
-	 * so qsort won't mess up linked lists
-	 */
-	for (i = 0; i < cnt; i++) {
-		scan.images[i] = calloc(1, sizeof(struct vhd_image));
-		if (!scan.images[i])
-			goto fail;
-	}
+	for (i = 0; i < cnt; i++)
+		scan.images[i] = scan.lists[0] + i;
 
 	scan.cur  = 0;
 	scan.size = cnt;
@@ -81,9 +120,13 @@ vhd_util_scan_pretty_allocate_list(int cnt)
 	return 0;
 
 fail:
-	for (i = 0; i < cnt; i++)
-		free(scan.images[i]);
+	if (scan.lists) {
+		free(scan.lists[0]);
+		free(scan.lists);
+	}
+
 	free(scan.images);
+	memset(&scan, 0, sizeof(scan));
 	return -ENOMEM;
 }
 
@@ -92,11 +135,11 @@ vhd_util_scan_pretty_free_list(void)
 {
 	int i;
 
-	if (!scan.size)
-		return;
-
-	for (i = 0; i < scan.size; i++)
-		free(scan.images[i]);
+	if (scan.lists) {
+		for (i = 0; i < scan.lists_cur; i++)
+			free(scan.lists[i]);
+		free(scan.lists);
+	}
 
 	free(scan.images);
 	memset(&scan, 0, sizeof(scan));
@@ -114,8 +157,35 @@ vhd_util_scan_pretty_add_image(struct vhd_image *image)
 			return 0;
 	}
 
-	if (scan.cur >= scan.size)
-		return -ENOSPC;
+	if (scan.cur >= scan.size) {
+		struct vhd_image *new, **list;
+
+		if (scan.lists_cur >= scan.lists_size) {
+			list = realloc(scan.lists, scan.lists_size * 2 *
+				       sizeof(struct vhd_image *));
+			if (!list)
+				return -ENOMEM;
+
+			scan.lists_size *= 2;
+			scan.lists       = list;
+		}
+
+		new = calloc(scan.size, sizeof(struct vhd_image));
+		if (!new)
+			return -ENOMEM;
+
+		scan.lists[scan.lists_cur++] = new;
+		scan.size *= 2;
+
+		list = realloc(scan.images, scan.size *
+			       sizeof(struct vhd_image *));
+		if (!list)
+			return -ENOMEM;
+
+		scan.images = list;
+		for (i = 0; i + scan.cur < scan.size; i++)
+			scan.images[i + scan.cur] = new + i;
+	}
 
 	img = scan.images[scan.cur];
 	INIT_LIST_HEAD(&img->sibling);
@@ -298,7 +368,7 @@ vhd_util_scan_error(const char *file, int err)
 	memset(&image, 0, sizeof(image));
 	image.name    = (char *)file;
 	image.error   = err;
-	image.message = "failure scanning file";
+	image.message = "failure scanning target";
 
 	vhd_util_scan_print_image(&image);
 
@@ -334,12 +404,51 @@ vhd_util_scan_get_parent_locator(vhd_context_t *vhd)
 	return loc;
 }
 
-/* 
- * noop for now
+static inline int
+copy_name(char *dst, const char *src)
+{
+	if (snprintf(dst, VHD_MAX_NAME_LEN, "%s", src) < VHD_MAX_NAME_LEN)
+		return 0;
+
+	return -ENAMETOOLONG;
+}
+
+/*
+ * LVHD stores realpath(parent) in parent locators, so
+ * /dev/<vol-group>/<lv-name> becomes /dev/mapper/<vol--group>-<lv--name>
  */
 static int
-vhd_util_scan_extract_volume_name(struct vhd_image *image)
+vhd_util_scan_extract_volume_name(char *dst, const char *src)
 {
+	int err;
+	char copy[VHD_MAX_NAME_LEN], *name, *s, *c;
+
+	name = strrchr(src, '/');
+	if (!name)
+		name = (char *)src;
+
+	/* convert single dashes to slashes, double dashes to single dashes */
+	for (c = copy, s = name; *s != '\0'; s++, c++) {
+		if (*s == '-') {
+			if (s[1] != '-')
+				*c = '/';
+			else {
+				s++;
+				*c = '-';
+			}
+		} else
+			*c = *s;
+	}
+
+	*c = '\0';
+	c = strrchr(copy, '/');
+	if (c == name) {
+		/* unrecognized format */
+		strcpy(dst, src);
+		return -EINVAL;
+	}
+
+	strcpy(dst, ++c);
 	return 0;
 }
 
@@ -347,6 +456,7 @@ static int
 vhd_util_scan_get_volume_parent(vhd_context_t *vhd, struct vhd_image *image)
 {
 	int err;
+	char name[VHD_MAX_NAME_LEN];
 	vhd_parent_locator_t *loc, copy;
 
 	if (flags & VHD_SCAN_FAST) {
@@ -367,10 +477,11 @@ vhd_util_scan_get_volume_parent(vhd_context_t *vhd, struct vhd_image *image)
 		return err;
 
 found:
-	if (!(flags & VHD_SCAN_PRETTY))
-		return 0;
+	err = vhd_util_scan_extract_volume_name(name, image->parent);
+	if (!err)
+		return copy_name(image->parent, name);
 
-	return vhd_util_scan_extract_volume_name(image);
+	return 0;
 }
 
 static int
@@ -379,9 +490,14 @@ vhd_util_scan_get_parent(vhd_context_t *vhd, struct vhd_image *image)
 	int i, err;
 	vhd_parent_locator_t *loc;
 
+	if (!target_vhd(image->target->type)) {
+		image->parent = NULL;
+		return 0;
+	}
+
 	loc = NULL;
 
-	if (flags & VHD_SCAN_VOLUME)
+	if (target_volume(image->target->type))
 		return vhd_util_scan_get_volume_parent(vhd, image);
 
 	if (flags & VHD_SCAN_FAST) {
@@ -409,16 +525,34 @@ vhd_util_scan_get_parent(vhd_context_t *vhd, struct vhd_image *image)
 }
 
 static int
+vhd_util_scan_get_hidden(vhd_context_t *vhd, struct vhd_image *image)
+{
+	int err, hidden;
+
+	err    = 0;
+	hidden = 0;
+
+	if (target_vhd(image->target->type))
+		err = vhd_hidden(vhd, &hidden);
+	else
+		hidden = 1;
+
+	if (err)
+		return err;
+
+	image->hidden = hidden;
+	return 0;
+}
+
+static int
 vhd_util_scan_get_size(vhd_context_t *vhd, struct vhd_image *image)
 {
-	if (flags & VHD_SCAN_VOLUME) {
-		image->size = image->target->size;
-		return 0;
-	}
+	image->size = image->target->size;
 
-	image->size = lseek64(vhd->fd, 0, SEEK_END);
-	if (image->size == (off64_t)-1)
-		return -errno;
+	if (target_vhd(image->target->type))
+		image->capacity = vhd->footer.curr_size;
+	else
+		image->capacity = image->size;
 
 	return 0;
 }
@@ -427,6 +561,9 @@ static int
 vhd_util_scan_open_file(vhd_context_t *vhd, struct vhd_image *image)
 {
 	int err, vhd_flags;
+
+	if (!target_vhd(image->target->type))
+		return 0;
 
 	vhd_flags = VHD_OPEN_RDONLY;
 	if (flags & VHD_SCAN_FAST)
@@ -548,9 +685,8 @@ vhd_util_scan_open_volume(vhd_context_t *vhd, struct vhd_image *image)
 		return image->error;
 	}
 
-	err = vhd_util_scan_read_volume_headers(vhd, image);
-	if (err)
-		return err;
+	if (target_vhd(target->type))
+		return vhd_util_scan_read_volume_headers(vhd, image);
 
 	return 0;
 }
@@ -562,7 +698,7 @@ vhd_util_scan_open(vhd_context_t *vhd, struct vhd_image *image)
 
 	target = image->target;
 
-	if ((flags & VHD_SCAN_VOLUME) || !(flags & VHD_SCAN_PRETTY))
+	if (target_volume(image->target->type) || !(flags & VHD_SCAN_PRETTY))
 		image->name = target->name;
 	else {
 		image->name = realpath(target->name, NULL);
@@ -574,100 +710,15 @@ vhd_util_scan_open(vhd_context_t *vhd, struct vhd_image *image)
 		}
 	}
 
-	if (flags & VHD_SCAN_VOLUME)
+	if (target_volume(target->type))
 		return vhd_util_scan_open_volume(vhd, image);
 	else
 		return vhd_util_scan_open_file(vhd, image);
 }
 
 static int
-vhd_util_scan_targets(int cnt, struct target *targets)
-{
-	vhd_context_t vhd;
-	struct vhd_image image;
-	int i, ret, err, hidden, vhd_flags;
-
-	ret = 0;
-	err = 0;
-
-	vhd_flags = VHD_OPEN_RDONLY;
-	if (flags & VHD_SCAN_FAST)
-		vhd_flags |= VHD_OPEN_FAST;
-
-	for (i = 0; i < cnt; i++) {
-		memset(&vhd, 0, sizeof(vhd));
-		memset(&image, 0, sizeof(image));
-
-		image.target = targets + i;
-
-		err = vhd_util_scan_open(&vhd, &image);
-		if (err) {
-			ret = -EAGAIN;
-			goto end;
-		}
-
-		image.capacity = vhd.footer.curr_size;
-
-		err = vhd_util_scan_get_size(&vhd, &image);
-		if (err) {
-			ret           = -EAGAIN;
-			image.message = "getting physical size";
-			image.error   = err;
-			goto end;
-		}
-
-		err = vhd_hidden(&vhd, &hidden);
-		if (err) {
-			ret           = -EAGAIN;
-			image.message = "checking 'hidden' field";
-			image.error   = err;
-			goto end;
-		}
-		image.hidden = hidden;
-
-		if (vhd.footer.type == HD_TYPE_DIFF) {
-			err = vhd_util_scan_get_parent(&vhd, &image);
-			if (err) {
-				ret           = -EAGAIN;
-				image.message = "getting parent";
-				image.error   = err;
-				goto end;
-			}
-		}
-
-	end:
-		vhd_util_scan_print_image(&image);
-
-		if (vhd.file)
-			vhd_close(&vhd);
-		if (image.name != targets[i].name)
-			free(image.name);
-		free(image.parent);
-
-		if (err && !(flags & VHD_SCAN_NOFAIL))
-			break;
-	}
-
-	if (flags & VHD_SCAN_PRETTY)
-		vhd_util_scan_pretty_print_images();
-
-	if (flags & VHD_SCAN_NOFAIL)
-		return ret;
-
-	return err;
-}
-
-static inline int
-copy_name(char *dst, const char *src)
-{
-	if (snprintf(dst, VHD_MAX_NAME_LEN, "%s", src) < VHD_MAX_NAME_LEN)
-		return 0;
-
-	return -ENAMETOOLONG;
-}
-
-static int
-vhd_util_scan_init_file_target(struct target *target, const char *file)
+vhd_util_scan_init_file_target(struct target *target,
+			       const char *file, uint8_t type)
 {
 	int err;
 	struct stat stats;
@@ -684,11 +735,272 @@ vhd_util_scan_init_file_target(struct target *target, const char *file)
 	if (err)
 		return err;
 
+	target->type  = type;
 	target->start = 0;
 	target->size  = stats.st_size;
 	target->end   = stats.st_size;
 
 	return 0;
+}
+
+static int
+vhd_util_scan_init_volume_target(struct target *target,
+				 struct lv *lv, uint8_t type)
+{
+	int err;
+
+	if (lv->first_segment.type != LVM_SEG_TYPE_LINEAR)
+		return -ENOSYS;
+
+	err = copy_name(target->name, lv->name);
+	if (err)
+		return err;
+
+	err = copy_name(target->device, lv->first_segment.device);
+	if (err)
+		return err;
+
+	target->type  = type;
+	target->size  = lv->size;
+	target->start = lv->first_segment.pe_start;
+	target->end   = target->start + lv->first_segment.pe_size;
+
+	return 0;
+}
+
+static int
+iterator_init(struct iterator *itr, int cnt, struct target *targets)
+{
+	memset(itr, 0, sizeof(*itr));
+
+	itr->targets = malloc(sizeof(struct target) * cnt);
+	if (!itr->targets)
+		return -ENOMEM;
+
+	memcpy(itr->targets, targets, sizeof(struct target) * cnt);
+
+	itr->cur      = 0;
+	itr->cur_size = cnt;
+	itr->max_size = cnt;
+
+	return 0;
+}
+
+static struct target *
+iterator_next(struct iterator *itr)
+{
+	if (itr->cur == itr->cur_size)
+		return NULL;
+
+	return itr->targets + itr->cur++;
+}
+
+static int
+iterator_add_file(struct iterator *itr,
+		  struct target *target, const char *parent, uint8_t type)
+{
+	int i;
+	struct target *t;
+	char *lname, *rname;
+
+	for (i = 0; i < itr->cur_size; i++) {
+		t = itr->targets + i;
+		lname = basename((char *)t->name);
+		rname = basename((char *)parent);
+
+		if (!strcmp(lname, rname))
+			return -EEXIST;
+	}
+
+	return vhd_util_scan_init_file_target(target, parent, type);
+}
+
+static int
+iterator_add_volume(struct iterator *itr,
+		    struct target *target, const char *parent, uint8_t type)
+{
+	int i, err;
+	struct lv *lv;
+
+	lv  = NULL;
+	err = -ENOENT;
+
+	for (i = 0; i < itr->cur_size; i++)
+		if (!strcmp(parent, itr->targets[i].name))
+			return -EEXIST;
+
+	for (i = 0; i < vg.lv_cnt; i++) {
+		err = fnmatch(parent, vg.lvs[i].name, FNM_PATHNAME);
+		if (err != FNM_NOMATCH) {
+			lv = vg.lvs + i;
+			break;
+		}
+	}
+
+	if (err && err != FNM_PATHNAME)
+		return err;
+
+	if (!lv)
+		return -ENOENT;
+
+	return vhd_util_scan_init_volume_target(target, lv, type);
+}
+
+static int
+iterator_add(struct iterator *itr, const char *parent, uint8_t type)
+{
+	int err;
+	struct target *target;
+
+	if (itr->cur_size == itr->max_size) {
+		struct target *new;
+
+		new = realloc(itr->targets,
+			      sizeof(struct target) *
+			      itr->max_size * 2);
+		if (!new)
+			return -ENOMEM;
+
+		itr->max_size *= 2;
+		itr->targets   = new;
+	}
+
+	target = itr->targets + itr->cur_size;
+
+	if (target_volume(type))
+		err = iterator_add_volume(itr, target, parent, type);
+	else
+		err = iterator_add_file(itr, target, parent, type);
+
+	if (err)
+		memset(target, 0, sizeof(*target));
+	else
+		itr->cur_size++;
+
+	return (err == -EEXIST ? 0 : err);
+}
+
+static void
+iterator_free(struct iterator *itr)
+{
+	free(itr->targets);
+	memset(itr, 0, sizeof(*itr));
+}
+
+static void
+vhd_util_scan_add_parent(struct iterator *itr,
+			 vhd_context_t *vhd, struct vhd_image *image)
+{
+	int err;
+	uint8_t type;
+
+	if (vhd_parent_raw(vhd))
+		type = target_volume(image->target->type) ? 
+			VHD_TYPE_RAW_VOLUME : VHD_TYPE_RAW_FILE;
+	else
+		type = target_volume(image->target->type) ? 
+			VHD_TYPE_VHD_VOLUME : VHD_TYPE_VHD_FILE;
+
+	err = iterator_add(itr, image->parent, type);
+	if (err)
+		vhd_util_scan_error(image->parent, err);
+}
+
+static int
+vhd_util_scan_targets(int cnt, struct target *targets)
+{
+	int ret, err;
+	vhd_context_t vhd;
+	struct iterator itr;
+	struct target *target;
+	struct vhd_image image;
+
+	ret = 0;
+	err = 0;
+
+	err = iterator_init(&itr, cnt, targets);
+	if (err)
+		return err;
+
+	while ((target = iterator_next(&itr))) {
+		memset(&vhd, 0, sizeof(vhd));
+		memset(&image, 0, sizeof(image));
+
+		image.target = target;
+
+		err = vhd_util_scan_open(&vhd, &image);
+		if (err) {
+			ret = -EAGAIN;
+			goto end;
+		}
+
+		err = vhd_util_scan_get_size(&vhd, &image);
+		if (err) {
+			ret           = -EAGAIN;
+			image.message = "getting physical size";
+			image.error   = err;
+			goto end;
+		}
+
+		err = vhd_util_scan_get_hidden(&vhd, &image);
+		if (err) {
+			ret           = -EAGAIN;
+			image.message = "checking 'hidden' field";
+			image.error   = err;
+			goto end;
+		}
+
+		if (vhd.footer.type == HD_TYPE_DIFF) {
+			err = vhd_util_scan_get_parent(&vhd, &image);
+			if (err) {
+				ret           = -EAGAIN;
+				image.message = "getting parent";
+				image.error   = err;
+				goto end;
+			}
+		}
+
+	end:
+		vhd_util_scan_print_image(&image);
+
+		if (flags & VHD_SCAN_PARENTS && image.parent)
+			vhd_util_scan_add_parent(&itr, &vhd, &image);
+
+		if (vhd.file)
+			vhd_close(&vhd);
+		if (image.name != target->name)
+			free(image.name);
+		free(image.parent);
+
+		if (err && !(flags & VHD_SCAN_NOFAIL))
+			break;
+	}
+
+	iterator_free(&itr);
+
+	if (flags & VHD_SCAN_NOFAIL)
+		return ret;
+
+	return err;
+}
+
+static int
+vhd_util_scan_targets_pretty(int cnt, struct target *targets)
+{
+	int err;
+
+	err = vhd_util_scan_pretty_allocate_list(cnt);
+	if (err) {
+		printf("scan failed: no memory\n");
+		return -ENOMEM;
+	}
+
+	err = vhd_util_scan_targets(cnt, targets);
+
+	vhd_util_scan_pretty_print_images();
+	vhd_util_scan_pretty_free_list();
+
+	return ((flags & VHD_SCAN_NOFAIL) ? 0 : err);
 }
 
 static int
@@ -742,7 +1054,8 @@ vhd_util_scan_find_file_targets(int cnt, char **names,
 
 	for (i = 0; i < g.gl_pathc; i++) {
 		err = vhd_util_scan_init_file_target(targets + i,
-						     g.gl_pathv[i]);
+						     g.gl_pathv[i],
+						     VHD_TYPE_VHD_FILE);
 		if (err) {
 			vhd_util_scan_error(g.gl_pathv[i], err);
 			if (!(flags & VHD_SCAN_NOFAIL))
@@ -752,7 +1065,8 @@ vhd_util_scan_find_file_targets(int cnt, char **names,
 
 	for (i = 0; i + globs < total; i++) {
 		err = vhd_util_scan_init_file_target(targets + i + globs,
-						     names[i]);
+						     names[i],
+						     VHD_TYPE_VHD_FILE);
 		if (err) {
 			vhd_util_scan_error(names[i], err);
 			if (!(flags & VHD_SCAN_NOFAIL))
@@ -824,34 +1138,10 @@ vhd_util_scan_sort_volumes(struct lv *lvs, int cnt,
 }
 
 static int
-vhd_util_scan_init_volume_target(struct target *target, struct lv *lv)
-{
-	int err;
-
-	if (lv->first_segment.type != LVM_SEG_TYPE_LINEAR)
-		return -ENOSYS;
-
-	err = copy_name(target->name, lv->name);
-	if (err)
-		return err;
-
-	err = copy_name(target->device, lv->first_segment.device);
-	if (err)
-		return err;
-
-	target->size  = lv->size;
-	target->start = lv->first_segment.pe_start;
-	target->end   = target->start + lv->first_segment.pe_size;
-
-	return 0;
-}
-
-static int
 vhd_util_scan_find_volume_targets(int cnt, char **names,
 				  const char *volume, const char *filter,
 				  struct target **_targets, int *_total)
 {
-	struct vg vg;
 	struct target *targets;
 	int i, err, total, matches;
 
@@ -887,7 +1177,8 @@ vhd_util_scan_find_volume_targets(int cnt, char **names,
 
 	for (i = 0; i < total; i++) {
 		err = vhd_util_scan_init_volume_target(targets + i,
-						       vg.lvs + i);
+						       vg.lvs + i,
+						       VHD_TYPE_VHD_VOLUME);
 		if (err) {
 			vhd_util_scan_error(vg.lvs[i].name, err);
 			if (!(flags & VHD_SCAN_NOFAIL))
@@ -902,7 +1193,6 @@ vhd_util_scan_find_volume_targets(int cnt, char **names,
 out:
 	if (err)
 		free(targets);
-	lvm_free_vg(&vg);
 	return err;
 }
 
@@ -935,7 +1225,7 @@ vhd_util_scan(int argc, char **argv)
 	targets = NULL;
 
 	optind = 0;
-	while ((c = getopt(argc, argv, "m:fcl:pvh")) != -1) {
+	while ((c = getopt(argc, argv, "m:fcl:pavh")) != -1) {
 		switch (c) {
 		case 'm':
 			filter = optarg;
@@ -952,6 +1242,9 @@ vhd_util_scan(int argc, char **argv)
 			break;
 		case 'p':
 			flags |= VHD_SCAN_PRETTY;
+			break;
+		case 'a':
+			flags |= VHD_SCAN_PARENTS;
 			break;
 		case 'v':
 			flags |= VHD_SCAN_VERBOSE;
@@ -979,29 +1272,23 @@ vhd_util_scan(int argc, char **argv)
 		return err;
 	}
 
-	if (!cnt) {
-		printf("found no matches\n");
-		return -ENOENT;
-	}
-
-	if (flags & VHD_SCAN_PRETTY) {
-		err = vhd_util_scan_pretty_allocate_list(cnt);
-		if (err) {
-			printf("scan failed: no memory\n");
-			return -ENOMEM;
-		}
-	}
-
-	err = vhd_util_scan_targets(cnt, targets);
+	if (!cnt)
+		return 0;
 
 	if (flags & VHD_SCAN_PRETTY)
-		vhd_util_scan_pretty_free_list();
+		err = vhd_util_scan_targets_pretty(cnt, targets);
+	else
+		err = vhd_util_scan_targets(cnt, targets);
+
+	free(targets);
+	lvm_free_vg(&vg);
 
 	return ((flags & VHD_SCAN_NOFAIL) ? 0 : err);
 
 usage:
 	printf("usage: [OPTIONS] FILES\n"
 	       "options: [-m match filter] [-f fast] [-c continue on failure] "
-	       "[-p pretty print] [-v verbose] [-h help]\n");
+	       "[-l LVM volume] [-p pretty print] [-a scan parents] "
+	       "[-v verbose] [-h help]\n");
 	return err;
 }
