@@ -49,7 +49,7 @@ struct xenbus_watch
 
 int xs_gather(struct xs_handle *xs, const char *dir, ...);
 int xs_printf(struct xs_handle *h, const char *dir, const char *node, 
-	      const char *fmt, ...);
+	      const char *fmt, ...) __attribute__((format(printf, 4, 5)));
 int xs_exists(struct xs_handle *h, const char *path);
 char *get_dom_domid(struct xs_handle *h);
 int convert_dev_name_to_num(char *name);

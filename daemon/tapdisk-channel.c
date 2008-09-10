@@ -48,6 +48,12 @@
 #define TAPDISK_CHANNEL_WAIT_CLOSE    6
 #define TAPDISK_CHANNEL_CLOSED        7
 
+static void tapdisk_channel_error(tapdisk_channel_t *,
+				  const char *fmt, ...)
+  __attribute__((format(printf, 2, 3)));
+static void tapdisk_channel_fatal(tapdisk_channel_t *,
+				  const char *fmt, ...)
+  __attribute__((format(printf, 2, 3)));
 static int tapdisk_channel_parse_params(tapdisk_channel_t *);
 
 static int

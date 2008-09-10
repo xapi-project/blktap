@@ -14,8 +14,10 @@ void close_tlog(void);
 void tlog_flush(void);
 void tlog_print_errors(void);
 
-void __tlog_write(int level, const char *func, const char *fmt, ...);
-void __tlog_error(int err, const char *func, const char *fmt, ...);
+void __tlog_write(int level, const char *func, const char *fmt, ...)
+  __attribute__((format(printf, 3, 4)));
+void __tlog_error(int err, const char *func, const char *fmt, ...)
+  __attribute__((format(printf, 3, 4)));
 
 #define tlog_write(_level, _f, _a...)			\
 	__tlog_write(_level, __func__, _f, ##_a)
