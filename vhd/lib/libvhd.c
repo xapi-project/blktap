@@ -174,7 +174,7 @@ vhd_bat_in(vhd_bat_t *bat)
 {
 	int i;
 
-	for (int i = 0; i < bat->entries; i++)
+	for (i = 0; i < bat->entries; i++)
 		BE32_IN(&bat->bat[i]);
 }
 
@@ -183,7 +183,7 @@ vhd_bat_out(vhd_bat_t *bat)
 {
 	int i;
 
-	for (int i = 0; i < bat->entries; i++)
+	for (i = 0; i < bat->entries; i++)
 		BE32_OUT(&bat->bat[i]);
 }
 
