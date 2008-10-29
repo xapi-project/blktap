@@ -690,6 +690,7 @@ vhd_journal_read_locators(vhd_journal_t *j, char ***locators, int *locs)
 {
 	int err, n, _locs;
 	char **_locators, *buf;
+	off_t pos;
 	vhd_journal_entry_t entry;
 
 	_locs     = 0;
@@ -704,12 +705,17 @@ vhd_journal_read_locators(vhd_journal_t *j, char ***locators, int *locs)
 	for (;;) {
 		buf = NULL;
 
+		pos = vhd_journal_position(j);
 		err = vhd_journal_read_entry(j, &entry);
 		if (err)
 			goto fail;
 
-		if (entry.type != VHD_JOURNAL_ENTRY_TYPE_LOCATOR)
+		if (entry.type != VHD_JOURNAL_ENTRY_TYPE_LOCATOR) {
+			err = vhd_journal_seek(j, pos, SEEK_SET);
+			if (err)
+				goto fail;
 			break;
+		}
 
 		if (_locs >= n) {
 			err = -EINVAL;
