@@ -291,7 +291,8 @@ vhd_util_check_validate_parent(vhd_context_t *vhd, const char *ppath)
 	if (vhd_parent_raw(vhd))
 		return msg;
 
-	if (vhd_open(&parent, ppath, VHD_OPEN_RDONLY))
+	if (vhd_open(&parent, ppath,
+				VHD_OPEN_RDONLY | VHD_OPEN_IGNORE_DISABLED))
 		return "error opening parent";
 
 	if (uuid_compare(vhd->header.prt_uuid, parent.footer.uuid)) {
@@ -812,7 +813,7 @@ vhd_util_check_vhd(const char *name, int ignore)
 	if (err)
 		goto out;
 
-	err = vhd_open(&vhd, name, VHD_OPEN_RDONLY);
+	err = vhd_open(&vhd, name, VHD_OPEN_RDONLY | VHD_OPEN_IGNORE_DISABLED);
 	if (err)
 		goto out;
 
@@ -858,7 +859,8 @@ vhd_util_check_parents(const char *name, int ignore)
 	cur = (char *)name;
 
 	for (;;) {
-		err = vhd_open(&vhd, cur, VHD_OPEN_RDONLY);
+		err = vhd_open(&vhd, cur, 
+				VHD_OPEN_RDONLY | VHD_OPEN_IGNORE_DISABLED);
 		if (err)
 			goto out;
 

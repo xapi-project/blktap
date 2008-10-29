@@ -67,7 +67,7 @@ vhd_util_query(int argc, char **argv)
 		goto usage;
 	}
 
-	err = vhd_open(&vhd, name, VHD_OPEN_RDONLY);
+	err = vhd_open(&vhd, name, VHD_OPEN_RDONLY | VHD_OPEN_IGNORE_DISABLED);
 	if (err) {
 		printf("error opening %s: %d\n", name, err);
 		return err;

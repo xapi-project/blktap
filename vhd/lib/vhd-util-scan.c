@@ -565,7 +565,7 @@ vhd_util_scan_open_file(vhd_context_t *vhd, struct vhd_image *image)
 	if (!target_vhd(image->target->type))
 		return 0;
 
-	vhd_flags = VHD_OPEN_RDONLY;
+	vhd_flags = VHD_OPEN_RDONLY | VHD_OPEN_IGNORE_DISABLED;
 	if (flags & VHD_SCAN_FAST)
 		vhd_flags |= VHD_OPEN_FAST;
 

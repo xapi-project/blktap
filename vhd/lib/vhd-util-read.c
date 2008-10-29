@@ -611,7 +611,7 @@ vhd_util_read(int argc, char **argv)
 	if (!name || optind != argc)
 		goto usage;
 
-	err = vhd_open(&vhd, name, VHD_OPEN_RDONLY);
+	err = vhd_open(&vhd, name, VHD_OPEN_RDONLY | VHD_OPEN_IGNORE_DISABLED);
 	if (err) {
 		printf("Failed to open %s: %d\n", name, err);
 		vhd_dump_headers(name, hex);

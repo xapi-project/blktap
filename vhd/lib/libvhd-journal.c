@@ -1251,11 +1251,6 @@ vhd_journal_create(vhd_journal_t *j, const char *file, const char *jfile)
 	if (err)
 		goto fail1;
 
-	if (vhd_disabled(&j->vhd)) {
-		err = -EINVAL;
-		goto fail2;
-	}
-
 	err = vhd_get_bat(&j->vhd);
 	if (err)
 		goto fail2;

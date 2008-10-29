@@ -45,6 +45,7 @@
 #define VHD_OPEN_RDWR              0x00002
 #define VHD_OPEN_FAST              0x00004
 #define VHD_OPEN_STRICT            0x00008
+#define VHD_OPEN_IGNORE_DISABLED   0x00010
 
 #define VHD_FLAG_CREAT_FILE_SIZE_FIXED   0x00001
 #define VHD_FLAG_CREAT_PARENT_RAW        0x00002

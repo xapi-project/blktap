@@ -2339,6 +2339,11 @@ vhd_open(vhd_context_t *ctx, const char *file, int flags)
 	if (err)
 		goto fail;
 
+	if (!(flags & VHD_OPEN_IGNORE_DISABLED) && vhd_disabled(ctx)) {
+		err = -EINVAL;
+		goto fail;
+	}
+
 	if (vhd_type_dynamic(ctx)) {
 		err = vhd_read_header(ctx, &ctx->header);
 		if (err)
