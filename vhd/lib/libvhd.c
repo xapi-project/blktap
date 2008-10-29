@@ -2306,6 +2306,9 @@ vhd_open(vhd_context_t *ctx, const char *file, int flags)
 {
 	int err, oflags;
 
+	if (flags & VHD_OPEN_STRICT)
+		vhd_flag_clear(flags, VHD_OPEN_FAST);
+
 	memset(ctx, 0, sizeof(vhd_context_t));
 	ctx->fd     = -1;
 	ctx->oflags = flags;
