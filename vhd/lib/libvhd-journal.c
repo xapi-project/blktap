@@ -1066,7 +1066,7 @@ out:
 		free(locators);
 	}
 
-	if (!err)
+	if (!err && !vhd_file_size_fixed(vhd))
 		ftruncate(vhd->fd,
 			  j->header.vhd_footer_offset +
 			  sizeof(vhd_footer_t));
@@ -1155,7 +1155,7 @@ vhd_journal_remove(vhd_journal_t *j)
 }
 
 int
-vhd_journal_open(vhd_journal_t *j, const char *file)
+vhd_journal_open(vhd_journal_t *j, const char *file, const char *jfile)
 {
 	int err;
 	vhd_context_t *vhd;
@@ -1165,10 +1165,9 @@ vhd_journal_open(vhd_journal_t *j, const char *file)
 	j->jfd = -1;
 	vhd    = &j->vhd;
 
-	if (asprintf(&j->jname, "%s.journal", file) == -1) {
-		j->jname = NULL;
+	j->jname = strdup(jfile);
+	if (j->jname == NULL)
 		return -ENOMEM;
-	}
 
 	j->jfd = open(j->jname, O_LARGEFILE | O_RDWR);
 	if (j->jfd == -1) {
@@ -1220,7 +1219,7 @@ fail:
 }
 
 int
-vhd_journal_create(vhd_journal_t *j, const char *file)
+vhd_journal_create(vhd_journal_t *j, const char *file, const char *jfile)
 {
 	char *buf;
 	int i, err;
@@ -1230,7 +1229,8 @@ vhd_journal_create(vhd_journal_t *j, const char *file)
 	memset(j, 0, sizeof(vhd_journal_t));
 	j->jfd = -1;
 
-	if (asprintf(&j->jname, "%s.journal", file) == -1) {
+	j->jname = strdup(jfile);
+	if (j->jname == NULL) {
 		err = -ENOMEM;
 		goto fail1;
 	}
@@ -1469,8 +1469,9 @@ vhd_journal_revert(vhd_journal_t *j)
 	if (err)
 		return err;
 
-	err = ftruncate(vhd->fd,
-			j->header.vhd_footer_offset + sizeof(vhd_footer_t));
+	if (!vhd_file_size_fixed(vhd))
+		err = ftruncate(vhd->fd, j->header.vhd_footer_offset +
+				sizeof(vhd_footer_t));
 	if (err)
 		err = -errno;
 

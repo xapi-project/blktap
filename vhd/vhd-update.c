@@ -135,37 +135,7 @@ open_journal(vhd_journal_t *journal, const char *file, const char *jfile)
 {
 	int err;
 
-	err = vhd_journal_create(journal, file);
-	if (err == -EEXIST) {
-		if (!jfile) {
-			printf("journal already exists!\n");
-			return -EEXIST;
-		}
-
-		err = vhd_journal_open(journal, file);
-		if (err) {
-			printf("error opening journal %s: %d\n", file, err);
-			return err;
-		}
-
-		if (strcmp(journal->jname, jfile)) {
-			printf("%s already has journal %s\n",
-			       file, journal->jname);
-			vhd_journal_close(journal);
-			return -EINVAL;
-		}
-
-		err = vhd_journal_revert(journal);
-		if (err) {
-			printf("error reverting journal %s: %d\n", file, err);
-			vhd_journal_close(journal);
-			return err;
-		}
-
-		vhd_journal_remove(journal);
-		err = vhd_journal_create(journal, file);
-	}
-
+	err = vhd_journal_create(journal, file, jfile);
 	if (err) {
 		printf("error creating journal for %s: %d\n", file, err);
 		return err;

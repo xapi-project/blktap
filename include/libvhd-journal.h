@@ -34,8 +34,8 @@ typedef struct vhd_journal {
 	vhd_context_t              vhd;
 } vhd_journal_t;
 
-int vhd_journal_create(vhd_journal_t *, const char *file);
-int vhd_journal_open(vhd_journal_t *, const char *file);
+int vhd_journal_create(vhd_journal_t *, const char *file, const char *jfile);
+int vhd_journal_open(vhd_journal_t *, const char *file, const char *jfile);
 int vhd_journal_add_block(vhd_journal_t *, uint32_t block, char mode);
 int vhd_journal_commit(vhd_journal_t *);
 int vhd_journal_revert(vhd_journal_t *);

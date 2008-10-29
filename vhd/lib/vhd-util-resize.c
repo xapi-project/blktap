@@ -1026,7 +1026,7 @@ vhd_util_resize_check_creator(const char *name)
 int
 vhd_util_resize(int argc, char **argv)
 {
-	char *name;
+	char *name, *jname;
 	uint64_t size;
 	int c, err, jerr;
 	vhd_journal_t journal;
@@ -1035,15 +1035,19 @@ vhd_util_resize(int argc, char **argv)
 	printf("resize not yet implemented\n");
 	return -ENOSYS;
 
-	err  = -EINVAL;
-	size = 0;
-	name = NULL;
+	err   = -EINVAL;
+	size  = 0;
+	name  = NULL;
+	jname = NULL;
 
 	optind = 0;
-	while ((c = getopt(argc, argv, "n:s:h")) != -1) {
+	while ((c = getopt(argc, argv, "n:j:s:h")) != -1) {
 		switch (c) {
 		case 'n':
 			name = optarg;
+			break;
+		case 'j':
+			jname = optarg;
 			break;
 		case 's':
 			err  = 0;
@@ -1055,7 +1059,7 @@ vhd_util_resize(int argc, char **argv)
 		}
 	}
 
-	if (err || !name || argc != optind)
+	if (err || !name || !jname || argc != optind)
 		goto usage;
 
 	err = vhd_util_resize_check_creator(name);
@@ -1063,29 +1067,7 @@ vhd_util_resize(int argc, char **argv)
 		return err;
 
 	libvhd_set_log_level(1);
-	err = vhd_journal_create(&journal, name);
-
-	if (err == -EEXIST) {
-		printf("existing journal found\n");
-
-		/* journal already exists due to previous failure */
-		err = vhd_journal_open(&journal, name);
-		if (err) {
-			printf("opening journal failed: %d\n", err);
-			return err;
-		}
-
-		err = vhd_journal_revert(&journal);
-		if (err) {
-			printf("reverting journal failed: %d\n", err);
-			vhd_journal_close(&journal);
-			return err;
-		}
-
-		vhd_journal_remove(&journal);
-		err = vhd_journal_create(&journal, name);
-	}
-
+	err = vhd_journal_create(&journal, name, jname);
 	if (err) {
 		printf("creating journal failed: %d\n", err);
 		return err;
@@ -1118,6 +1100,6 @@ out:
 	return (err ? : jerr);
 
 usage:
-	printf("options: <-n name> <-s size (in MB)> [-h help]\n");
+	printf("options: <-n name> <-j journal> <-s size (in MB)> [-h help]\n");
 	return -EINVAL;
 }

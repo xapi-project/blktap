@@ -64,6 +64,7 @@ PROPRIETARY_SOURCE += vhd/lib/vhd-util-query.c
 PROPRIETARY_SOURCE += vhd/lib/vhd-util-read.c
 PROPRIETARY_SOURCE += vhd/lib/vhd-util-repair.c
 PROPRIETARY_SOURCE += vhd/lib/vhd-util-resize.c
+PROPRIETARY_SOURCE += vhd/lib/vhd-util-revert.c
 PROPRIETARY_SOURCE += vhd/lib/vhd-util-set-field.c
 PROPRIETARY_SOURCE += vhd/lib/vhd-util-snapshot.c
 PROPRIETARY_SOURCE += vhd/lib/vhd-util-scan.c

@@ -35,6 +35,7 @@ LIB-SRCS        += vhd-util-query.c
 LIB-SRCS        += vhd-util-read.c
 LIB-SRCS        += vhd-util-repair.c
 LIB-SRCS        += vhd-util-resize.c
+LIB-SRCS        += vhd-util-revert.c
 LIB-SRCS        += vhd-util-set-field.c
 LIB-SRCS        += vhd-util-snapshot.c
 LIB-SRCS        += vhd-util-scan.c
