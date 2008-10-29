@@ -1737,7 +1737,7 @@ vhd_read_bitmap(vhd_context_t *ctx, uint32_t block, char **bufp)
 	int err;
 	char *buf;
 	off64_t off;
-	uint32_t blk;
+	uint64_t blk;
 	size_t secs, size;
 
 	buf   = NULL;
@@ -1787,7 +1787,7 @@ vhd_read_block(vhd_context_t *ctx, uint32_t block, char **bufp)
 	int err;
 	char *buf;
 	size_t size;
-	uint32_t blk;
+	uint64_t blk;
 	off64_t end, off;
 
 	buf   = NULL;
@@ -2086,7 +2086,7 @@ vhd_write_bitmap(vhd_context_t *ctx, uint32_t block, char *bitmap)
 {
 	int err;
 	off64_t off;
-	uint32_t blk;
+	uint64_t blk;
 	size_t secs, size;
 
 	if (!vhd_type_dynamic(ctx))
@@ -2126,7 +2126,7 @@ vhd_write_block(vhd_context_t *ctx, uint32_t block, char *data)
 	int err;
 	off64_t off;
 	size_t size;
-	uint32_t blk;
+	uint64_t blk;
 
 	if (!vhd_type_dynamic(ctx))
 		return -EINVAL;

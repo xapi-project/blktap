@@ -1303,7 +1303,7 @@ vhd_journal_add_block(vhd_journal_t *j, uint32_t block, char mode)
 	char *buf;
 	off64_t off;
 	size_t size;
-	uint32_t blk;
+	uint64_t blk;
 	vhd_context_t *vhd;
 
 	buf = NULL;
