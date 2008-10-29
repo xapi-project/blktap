@@ -1,4 +1,4 @@
-/* Copyright (c) 2007, XenSource Inc.
+/* Copyright (c) 2008, XenSource Inc.
  * All rights reserved.
  *
  * XenSource proprietary code.
@@ -26,29 +26,32 @@
 #include <unistd.h>
 
 #include "libvhd.h"
+#include "libvhd-journal.h"
 
 int
 vhd_util_modify(int argc, char **argv)
 {
-	char *name;
+	char *name, *jname;
 	vhd_context_t vhd;
-	int err, c, size, parent, parent_raw;
+	vhd_journal_t journal;
+	int err, jerr, c, size, parent, parent_raw;
 	off64_t newsize = 0;
 	char *newparent = NULL;
 
 	name       = NULL;
+	jname      = NULL;
 	size       = 0;
 	parent     = 0;
 	parent_raw = 0;
 
-	if (!argc || !argv)
-		goto usage;
-
 	optind = 0;
-	while ((c = getopt(argc, argv, "n:s:p:mh")) != -1) {
+	while ((c = getopt(argc, argv, "n:j:s:p:mh")) != -1) {
 		switch (c) {
 		case 'n':
 			name = optarg;
+			break;
+		case 'j':
+			jname = optarg;
 			break;
 		case 's':
 			size = 1;
@@ -73,36 +76,63 @@ vhd_util_modify(int argc, char **argv)
 		}
 	}
 
-	if (!name || optind != argc)
+	if (!name || !jname || optind != argc)
 		goto usage;
 
-	err = vhd_open(&vhd, name, VHD_OPEN_RDWR);
-	if (err) {
-		printf("error opening %s: %d\n", name, err);
-		return err;
-	}
-
 	if (size) {
+		err = vhd_open(&vhd, name, VHD_OPEN_RDWR);
+		if (err) {
+			printf("error opening %s: %d\n", name, err);
+			return err;
+		}
+
 		err = vhd_set_phys_size(&vhd, newsize);
 		if (err)
 			printf("failed to set physical size to %"PRIu64":"
 			       " %d\n", newsize, err);
+		return err;
 	}
 
+	/* all journaled operations are below */
+
+	libvhd_set_log_level(1);
+	err = vhd_journal_create(&journal, name, jname);
+	if (err) {
+		printf("creating journal failed: %d\n", err);
+		return err;
+	}
+
+	err = vhd_get_footer(&journal.vhd);
+	if (err)
+		goto out;
+
 	if (parent) {
-		err = vhd_change_parent(&vhd, newparent, parent_raw);
-		if (err)
+		err = vhd_change_parent(&journal.vhd, newparent, parent_raw);
+		if (err) {
 			printf("failed to set parent to '%s': %d\n",
 					newparent, err);
+			goto out;
+		}
 	}
 		
- done:
-	vhd_close(&vhd);
-	return err;
+out:
+	if (err) {
+		printf("modify failed: %d\n", err);
+		jerr = vhd_journal_revert(&journal);
+	} else
+		jerr = vhd_journal_commit(&journal);
+
+	if (jerr) {
+		printf("closing journal failed: %d\n", jerr);
+		vhd_journal_close(&journal);
+	} else
+		vhd_journal_remove(&journal);
+
+	return (err ? : jerr);
 
 usage:
 	printf("*** Dangerous operations, use with care ***\n");
-	printf("options: <-n name> [-p NEW_PARENT set parent [-m raw]] "
-			"[-s NEW_SIZE set size] [-h help]\n");
+	printf("options: <-n name> <-j journal> [-p NEW_PARENT set parent "
+			"[-m raw]] [-s NEW_SIZE set size] [-h help]\n");
 	return -EINVAL;
 }
