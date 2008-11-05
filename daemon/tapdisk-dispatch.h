@@ -52,6 +52,13 @@ struct tapdisk_channel {
 	uint16_t                  cookie;
 	pid_t                     tapdisk_pid;
 
+	/*
+	 * special accounting needed to handle pause
+	 * requests received before tapdisk process is ready
+	 */
+	char                      connected;
+	char                      pause_needed;
+
 	char                     *path;
 	char                     *frontpath;
 	char                     *params;
@@ -67,6 +74,7 @@ struct tapdisk_channel {
 	struct list_head          list;
 	struct xenbus_watch       pause_watch;
 	struct xenbus_watch       shutdown_watch;
+	char                      pause_watch_registered;
 
 	struct xs_handle         *xsh;
 };

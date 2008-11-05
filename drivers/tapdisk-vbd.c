@@ -1062,7 +1062,7 @@ tapdisk_vbd_resume(td_vbd_t *vbd, const char *path, uint16_t drivertype)
 	int i, err;
 
 	if (!td_flag_test(vbd->state, TD_VBD_PAUSED)) {
-		EPRINTF("pause request for unpaused vbd %s\n", vbd->name);
+		EPRINTF("resume request for unpaused vbd %s\n", vbd->name);
 		tapdisk_ipc_write(&vbd->ipc, TAPDISK_MESSAGE_ERROR);
 		return -EINVAL;
 	}

@@ -55,6 +55,9 @@ static void tapdisk_channel_fatal(tapdisk_channel_t *,
 				  const char *fmt, ...)
   __attribute__((format(printf, 2, 3)));
 static int tapdisk_channel_parse_params(tapdisk_channel_t *);
+static void tapdisk_channel_pause_event(struct xs_handle *,
+					struct xenbus_watch *,
+					const char *);
 
 static int
 tapdisk_channel_check_uuid(tapdisk_channel_t *channel)
@@ -371,6 +374,7 @@ tapdisk_channel_complete_connection(tapdisk_channel_t *channel)
 	if (err)
 		goto clean;
 
+	channel->connected = 1;
 	return 0;
 
  clean:
@@ -446,6 +450,15 @@ tapdisk_channel_receive_open_response(tapdisk_channel_t *channel,
 	err = tapdisk_channel_complete_connection(channel);
 	if (err)
 		goto fail;
+
+	/* did we receive a pause request before the connection completed? */
+	if (channel->pause_needed) {
+		DPRINTF("%s: deferred pause request\n", channel->path);
+		tapdisk_channel_pause_event(channel->xsh,
+					    &channel->pause_watch,
+					    channel->pause_str);
+		channel->pause_needed = 0;
+	}
 
 	return 0;
 
@@ -653,6 +666,12 @@ tapdisk_channel_pause_event(struct xs_handle *xsh,
 		return;
 	}
 
+	/* registering a watch produces a spurious event. ignore it. */
+	if (!channel->pause_watch_registered) {
+		channel->pause_watch_registered = 1;
+		return;
+	}
+
 	err = tapdisk_channel_validate_watch(channel, path);
 	if (err) {
 		if (err == -EINVAL)
@@ -662,6 +681,17 @@ tapdisk_channel_pause_event(struct xs_handle *xsh,
 			return;
 
 		err = 0;
+	}
+
+	/* have to handle this asynchronously if tapdisk is not ready yet */
+	if (!channel->connected) {
+		if (!strcmp(path, channel->pause_str) &&
+		    xs_exists(xsh, channel->pause_str)) {
+			DPRINTF("%s: deferring pause request\n", path);
+			channel->pause_needed = 1;
+		} else
+			EPRINTF("bad event %s: channel not connected\n", path);
+		return;
 	}
 
 	if (xs_exists(xsh, channel->pause_str)) {
