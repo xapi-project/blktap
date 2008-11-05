@@ -2363,7 +2363,7 @@ fail:
 void
 vhd_close(vhd_context_t *ctx)
 {
-	if (ctx->fd)
+	if (ctx->file)
 		close(ctx->fd);
 	free(ctx->file);
 	free(ctx->bat.bat);
