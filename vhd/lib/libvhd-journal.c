@@ -88,6 +88,18 @@ vhd_journal_truncate(vhd_journal_t *j, off64_t length)
 	return 0;
 }
 
+static inline int
+vhd_journal_sync(vhd_journal_t *j)
+{
+	int err;
+
+	err = fdatasync(j->jfd);
+	if (err)
+		return -errno;
+
+	return 0;
+}
+
 static inline void
 vhd_journal_header_in(vhd_journal_header_t *header)
 {
@@ -1273,6 +1285,10 @@ vhd_journal_create(vhd_journal_t *j, const char *file, const char *jfile)
 	if (err)
 		goto fail2;
 
+	err = vhd_journal_sync(j);
+	if (err)
+		goto fail2;
+
 	return 0;
 
 fail1:
@@ -1351,7 +1367,7 @@ vhd_journal_add_block(vhd_journal_t *j, uint32_t block, char mode)
 			return err;
 	}
 
-	return 0;
+	return vhd_journal_sync(j);
 }
 
 /*
@@ -1466,11 +1482,12 @@ vhd_journal_revert(vhd_journal_t *j)
 	if (err)
 		return err;
 
-	if (!vhd_file_size_fixed(vhd))
+	if (!vhd_file_size_fixed(vhd)) {
 		err = ftruncate(vhd->fd, j->header.vhd_footer_offset +
 				sizeof(vhd_footer_t));
-	if (err)
-		err = -errno;
+		if (err)
+			return -errno;
+	}
 
-	return err;
+	return vhd_journal_sync(j);
 }
