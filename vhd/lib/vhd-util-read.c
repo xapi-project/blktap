@@ -304,7 +304,7 @@ vhd_print_logical_to_physical(vhd_context_t *vhd,
 	uint32_t blk, lsec;
 	uint64_t cur, offset;
 
-	if (((sector + count) << VHD_SECTOR_SHIFT) > vhd->footer.curr_size) {
+	if (vhd_sectors_to_bytes(sector + count) > vhd->footer.curr_size) {
 		fprintf(stderr, "sector %s past end of file\n",
 			conv(hex, sector + count));
 			return -ERANGE;
@@ -317,8 +317,8 @@ vhd_print_logical_to_physical(vhd_context_t *vhd,
 		offset = vhd->bat.bat[blk];
 
 		if (offset != DD_BLK_UNUSED) {
-			offset  += lsec + 1;
-			offset <<= VHD_SECTOR_SHIFT;
+			offset += lsec + 1;
+			offset  = vhd_sectors_to_bytes(offset);
 		}
 
 		printf("logical sector %s: ", conv(hex, cur));
@@ -347,7 +347,7 @@ vhd_print_bat(vhd_context_t *vhd, uint64_t block, int count, int hex)
 		printf("block: %s: ", conv(hex, cur));
 		printf("offset: %s\n",
 		       (offset == DD_BLK_UNUSED ? "not allocated" :
-			conv(hex, offset << VHD_SECTOR_SHIFT)));
+			conv(hex, vhd_sectors_to_bytes(offset))));
 	}
 
 	return 0;
@@ -375,7 +375,7 @@ vhd_print_bitmap(vhd_context_t *vhd, uint64_t block, int count, int hex)
 		if (err)
 			goto out;
 
-		write(STDOUT_FILENO, buf, vhd->bm_secs << VHD_SECTOR_SHIFT);
+		write(STDOUT_FILENO, buf, vhd_sectors_to_bytes(vhd->bm_secs));
 		free(buf);
 	}
 
@@ -392,7 +392,7 @@ vhd_test_bitmap(vhd_context_t *vhd, uint64_t sector, int count, int hex)
 	int i, err, bit;
 	uint32_t blk, bm_blk, sec;
 
-	if (((sector + count) << VHD_SECTOR_SHIFT) > vhd->footer.curr_size) {
+	if (vhd_sectors_to_bytes(sector + count) > vhd->footer.curr_size) {
 		printf("sector %s past end of file\n", conv(hex, sector));
 		return -ERANGE;
 	}
@@ -445,7 +445,7 @@ vhd_print_batmap(vhd_context_t *vhd)
 		return err;
 	}
 
-	size = vhd->batmap.header.batmap_size << VHD_SECTOR_SHIFT;
+	size = vhd_sectors_to_bytes(vhd->batmap.header.batmap_size);
 	write(STDOUT_FILENO, vhd->batmap.map, size);
 
 	return 0;
@@ -513,10 +513,10 @@ vhd_read_data(vhd_context_t *vhd, uint64_t sec, int count, int hex)
 	uint64_t cur;
 	int err, max, secs;
 
-	if (((sec + count) << VHD_SECTOR_SHIFT) > vhd->footer.curr_size)
+	if (vhd_sectors_to_bytes(sec + count) > vhd->footer.curr_size)
 		return -ERANGE;
 
-	max = MIN(count << VHD_SECTOR_SHIFT, VHD_BLOCK_SIZE);
+	max = MIN(vhd_sectors_to_bytes(count), VHD_BLOCK_SIZE);
 	err = posix_memalign((void **)&buf, VHD_SECTOR_SIZE, max);
 	if (err)
 		return -err;
@@ -528,7 +528,7 @@ vhd_read_data(vhd_context_t *vhd, uint64_t sec, int count, int hex)
 		if (err)
 			break;
 
-		write(STDOUT_FILENO, buf, secs << VHD_SECTOR_SHIFT);
+		write(STDOUT_FILENO, buf, vhd_sectors_to_bytes(secs));
 
 		cur   += secs;
 		count -= secs;

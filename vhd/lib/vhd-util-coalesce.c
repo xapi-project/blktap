@@ -19,19 +19,19 @@ __raw_io_write(int fd, char* buf, uint64_t sec, uint32_t secs)
 	size_t ret;
 
 	errno = 0;
-	off = lseek64(fd, sec << VHD_SECTOR_SHIFT, SEEK_SET);
+	off = lseek64(fd, vhd_sectors_to_bytes(sec), SEEK_SET);
 	if (off == (off64_t)-1) {
 		printf("raw parent: seek(0x%08"PRIx64") failed: %d\n",
-				sec << VHD_SECTOR_SHIFT, -errno);
+		       vhd_sectors_to_bytes(sec), -errno);
 		return -errno;
 	}
 
-	ret = write(fd, buf, secs << VHD_SECTOR_SHIFT);
-	if (ret == secs << VHD_SECTOR_SHIFT)
+	ret = write(fd, buf, vhd_sectors_to_bytes(secs));
+	if (ret == vhd_sectors_to_bytes(secs))
 		return 0;
 
-	printf("raw parent: write of %u returned %zd, errno: %d\n",
-			secs << VHD_SECTOR_SHIFT, ret, -errno);
+	printf("raw parent: write of 0x%"PRIx64" returned %zd, errno: %d\n",
+	       vhd_sectors_to_bytes(secs), ret, -errno);
 	return (errno ? -errno : -EIO);
 }
 
@@ -83,12 +83,12 @@ vhd_util_coalesce_block(vhd_context_t *vhd, vhd_context_t *parent,
 
 		if (parent->file)
 			err = vhd_io_write(parent,
-					buf + (i << VHD_SECTOR_SHIFT),
-					sec + i, secs);
+					   buf + vhd_sectors_to_bytes(i),
+					   sec + i, secs);
 		else
 			err = __raw_io_write(parent_fd,
-					buf + (i << VHD_SECTOR_SHIFT),
-					sec + i, secs);
+					     buf + vhd_sectors_to_bytes(i),
+					     sec + i, secs);
 		if (err)
 			goto done;
 

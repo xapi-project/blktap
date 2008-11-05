@@ -442,7 +442,7 @@ vhd_initialize_bitmap_cache(struct vhd_state *s)
 	memset(s->bitmap_list, 0, sizeof(struct vhd_bitmap) * VHD_CACHE_SIZE);
 
 	s->bm_lru        = 0;
-	map_size         = s->bm_secs << VHD_SECTOR_SHIFT;
+	map_size         = vhd_sectors_to_bytes(s->bm_secs);
 	s->bm_free_count = VHD_CACHE_SIZE;
 
 	for (i = 0; i < VHD_CACHE_SIZE; i++) {
@@ -928,8 +928,8 @@ init_vhd_bitmap(struct vhd_state *s, struct vhd_bitmap *bm)
 	init_tx(&bm->tx);
 	clear_req_list(&bm->queue);
 	clear_req_list(&bm->waiting);
-	memset(bm->map, 0, s->bm_secs << VHD_SECTOR_SHIFT);
-	memset(bm->shadow, 0, s->bm_secs << VHD_SECTOR_SHIFT);
+	memset(bm->map, 0, vhd_sectors_to_bytes(s->bm_secs));
+	memset(bm->shadow, 0, vhd_sectors_to_bytes(s->bm_secs));
 	init_vhd_request(s, &bm->req);
 }
 
@@ -1203,7 +1203,7 @@ aio_read(struct vhd_state *s, struct vhd_request *req, uint64_t offset)
 	struct tiocb *tiocb = &req->tiocb;
 
 	td_prep_read(tiocb, s->vhd.fd, req->treq.buf,
-		     req->treq.secs << VHD_SECTOR_SHIFT,
+		     vhd_sectors_to_bytes(req->treq.secs),
 		     offset, vhd_complete, req);
 	td_queue_tiocb(s->driver, tiocb);
 
@@ -1219,7 +1219,7 @@ aio_write(struct vhd_state *s, struct vhd_request *req, uint64_t offset)
 	struct tiocb *tiocb = &req->tiocb;
 
 	td_prep_write(tiocb, s->vhd.fd, req->treq.buf,
-		      req->treq.secs << VHD_SECTOR_SHIFT,
+		      vhd_sectors_to_bytes(req->treq.secs),
 		      offset, vhd_complete, req);
 	td_queue_tiocb(s->driver, tiocb);
 
@@ -1293,11 +1293,11 @@ schedule_zero_bm_write(struct vhd_state *s,
 
 	init_vhd_request(s, req);
 
-	offset         = lb_end << VHD_SECTOR_SHIFT;
+	offset         = vhd_sectors_to_bytes(lb_end);
 	req->op        = VHD_OP_ZERO_BM_WRITE;
 	req->treq.sec  = s->bat.pbw_blk * s->spb;
 	req->treq.secs = (s->bat.pbw_offset - lb_end) + s->bm_secs;
-	req->treq.buf  = vhd_zeros(req->treq.secs << VHD_SECTOR_SHIFT);
+	req->treq.buf  = vhd_zeros(vhd_sectors_to_bytes(req->treq.secs));
 	req->next      = NULL;
 
 	DBG(TLOG_DBG, "blk: 0x%04x, writing zero bitmap at 0x%08"PRIx64"\n",
@@ -1361,7 +1361,7 @@ allocate_block(struct vhd_state *s, uint32_t blk)
 
 	gap            = 0;
 	s->bat.pbw_blk = blk;
-	offset         = s->next_db << VHD_SECTOR_SHIFT;
+	offset         = vhd_sectors_to_bytes(s->next_db);
 
 	/* data region of segment should begin on page boundary */
 	if ((s->next_db + s->bm_secs) % s->spp) {
@@ -1379,7 +1379,7 @@ allocate_block(struct vhd_state *s, uint32_t blk)
 		return -errno;
 	}
 
-	size = ((u64)(s->spb + s->bm_secs + gap)) << VHD_SECTOR_SHIFT;
+	size = vhd_sectors_to_bytes(s->spb + s->bm_secs + gap);
 	err  = write(s->vhd.fd, vhd_zeros(size), size);
 	if (err != size) {
 		err = (err == -1 ? -errno : -EIO);
@@ -1416,7 +1416,7 @@ schedule_data_read(struct vhd_state *s, td_request_t treq, vhd_flag_t flags)
 	struct vhd_request *req;
 
 	if (s->vhd.footer.type == HD_TYPE_FIXED) {
-		offset = treq.sec << VHD_SECTOR_SHIFT;
+		offset = vhd_sectors_to_bytes(treq.sec);
 		goto make_request;
 	}
 
@@ -1428,8 +1428,8 @@ schedule_data_read(struct vhd_state *s, td_request_t treq, vhd_flag_t flags)
 	ASSERT(offset != DD_BLK_UNUSED);
 	ASSERT(test_batmap(s, blk) || (bm && bitmap_valid(bm)));
 
-	offset  += s->bm_secs + sec;
-	offset <<= VHD_SECTOR_SHIFT;
+	offset += s->bm_secs + sec;
+	offset  = vhd_sectors_to_bytes(offset);
 
  make_request:
 	req = alloc_vhd_request(s);
@@ -1461,7 +1461,7 @@ schedule_data_write(struct vhd_state *s, td_request_t treq, vhd_flag_t flags)
 	struct vhd_request *req;
 
 	if (s->vhd.footer.type == HD_TYPE_FIXED) {
-		offset = treq.sec << VHD_SECTOR_SHIFT;
+		offset = vhd_sectors_to_bytes(treq.sec);
 		goto make_request;
 	}
 
@@ -1481,8 +1481,8 @@ schedule_data_write(struct vhd_state *s, td_request_t treq, vhd_flag_t flags)
 		offset = s->bat.pbw_offset;
 	}
 
-	offset  += s->bm_secs + sec;
-	offset <<= VHD_SECTOR_SHIFT;
+	offset += s->bm_secs + sec;
+	offset  = vhd_sectors_to_bytes(offset);
 
  make_request:
 	req = alloc_vhd_request(s);
@@ -1530,7 +1530,7 @@ schedule_bitmap_read(struct vhd_state *s, uint32_t blk)
 	ASSERT(offset != DD_BLK_UNUSED);
 	ASSERT(!get_bitmap(s, blk));
 
-	offset <<= VHD_SECTOR_SHIFT;
+	offset = vhd_sectors_to_bytes(offset);
 
 	err = alloc_vhd_bitmap(s, &bm, blk);
 	if (err)
@@ -1577,7 +1577,7 @@ schedule_bitmap_write(struct vhd_state *s, uint32_t blk)
 		offset = s->bat.pbw_offset;
 	}
 	
-	offset <<= VHD_SECTOR_SHIFT;
+	offset = vhd_sectors_to_bytes(offset);
 
 	req = &bm->req;
 	init_vhd_request(s, req);
@@ -1698,7 +1698,7 @@ vhd_queue_read(td_driver_t *driver, td_request_t treq)
 
 		treq.sec  += clone.secs;
 		treq.secs -= clone.secs;
-		treq.buf  += clone.secs << VHD_SECTOR_SHIFT;
+		treq.buf  += vhd_sectors_to_bytes(clone.secs);
 		continue;
 
 	fail:
@@ -1783,7 +1783,7 @@ vhd_queue_write(td_driver_t *driver, td_request_t treq)
 
 		treq.sec  += clone.secs;
 		treq.secs -= clone.secs;
-		treq.buf  += clone.secs << VHD_SECTOR_SHIFT;
+		treq.buf  += vhd_sectors_to_bytes(clone.secs);
 		continue;
 
 	fail:
@@ -1898,7 +1898,7 @@ finish_bitmap_transaction(struct vhd_state *s,
 
 	DBG(TLOG_DBG, "blk: 0x%04x, err: %d\n", bm->blk, error);
 	tx->error = (tx->error ? tx->error : error);
-	map_size  = s->bm_secs << VHD_SECTOR_SHIFT;
+	map_size  = vhd_sectors_to_bytes(s->bm_secs);
 
 	if (!test_vhd_flag(s->flags, VHD_FLAG_OPEN_PREALLOCATE)) {
 		if (test_vhd_flag(tx->status, VHD_FLAG_TX_UPDATE_BAT)) {
@@ -2044,7 +2044,7 @@ finish_bitmap_read(struct vhd_request *req)
 	clear_vhd_flag(bm->status, VHD_FLAG_BM_READ_PENDING);
 
 	if (!req->error) {
-		memcpy(bm->shadow, bm->map, s->bm_secs << VHD_SECTOR_SHIFT);
+		memcpy(bm->shadow, bm->map, vhd_sectors_to_bytes(s->bm_secs));
 
 		while (r) {
 			struct vhd_request tmp;

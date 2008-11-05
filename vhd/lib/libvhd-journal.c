@@ -509,8 +509,8 @@ vhd_journal_add_bat(vhd_journal_t *j)
 {
 	int err;
 	off64_t off;
+	size_t size;
 	vhd_bat_t bat;
-	size_t size, secs;
 	vhd_context_t *vhd;
 
 	vhd  = &j->vhd;
@@ -524,8 +524,7 @@ vhd_journal_add_bat(vhd_journal_t *j)
 		return err;
 
 	off  = vhd->header.table_offset;
-	secs = secs_round_up_no_zero(bat.entries * sizeof(uint32_t));
-	size = secs << VHD_SECTOR_SHIFT;
+	size = vhd_bytes_padded(bat.entries * sizeof(uint32_t));
 
 	vhd_bat_out(&bat);
 	err  = vhd_journal_update(j, off, (char *)bat.bat, size,
@@ -540,7 +539,7 @@ vhd_journal_add_batmap(vhd_journal_t *j)
 {
 	int err;
 	off64_t off;
-	size_t size, secs;
+	size_t size;
 	vhd_context_t *vhd;
 	vhd_batmap_t batmap;
 
@@ -554,8 +553,7 @@ vhd_journal_add_batmap(vhd_journal_t *j)
 	if (err)
 		return err;
 
-	secs = secs_round_up_no_zero(sizeof(struct dd_batmap_hdr));
-	size = secs << VHD_SECTOR_SHIFT;
+	size = vhd_bytes_padded(sizeof(struct dd_batmap_hdr));
 
 	vhd_batmap_header_out(&batmap);
 	err  = vhd_journal_update(j, off, (char *)&batmap.header, size,
@@ -565,8 +563,7 @@ vhd_journal_add_batmap(vhd_journal_t *j)
 
 	vhd_batmap_header_in(&batmap);
 	off  = batmap.header.batmap_offset;
-	secs = batmap.header.batmap_size;
-	size = secs << VHD_SECTOR_SHIFT;
+	size = vhd_sectors_to_bytes(batmap.header.batmap_size);
 
 	err  = vhd_journal_update(j, off, batmap.map, size,
 				  VHD_JOURNAL_ENTRY_TYPE_BATMAP_M);
@@ -757,15 +754,13 @@ static int
 vhd_journal_read_bat(vhd_journal_t *j, vhd_bat_t *bat)
 {
 	int err;
-	size_t size, secs;
+	size_t size;
 	vhd_context_t *vhd;
 	vhd_journal_entry_t entry;
 
 	vhd  = &j->vhd;
 
-	secs = secs_round_up_no_zero(vhd->header.max_bat_size *
-				     sizeof(uint32_t));
-	size = secs << VHD_SECTOR_SHIFT;
+	size = vhd_bytes_padded(vhd->header.max_bat_size * sizeof(uint32_t));
 
 	err  = vhd_journal_read_entry(j, &entry);
 	if (err)
@@ -805,11 +800,10 @@ vhd_journal_read_batmap_header(vhd_journal_t *j, vhd_batmap_t *batmap)
 {
 	int err;
 	char *buf;
-	size_t size, secs;
+	size_t size;
 	vhd_journal_entry_t entry;
 
-	secs = secs_round_up_no_zero(sizeof(struct dd_batmap_hdr));
-	size = secs << VHD_SECTOR_SHIFT;
+	size = vhd_bytes_padded(sizeof(struct dd_batmap_hdr));
 
 	err  = vhd_journal_read_entry(j, &entry);
 	if (err)
@@ -850,7 +844,7 @@ vhd_journal_read_batmap_map(vhd_journal_t *j, vhd_batmap_t *batmap)
 	if (entry.type != VHD_JOURNAL_ENTRY_TYPE_BATMAP_M)
 		return -EINVAL;
 
-	if (entry.size != batmap->header.batmap_size << VHD_SECTOR_SHIFT)
+	if (entry.size != vhd_sectors_to_bytes(batmap->header.batmap_size))
 		return -EINVAL;
 
 	if (entry.offset != batmap->header.batmap_offset)
@@ -1323,10 +1317,10 @@ vhd_journal_add_block(vhd_journal_t *j, uint32_t block, char mode)
 	if (blk == DD_BLK_UNUSED)
 		return 0;
 
-	off = blk << VHD_SECTOR_SHIFT;
+	off = vhd_sectors_to_bytes(blk);
 
 	if (mode & VHD_JOURNAL_METADATA) {
-		size = vhd->bm_secs << VHD_SECTOR_SHIFT;
+		size = vhd_sectors_to_bytes(vhd->bm_secs);
 
 		err  = vhd_read_bitmap(vhd, block, &buf);
 		if (err)
@@ -1342,8 +1336,8 @@ vhd_journal_add_block(vhd_journal_t *j, uint32_t block, char mode)
 	}
 
 	if (mode & VHD_JOURNAL_DATA) {
-		off += (vhd->bm_secs << VHD_SECTOR_SHIFT);
-		size = vhd->spb << VHD_SECTOR_SHIFT;
+		off += vhd_sectors_to_bytes(vhd->bm_secs);
+		size = vhd_sectors_to_bytes(vhd->spb);
 
 		err  = vhd_read_block(vhd, block, &buf);
 		if (err)

@@ -596,7 +596,7 @@ vhd_index_schedule_meta_read(vhd_index_t *index, uint32_t blk)
 			return err;
 	}
 
-	offset         = index->bat.table[blk] << VHD_SECTOR_SHIFT;
+	offset         = vhd_sectors_to_bytes(index->bat.table[blk]);
 
 	req            = &block->req;
 	req->index     = index;
@@ -645,8 +645,8 @@ vhd_index_schedule_data_read(vhd_index_t *index, td_request_t treq)
 		return err;
 	}
 
-	size       = treq.secs << VHD_SECTOR_SHIFT;
-	offset     = block->vhdi_block.table[sec].offset << VHD_SECTOR_SHIFT;
+	size       = vhd_sectors_to_bytes(treq.secs);
+	offset     = vhd_sectors_to_bytes(block->vhdi_block.table[sec].offset);
 
 	req->file  = file;
 	req->treq  = treq;
@@ -734,7 +734,7 @@ vhd_index_queue_read(td_driver_t *driver, td_request_t treq)
 
 		treq.sec  += clone.secs;
 		treq.secs -= clone.secs;
-		treq.buf  += clone.secs << VHD_SECTOR_SHIFT;
+		treq.buf  += vhd_sectors_to_bytes(clone.secs);
 		continue;
 
 	fail:

@@ -59,7 +59,7 @@ vhd_fixed_shrink(vhd_journal_t *journal, uint64_t secs)
 
 	vhd = &journal->vhd;
 
-	new_eof = vhd->footer.curr_size - (secs << VHD_SECTOR_SHIFT);
+	new_eof = vhd->footer.curr_size - vhd_sectors_to_bytes(secs);
 	if (new_eof <= sizeof(vhd_footer_t))
 		return -EINVAL;
 
@@ -112,7 +112,7 @@ vhd_fixed_grow(vhd_journal_t *journal, uint64_t secs)
 	vhd_context_t *vhd;
 	uint64_t size, eof, new_eof;
 
-	size = secs << VHD_SECTOR_SHIFT;
+	size = vhd_sectors_to_bytes(secs);
 	vhd  = &journal->vhd;
 
 	err = vhd_seek(vhd, 0, SEEK_END);
@@ -222,12 +222,12 @@ vhd_move_block(vhd_journal_t *journal, uint32_t src, off64_t offset)
 	buf     = NULL;
 	vhd     = &journal->vhd;
 	off     = offset;
-	size    = vhd->bm_secs << VHD_SECTOR_SHIFT;
+	size    = vhd_sectors_to_bytes(vhd->bm_secs);
 	src_off = vhd->bat.bat[src];
 
 	if (src_off == DD_BLK_UNUSED)
 		return -EINVAL;
-	src_off <<= VHD_SECTOR_SHIFT;
+	src_off = vhd_sectors_to_bytes(src_off);
 
 	err  = vhd_journal_add_block(journal, src,
 				     VHD_JOURNAL_DATA | VHD_JOURNAL_METADATA);
@@ -249,7 +249,7 @@ vhd_move_block(vhd_journal_t *journal, uint32_t src, off64_t offset)
 	free(buf);
 	buf   = NULL;
 	off  += size;
-	size  = vhd->spb << VHD_SECTOR_SHIFT;
+	size  = vhd_sectors_to_bytes(vhd->spb);
 
 	err  = vhd_read_block(vhd, src, &buf);
 	if (err)
@@ -266,7 +266,7 @@ vhd_move_block(vhd_journal_t *journal, uint32_t src, off64_t offset)
 	vhd->bat.bat[src] = offset >> VHD_SECTOR_SHIFT;
 
 	err = vhd_write_zeros(journal, src_off,
-			      (vhd->bm_secs + vhd->spb) << VHD_SECTOR_SHIFT);
+			      vhd_sectors_to_bytes(vhd->bm_secs + vhd->spb));
 
 out:
 	free(buf);
@@ -281,7 +281,7 @@ vhd_clobber_block(vhd_journal_t *journal, uint32_t src, uint32_t dest)
 	vhd_context_t *vhd;
 
 	vhd = &journal->vhd;
-	off = vhd->bat.bat[dest] << VHD_SECTOR_SHIFT;
+	off = vhd_sectors_to_bytes(vhd->bat.bat[dest]);
 
 	err = vhd_journal_add_block(journal, dest,
 				    VHD_JOURNAL_DATA | VHD_JOURNAL_METADATA);
@@ -429,8 +429,7 @@ vhd_clear_bat_entries(vhd_journal_t *journal, uint32_t entries)
 	if (orig_map_off != new_map_off) {
 		size_t size;
 
-		size   = secs_round_up_no_zero(sizeof(struct dd_batmap_hdr));
-		size <<= VHD_SECTOR_SHIFT;
+		size = vhd_bytes_padded(sizeof(struct dd_batmap_hdr));
 
 		err = vhd_write_zeros(journal, orig_map_off, size);
 		if (err)
@@ -636,7 +635,7 @@ vhd_check_for_clobber(vhd_context_t *vhd, off64_t off, int mode)
 	if (!skip_check(mode, SKIP_DATA)) {
 		vhd_first_data_block(vhd, &fb);
 		if (fb.offset && in_range(off,
-					  fb.offset << VHD_SECTOR_SHIFT,
+					  vhd_sectors_to_bytes(fb.offset),
 					  VHD_BLOCK_SIZE)) {
 			msg = "data block";
 			goto fail;
@@ -879,14 +878,14 @@ vhd_dynamic_grow(vhd_journal_t *journal, uint64_t secs)
 	/* available bytes in current bat */
 	bat_bytes   = vhd->header.max_bat_size * sizeof(uint32_t);
 	bat_secs    = secs_round_up_no_zero(bat_bytes);
-	bat_size    = bat_secs << VHD_SECTOR_SHIFT;
+	bat_size    = vhd_sectors_to_bytes(bat_secs);
 	bat_avail   = bat_size - bat_bytes;
 
 	if (vhd_has_batmap(vhd)) {
 		/* avaliable bytes in current batmap */
 		map_bytes   = (vhd->header.max_bat_size + 7) >> 3;
 		map_secs    = vhd->batmap.header.batmap_size;
-		map_size    = map_secs << VHD_SECTOR_SHIFT;
+		map_size    = vhd_sectors_to_bytes(map_secs);
 		map_avail   = map_size - map_bytes;
 	} else {
 		map_needed  = 0;
@@ -919,7 +918,7 @@ vhd_dynamic_grow(vhd_journal_t *journal, uint64_t secs)
 	if (err)
 		return err;
 
-	eob = vhd->header.table_offset + (bat_secs << VHD_SECTOR_SHIFT);
+	eob = vhd->header.table_offset + vhd_sectors_to_bytes(bat_secs);
 	vhd_first_data_block(vhd, &first_block);
 
 	/* no blocks allocated; just shift post-bat metadata */
@@ -933,11 +932,10 @@ vhd_dynamic_grow(vhd_journal_t *journal, uint64_t secs)
 	do {
 		off64_t new_off, bm_size, gap_size;
 
-		new_off   = vhd_next_block_offset(vhd);
-		new_off <<= VHD_SECTOR_SHIFT;
+		new_off = vhd_sectors_to_bytes(vhd_next_block_offset(vhd));
 
 		/* data region of segment should begin on page boundary */
-		bm_size = vhd->bm_secs << VHD_SECTOR_SHIFT;
+		bm_size = vhd_sectors_to_bytes(vhd->bm_secs);
 		if ((new_off + bm_size) % 4096) {
 			gap_size = 4096 - ((new_off + bm_size) % 4096);
 
@@ -954,7 +952,7 @@ vhd_dynamic_grow(vhd_journal_t *journal, uint64_t secs)
 
 		vhd_first_data_block(vhd, &first_block);
 
-	} while (eom + size_needed >= (first_block.offset << VHD_SECTOR_SHIFT));
+	} while (eom + size_needed >= vhd_sectors_to_bytes(first_block.offset));
 
 shift_metadata:
 	/* shift any metadata after the bat to make room for new bat sectors */

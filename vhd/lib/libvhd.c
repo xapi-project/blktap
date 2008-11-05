@@ -329,7 +329,7 @@ vhd_checksum_batmap(vhd_batmap_t *batmap)
 	blob     = batmap->map;
 	checksum = 0;
 
-	n = batmap->header.batmap_size << VHD_SECTOR_SHIFT;
+	n = vhd_sectors_to_bytes(batmap->header.batmap_size);
 
 	for (i = 0; i < n; i++) {
 		if (batmap->header.batmap_version == VHD_BATMAP_VERSION(1, 1))
@@ -378,7 +378,7 @@ vhd_batmap_header_offset(vhd_context_t *ctx, off64_t *_off)
 
 	off  = ctx->header.table_offset;
 	bat  = ctx->header.max_bat_size * sizeof(uint32_t);
-	off += secs_round_up_no_zero(bat) << VHD_SECTOR_SHIFT;
+	off += vhd_bytes_padded(bat);
 
 	*_off = off;
 	return 0;
@@ -560,9 +560,10 @@ vhd_bitmap_clear(vhd_context_t *ctx, char *map, uint32_t block)
 int
 vhd_end_of_headers(vhd_context_t *ctx, off64_t *end)
 {
+	int err, i, n;
+	uint32_t bat_bytes;
 	off64_t eom, bat_end;
 	vhd_parent_locator_t *loc;
-	int err, i, n, bat_secs, bat_bytes;
 
 	*end = 0;
 
@@ -571,9 +572,8 @@ vhd_end_of_headers(vhd_context_t *ctx, off64_t *end)
 
 	eom       = ctx->footer.data_offset + sizeof(vhd_header_t);
 
-	bat_bytes = ctx->header.max_bat_size * sizeof(uint32_t);
-	bat_secs  = secs_round_up_no_zero(bat_bytes);
-	bat_end   = ctx->header.table_offset + (bat_secs << VHD_SECTOR_SHIFT);
+	bat_bytes = vhd_bytes_padded(ctx->header.max_bat_size * sizeof(uint32_t));
+	bat_end   = ctx->header.table_offset + bat_bytes;
 
 	eom       = MAX(eom, bat_end);
 
@@ -589,12 +589,12 @@ vhd_end_of_headers(vhd_context_t *ctx, off64_t *end)
 		if (err)
 			return err;
 
-		hdr_end += (hdr_secs << VHD_SECTOR_SHIFT);
+		hdr_end += vhd_sectors_to_bytes(hdr_secs);
 		eom      = MAX(eom, hdr_end);
 
 		map_secs = ctx->batmap.header.batmap_size;
 		map_end  = (ctx->batmap.header.batmap_offset +
-			    (map_secs << VHD_SECTOR_SHIFT));
+			    vhd_sectors_to_bytes(map_secs));
 		eom      = MAX(eom, map_end);
 	}
 
@@ -655,7 +655,7 @@ vhd_end_of_data(vhd_context_t *ctx, off64_t *end)
 		}
 	}
 
-	*end = max << VHD_SECTOR_SHIFT;
+	*end = vhd_sectors_to_bytes(max);
 	return 0;
 }
 
@@ -1011,7 +1011,7 @@ vhd_read_bat(vhd_context_t *ctx, vhd_bat_t *bat)
 	int err;
 	char *buf;
 	off64_t off;
-	size_t secs, size;
+	size_t size;
 
 	buf  = NULL;
 
@@ -1021,9 +1021,7 @@ vhd_read_bat(vhd_context_t *ctx, vhd_bat_t *bat)
 	}
 
 	off  = ctx->header.table_offset;
-	secs = secs_round_up_no_zero(sizeof(uint32_t) * 
-				     ctx->header.max_bat_size);
-	size = secs << VHD_SECTOR_SHIFT;
+	size = vhd_bytes_padded(ctx->header.max_bat_size * sizeof(uint32_t));
 
 	err  = posix_memalign((void **)&buf, VHD_SECTOR_SIZE, size);
 	if (err) {
@@ -1061,7 +1059,7 @@ vhd_read_batmap_header(vhd_context_t *ctx, vhd_batmap_t *batmap)
 	int err;
 	char *buf;
 	off64_t off;
-	size_t secs, size;
+	size_t size;
 
 	buf = NULL;
 
@@ -1073,8 +1071,7 @@ vhd_read_batmap_header(vhd_context_t *ctx, vhd_batmap_t *batmap)
 	if (err)
 		goto fail;
 
-	secs = secs_round_up_no_zero(sizeof(vhd_batmap_header_t));
-	size = secs << VHD_SECTOR_SHIFT;
+	size = vhd_bytes_padded(sizeof(vhd_batmap_header_t));
 	err  = posix_memalign((void **)&buf, VHD_SECTOR_SIZE, size);
 	if (err) {
 		buf = NULL;
@@ -1109,7 +1106,7 @@ vhd_read_batmap_map(vhd_context_t *ctx, vhd_batmap_t *batmap)
 	off64_t off;
 	size_t map_size;
 
-	map_size = batmap->header.batmap_size << VHD_SECTOR_SHIFT;
+	map_size = vhd_sectors_to_bytes(batmap->header.batmap_size);
 
 	err = posix_memalign((void **)&buf, VHD_SECTOR_SIZE, map_size);
 	if (err) {
@@ -1676,7 +1673,7 @@ vhd_parent_locator_write_at(vhd_context_t *ctx,
 	if (err)
 		goto out;
 
-	size = secs_round_up_no_zero(len) << VHD_SECTOR_SHIFT;
+	size = vhd_bytes_padded(len);
 
 	if (max_bytes && size > max_bytes) {
 		err = -ENAMETOOLONG;
@@ -1736,9 +1733,9 @@ vhd_read_bitmap(vhd_context_t *ctx, uint32_t block, char **bufp)
 {
 	int err;
 	char *buf;
+	size_t size;
 	off64_t off;
 	uint64_t blk;
-	size_t secs, size;
 
 	buf   = NULL;
 	*bufp = NULL;
@@ -1757,9 +1754,8 @@ vhd_read_bitmap(vhd_context_t *ctx, uint32_t block, char **bufp)
 	if (blk == DD_BLK_UNUSED)
 		return -EINVAL;
 
-	off  = blk << VHD_SECTOR_SHIFT;
-	secs = secs_round_up_no_zero(ctx->spb >> 3);
-	size = secs << VHD_SECTOR_SHIFT;
+	off  = vhd_sectors_to_bytes(blk);
+	size = vhd_bytes_padded(ctx->spb >> 3);
 
 	err  = vhd_seek(ctx, off, SEEK_SET);
 	if (err)
@@ -1807,8 +1803,8 @@ vhd_read_block(vhd_context_t *ctx, uint32_t block, char **bufp)
 	if (blk == DD_BLK_UNUSED)
 		return -EINVAL;
 
-	off  = (blk + ctx->bm_secs) << VHD_SECTOR_SHIFT;
-	size = ctx->spb << VHD_SECTOR_SHIFT;
+	off  = vhd_sectors_to_bytes(blk + ctx->bm_secs);
+	size = vhd_sectors_to_bytes(ctx->spb);
 
 	err  = vhd_footer_offset_at_eof(ctx, &end);
 	if (err)
@@ -1966,7 +1962,7 @@ vhd_write_bat(vhd_context_t *ctx, vhd_bat_t *bat)
 	int err;
 	off64_t off;
 	vhd_bat_t b;
-	size_t secs, size;
+	size_t size;
 
 	if (!vhd_type_dynamic(ctx))
 		return -EINVAL;
@@ -1982,8 +1978,7 @@ vhd_write_bat(vhd_context_t *ctx, vhd_bat_t *bat)
 	memset(&b, 0, sizeof(vhd_bat_t));
 
 	off  = ctx->header.table_offset;
-	secs = secs_round_up_no_zero(bat->entries * sizeof(uint32_t));
-	size = secs << VHD_SECTOR_SHIFT;
+	size = vhd_bytes_padded(bat->entries * sizeof(uint32_t));
 
 	err  = vhd_seek(ctx, off, SEEK_SET);
 	if (err)
@@ -2011,7 +2006,7 @@ vhd_write_batmap(vhd_context_t *ctx, vhd_batmap_t *batmap)
 	off64_t off;
 	vhd_batmap_t b;
 	char *buf, *map;
-	size_t secs, size, map_size;
+	size_t size, map_size;
 
 	buf      = NULL;
 	map      = NULL;
@@ -2030,7 +2025,7 @@ vhd_write_batmap(vhd_context_t *ctx, vhd_batmap_t *batmap)
 		goto out;
 
 	off      = b.header.batmap_offset;
-	map_size = b.header.batmap_size << VHD_SECTOR_SHIFT;
+	map_size = vhd_sectors_to_bytes(b.header.batmap_size);
 
 	err  = vhd_seek(ctx, off, SEEK_SET);
 	if (err)
@@ -2053,8 +2048,7 @@ vhd_write_batmap(vhd_context_t *ctx, vhd_batmap_t *batmap)
 	if (err)
 		goto out;
 
-	secs = secs_round_up_no_zero(sizeof(vhd_batmap_header_t));
-	size = secs << VHD_SECTOR_SHIFT;
+	size = vhd_bytes_padded(sizeof(vhd_batmap_header_t));
 
 	err  = vhd_seek(ctx, off, SEEK_SET);
 	if (err)
@@ -2106,8 +2100,8 @@ vhd_write_bitmap(vhd_context_t *ctx, uint32_t block, char *bitmap)
 	if (blk == DD_BLK_UNUSED)
 		return -EINVAL;
 
-	off  = blk << VHD_SECTOR_SHIFT;
-	size = ctx->bm_secs << VHD_SECTOR_SHIFT;
+	off  = vhd_sectors_to_bytes(blk);
+	size = vhd_sectors_to_bytes(ctx->bm_secs);
 
 	err  = vhd_seek(ctx, off, SEEK_SET);
 	if (err)
@@ -2145,8 +2139,8 @@ vhd_write_block(vhd_context_t *ctx, uint32_t block, char *data)
 	if (blk == DD_BLK_UNUSED)
 		return -EINVAL;
 
-	off  = (blk + ctx->bm_secs) << VHD_SECTOR_SHIFT;
-	size = ctx->spb << VHD_SECTOR_SHIFT;
+	off  = vhd_sectors_to_bytes(blk + ctx->bm_secs);
+	size = vhd_sectors_to_bytes(ctx->spb);
 
 	err  = vhd_seek(ctx, off, SEEK_SET);
 	if (err)
@@ -2533,7 +2527,7 @@ vhd_write_parent_locators(vhd_context_t *ctx, const char *parent)
 		return -EINVAL;
 
 	off = ctx->batmap.header.batmap_offset + 
-		(ctx->batmap.header.batmap_size << VHD_SECTOR_SHIFT);
+		vhd_sectors_to_bytes(ctx->batmap.header.batmap_size);
 	if (off & (VHD_SECTOR_SIZE - 1))
 		off = vhd_bytes_padded(off);
 
@@ -2664,7 +2658,7 @@ vhd_create_batmap(vhd_context_t *ctx)
 	header->batmap_size    = secs_round_up_no_zero(map_bytes);
 	header->batmap_version = VHD_BATMAP_CURRENT_VERSION;
 
-	map_bytes = header->batmap_size << VHD_SECTOR_SHIFT;
+	map_bytes = vhd_sectors_to_bytes(header->batmap_size);
 
 	err = posix_memalign((void **)&ctx->batmap.map,
 			     VHD_SECTOR_SIZE, map_bytes);
@@ -2897,11 +2891,11 @@ __vhd_io_fixed_read(vhd_context_t *ctx,
 {
 	int err;
 
-	err = vhd_seek(ctx, sec << VHD_SECTOR_SHIFT, SEEK_SET);
+	err = vhd_seek(ctx, vhd_sectors_to_bytes(sec), SEEK_SET);
 	if (err)
 		return err;
 
-	return vhd_read(ctx, buf, secs << VHD_SECTOR_SHIFT);
+	return vhd_read(ctx, buf, vhd_sectors_to_bytes(secs));
 }
 
 static void
@@ -2962,7 +2956,7 @@ __vhd_io_dynamic_read_link(vhd_context_t *ctx, char *map,
 		}
 
 		cnt = MIN(secs, ctx->spb - sec);
-		src = data + (sec << VHD_SECTOR_SHIFT);
+		src = data + vhd_sectors_to_bytes(sec);
 
 		__vhd_io_dynamic_copy_data(ctx,
 					   map, map_off,
@@ -2976,7 +2970,7 @@ __vhd_io_dynamic_read_link(vhd_context_t *ctx, char *map,
 		secs    -= cnt;
 		sector  += cnt;
 		map_off += cnt;
-		buf     += cnt << VHD_SECTOR_SHIFT;
+		buf     += vhd_sectors_to_bytes(cnt);
 
 	} while (secs);
 
@@ -3000,15 +2994,15 @@ __raw_read_link(char *filename,
 		return -errno;
 	}
 
-	off = lseek64(fd, sec << VHD_SECTOR_SHIFT, SEEK_SET);
+	off = lseek64(fd, vhd_sectors_to_bytes(sec), SEEK_SET);
 	if (off == (off64_t)-1) {
 		VHDLOG("%s: seek(0x%08"PRIx64") failed: %d\n",
-				filename, sec << VHD_SECTOR_SHIFT, -errno);
+		       filename, vhd_sectors_to_bytes(sec), -errno);
 		err = -errno;
 		goto close;
 	}
 
-	size = secs << VHD_SECTOR_SHIFT;
+	size = vhd_sectors_to_bytes(secs);
 	err = posix_memalign((void **)&data, VHD_SECTOR_SIZE, size);
 	if (err)
 		goto close;
@@ -3049,7 +3043,7 @@ __vhd_io_dynamic_read(vhd_context_t *ctx,
 	if (!map)
 		return -ENOMEM;
 
-	memset(buf, 0, secs << VHD_SECTOR_SHIFT);
+	memset(buf, 0, vhd_sectors_to_bytes(secs));
 
 	for (;;) {
 		err = __vhd_io_dynamic_read_link(vhd, map, buf, sec, secs);
@@ -3107,7 +3101,7 @@ out:
 int
 vhd_io_read(vhd_context_t *ctx, char *buf, uint64_t sec, uint32_t secs)
 {
-	if (((sec + secs) << VHD_SECTOR_SHIFT) > ctx->footer.curr_size)
+	if (vhd_sectors_to_bytes(sec + secs) > ctx->footer.curr_size)
 		return -ERANGE;
 
 	if (!vhd_type_dynamic(ctx))
@@ -3122,11 +3116,11 @@ __vhd_io_fixed_write(vhd_context_t *ctx,
 {
 	int err;
 
-	err = vhd_seek(ctx, sec << VHD_SECTOR_SHIFT, SEEK_SET);
+	err = vhd_seek(ctx, vhd_sectors_to_bytes(sec), SEEK_SET);
 	if (err)
 		return err;
 
-	return vhd_write(ctx, buf, secs << VHD_SECTOR_SHIFT);
+	return vhd_write(ctx, buf, vhd_sectors_to_bytes(secs));
 }
 
 static int
@@ -3157,7 +3151,7 @@ __vhd_io_allocate_block(vhd_context_t *ctx, uint32_t block)
 	if (err)
 		return err;
 
-	size = ((uint64_t)(ctx->spb + ctx->bm_secs + gap)) << VHD_SECTOR_SHIFT;
+	size = vhd_sectors_to_bytes(ctx->spb + ctx->bm_secs + gap);
 	buf  = mmap(0, size, PROT_READ, MAP_SHARED | MAP_ANONYMOUS, -1, 0);
 	if (buf == MAP_FAILED)
 		return -errno;
@@ -3187,7 +3181,7 @@ __vhd_io_dynamic_write(vhd_context_t *ctx,
 	uint32_t blk, sec;
 	int i, err, cnt, ret;
 
-	if (((sector + secs) << VHD_SECTOR_SHIFT) > ctx->footer.curr_size)
+	if (vhd_sectors_to_bytes(sector + secs) > ctx->footer.curr_size)
 		return -ERANGE;
 
 	err = vhd_get_bat(ctx);
@@ -3214,12 +3208,12 @@ __vhd_io_dynamic_write(vhd_context_t *ctx,
 		}
 
 		off += ctx->bm_secs + sec;
-		err  = vhd_seek(ctx, off << VHD_SECTOR_SHIFT, SEEK_SET);
+		err  = vhd_seek(ctx, vhd_sectors_to_bytes(off), SEEK_SET);
 		if (err)
 			return err;
 
 		cnt = MIN(secs, ctx->spb - sec);
-		err = vhd_write(ctx, buf, cnt << VHD_SECTOR_SHIFT);
+		err = vhd_write(ctx, buf, vhd_sectors_to_bytes(cnt));
 		if (err)
 			return err;
 
@@ -3257,7 +3251,7 @@ __vhd_io_dynamic_write(vhd_context_t *ctx,
 	next:
 		secs   -= cnt;
 		sector += cnt;
-		buf    += cnt << VHD_SECTOR_SHIFT;
+		buf    += vhd_sectors_to_bytes(cnt);
 	} while (secs);
 
 	err = 0;
@@ -3274,7 +3268,7 @@ fail:
 int
 vhd_io_write(vhd_context_t *ctx, char *buf, uint64_t sec, uint32_t secs)
 {
-	if (((sec + secs) << VHD_SECTOR_SHIFT) > ctx->footer.curr_size)
+	if (vhd_sectors_to_bytes(sec + secs) > ctx->footer.curr_size)
 		return -ERANGE;
 
 	if (!vhd_type_dynamic(ctx))

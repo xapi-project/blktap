@@ -425,8 +425,7 @@ vhdi_create(const char *name, uint32_t vhd_block_size)
 
 	memcpy(header.cookie, VHDI_HEADER_COOKIE, sizeof(header.cookie));
 	header.vhd_block_size = vhd_block_size;
-	header.table_offset   = secs_round_up_no_zero(sizeof(vhdi_header_t));
-	header.table_offset <<= VHD_SECTOR_SHIFT;
+	header.table_offset   = vhd_bytes_padded(sizeof(vhdi_header_t));
 
 	err = vhdi_header_validate(&header);
 	if (err)
@@ -534,7 +533,7 @@ vhdi_read_block(vhdi_context_t *ctx, vhdi_block_t *block, uint32_t sector)
 	int i, err;
 	size_t size;
 
-	err = vhdi_seek(ctx, sector << VHD_SECTOR_SHIFT, SEEK_SET);
+	err = vhdi_seek(ctx, vhd_sectors_to_bytes(sector), SEEK_SET);
 	if (err)
 		return err;
 
@@ -567,7 +566,7 @@ vhdi_write_block(vhdi_context_t *ctx, vhdi_block_t *block, uint32_t sector)
 	size_t size;
 	vhdi_entry_t *entries;
 
-	err = vhdi_seek(ctx, sector << VHD_SECTOR_SHIFT, SEEK_SET);
+	err = vhdi_seek(ctx, vhd_sectors_to_bytes(sector), SEEK_SET);
 	if (err)
 		return err;
 
@@ -606,8 +605,7 @@ vhdi_append_block(vhdi_context_t *ctx, vhdi_block_t *block, uint32_t *sector)
 	if (err)
 		return err;
 
-	off = vhdi_position(ctx);
-	off = secs_round_up_no_zero(off) << VHD_SECTOR_SHIFT;
+	off = vhd_bytes_padded(vhdi_position(ctx));
 
 	err = vhdi_seek(ctx, off, SEEK_SET);
 	if (err)
@@ -723,8 +721,7 @@ vhdi_bat_create(const char *name, const char *vhd,
 	if (err)
 		goto fail;
 
-	off   = secs_round_up_no_zero(sizeof(vhdi_bat_header_t));
-	off <<= VHD_SECTOR_SHIFT;
+	off = vhd_bytes_padded(sizeof(vhdi_bat_header_t));
 
 	header.table_offset = off;
 	memcpy(header.cookie, VHDI_BAT_HEADER_COOKIE, sizeof(header.cookie));
@@ -894,8 +891,7 @@ vhdi_file_table_create(const char *file)
 	if (!err || errno != ENOENT)
 		return (err ? err : -EEXIST);
 
-	off   = secs_round_up_no_zero(sizeof(vhdi_file_table_header_t));
-	off <<= VHD_SECTOR_SHIFT;
+	off = vhd_bytes_padded(sizeof(vhdi_file_table_header_t));
 
 	header.files        = 0;
 	header.table_offset = off;

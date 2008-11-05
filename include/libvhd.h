@@ -103,9 +103,15 @@ secs_round_up_no_zero(uint64_t bytes)
 }
 
 static inline uint64_t
+vhd_sectors_to_bytes(uint64_t sectors)
+{
+	return sectors << VHD_SECTOR_SHIFT;
+}
+
+static inline uint64_t
 vhd_bytes_padded(uint64_t bytes)
 {
-	return secs_round_up_no_zero(bytes) << VHD_SECTOR_SHIFT;
+	return vhd_sectors_to_bytes(secs_round_up_no_zero(bytes));
 }
 
 static inline int
@@ -137,7 +143,7 @@ vhd_parent_locator_size(vhd_parent_locator_t *loc)
 	 * but sometimes we find it in bytes
 	 */
 	if (loc->data_space < 512)
-		return (loc->data_space << VHD_SECTOR_SHIFT);
+		return vhd_sectors_to_bytes(loc->data_space);
 	else if (loc->data_space % 512 == 0)
 		return loc->data_space;
 	else

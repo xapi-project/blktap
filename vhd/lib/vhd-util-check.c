@@ -234,7 +234,7 @@ vhd_util_check_validate_batmap(vhd_context_t *vhd, vhd_batmap_t *batmap)
 		return "invalid batmap offset";
 
 	if ((batmap->header.batmap_offset +
-	     (batmap->header.batmap_size << VHD_SECTOR_SHIFT)) >
+	     vhd_sectors_to_bytes(batmap->header.batmap_size)) >
 	    eof - sizeof(vhd_footer_t))
 		return "invalid batmap size";
 
