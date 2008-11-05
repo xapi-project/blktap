@@ -1401,8 +1401,10 @@ vhd_journal_revert(vhd_journal_t *j)
 
 	vhd_close(&j->vhd);
 	j->vhd.fd = open(file, O_RDWR | O_DIRECT | O_LARGEFILE);
-	if (j->vhd.fd == -1)
+	if (j->vhd.fd == -1) {
+		free(file);
 		return -errno;
+	}
 
 	err  = vhd_journal_restore_metadata(j);
 	if (err) {
