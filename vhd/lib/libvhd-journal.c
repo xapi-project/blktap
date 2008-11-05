@@ -783,7 +783,7 @@ vhd_journal_read_bat(vhd_journal_t *j, vhd_bat_t *bat)
 	if (err)
 		goto fail;
 
-	bat->spb     = vhd->header.block_size << VHD_SECTOR_SHIFT;
+	bat->spb     = vhd->header.block_size >> VHD_SECTOR_SHIFT;
 	bat->entries = vhd->header.max_bat_size;
 	vhd_bat_in(bat);
 
