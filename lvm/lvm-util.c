@@ -322,7 +322,7 @@ main(int argc, char **argv)
 	err = lvm_scan_vg(argv[1], &vg);
 	if (err) {
 		printf("scan failed: %d\n", err);
-		return (err >= 0 ? : -err);
+		return (err >= 0 ? err : -err);
 	}
 
 	printf("vg %s: extent_size: %llu, pvs: %d, lvs: %d\n",
