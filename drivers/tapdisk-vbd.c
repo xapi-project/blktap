@@ -19,6 +19,8 @@
 #include "tapdisk-server.h"
 #include "tapdisk-interface.h"
 
+#include "blktap2.h"
+
 #define DBG(_level, _f, _a...) tlog_write(_level, _f, ##_a)
 #define ERR(_err, _f, _a...) tlog_error(_err, _f, ##_a)
 
@@ -77,6 +79,7 @@ tapdisk_vbd_initialize(int rfd, int wfd, uint16_t uuid)
 	vbd->ipc.rfd  = rfd;
 	vbd->ipc.wfd  = wfd;
 	vbd->ipc.uuid = uuid;
+	vbd->ring.fd  = -1;
 
 	INIT_LIST_HEAD(&vbd->images);
 	INIT_LIST_HEAD(&vbd->new_requests);
@@ -651,7 +654,7 @@ fail:
 }
 
 static int
-tapdisk_vbd_open_vdi(td_vbd_t *vbd, char *path,
+tapdisk_vbd_open_vdi(td_vbd_t *vbd, const char *path,
 		     uint16_t drivertype, uint16_t storage, td_flag_t flags)
 {
 	int i, err;
@@ -708,24 +711,19 @@ tapdisk_vbd_register_event_watches(td_vbd_t *vbd)
 static void
 tapdisk_vbd_unregister_events(td_vbd_t *vbd)
 {
-	tapdisk_server_unregister_event(vbd->ring_event_id);
+	if (vbd->ring_event_id)
+		tapdisk_server_unregister_event(vbd->ring_event_id);
 }
 
 static int
-tapdisk_vbd_map_device(td_vbd_t *vbd, uint32_t minor)
+tapdisk_vbd_map_device(td_vbd_t *vbd, const char *devname)
 {
 	
-	char *devname;
 	int err, psize;
 	td_ring_t *ring;
 
 	ring  = &vbd->ring;
 	psize = getpagesize();
-
-	err = asprintf(&devname, "%s/%s%d",
-		       BLKTAP_DEV_DIR, BLKTAP_DEV_NAME, minor);
-	if (err == -1)
-		return -ENOMEM;
 
 	ring->fd = open(devname, O_RDWR);
 	if (ring->fd == -1) {
@@ -750,7 +748,6 @@ tapdisk_vbd_map_device(td_vbd_t *vbd, uint32_t minor)
 
 	ioctl(ring->fd, BLKTAP_IOCTL_SETMODE, BLKTAP_MODE_INTERPOSE);
 
-	free(devname);
 	return 0;
 
 fail:
@@ -758,9 +755,8 @@ fail:
 		munmap(ring->mem, psize * BLKTAP_MMAP_REGION_SIZE);
 	if (ring->fd != -1)
 		close(ring->fd);
-	ring->fd  = 0;
+	ring->fd  = -1;
 	ring->mem = NULL;
-	free(devname);
 	return err;
 }
 
@@ -771,7 +767,8 @@ tapdisk_vbd_unmap_device(td_vbd_t *vbd)
 
 	psize = getpagesize();
 
-	close(vbd->ring.fd);
+	if (vbd->ring.fd != -1)
+		close(vbd->ring.fd);
 	if (vbd->ring.mem > 0)
 		munmap(vbd->ring.mem, psize * BLKTAP_MMAP_REGION_SIZE);
 
@@ -779,24 +776,32 @@ tapdisk_vbd_unmap_device(td_vbd_t *vbd)
 }
 
 int
-tapdisk_vbd_open(td_vbd_t *vbd, char *name, uint16_t type,
-		 uint16_t storage, uint32_t minor, td_flag_t flags)
+tapdisk_vbd_open(td_vbd_t *vbd, const char *name, uint16_t type,
+		 uint16_t storage, const char *ring, td_flag_t flags)
 {
 	int err;
 
 	err = tapdisk_vbd_open_vdi(vbd, name, type, storage, flags);
 	if (err)
-		return err;
+		goto out;
 
-	err = tapdisk_vbd_map_device(vbd, minor);
+	err = tapdisk_vbd_map_device(vbd, ring);
 	if (err)
-		return err;
+		goto out;
 
 	err = tapdisk_vbd_register_event_watches(vbd);
 	if (err)
-		return err;
+		goto out;
 
 	return 0;
+
+out:
+	tapdisk_vbd_close_vdi(vbd);
+	tapdisk_vbd_unmap_device(vbd);
+	tapdisk_vbd_unregister_events(vbd);
+	free(vbd->name);
+	vbd->name = NULL;
+	return err;
 }
 
 static void
@@ -1125,7 +1130,7 @@ tapdisk_vbd_kick(td_vbd_t *vbd)
 
 	vbd->kicked += n;
 	RING_PUSH_RESPONSES(&ring->fe_ring);
-	ioctl(ring->fd, BLKTAP_IOCTL_KICK_FE);
+	ioctl(ring->fd, BLKTAP_IOCTL_KICK_FE, 0);
 
 	DBG(TLOG_INFO, "kicking %d: rec: 0x%08llx, ret: 0x%08llx, kicked: "
 	    "0x%08llx\n", n, vbd->received, vbd->returned, vbd->kicked);
@@ -1613,6 +1618,129 @@ tapdisk_vbd_pull_ring_requests(td_vbd_t *vbd)
 	}
 }
 
+static int
+tapdisk_vbd_pause_ring(td_vbd_t *vbd)
+{
+	int err;
+
+	if (td_flag_test(vbd->state, TD_VBD_PAUSED))
+		return 0;
+
+	td_flag_set(vbd->state, TD_VBD_PAUSE_REQUESTED);
+
+	err = tapdisk_vbd_quiesce_queue(vbd);
+	if (err) {
+		EPRINTF("%s: ring pause request on active queue\n", vbd->name);
+		return err;
+	}
+
+	tapdisk_vbd_close_vdi(vbd);
+
+	err = ioctl(vbd->ring.fd, BLKTAP2_IOCTL_PAUSE, 0);
+	if (err)
+		EPRINTF("%s: pause ioctl failed: %d\n", vbd->name, errno);
+	else {
+		td_flag_clear(vbd->state, TD_VBD_PAUSE_REQUESTED);
+		td_flag_set(vbd->state, TD_VBD_PAUSED);
+	}
+
+	return err;
+}
+
+static int
+tapdisk_vbd_resume_ring(td_vbd_t *vbd)
+{
+	int i, err, type;
+	char *path, message[BLKTAP2_MAX_MESSAGE_LEN];
+
+	memset(message, 0, sizeof(message));
+
+	if (!td_flag_test(vbd->state, TD_VBD_PAUSED)) {
+		EPRINTF("%s: resume message for unpaused vbd\n", vbd->name);
+		return -EINVAL;
+	}
+
+	err = ioctl(vbd->ring.fd, BLKTAP2_IOCTL_REOPEN, &message);
+	if (err) {
+		EPRINTF("%s: resume ioctl failed: %d\n", vbd->name, errno);
+		return err;
+	}
+
+	err = tapdisk_parse_disk_type(message, &path, &type);
+	if (err) {
+		EPRINTF("%s: invalid resume string %s\n", vbd->name, message);
+		goto out;
+	}
+
+	free(vbd->name);
+	vbd->name = strdup(path);
+	if (!vbd->name) {
+		EPRINTF("resume malloc failed\n");
+		err = -ENOMEM;
+		goto out;
+	}
+	vbd->type = type;
+
+	tapdisk_vbd_start_queue(vbd);
+
+	err = tapdisk_vbd_reactivate_volumes(vbd, 1);
+	if (err) {
+		EPRINTF("failed to reactivate %s, %d\n", vbd->name, err);
+		goto out;
+	}
+
+	for (i = 0; i < TD_VBD_EIO_RETRIES; i++) {
+		err = __tapdisk_vbd_open_vdi(vbd);
+		if (err != -EIO)
+			break;
+
+		sleep(TD_VBD_EIO_SLEEP);
+	}
+
+out:
+	if (!err) {
+		image_t image;
+		struct blktap2_params params;
+
+		memset(&params, 0, sizeof(params));
+		tapdisk_vbd_get_image_info(vbd, &image);
+
+		params.sector_size = image.secsize;
+		params.capacity    = image.size;
+		snprintf(params.name, sizeof(params.name) - 1, "%s", message);
+
+		ioctl(vbd->ring.fd, BLKTAP2_IOCTL_SET_PARAMS, &params);
+		td_flag_clear(vbd->state, TD_VBD_PAUSED);
+	}
+
+	ioctl(vbd->ring.fd, BLKTAP2_IOCTL_RESUME, err);
+	return err;
+}
+
+static int
+tapdisk_vbd_check_ring_message(td_vbd_t *vbd)
+{
+	if (!vbd->ring.sring)
+		return -EINVAL;
+
+	switch (vbd->ring.sring->pad[0]) {
+	case 0:
+		return 0;
+
+	case BLKTAP2_RING_MESSAGE_PAUSE:
+		return tapdisk_vbd_pause_ring(vbd);
+
+	case BLKTAP2_RING_MESSAGE_RESUME:
+		return tapdisk_vbd_resume_ring(vbd);
+
+	case BLKTAP2_RING_MESSAGE_CLOSE:
+		return tapdisk_vbd_close(vbd);
+
+	default:
+		return -EINVAL;
+	}
+}
+
 static void
 tapdisk_vbd_ring_event(event_id_t id, char mode, void *private)
 {
@@ -1622,4 +1750,7 @@ tapdisk_vbd_ring_event(event_id_t id, char mode, void *private)
 
 	tapdisk_vbd_pull_ring_requests(vbd);
 	tapdisk_vbd_issue_requests(vbd);
+
+	/* vbd may be destroyed after this call */
+	tapdisk_vbd_check_ring_message(vbd);
 }

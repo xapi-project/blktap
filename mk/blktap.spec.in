@@ -97,6 +97,7 @@ rm -rf $RPM_BUILD_ROOT
 %{_libdir}/libvhd.so.*
 %{_sbindir}/blktapctrl
 %{_sbindir}/tapdisk
+%{_sbindir}/tapdisk2
 %{_sbindir}/td-util
 %{_sbindir}/lock-util
 %{_sbindir}/vhd-update

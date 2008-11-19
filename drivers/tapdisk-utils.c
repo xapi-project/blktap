@@ -26,18 +26,71 @@
  * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 #include <errno.h>
+#include <stdio.h>
 #include <string.h>
 #include <unistd.h>
-#include <sys/stat.h>
-#include <sys/ioctl.h>
 #include <linux/fs.h>
+#include <sys/stat.h>
+#include <sys/mman.h>
+#include <sys/ioctl.h>
+#include <sys/resource.h>
 
 #include "tapdisk.h"
+#include "disktypes.h"
 #include "blktaplib.h"
+#include "tapdisk-log.h"
 #include "tapdisk-utils.h"
 
+void
+tapdisk_start_logging(const char *name)
+{
+	static char buf[128];
+
+	snprintf(buf, sizeof(buf), "%s[%d]", name, getpid());
+	openlog(buf, LOG_CONS | LOG_ODELAY, LOG_DAEMON);
+	open_tlog("/tmp/tapdisk.log", (64 << 10), TLOG_WARN, 0);
+}
+
+void
+tapdisk_stop_logging(void)
+{
+	closelog();
+	close_tlog();
+}
+
 int
-tapdisk_namedup(char **dup, char *name)
+tapdisk_set_resource_limits(void)
+{
+	int err;
+	struct rlimit rlim;
+
+	rlim.rlim_cur = RLIM_INFINITY;
+	rlim.rlim_max = RLIM_INFINITY;
+
+	err = setrlimit(RLIMIT_MEMLOCK, &rlim);
+	if (err == -1) {
+		EPRINTF("RLIMIT_MEMLOCK failed: %d\n", errno);
+		return -errno;
+	}
+
+	err = mlockall(MCL_CURRENT | MCL_FUTURE);
+	if (err == -1) {
+		EPRINTF("mlockall failed: %d\n", errno);
+		return -errno;
+	}
+
+#define CORE_DUMP
+#if defined(CORE_DUMP)
+	err = setrlimit(RLIMIT_CORE, &rlim);
+	if (err == -1)
+		EPRINTF("RLIMIT_CORE failed: %d\n", errno);
+#endif
+
+	return 0;
+}
+
+int
+tapdisk_namedup(char **dup, const char *name)
 {
 	*dup = NULL;
 
@@ -49,6 +102,40 @@ tapdisk_namedup(char **dup, char *name)
 		return -ENOMEM;
 
 	return 0;
+}
+
+int
+tapdisk_parse_disk_type(const char *params, char **_path, int *_type)
+{
+	int i, err, size;
+	char *ptr, *path, handle[10];
+
+	if (strlen(params) + 1 >= MAX_NAME_LEN)
+		return -ENAMETOOLONG;
+
+	ptr = strchr(params, ':');
+	if (!ptr)
+		return -EINVAL;
+
+	path = ptr + 1;
+	memcpy(handle, params, (ptr - params));
+	handle[(ptr - params)] = '\0';
+
+	size = sizeof(dtypes) / sizeof(disk_info_t *);
+	for (i = 0; i < size; i++) {
+		if (strncmp(handle, dtypes[i]->handle, (ptr - params)))
+			continue;
+
+		if (dtypes[i]->idnum == -1)
+			return -ENODEV;
+
+		*_type = dtypes[i]->idnum;
+		*_path = path;
+
+		return 0;
+	}
+
+	return -ENODEV;
 }
 
 /*Get Image size, secsize*/

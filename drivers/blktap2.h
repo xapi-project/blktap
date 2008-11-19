@@ -1,4 +1,4 @@
-/* 
+/*
  * Copyright (c) 2008, XenSource Inc.
  * All rights reserved.
  *
@@ -25,18 +25,42 @@
  * NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
  * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
-#ifndef _TAPDISK_UTILS_H_
-#define _TAPDISK_UTILS_H_
+#ifndef _BLKTAP_2_H_
+#define _BLKTAP_2_H_
 
-#include <inttypes.h>
+#define MISC_MAJOR_NUMBER              10
 
-#define MAX_NAME_LEN                 1000
+#define BLKTAP2_MAX_MESSAGE_LEN        256
 
-void tapdisk_start_logging(const char *);
-void tapdisk_stop_logging(void);
-int tapdisk_set_resource_limits(void);
-int tapdisk_namedup(char **, const char *);
-int tapdisk_parse_disk_type(const char *, char **, int *);
-int tapdisk_get_image_size(int, uint64_t *, uint32_t *);
+#define BLKTAP2_RING_MESSAGE_PAUSE     1
+#define BLKTAP2_RING_MESSAGE_RESUME    2
+#define BLKTAP2_RING_MESSAGE_CLOSE     3
+
+#define BLKTAP2_IOCTL_KICK_FE          1
+#define BLKTAP2_IOCTL_ALLOC_TAP        200
+#define BLKTAP2_IOCTL_FREE_TAP         201
+#define BLKTAP2_IOCTL_CREATE_DEVICE    202
+#define BLKTAP2_IOCTL_SET_PARAMS       203
+#define BLKTAP2_IOCTL_PAUSE            204
+#define BLKTAP2_IOCTL_REOPEN           205
+#define BLKTAP2_IOCTL_RESUME           206
+
+#define BLKTAP2_CONTROL_NAME           "blktap-control"
+#define BLKTAP2_DIRECTORY              "/dev/xen/blktap-2"
+#define BLKTAP2_CONTROL_DEVICE         BLKTAP2_DIRECTORY"/control"
+#define BLKTAP2_RING_DEVICE            BLKTAP2_DIRECTORY"/blktap"
+#define BLKTAP2_IO_DEVICE              BLKTAP2_DIRECTORY"/tapdev"
+
+struct blktap2_handle {
+	unsigned int                   ring;
+	unsigned int                   device;
+	unsigned int                   minor;
+};
+
+struct blktap2_params {
+	char                           name[BLKTAP2_MAX_MESSAGE_LEN];
+	unsigned long long             capacity;
+	unsigned long                  sector_size;
+};
 
 #endif

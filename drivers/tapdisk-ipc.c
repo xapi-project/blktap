@@ -27,6 +27,7 @@
  */
 #include <stdio.h>
 #include <errno.h>
+#include <stdlib.h>
 #include <unistd.h>
 #include <string.h>
 
@@ -86,6 +87,9 @@ int
 tapdisk_ipc_write(td_ipc_t *ipc, int type)
 {
 	tapdisk_message_t message;
+
+	if (ipc->wfd == -1)
+		return 0;
 
 	memset(&message, 0, sizeof(tapdisk_message_t));
 	message.type   = type;
@@ -197,6 +201,7 @@ tapdisk_ipc_read(td_ipc_t *ipc)
 	case TAPDISK_MESSAGE_OPEN:
 	{
 		image_t image;
+		char *devname;
 		td_flag_t flags;
 
 		flags = 0;
@@ -212,12 +217,18 @@ tapdisk_ipc_read(td_ipc_t *ipc)
 		if (message.u.params.flags & TAPDISK_MESSAGE_FLAG_LOG_DIRTY)
 			flags |= TD_OPEN_LOG_DIRTY;
 
+		err   = asprintf(&devname, "%s/%s%d",
+				 BLKTAP_DEV_DIR, BLKTAP_DEV_NAME,
+				 message.u.params.devnum);
+		if (err == -1)
+			goto fail;
+
 		err   = tapdisk_vbd_open(vbd,
 					 message.u.params.path,
 					 message.drivertype,
 					 message.u.params.storage,
-					 message.u.params.devnum,
-					 flags);
+					 devname, flags);
+		free(devname);
 		if (err)
 			goto fail;
 

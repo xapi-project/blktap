@@ -161,8 +161,8 @@ tapdisk_vbd_next_image(td_image_t *image)
 }
 
 int tapdisk_vbd_initialize(int, int, td_uuid_t);
-int tapdisk_vbd_open(td_vbd_t *, char *, uint16_t,
-		     uint16_t, uint32_t, td_flag_t);
+int tapdisk_vbd_open(td_vbd_t *, const char *, uint16_t,
+		     uint16_t, const char *, td_flag_t);
 int tapdisk_vbd_close(td_vbd_t *);
 
 void tapdisk_vbd_forward_request(td_request_t);

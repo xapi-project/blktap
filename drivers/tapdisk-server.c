@@ -30,11 +30,11 @@
 #include <errno.h>
 #include <unistd.h>
 #include <stdlib.h>
-#include <sys/mman.h>
+#include <sys/ioctl.h>
 #include <sys/signal.h>
-#include <sys/resource.h>
 
 #define TAPDISK
+#include "tapdisk-utils.h"
 #include "tapdisk-server.h"
 #include "tapdisk-driver.h"
 #include "tapdisk-interface.h"
@@ -278,36 +278,112 @@ tapdisk_server_initialize_aio_queue(void)
 	return 0;
 }
 
-static int
-tapdisk_server_initialize(char *read, char *write)
+static void
+tapdisk_server_close(void)
+{
+	tapdisk_server_free_aio_queue();
+
+	if (server.control_event)
+		scheduler_unregister_event(&server.scheduler, server.control_event);
+
+	if (server.ipc.rfd != -1)
+		close(server.ipc.rfd);
+
+	if (server.ipc.wfd != -1)
+		close(server.ipc.wfd);
+}
+
+static void
+__tapdisk_server_run(void)
+{
+	int ret;
+
+	while (server.run) {
+		tapdisk_server_assert_locks();
+		tapdisk_server_set_retry_timeout();
+		tapdisk_server_check_progress();
+
+		ret = scheduler_wait_for_events(&server.scheduler);
+		if (ret < 0)
+			DBG(TLOG_WARN, "server wait returned %d\n", ret);
+
+		tapdisk_server_check_vbds();
+		tapdisk_server_submit_tiocbs();
+		tapdisk_server_kick_responses();
+	}
+}
+
+static void
+tapdisk_server_signal_handler(int signal)
+{
+	td_vbd_t *vbd, *tmp;
+	static int xfsz_error_sent = 0;
+
+	switch (signal) {
+	case SIGBUS:
+	case SIGINT:
+		tapdisk_server_for_each_vbd(vbd, tmp)
+			tapdisk_vbd_close(vbd);
+		break;
+
+	case SIGXFSZ:
+		ERR(EFBIG, "received SIGXFSZ");
+		tapdisk_server_stop_vbds();
+		if (xfsz_error_sent)
+			break;
+
+		tapdisk_server_send_error("received SIGXFSZ, closing queues");
+		xfsz_error_sent = 1;
+		break;
+
+	case SIGUSR1:
+		tapdisk_server_debug();
+		break;
+	}
+}
+
+int
+tapdisk_server_initialize(const char *read, const char *write)
 {
 	int err;
 	event_id_t event_id;
 
 	event_id = 0;
 	memset(&server, 0, sizeof(tapdisk_server_t));
+	server.ipc.rfd = server.ipc.wfd = -1;
 
 	INIT_LIST_HEAD(&server.vbds);
 
-	server.ipc.rfd = open(read, O_RDWR | O_NONBLOCK);
-	server.ipc.wfd = open(write, O_RDWR | O_NONBLOCK);
-	if (server.ipc.rfd < 0 || server.ipc.wfd < 0) {
-		EPRINTF("FD open failed [%d, %d]\n",
-			server.ipc.rfd, server.ipc.wfd);
-		err = (errno ? -errno : -EIO);
-		goto fail;
+	if (read) {
+		server.ipc.rfd = open(read, O_RDWR | O_NONBLOCK);
+		if (server.ipc.rfd < 0) {
+			err = -errno;
+			EPRINTF("FD open failed %s: %d\n", read, err);
+			goto fail;
+		}
+	}
+
+	if (write) {
+		server.ipc.wfd = open(write, O_RDWR | O_NONBLOCK);
+		if (server.ipc.wfd < 0) {
+			err = -errno;
+			EPRINTF("FD open failed %s, %d\n", write, err);
+			goto fail;
+		}
 	}
 
 	scheduler_initialize(&server.scheduler);
 
-	event_id = scheduler_register_event(&server.scheduler,
-					    SCHEDULER_POLL_READ_FD,
-					    server.ipc.rfd, 0,
-					    tapdisk_server_read_ipc_message,
-					    NULL);
-	if (event_id < 0) {
-		err = event_id;
-		goto fail;
+	if (read) {
+		event_id = scheduler_register_event(&server.scheduler,
+						    SCHEDULER_POLL_READ_FD,
+						    server.ipc.rfd, 0,
+						    tapdisk_server_read_ipc_message,
+						    NULL);
+		if (event_id < 0) {
+			err = event_id;
+			goto fail;
+		}
 	}
 
 	err = tapdisk_server_initialize_aio_queue();
@@ -330,127 +406,22 @@ fail:
 	return err;
 }
 
-static void
-tapdisk_server_close(void)
-{
-	tapdisk_server_free_aio_queue();
-	scheduler_unregister_event(&server.scheduler, server.control_event);
-	close(server.ipc.rfd);
-	close(server.ipc.wfd);
-}
-
-static void
-tapdisk_server_run(void)
-{
-	int ret;
-
-	while (server.run) {
-		tapdisk_server_assert_locks();
-		tapdisk_server_set_retry_timeout();
-		tapdisk_server_check_progress();
-
-		ret = scheduler_wait_for_events(&server.scheduler);
-		if (ret < 0) {
-			DBG(TLOG_WARN, "server wait returned %d\n", ret);
-			sleep(2);
-		}
-
-		tapdisk_server_check_vbds();
-		tapdisk_server_submit_tiocbs();
-		tapdisk_server_kick_responses();
-	}
-}
-
-static void
-tapdisk_server_signal_handler(int signal)
-{
-	static int xfsz_error_sent = 0;
-
-	switch (signal) {
-	case SIGBUS:
-	case SIGINT:
-		tapdisk_server_check_state();
-		break;
-
-	case SIGXFSZ:
-		ERR(EFBIG, "received SIGXFSZ");
-		tapdisk_server_stop_vbds();
-		if (xfsz_error_sent)
-			break;
-
-		tapdisk_server_send_error("received SIGXFSZ, closing queues");
-		xfsz_error_sent = 1;
-		break;
-
-	case SIGUSR1:
-		tapdisk_server_debug();
-		break;
-	}
-}
-
-static void
-usage(void)
-{
-	fprintf(stderr, "blktap-utils: v2.0.0\n");
-	fprintf(stderr, "usage: tapdisk <READ fifo> <WRITE fifo>\n");
-        exit(-EINVAL);
-}
-
 int
-main(int argc, char *argv[])
+tapdisk_server_run()
 {
 	int err;
-	char buf[128];
-	struct rlimit rlim;
 
-	if (argc != 3)
-		usage();
-
-	daemon(0, 0);
-
-	snprintf(buf, sizeof(buf), "TAPDISK[%d]", getpid());
-	openlog(buf, LOG_CONS | LOG_ODELAY, LOG_DAEMON);
-	open_tlog("/tmp/tapdisk.log", (64 << 10), TLOG_WARN, 0);
-
-	rlim.rlim_cur = RLIM_INFINITY;
-	rlim.rlim_max = RLIM_INFINITY;
-
-	err = setrlimit(RLIMIT_MEMLOCK, &rlim);
-	if (err == -1) {
-		EPRINTF("RLIMIT_MEMLOCK failed: %d\n", errno);
-		return -errno;
-	}
-
-	err = mlockall(MCL_CURRENT | MCL_FUTURE);
-	if (err == -1) {
-		EPRINTF("mlockall failed: %d\n", errno);
-		return -errno;
-	}
-
-#define CORE_DUMP
-#if defined(CORE_DUMP)
-	err = setrlimit(RLIMIT_CORE, &rlim);
-	if (err == -1)
-		EPRINTF("RLIMIT_CORE failed: %d\n", errno);
-#endif
-
-	err = tapdisk_server_initialize(argv[1], argv[2]);
-	if (err) {
-		EPRINTF("failed to allocate tapdisk server: %d\n", err);
-		exit(err);
-	}
+	err = tapdisk_set_resource_limits();
+	if (err)
+		return err;
 
 	signal(SIGBUS, tapdisk_server_signal_handler);
 	signal(SIGINT, tapdisk_server_signal_handler);
 	signal(SIGUSR1, tapdisk_server_signal_handler);
 	signal(SIGXFSZ, tapdisk_server_signal_handler);
 
-	tapdisk_server_run();
-
+	__tapdisk_server_run();
 	tapdisk_server_close();
-
-	closelog();
-	close_tlog();
 
 	return 0;
 }

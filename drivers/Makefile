@@ -3,7 +3,7 @@ include $(BLKTAP_ROOT)/Rules.mk
 
 LIBVHDDIR  = $(BLKTAP_ROOT)/vhd/lib
 
-IBIN       = tapdisk td-util tapdisk-client
+IBIN       = tapdisk tapdisk2 td-util tapdisk-client
 LOCK_UTIL  = lock-util
 INST_DIR   = /usr/sbin
 
@@ -20,14 +20,14 @@ LIBS      += -lrt
 CFLAGS    += -Wp,-MD,.$(@F).d
 DEPS       = .*.d
 
-tapdisk td-util: LIBS += -L$(LIBVHDDIR) -lvhd -luuid
+tapdisk tapdisk2 td-util: LIBS += -L$(LIBVHDDIR) -lvhd -luuid
 
 ifneq ($(USE_SYSTEM_LIBRARIES),y)
 LIBAIO_DIR = $(XEN_ROOT)/tools/libaio/src
-tapdisk: AIOLIBS := $(LIBAIO_DIR)/libaio.a
+tapdisk tapdisk2: AIOLIBS := $(LIBAIO_DIR)/libaio.a
 tapdisk tapdisk-client: CFLAGS  += -I$(LIBAIO_DIR) -I$(XEN_LIBXC)
 else
-tapdisk: AIOLIBS := -laio
+tapdisk tapdisk2: AIOLIBS := -laio
 endif
 
 ifeq ($(VHD_STATIC),y)
@@ -40,6 +40,13 @@ TAP-OBJS  += tapdisk-vbd.o
 TAP-OBJS  += tapdisk-image.o
 TAP-OBJS  += tapdisk-driver.o
 TAP-OBJS  += tapdisk-interface.o
+TAP-OBJS  += tapdisk-server.o
+TAP-OBJS  += tapdisk-queue.o
+TAP-OBJS  += tapdisk-filter.o
+TAP-OBJS  += tapdisk-log.o
+TAP-OBJS  += tapdisk-utils.o
+TAP-OBJS  += io-optimize.o
+TAP-OBJS  += lock.o
 
 MISC-OBJS := atomicio.o
 
@@ -49,24 +56,20 @@ BLK-OBJS  += block-cache.o
 BLK-OBJS  += block-vhd.o
 BLK-OBJS  += block-vindex.o
 BLK-OBJS  += block-log.o
-BLK-OBJS  += lock.o
-BLK-OBJS  += io-optimize.o
-BLK-OBJS  += tapdisk-queue.o
-BLK-OBJS  += tapdisk-filter.o
-BLK-OBJS  += tapdisk-log.o
-BLK-OBJS  += tapdisk-utils.o
 
 all: $(IBIN) lock-util
 
-tapdisk: $(TAP-OBJS) $(MISC-OBJS) $(BLK-OBJS) tapdisk-server.c
-	$(CC) $(CFLAGS) -o tapdisk $(TAP-OBJS) $(MISC-OBJS) $(BLK-OBJS) \
-		tapdisk-server.c $(AIOLIBS) $(LIBS)
+tapdisk: $(TAP-OBJS) $(BLK-OBJS) $(MISC-OBJS) tapdisk.c
+	$(CC) $(CFLAGS) -o $@ $^ $(LIBS) $(AIOLIBS)
+
+tapdisk2: $(TAP-OBJS) $(BLK-OBJS) $(MISC-OBJS) tapdisk2.c
+	$(CC) $(CFLAGS) -o $@ $^ $(LIBS) $(AIOLIBS)
 
 tapdisk-client: tapdisk-client.o
 	$(CC) $(CFLAGS) -o $@ $^ $(LIBS)
 
-td-util: td.o tapdisk-utils.o
-	$(CC) $(CFLAGS) -o td-util td.o tapdisk-utils.o $(LIBS)
+td-util: td.o tapdisk-utils.o tapdisk-log.o
+	$(CC) $(CFLAGS) -o $@ $^ $(LIBS)
 
 lock-util: lock.c
 	$(CC) $(CFLAGS) -DUTIL -o lock-util lock.c $(LIBS)

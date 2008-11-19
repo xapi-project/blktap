@@ -1,4 +1,4 @@
-/* 
+/*
  * Copyright (c) 2008, XenSource Inc.
  * All rights reserved.
  *
@@ -25,18 +25,42 @@
  * NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
  * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
-#ifndef _TAPDISK_UTILS_H_
-#define _TAPDISK_UTILS_H_
+#include <stdio.h>
+#include <errno.h>
+#include <stdlib.h>
+#include <unistd.h>
 
-#include <inttypes.h>
+#include "tapdisk-utils.h"
+#include "tapdisk-server.h"
 
-#define MAX_NAME_LEN                 1000
+static void
+usage(void)
+{
+	fprintf(stderr, "blktap-utils: v2.0.0\n");
+	fprintf(stderr, "usage: tapdisk <READ fifo> <WRITE fifo>\n");
+	exit(EINVAL);
+}
 
-void tapdisk_start_logging(const char *);
-void tapdisk_stop_logging(void);
-int tapdisk_set_resource_limits(void);
-int tapdisk_namedup(char **, const char *);
-int tapdisk_parse_disk_type(const char *, char **, int *);
-int tapdisk_get_image_size(int, uint64_t *, uint32_t *);
+int
+main(int argc, char *argv[])
+{
+	int err;
 
-#endif
+	if (argc != 3)
+		usage();
+
+	daemon(0, 0);
+	tapdisk_start_logging("TAPDISK");
+
+	err = tapdisk_server_initialize(argv[1], argv[2]);
+	if (err) {
+		EPRINTF("failed to initialize tapdisk server: %d\n", err);
+		goto out;
+	}
+
+	err = tapdisk_server_run();
+
+out:
+	tapdisk_stop_logging();
+	return err;
+}
