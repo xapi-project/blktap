@@ -46,7 +46,7 @@ install: all
 
 clean:
 	$(MAKE) -C $(LIBDIR) clean
-	rm -rf *.o *~ $(DEPS) xen TAGS
+	rm -rf *.o *~ $(IBIN) $(DEPS) xen TAGS
 
 .PHONY: all clean install blktapctrl libblktap
 
