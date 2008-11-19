@@ -104,6 +104,7 @@ rm -rf $RPM_BUILD_ROOT
 %{_sbindir}/vhd-util
 %{_sbindir}/vhd-index
 %{_sbindir}/tapdisk-client
+%{_sbindir}/tapdisk-stream
 
 %files devel
 %defattr(-,root,root,-)

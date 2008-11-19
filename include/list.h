@@ -59,6 +59,12 @@ static inline void list_del(struct list_head *entry)
         entry->prev = LIST_POISON2;
 }
 
+static inline void list_del_init(struct list_head *entry)
+{
+	__list_del(entry->prev, entry->next);
+	INIT_LIST_HEAD(entry);
+}
+
 static inline int list_empty(const struct list_head *head)
 {
 	return head->next == head;

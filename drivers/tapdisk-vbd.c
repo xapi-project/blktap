@@ -43,8 +43,8 @@
 #define TD_VBD_WATCHDOG_TIMEOUT     10
 
 static void tapdisk_vbd_ring_event(event_id_t, char, void *);
-static int tapdisk_vbd_issue_requests(td_vbd_t *);
 static void tapdisk_vbd_complete_vbd_request(td_vbd_t *, td_vbd_request_t *);
+static void tapdisk_vbd_callback(void *, blkif_response_t *);
 
 /* 
  * initialization
@@ -81,6 +81,10 @@ tapdisk_vbd_initialize(int rfd, int wfd, uint16_t uuid)
 	vbd->ipc.uuid = uuid;
 	vbd->ring.fd  = -1;
 
+	/* default blktap ring completion */
+	vbd->callback = tapdisk_vbd_callback;
+	vbd->argument = vbd;
+
 	INIT_LIST_HEAD(&vbd->images);
 	INIT_LIST_HEAD(&vbd->new_requests);
 	INIT_LIST_HEAD(&vbd->pending_requests);
@@ -95,6 +99,13 @@ tapdisk_vbd_initialize(int rfd, int wfd, uint16_t uuid)
 	tapdisk_server_add_vbd(vbd);
 
 	return 0;
+}
+
+void
+tapdisk_vbd_set_callback(td_vbd_t *vbd, td_vbd_cb_t callback, void *argument)
+{
+	vbd->callback = callback;
+	vbd->argument = argument;
 }
 
 static int
@@ -120,7 +131,7 @@ tapdisk_vbd_validate_chain(td_vbd_t *vbd)
 	return 0;
 }
 
-static void
+void
 tapdisk_vbd_close_vdi(td_vbd_t *vbd)
 {
 	td_image_t *image, *tmp;
@@ -653,7 +664,7 @@ fail:
 	return err;
 }
 
-static int
+int
 tapdisk_vbd_open_vdi(td_vbd_t *vbd, const char *path,
 		     uint16_t drivertype, uint16_t storage, td_flag_t flags)
 {
@@ -1151,6 +1162,13 @@ tapdisk_vbd_write_response_to_ring(td_vbd_t *vbd, blkif_response_t *rsp)
 }
 
 static void
+tapdisk_vbd_callback(void *arg, blkif_response_t *rsp)
+{
+	td_vbd_t *vbd = (td_vbd_t *)arg;
+	tapdisk_vbd_write_response_to_ring(vbd, rsp);
+}
+
+static void
 tapdisk_vbd_make_response(td_vbd_t *vbd, td_vbd_request_t *vreq)
 {
 	blkif_request_t tmp;
@@ -1169,8 +1187,8 @@ tapdisk_vbd_make_response(td_vbd_t *vbd, td_vbd_request_t *vreq)
 	if (rsp->status != BLKIF_RSP_OKAY)
 		ERR(EIO, "returning BLKIF_RSP %d", rsp->status);
 
-	tapdisk_vbd_write_response_to_ring(vbd, rsp);
 	vbd->returned++;
+	vbd->callback(vbd->argument, rsp);
 }
 
 void
@@ -1564,7 +1582,7 @@ tapdisk_vbd_kill_requests(td_vbd_t *vbd)
 	return 0;
 }
 
-static int
+int
 tapdisk_vbd_issue_requests(td_vbd_t *vbd)
 {
 	int err;

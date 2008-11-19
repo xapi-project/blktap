@@ -54,6 +54,7 @@
 typedef struct td_ring              td_ring_t;
 typedef struct td_vbd_request       td_vbd_request_t;
 typedef struct td_vbd_handle        td_vbd_t;
+typedef void (*td_vbd_cb_t)        (void *, blkif_response_t *);
 
 struct td_ring {
 	int                         fd;
@@ -103,6 +104,9 @@ struct td_vbd_handle {
 
 	td_ring_t                   ring;
 	event_id_t                  ring_event_id;
+
+	td_vbd_cb_t                 callback;
+	void                       *argument;
 
 	struct list_head            next;
 
@@ -161,9 +165,14 @@ tapdisk_vbd_next_image(td_image_t *image)
 }
 
 int tapdisk_vbd_initialize(int, int, td_uuid_t);
+void tapdisk_vbd_set_callback(td_vbd_t *, td_vbd_cb_t, void *);
 int tapdisk_vbd_open(td_vbd_t *, const char *, uint16_t,
 		     uint16_t, const char *, td_flag_t);
 int tapdisk_vbd_close(td_vbd_t *);
+
+int tapdisk_vbd_open_vdi(td_vbd_t *, const char *,
+			 uint16_t, uint16_t, td_flag_t);
+void tapdisk_vbd_close_vdi(td_vbd_t *);
 
 void tapdisk_vbd_forward_request(td_request_t);
 
@@ -172,6 +181,7 @@ int tapdisk_vbd_queue_ready(td_vbd_t *);
 int tapdisk_vbd_retry_needed(td_vbd_t *);
 int tapdisk_vbd_quiesce_queue(td_vbd_t *);
 int tapdisk_vbd_start_queue(td_vbd_t *);
+int tapdisk_vbd_issue_requests(td_vbd_t *);
 int tapdisk_vbd_kill_queue(td_vbd_t *);
 int tapdisk_vbd_pause(td_vbd_t *);
 int tapdisk_vbd_resume(td_vbd_t *, const char *, uint16_t);
