@@ -562,7 +562,7 @@ regerr:
 }
 
 static int
-__tapdisk_vbd_open_vdi(td_vbd_t *vbd)
+__tapdisk_vbd_open_vdi(td_vbd_t *vbd, td_flag_t extra_flags)
 {
 	char *file;
 	int err, type;
@@ -575,7 +575,7 @@ __tapdisk_vbd_open_vdi(td_vbd_t *vbd)
 	if (err)
 		return err;
 
-	flags = vbd->flags & ~TD_OPEN_SHAREABLE;
+	flags = (vbd->flags & ~TD_OPEN_SHAREABLE) | extra_flags;
 	file  = vbd->name;
 	type  = vbd->type;
 
@@ -686,7 +686,7 @@ tapdisk_vbd_open_vdi(td_vbd_t *vbd, const char *path,
 	vbd->type    = drivertype;
 
 	for (i = 0; i < TD_VBD_EIO_RETRIES; i++) {
-		err = __tapdisk_vbd_open_vdi(vbd);
+		err = __tapdisk_vbd_open_vdi(vbd, 0);
 		if (err != -EIO)
 			break;
 
@@ -1104,7 +1104,7 @@ tapdisk_vbd_resume(td_vbd_t *vbd, const char *path, uint16_t drivertype)
 			goto sleep;
 		}
 
-		err = __tapdisk_vbd_open_vdi(vbd);
+		err = __tapdisk_vbd_open_vdi(vbd, TD_OPEN_STRICT);
 		if (!err)
 			break;
 
@@ -1708,7 +1708,7 @@ tapdisk_vbd_resume_ring(td_vbd_t *vbd)
 	}
 
 	for (i = 0; i < TD_VBD_EIO_RETRIES; i++) {
-		err = __tapdisk_vbd_open_vdi(vbd);
+		err = __tapdisk_vbd_open_vdi(vbd, TD_OPEN_STRICT);
 		if (err != -EIO)
 			break;
 
