@@ -24,12 +24,14 @@ typedef struct vhd_journal_header {
 	uint32_t                   journal_metadata_entries;
 	uint64_t                   journal_data_offset;
 	uint64_t                   journal_metadata_offset;
-	char                       pad[460];
+	uint64_t                   journal_eof;
+	char                       pad[448];
 } vhd_journal_header_t;
 
 typedef struct vhd_journal {
 	char                      *jname;
 	int                        jfd;
+	int                        is_block; /* is jfd a block device */
 	vhd_journal_header_t       header;
 	vhd_context_t              vhd;
 } vhd_journal_t;

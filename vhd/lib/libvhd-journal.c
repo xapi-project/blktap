@@ -130,7 +130,7 @@ vhd_journal_validate_header(vhd_journal_t *j, vhd_journal_header_t *header)
 		   VHD_JOURNAL_HEADER_COOKIE, sizeof(header->cookie)))
 		return -EINVAL;
 
-	err = vhd_journal_seek(j, 0, SEEK_END);
+	err = vhd_journal_seek(j, j->header.journal_eof, SEEK_SET);
 	if (err)
 		return err;
 
@@ -138,10 +138,10 @@ vhd_journal_validate_header(vhd_journal_t *j, vhd_journal_header_t *header)
 	if (eof == (off64_t)-1)
 		return -errno;
 
-	if (j->header.journal_data_offset > eof)
+	if (j->header.journal_data_offset > j->header.journal_eof)
 		return -EINVAL;
 
-	if (j->header.journal_metadata_offset > eof)
+	if (j->header.journal_metadata_offset > j->header.journal_eof)
 		return -EINVAL;
 
 	return 0;
@@ -220,6 +220,7 @@ vhd_journal_add_journal_header(vhd_journal_t *j)
 	memcpy(j->header.cookie,
 	       VHD_JOURNAL_HEADER_COOKIE, sizeof(j->header.cookie));
 	j->header.vhd_footer_offset = off - sizeof(vhd_footer_t);
+	j->header.journal_eof = sizeof(vhd_journal_header_t);
 
 	return vhd_journal_write_header(j, &j->header);
 }
@@ -336,7 +337,7 @@ vhd_journal_update(vhd_journal_t *j, off64_t offset,
 {
 	int err;
 	off64_t eof;
-	uint64_t *off;
+	uint64_t *off, off_bak;
 	uint32_t *entries;
 	vhd_journal_entry_t entry;
 
@@ -346,13 +347,9 @@ vhd_journal_update(vhd_journal_t *j, off64_t offset,
 	entry.cookie   = VHD_JOURNAL_ENTRY_COOKIE;
 	entry.checksum = vhd_journal_checksum_entry(&entry, buf, size);
 
-	err = vhd_journal_seek(j, 0, SEEK_END);
+	err = vhd_journal_seek(j, j->header.journal_eof, SEEK_SET);
 	if (err)
 		return err;
-
-	eof = vhd_journal_position(j);
-	if (eof == (off64_t)-1)
-		return -errno;
 
 	err = vhd_journal_write_entry(j, &entry);
 	if (err)
@@ -370,20 +367,24 @@ vhd_journal_update(vhd_journal_t *j, off64_t offset,
 		entries = &j->header.journal_metadata_entries;
 	}
 
+	off_bak = *off;
 	if (!(*entries)++)
-		*off = eof;
+		*off = j->header.journal_eof;
+	j->header.journal_eof += (size + sizeof(vhd_journal_entry_t));
 
 	err = vhd_journal_write_header(j, &j->header);
 	if (err) {
 		if (!--(*entries))
-			*off = 0;
+			*off = off_bak;
+		j->header.journal_eof -= (size + sizeof(vhd_journal_entry_t));
 		goto fail;
 	}
 
 	return 0;
 
 fail:
-	vhd_journal_truncate(j, eof);
+	if (!j->is_block)
+		vhd_journal_truncate(j, j->header.journal_eof);
 	return err;
 }
 
@@ -619,15 +620,7 @@ vhd_journal_add_metadata(vhd_journal_t *j)
 			return err;
 	}
 
-	err = vhd_journal_seek(j, 0, SEEK_END);
-	if (err)
-		return err;
-
-	eof = vhd_journal_position(j);
-	if (eof == (off64_t)-1)
-		return -errno;
-
-	j->header.journal_data_offset = eof;
+	j->header.journal_data_offset = j->header.journal_eof;
 	return vhd_journal_write_header(j, &j->header);
 }
 
@@ -1079,7 +1072,7 @@ out:
 	}
 
 	if (!err && !vhd_file_size_fixed(vhd))
-		ftruncate(vhd->fd,
+		err = ftruncate(vhd->fd,
 			  j->header.vhd_footer_offset +
 			  sizeof(vhd_footer_t));
 
@@ -1157,7 +1150,8 @@ vhd_journal_remove(vhd_journal_t *j)
 
 	if (j->jfd) {
 		close(j->jfd);
-		unlink(j->jname);
+		if (!j->is_block)
+			unlink(j->jname);
 	}
 
 	vhd_close(&j->vhd);
@@ -1237,6 +1231,7 @@ vhd_journal_create(vhd_journal_t *j, const char *file, const char *jfile)
 	int i, err;
 	size_t size;
 	off64_t off;
+	struct stat stats;
 
 	memset(j, 0, sizeof(vhd_journal_t));
 	j->jfd = -1;
@@ -1248,12 +1243,24 @@ vhd_journal_create(vhd_journal_t *j, const char *file, const char *jfile)
 	}
 
 	if (access(j->jname, F_OK) == 0) {
-		err = -EEXIST;
-		goto fail1;
+		err = stat(j->jname, &stats);
+		if (err == -1) {
+			err = -errno;
+			goto fail1;
+		}
+		if (S_ISBLK(stats.st_mode)) {
+			j->is_block = 1;
+		} else {
+			err = -EEXIST;
+			goto fail1;
+		}
 	}
 
-	j->jfd = open(j->jname,
-		      O_CREAT | O_TRUNC | O_LARGEFILE | O_RDWR, 0644);
+	if (j->is_block)
+		j->jfd = open(j->jname, O_LARGEFILE | O_RDWR, 0644);
+	else
+		j->jfd = open(j->jname,
+			      O_CREAT | O_TRUNC | O_LARGEFILE | O_RDWR, 0644);
 	if (j->jfd == -1) {
 		err = -errno;
 		goto fail1;
@@ -1294,7 +1301,8 @@ vhd_journal_create(vhd_journal_t *j, const char *file, const char *jfile)
 fail1:
 	if (j->jfd != -1) {
 		close(j->jfd);
-		unlink(j->jname);
+		if (!j->is_block)
+			unlink(j->jname);
 	}
 	free(j->jname);
 	memset(j, 0, sizeof(vhd_journal_t));
@@ -1388,7 +1396,8 @@ vhd_journal_commit(vhd_journal_t *j)
 	if (err)
 		return err;
 
-	err = vhd_journal_truncate(j, sizeof(vhd_journal_header_t));
+	if (!j->is_block)
+		err = vhd_journal_truncate(j, sizeof(vhd_journal_header_t));
 	if (err)
 		return -errno;
 

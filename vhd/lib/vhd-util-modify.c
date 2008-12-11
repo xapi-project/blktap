@@ -28,6 +28,8 @@
 #include "libvhd.h"
 #include "libvhd-journal.h"
 
+TEST_FAIL_EXTERN_VARS;
+
 int
 vhd_util_modify(int argc, char **argv)
 {
@@ -107,12 +109,14 @@ vhd_util_modify(int argc, char **argv)
 		goto out;
 
 	if (parent) {
+		TEST_FAIL_AT(FAIL_REPARENT_BEGIN);
 		err = vhd_change_parent(&journal.vhd, newparent, parent_raw);
 		if (err) {
 			printf("failed to set parent to '%s': %d\n",
 					newparent, err);
 			goto out;
 		}
+		TEST_FAIL_AT(FAIL_REPARENT_END);
 	}
 		
 out:

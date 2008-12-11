@@ -51,6 +51,8 @@ struct command commands[] = {
 		printf(" }\n");					\
 	} while (0)
 
+TEST_FAIL_EXTERN_VARS;
+
 void
 help(void)
 {
@@ -120,6 +122,14 @@ main(int argc, char *argv[])
 
 		cargv[cnt++] = arg;
 	}
+
+#ifdef ENABLE_FAILURE_TESTING
+	for (i = 0; i < NUM_FAIL_TESTS; i++) {
+		TEST_FAIL[i] = 0;
+		if (getenv(ENV_VAR_FAIL[i]))
+			TEST_FAIL[i] = 1;
+	}
+#endif // ENABLE_FAILURE_TESTING
 
 	ret = cmd->func(cnt, cargv);
 

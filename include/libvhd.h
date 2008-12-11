@@ -54,6 +54,30 @@
 #define vhd_flag_clear(word, flag)       ((word) &= ~(flag))
 #define vhd_flag_test(word, flag)        ((word) & (flag))
 
+
+#define ENABLE_FAILURE_TESTING
+#define FAIL_REPARENT_BEGIN        0
+#define FAIL_REPARENT_LOCATOR      1
+#define FAIL_REPARENT_END          2
+#define FAIL_RESIZE_BEGIN          3
+#define FAIL_RESIZE_DATA_MOVED     4
+#define FAIL_RESIZE_METADATA_MOVED 5
+#define FAIL_RESIZE_END            6
+#define NUM_FAIL_TESTS             7
+
+#ifdef ENABLE_FAILURE_TESTING
+#define TEST_FAIL_AT(point) \
+	if (TEST_FAIL[point]) { \
+		printf("Failing at %s\n", ENV_VAR_FAIL[point]); exit(EINVAL); }
+#define TEST_FAIL_EXTERN_VARS              \
+	extern const char* ENV_VAR_FAIL[]; \
+	extern int TEST_FAIL[];
+#else
+#define TEST_FAIL_AT(point)
+#define TEST_FAIL_EXTERN_VARS
+#endif // ENABLE_FAILURE_TESTING
+
+
 static const char                  VHD_POISON_COOKIE[] = "v_poison";
 
 typedef struct hd_ftr              vhd_footer_t;

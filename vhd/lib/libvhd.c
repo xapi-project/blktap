@@ -37,6 +37,19 @@ libvhd_set_log_level(int level)
 
 #define BIT_MASK 0x80
 
+#ifdef ENABLE_FAILURE_TESTING
+const char* ENV_VAR_FAIL[NUM_FAIL_TESTS] = {
+	"VHD_UTIL_TEST_FAIL_REPARENT_BEGIN",
+	"VHD_UTIL_TEST_FAIL_REPARENT_LOCATOR",
+	"VHD_UTIL_TEST_FAIL_REPARENT_END",
+	"VHD_UTIL_TEST_FAIL_RESIZE_BEGIN",
+	"VHD_UTIL_TEST_FAIL_RESIZE_DATA_MOVED",
+	"VHD_UTIL_TEST_FAIL_RESIZE_METADATA_MOVED",
+	"VHD_UTIL_TEST_FAIL_RESIZE_END"
+};
+int TEST_FAIL[NUM_FAIL_TESTS];
+#endif // ENABLE_FAILURE_TESTING
+
 static inline int
 test_bit (volatile char *addr, int nr)
 {
@@ -2619,6 +2632,8 @@ vhd_change_parent(vhd_context_t *child, char *parent_path, int raw)
 			goto out;
 		}
 	}
+
+	TEST_FAIL_AT(FAIL_REPARENT_LOCATOR);
 
 	err = vhd_write_header(child, &child->header);
 	if (err) {

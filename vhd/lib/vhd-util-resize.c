@@ -32,6 +32,8 @@ typedef struct vhd_block {
 	uint32_t offset;
 } vhd_block_t;
 
+TEST_FAIL_EXTERN_VARS;
+
 static inline uint32_t
 secs_to_blocks_down(vhd_context_t *vhd, uint64_t secs)
 {
@@ -954,11 +956,15 @@ vhd_dynamic_grow(vhd_journal_t *journal, uint64_t secs)
 
 	} while (eom + size_needed >= vhd_sectors_to_bytes(first_block.offset));
 
+	TEST_FAIL_AT(FAIL_RESIZE_DATA_MOVED);
+
 shift_metadata:
 	/* shift any metadata after the bat to make room for new bat sectors */
 	err = vhd_shift_metadata(journal, eob, bat_needed, map_needed);
 	if (err)
 		return err;
+
+	TEST_FAIL_AT(FAIL_RESIZE_METADATA_MOVED);
 
 add_entries:
 	return vhd_add_bat_entries(journal, blocks);
@@ -1074,10 +1080,14 @@ vhd_util_resize(int argc, char **argv)
 	if (err)
 		goto out;
 
+	TEST_FAIL_AT(FAIL_RESIZE_BEGIN);
+
 	if (vhd_type_dynamic(vhd))
 		err = vhd_dynamic_resize(&journal, size);
 	else
 		err = vhd_fixed_resize(&journal, size);
+
+	TEST_FAIL_AT(FAIL_RESIZE_END);
 
 out:
 	if (err) {
