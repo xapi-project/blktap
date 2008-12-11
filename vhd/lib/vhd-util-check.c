@@ -179,7 +179,7 @@ vhd_util_check_validate_differencing_header(vhd_context_t *vhd)
 		uint32_t now;
 
 		now = vhd_time(time(NULL));
-		if (header->prt_ts >= now)
+		if (header->prt_ts > now)
 			return "parent creation time in future";
 
 		if (vhd_header_decode_parent(vhd, header, &parent))
