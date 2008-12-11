@@ -327,7 +327,7 @@ tapdisk_vbd_reactivate_volume(const char *name)
 	}
 
 	free(cmd);
-	err = asprintf(&cmd, "lvchange -ay %s", name);
+	err = asprintf(&cmd, "lvchange -ay --refresh %s", name);
 	if (err == - 1) {
 		EPRINTF("failed to activate %s\n", name);
 		return -errno;
