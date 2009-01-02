@@ -48,7 +48,7 @@ clean:
 	$(MAKE) -C $(LIBDIR) clean
 	rm -rf *.o *~ $(IBIN) $(DEPS) xen TAGS
 
-.PHONY: all clean install blktapctrl libblktap
+.PHONY: all clean install libblktap
 
 -include $(DEPS)
 

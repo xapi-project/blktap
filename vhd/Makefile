@@ -48,6 +48,6 @@ clean:
 	$(MAKE) -C $(LIBDIR) clean
 	rm -rf *.o *~ $(DEPS) $(IBIN)
 
-.PHONY: all build clean install libvhd vhd-util vhd-index vhd-update
+.PHONY: all build clean install libvhd
 
 -include $(DEPS)
