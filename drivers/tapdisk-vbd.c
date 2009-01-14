@@ -1303,6 +1303,8 @@ __tapdisk_vbd_complete_td_request(td_vbd_t *vbd, td_vbd_request_t *vreq,
 	vbd->secs_pending  -= treq.secs;
 	vreq->secs_pending -= treq.secs;
 
+	vreq->blocked = treq.blocked;
+
 	if (err) {
 		vreq->status = BLKIF_RSP_ERROR;
 		vreq->error  = (vreq->error ? : err);
@@ -1452,6 +1454,7 @@ tapdisk_vbd_issue_request(td_vbd_t *vbd, td_vbd_request_t *vreq)
 
 		treq.id             = id;
 		treq.sidx           = i;
+		treq.blocked        = 0;
 		treq.buf            = page;
 		treq.sec            = sector_nr;
 		treq.secs           = nsects;
@@ -1527,8 +1530,16 @@ tapdisk_vbd_reissue_failed_requests(td_vbd_t *vbd)
 			continue;
 		}
 
-		vbd->retries++;
-		vreq->num_retries++;
+		/*
+		 * never fail due to too many retries if we are blocked on a 
+		 * dependency
+		 */
+		if (vreq->blocked) {
+			vreq->blocked = 0;
+		} else {
+			vbd->retries++;
+			vreq->num_retries++;
+		}
 		vreq->error  = 0;
 		vreq->status = BLKIF_RSP_OKAY;
 		DBG(TLOG_DBG, "retry #%d of req %"PRIu64", "

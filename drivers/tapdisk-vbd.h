@@ -69,6 +69,7 @@ struct td_vbd_request {
 	int16_t                     status;
 
 	int                         error;
+	int                         blocked; /* blocked on a dependency */
 	int                         submitting;
 	int                         secs_pending;
 	int                         num_retries;

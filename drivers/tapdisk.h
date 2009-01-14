@@ -126,6 +126,8 @@ struct td_request {
 	td_sector_t                  sec;
 	int                          secs;
 
+	uint8_t                      blocked; /* blocked on a dependency */
+
 	td_image_t                  *image;
 
 	td_callback_t                cb;

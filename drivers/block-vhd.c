@@ -1732,6 +1732,7 @@ vhd_queue_write(td_driver_t *driver, td_request_t treq)
 
 		case VHD_BM_BAT_LOCKED:
 			err = -EBUSY;
+			clone.blocked = 1;
 			goto fail;
 
 		case VHD_BM_BAT_CLEAR:
