@@ -49,6 +49,8 @@ unsigned int SPB;
 #define ASSERTING   1
 #define MICROSOFT_COMPAT
 
+#define VHD_BATMAP_MAX_RETRIES 10
+
 #define __TRACE(s)							\
 	do {								\
 		DBG(TLOG_DBG, "%s: QUEUED: %" PRIu64 ", COMPLETED: %"	\
@@ -379,7 +381,7 @@ vhd_free_bat(struct vhd_state *s)
 static int
 vhd_initialize_bat(struct vhd_state *s)
 {
-	int err, psize;
+	int err, psize, batmap_required, i;
 
 	memset(&s->bat, 0, sizeof(struct vhd_bat));
 
@@ -391,16 +393,30 @@ vhd_initialize_bat(struct vhd_state *s)
 		return err;
 	}
 
-	err = find_next_free_block(s);
-	if (err)
-		goto fail;
+	batmap_required = 1;
+	if (test_vhd_flag(s->flags, VHD_FLAG_OPEN_RDONLY)) {
+		batmap_required = 0;
+	} else {
+		err = find_next_free_block(s);
+		if (err)
+			goto fail;
+	}
 
 	if (vhd_has_batmap(&s->vhd)) {
-		err = vhd_read_batmap(&s->vhd, &s->bat.batmap);
-		if (err) {
-			EPRINTF("%s: reading batmap: %d\n", s->vhd.file, err);
-			goto fail;
+		for (i = 0; i < VHD_BATMAP_MAX_RETRIES; i++) {
+			err = vhd_read_batmap(&s->vhd, &s->bat.batmap);
+			if (err) {
+				EPRINTF("%s: reading batmap: %d\n",
+						s->vhd.file, err);
+				if (batmap_required)
+					goto fail;
+			} else {
+				break;
+			}
 		}
+		if (err)
+			EPRINTF("%s: ignoring non-critical batmap error\n",
+					s->vhd.file);
 	}
 
 	err = posix_memalign((void **)&s->bat.bat_buf,
