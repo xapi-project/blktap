@@ -17,6 +17,10 @@
 #include "libvhd.h"
 #include "vhd-util.h"
 
+// allow the VHD timestamp to be at most this many seconds into the future to 
+// account for time skew with NFS servers
+#define TIMESTAMP_MAX_SLACK 1800
+
 static int
 vhd_util_check_zeros(void *buf, size_t size)
 {
@@ -91,7 +95,7 @@ ok:
 		return "invalid data offset";
 
 	now = vhd_time(time(NULL));
-	if (footer->timestamp > now)
+	if (footer->timestamp > now + TIMESTAMP_MAX_SLACK)
 		return "creation time in future";
 
 	if (!strncmp(footer->crtr_app, "tap", 3) &&
@@ -179,7 +183,7 @@ vhd_util_check_validate_differencing_header(vhd_context_t *vhd)
 		uint32_t now;
 
 		now = vhd_time(time(NULL));
-		if (header->prt_ts > now)
+		if (header->prt_ts > now + TIMESTAMP_MAX_SLACK)
 			return "parent creation time in future";
 
 		if (vhd_header_decode_parent(vhd, header, &parent))
