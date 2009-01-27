@@ -74,7 +74,6 @@ struct tapdisk_channel {
 	struct list_head          list;
 	struct xenbus_watch       pause_watch;
 	struct xenbus_watch       shutdown_watch;
-	char                      pause_watch_registered;
 
 	struct xs_handle         *xsh;
 };

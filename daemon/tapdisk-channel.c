@@ -694,11 +694,11 @@ tapdisk_channel_pause_event(struct xs_handle *xsh,
 		return;
 	}
 
-	/* registering a watch produces a spurious event. ignore it. */
-	if (!channel->pause_watch_registered) {
-		channel->pause_watch_registered = 1;
-		return;
-	}
+	/* NB: The VBD is essentially considered ready since the
+	 * backend hotplug event ocurred, which is just after
+	 * start-tapdisk, not after watch registration. We start
+	 * testing xenstore keys with the very first shot, but defer
+	 * until after connection completion. */
 
 	err = tapdisk_channel_validate_watch(channel, path);
 	if (err) {
@@ -711,22 +711,18 @@ tapdisk_channel_pause_event(struct xs_handle *xsh,
 		err = 0;
 	}
 
-	/* have to handle this asynchronously if tapdisk is not ready yet */
-	if (!channel->connected) {
-		if (!strcmp(path, channel->pause_str) &&
-		    xs_exists(xsh, channel->pause_str)) {
-			DPRINTF("%s: deferring pause request\n", path);
-			channel->pause_needed = 1;
-		} else
-			EPRINTF("bad event %s: channel not connected\n", path);
-		return;
-	}
-
 	if (xs_exists(xsh, channel->pause_str)) {
 		if (xs_exists(xsh, channel->pause_done_str)) {
 			EPRINTF("got pause request for paused vbd %s\n",
 				channel->path);
 			err = -EINVAL;
+			goto out;
+		}
+
+		/* defer if tapdisk is not ready yet */
+		if (!channel->connected) {
+			DPRINTF("%s: deferring pause request\n", path);
+			channel->pause_needed = 1;
 			goto out;
 		}
 
