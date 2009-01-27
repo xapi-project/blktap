@@ -157,7 +157,8 @@ tapdisk_channel_send_message(tapdisk_channel_t *channel,
 		channel->channel_id, channel->cookie);
 
 	if (channel->state != TAPDISK_CHANNEL_IDLE &&
-	    message->type  != TAPDISK_MESSAGE_CLOSE)
+	    message->type  != TAPDISK_MESSAGE_CLOSE &&
+	    message->type  != TAPDISK_MESSAGE_FORCE_SHUTDOWN)
 		EPRINTF("%s: writing message to non-idle channel (%d)\n",
 			channel->path, channel->state);
 
@@ -207,6 +208,7 @@ tapdisk_channel_send_message(tapdisk_channel_t *channel,
 		break;
 
 	case TAPDISK_MESSAGE_CLOSE:
+	case TAPDISK_MESSAGE_FORCE_SHUTDOWN:
 		channel->state = TAPDISK_CHANNEL_WAIT_CLOSE;
 		break;
 
@@ -483,6 +485,21 @@ tapdisk_channel_send_shutdown_request(tapdisk_channel_t *channel)
 }
 
 static int
+tapdisk_channel_send_force_shutdown_request(tapdisk_channel_t *channel)
+{
+	tapdisk_message_t message;
+
+	memset(&message, 0, sizeof(tapdisk_message_t));
+
+	message.type       = TAPDISK_MESSAGE_FORCE_SHUTDOWN;
+	message.drivertype = channel->drivertype;
+	message.cookie     = channel->cookie;
+	
+	return tapdisk_channel_send_message(channel, &message, 2);
+}
+
+
+static int
 tapdisk_channel_receive_shutdown_response(tapdisk_channel_t *channel,
 					  tapdisk_message_t *message)
 {
@@ -630,6 +647,8 @@ tapdisk_channel_shutdown_event(struct xs_handle *xsh,
 {
 	int err;
 	tapdisk_channel_t *channel;
+	char *s;
+	size_t len;
 
 	channel = watch->data;
 
@@ -647,7 +666,16 @@ tapdisk_channel_shutdown_event(struct xs_handle *xsh,
 		return;
 	}
 
-	tapdisk_channel_send_shutdown_request(channel);
+	s = xs_read(channel->xsh, XBT_NULL, path, &len);
+	if (!s)
+		return;
+
+	if (len == strlen("force") && !memcmp(s, "force", len))
+		tapdisk_channel_send_force_shutdown_request(channel);
+	else
+		tapdisk_channel_send_shutdown_request(channel);
+
+	free(s);
 }
 
 static void
