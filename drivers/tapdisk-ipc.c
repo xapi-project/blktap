@@ -260,6 +260,12 @@ tapdisk_ipc_read(td_ipc_t *ipc)
 		tapdisk_vbd_close(vbd);
 		return 0; /* response written asynchronously */
 
+	case TAPDISK_MESSAGE_FORCE_SHUTDOWN:
+		err = tapdisk_vbd_close(vbd);
+		if (err)
+			tapdisk_vbd_kill_queue(vbd);
+		return 0; /* response written asynchronously */
+
 	case TAPDISK_MESSAGE_EXIT:
 		return 0;
 	}
