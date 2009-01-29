@@ -32,6 +32,7 @@ Source24: tapdisk-vbd.o
 Source25: vhd-util-scan.o
 Source26: vhd-util-check.o
 Source27: vhd-util-revert.o
+Source28: tapdisk-diff.o
 
 Patch0: %{name}-development.patch
 BuildRoot: %{_tmppath}/%{name}-%{version}-%{release}-buildroot
@@ -79,6 +80,7 @@ cp %{SOURCE24} drivers
 cp %{SOURCE25} vhd/lib
 cp %{SOURCE26} vhd/lib
 cp %{SOURCE27} vhd/lib
+cp %{SOURCE28} drivers
 
 %build
 %{__make} USE_SYSTEM_LIBRARIES=y
@@ -105,6 +107,7 @@ rm -rf $RPM_BUILD_ROOT
 %{_sbindir}/vhd-index
 %{_sbindir}/tapdisk-client
 %{_sbindir}/tapdisk-stream
+%{_sbindir}/tapdisk-diff
 
 %files devel
 %defattr(-,root,root,-)
