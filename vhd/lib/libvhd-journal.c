@@ -1071,7 +1071,7 @@ out:
 		free(locators);
 	}
 
-	if (!err && !vhd_file_size_fixed(vhd))
+	if (!err && !vhd->is_block)
 		err = ftruncate(vhd->fd,
 			  j->header.vhd_footer_offset +
 			  sizeof(vhd_footer_t));
@@ -1491,7 +1491,7 @@ vhd_journal_revert(vhd_journal_t *j)
 	if (err)
 		return err;
 
-	if (!vhd_file_size_fixed(vhd)) {
+	if (!vhd->is_block) {
 		err = ftruncate(vhd->fd, j->header.vhd_footer_offset +
 				sizeof(vhd_footer_t));
 		if (err)

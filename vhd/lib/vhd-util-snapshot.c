@@ -104,7 +104,7 @@ vhd_util_snapshot(int argc, char **argv)
 	}
 
 	optind = 0;
-	while ((c = getopt(argc, argv, "n:p:l:bmh")) != -1) {
+	while ((c = getopt(argc, argv, "n:p:l:mh")) != -1) {
 		switch (c) {
 		case 'n':
 			name = optarg;
@@ -114,9 +114,6 @@ vhd_util_snapshot(int argc, char **argv)
 			break;
 		case 'l':
 			limit = strtol(optarg, NULL, 10);
-			break;
-		case 'b':
-			vhd_flag_set(flags, VHD_FLAG_CREAT_FILE_SIZE_FIXED);
 			break;
 		case 'm':
 			vhd_flag_set(flags, VHD_FLAG_CREAT_PARENT_RAW);
@@ -194,6 +191,6 @@ out:
 
 usage:
 	printf("options: <-n name> <-p parent name> [-l snapshot depth limit]"
-	       " [-b file_is_fixed_size] [-m parent_is_raw] [-h help]\n");
+	       " [-m parent_is_raw] [-h help]\n");
 	return err;
 }

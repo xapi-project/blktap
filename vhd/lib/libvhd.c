@@ -1210,12 +1210,22 @@ vhd_has_batmap(vhd_context_t *ctx)
 }
 
 /* 
- * is the size of the file this VHD lives in fixed? (e.g. a raw disk partition)
+ * Is the size of the file this VHD lives in fixed (e.g. a raw disk partition)?
+ * This affects whether the file can be truncated and where the footer is 
+ * written.
  */
-int
-vhd_file_size_fixed(vhd_context_t *ctx)
+static int
+vhd_test_file_fixed(vhd_context_t *ctx)
 {
-	return (ctx->footer.crtr_app[3] == 'B');
+	int err;
+	struct stat stats;
+
+	err = stat(ctx->file, &stats);
+	if (err == -1)
+		return -errno;
+
+	ctx->is_block = !!(S_ISBLK(stats.st_mode));
+	return err;
 }
 
 int
@@ -1895,7 +1905,7 @@ vhd_write_footer(vhd_context_t *ctx, vhd_footer_t *footer)
 	int err;
 	off64_t off;
 
-	if (vhd_file_size_fixed(ctx))
+	if (ctx->is_block)
 		err = vhd_footer_offset_at_eof(ctx, &off);
 	else
 		err = vhd_end_of_data(ctx, &off);
@@ -2337,6 +2347,10 @@ vhd_open(vhd_context_t *ctx, const char *file, int flags)
 		goto fail;
 	}
 
+	err = vhd_test_file_fixed(ctx);
+	if (err)
+		goto fail;
+
 	if (flags & VHD_OPEN_FAST) {
 		err = vhd_open_fast(ctx);
 		if (err)
@@ -2385,7 +2399,7 @@ vhd_close(vhd_context_t *ctx)
 }
 
 static inline void
-vhd_initialize_footer(vhd_context_t *ctx, int type, uint64_t size, int fixed)
+vhd_initialize_footer(vhd_context_t *ctx, int type, uint64_t size)
 {
 	memset(&ctx->footer, 0, sizeof(vhd_footer_t));
 	memcpy(ctx->footer.cookie, HD_COOKIE, sizeof(ctx->footer.cookie));
@@ -2401,8 +2415,6 @@ vhd_initialize_footer(vhd_context_t *ctx, int type, uint64_t size, int fixed)
 	ctx->footer.saved        = 0;
 	ctx->footer.data_offset  = 0xFFFFFFFFFFFFFFFF;
 	strcpy(ctx->footer.crtr_app, "tap");
-	if (fixed)
-		ctx->footer.crtr_app[3] = 'B'; // better ideas?
 	uuid_generate(ctx->footer.uuid);
 }
 
@@ -2820,8 +2832,11 @@ __vhd_create(const char *name, const char *parent, uint64_t bytes, int type,
 		goto out;
 	}
 
-	vhd_initialize_footer(&ctx, type, size, 
-			vhd_flag_test(flags, VHD_FLAG_CREAT_FILE_SIZE_FIXED));
+	err = vhd_test_file_fixed(&ctx);
+	if (err)
+		goto out;
+
+	vhd_initialize_footer(&ctx, type, size);
 
 	if (type == HD_TYPE_FIXED) {
 		err = vhd_initialize_fixed_disk(&ctx);
@@ -2871,7 +2886,7 @@ __vhd_create(const char *name, const char *parent, uint64_t bytes, int type,
 		goto out;
 	}
 
-	if (vhd_flag_test(flags, VHD_FLAG_CREAT_FILE_SIZE_FIXED))
+	if (ctx.is_block)
 		off -= sizeof(vhd_footer_t);
 
 	err = vhd_write_footer_at(&ctx, &ctx.footer, off);
@@ -2882,7 +2897,7 @@ __vhd_create(const char *name, const char *parent, uint64_t bytes, int type,
 
 out:
 	vhd_close(&ctx);
-	if (err && !vhd_flag_test(flags, VHD_FLAG_CREAT_FILE_SIZE_FIXED))
+	if (err && !ctx.is_block)
 		unlink(name);
 	return err;
 }

@@ -29,7 +29,7 @@ vhd_util_create(int argc, char **argv)
 		goto usage;
 
 	optind = 0;
-	while ((c = getopt(argc, argv, "n:s:rbh")) != -1) {
+	while ((c = getopt(argc, argv, "n:s:rh")) != -1) {
 		switch (c) {
 		case 'n':
 			name = optarg;
@@ -40,9 +40,6 @@ vhd_util_create(int argc, char **argv)
 			break;
 		case 'r':
 			sparse = 0;
-			break;
-		case 'b':
-			vhd_flag_set(flags, VHD_FLAG_CREAT_FILE_SIZE_FIXED);
 			break;
 		case 'h':
 		default:
@@ -58,7 +55,6 @@ vhd_util_create(int argc, char **argv)
 				  flags);
 
 usage:
-	printf("options: <-n name> <-s size (MB)> [-r reserve] "
-			"[-b file_is_fixed_size] [-h help]\n");
+	printf("options: <-n name> <-s size (MB)> [-r reserve] [-h help]\n");
 	return -EINVAL;
 }
