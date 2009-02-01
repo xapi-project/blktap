@@ -845,7 +845,7 @@ tapdisk_vbd_queue_count(td_vbd_t *vbd, int *new,
 	*completed = c;
 }
 
-int
+static int
 tapdisk_vbd_shutdown(td_vbd_t *vbd)
 {
 	int new, pending, failed, completed;

@@ -170,7 +170,6 @@ void tapdisk_vbd_set_callback(td_vbd_t *, td_vbd_cb_t, void *);
 int tapdisk_vbd_open(td_vbd_t *, const char *, uint16_t,
 		     uint16_t, const char *, td_flag_t);
 int tapdisk_vbd_close(td_vbd_t *);
-int tapdisk_vbd_shutdown(td_vbd_t *);
 
 int tapdisk_vbd_open_vdi(td_vbd_t *, const char *,
 			 uint16_t, uint16_t, td_flag_t);

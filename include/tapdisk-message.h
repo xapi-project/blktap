@@ -89,7 +89,6 @@ enum tapdisk_message_id {
 	TAPDISK_MESSAGE_RESUME,
 	TAPDISK_MESSAGE_RESUME_RSP,
 	TAPDISK_MESSAGE_CLOSE,
-	TAPDISK_MESSAGE_FORCE_SHUTDOWN,
 	TAPDISK_MESSAGE_CLOSE_RSP,
 	TAPDISK_MESSAGE_EXIT,
 };
@@ -127,9 +126,6 @@ tapdisk_message_name(enum tapdisk_message_id id)
 
 	case TAPDISK_MESSAGE_CLOSE:
 		return "close";
-
-	case TAPDISK_MESSAGE_FORCE_SHUTDOWN:
-		return "force shutdown";
 
 	case TAPDISK_MESSAGE_CLOSE_RSP:
 		return "close response";
