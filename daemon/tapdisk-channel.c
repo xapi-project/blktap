@@ -286,8 +286,10 @@ tapdisk_channel_connect_backdev(tapdisk_channel_t *channel)
 
 	err = ioctl(channel->blktap_fd,
 		    BLKTAP_IOCTL_BACKDEV_SETUP, channel->minor);
-	if (err)
+	if (err) {
+		err = -errno;
 		goto fail;
+	}
 
 	err = asprintf(&path, "%s/backdev-node", channel->path);
 	if (err == -1) {
