@@ -1181,11 +1181,19 @@ vhd_journal_open(vhd_journal_t *j, const char *file, const char *jfile)
 		goto fail;
 	}
 
+	err = vhd_test_file_fixed(j->jname, &j->is_block);
+	if (err)
+		goto fail;
+
 	vhd->fd = open(file, O_LARGEFILE | O_RDWR | O_DIRECT);
 	if (vhd->fd == -1) {
 		err = -errno;
 		goto fail;
 	}
+
+	err = vhd_test_file_fixed(file, &vhd->is_block);
+	if (err)
+		goto fail;
 
 	err = vhd_journal_read_journal_header(j, &j->header);
 	if (err)
@@ -1243,14 +1251,11 @@ vhd_journal_create(vhd_journal_t *j, const char *file, const char *jfile)
 	}
 
 	if (access(j->jname, F_OK) == 0) {
-		err = stat(j->jname, &stats);
-		if (err == -1) {
-			err = -errno;
+		err = vhd_test_file_fixed(j->jname, &j->is_block);
+		if (err)
 			goto fail1;
-		}
-		if (S_ISBLK(stats.st_mode)) {
-			j->is_block = 1;
-		} else {
+
+		if (!j->is_block) {
 			err = -EEXIST;
 			goto fail1;
 		}
@@ -1429,6 +1434,12 @@ vhd_journal_revert(vhd_journal_t *j)
 	if (j->vhd.fd == -1) {
 		free(file);
 		return -errno;
+	}
+
+	err = vhd_test_file_fixed(file, &vhd->is_block);
+	if (err) {
+		free(file);
+		return err;
 	}
 
 	err  = vhd_journal_restore_metadata(j);

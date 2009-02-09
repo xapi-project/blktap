@@ -1210,21 +1210,20 @@ vhd_has_batmap(vhd_context_t *ctx)
 }
 
 /* 
- * Is the size of the file this VHD lives in fixed (e.g. a raw disk partition)?
- * This affects whether the file can be truncated and where the footer is 
- * written.
+ * Is this a block device (with a fixed size)? This affects whether the file 
+ * can be truncated and where the footer is written for VHDs.
  */
-static int
-vhd_test_file_fixed(vhd_context_t *ctx)
+int
+vhd_test_file_fixed(const char *file, int *is_block)
 {
 	int err;
 	struct stat stats;
 
-	err = stat(ctx->file, &stats);
+	err = stat(file, &stats);
 	if (err == -1)
 		return -errno;
 
-	ctx->is_block = !!(S_ISBLK(stats.st_mode));
+	*is_block = !!(S_ISBLK(stats.st_mode));
 	return err;
 }
 
@@ -2347,7 +2346,7 @@ vhd_open(vhd_context_t *ctx, const char *file, int flags)
 		goto fail;
 	}
 
-	err = vhd_test_file_fixed(ctx);
+	err = vhd_test_file_fixed(ctx->file, &ctx->is_block);
 	if (err)
 		goto fail;
 
@@ -2832,7 +2831,7 @@ __vhd_create(const char *name, const char *parent, uint64_t bytes, int type,
 		goto out;
 	}
 
-	err = vhd_test_file_fixed(&ctx);
+	err = vhd_test_file_fixed(ctx.file, &ctx.is_block);
 	if (err)
 		goto out;
 

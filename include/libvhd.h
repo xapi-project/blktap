@@ -182,6 +182,8 @@ vhd_parent_raw(vhd_context_t *ctx)
 
 void libvhd_set_log_level(int);
 
+int vhd_test_file_fixed(const char *, int *);
+
 uint32_t vhd_time(time_t time);
 size_t vhd_time_to_string(uint32_t timestamp, char *target);
 uint32_t vhd_chs(uint64_t size);
