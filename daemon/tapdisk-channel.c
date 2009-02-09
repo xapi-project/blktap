@@ -656,7 +656,7 @@ static void
 tapdisk_channel_pause_event(struct xs_handle *xsh,
 			    struct xenbus_watch *watch, const char *path)
 {
-	int err;
+	int err, paused;
 	tapdisk_channel_t *channel;
 
 	channel = watch->data;
@@ -685,11 +685,19 @@ tapdisk_channel_pause_event(struct xs_handle *xsh,
 		err = 0;
 	}
 
+	paused  = xs_exists(xsh, channel->pause_done_str);
+
 	if (xs_exists(xsh, channel->pause_str)) {
-		if (xs_exists(xsh, channel->pause_done_str)) {
-			EPRINTF("got pause request for paused vbd %s\n",
-				channel->path);
-			err = -EINVAL;
+		/*
+		 * Duplicate requests are a protocol validation, but
+		 * impossible to identify if watch registration and an
+		 * actual pause request may fire separately in close
+		 * succession. Warn, but do not signal an error.
+		 */
+		int pausing = channel->state == TAPDISK_CHANNEL_WAIT_PAUSE;
+		if (pausing || paused) {
+			DPRINTF("Ignoring pause event for %s vbd %s\n",
+				pausing ? "pausing" : "paused", channel->path);
 			goto out;
 		}
 
