@@ -19,6 +19,8 @@
 #include "libvhd.h"
 #include "relative-path.h"
 
+#define VHD_HEADER_MAX_RETRIES 10
+
 static int libvhd_dbg = 0;
 
 void
@@ -2320,7 +2322,7 @@ out:
 int
 vhd_open(vhd_context_t *ctx, const char *file, int flags)
 {
-	int err, oflags;
+	int err, oflags, i;
 
 	if (flags & VHD_OPEN_STRICT)
 		vhd_flag_clear(flags, VHD_OPEN_FAST);
@@ -2368,7 +2370,13 @@ vhd_open(vhd_context_t *ctx, const char *file, int flags)
 	}
 
 	if (vhd_type_dynamic(ctx)) {
-		err = vhd_read_header(ctx, &ctx->header);
+		for (i = 0; i < VHD_HEADER_MAX_RETRIES; i++) {
+			err = vhd_read_header(ctx, &ctx->header);
+			if (!err)
+				break;
+			VHDLOG("Error reading header, retry %d\n", i);
+			sleep(1);
+		}
 		if (err)
 			goto fail;
 
