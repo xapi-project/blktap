@@ -647,7 +647,7 @@ static void
 tapdisk_channel_pause_event(struct xs_handle *xsh,
 			    struct xenbus_watch *watch, const char *path)
 {
-	int err, count, pause, pausing, paused;
+	int err, count, pause, pausing, paused, resuming;
 	tapdisk_channel_t *channel;
 
 	channel = watch->data;
@@ -688,6 +688,7 @@ tapdisk_channel_pause_event(struct xs_handle *xsh,
 	pause    = xs_exists(xsh, channel->pause_str);
 	paused   = xs_exists(xsh, channel->pause_done_str);
 	pausing  = channel->state == TAPDISK_CHANNEL_WAIT_PAUSE;
+	resuming = channel->state == TAPDISK_CHANNEL_WAIT_RESUME;
 	
 	if (!channel->connected) {
 		EPRINTF("bad %s event %s: channel not connected\n", 
@@ -696,18 +697,22 @@ tapdisk_channel_pause_event(struct xs_handle *xsh,
 	}
 
 	if (pause) {
-		if (paused || pausing) {
+		if (paused || pausing || resuming) {
 			EPRINTF("bad pause event %s: channel %s", 
-				path, pausing ? "pausing" : "paused");
+				path,
+				pausing ? "pausing" : resuming ? "resuming"
+				: "paused");
 			return;
 		}
 
 		err = tapdisk_channel_send_pause_request(channel);
 
 	} else {
-		if (!paused || pausing) {
+		if (!paused || pausing || resuming) {
 			EPRINTF("bad resume event %s: channel %s", 
-				path, pausing ? "pausing" : "not paused");
+				path,
+				pausing ? "pausing" : resuming ? "resuming" 
+				: "not paused");
 			return;
 		}
 
