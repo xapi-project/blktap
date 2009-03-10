@@ -453,15 +453,6 @@ tapdisk_channel_receive_open_response(tapdisk_channel_t *channel,
 	if (err)
 		goto fail;
 
-	/* did we receive a pause request before the connection completed? */
-	if (channel->pause_needed) {
-		DPRINTF("%s: deferred pause request\n", channel->path);
-		tapdisk_channel_pause_event(channel->xsh,
-					    &channel->pause_watch,
-					    channel->pause_str);
-		channel->pause_needed = 0;
-	}
-
 	return 0;
 
 fail:
@@ -656,23 +647,32 @@ static void
 tapdisk_channel_pause_event(struct xs_handle *xsh,
 			    struct xenbus_watch *watch, const char *path)
 {
-	int err, paused;
+	int err, count, pause, pausing, paused;
 	tapdisk_channel_t *channel;
 
 	channel = watch->data;
 
-	DPRINTF("%s: got watch on %s\n", channel->path, path);
+	count = channel->pause_watch_count++;
+	DPRINTF("%s: got watch %d on %s\n", channel->path, count, path);
 
 	if (!xs_exists(channel->xsh, channel->path)) {
 		tapdisk_channel_close(channel);
 		return;
 	}
 
-	/* NB: The VBD is essentially considered ready since the
-	 * backend hotplug event ocurred, which is just after
-	 * start-tapdisk, not after watch registration. We start
-	 * testing xenstore keys with the very first shot, but defer
-	 * until after connection completion. */
+	/* 
+	 * We are not considered online until after OPEN_RSP. If the
+	 * pause request is valid:
+	 *
+	 *  - Safe to ignore the initial 'spurious' event. Pause
+	 *    requests won't preempt watch registration.
+	 *
+	 *  - No need to defer. If the request if valid, we're
+	 *    guaranteed to be ready.
+	 */
+
+	if (!count)
+		return;
 
 	err = tapdisk_channel_validate_watch(channel, path);
 	if (err) {
@@ -685,32 +685,32 @@ tapdisk_channel_pause_event(struct xs_handle *xsh,
 		err = 0;
 	}
 
-	paused  = xs_exists(xsh, channel->pause_done_str);
+	pause    = xs_exists(xsh, channel->pause_str);
+	paused   = xs_exists(xsh, channel->pause_done_str);
+	pausing  = channel->state == TAPDISK_CHANNEL_WAIT_PAUSE;
+	
+	if (!channel->connected) {
+		EPRINTF("bad %s event %s: channel not connected\n", 
+			pause ? "pause" : "unpause", path);
+		return;
+	}
 
-	if (xs_exists(xsh, channel->pause_str)) {
-		/*
-		 * Duplicate requests are a protocol validation, but
-		 * impossible to identify if watch registration and an
-		 * actual pause request may fire separately in close
-		 * succession. Warn, but do not signal an error.
-		 */
-		int pausing = channel->state == TAPDISK_CHANNEL_WAIT_PAUSE;
-		if (pausing || paused) {
-			DPRINTF("Ignoring pause event for %s vbd %s\n",
-				pausing ? "pausing" : "paused", channel->path);
-			goto out;
-		}
-
-		/* defer if tapdisk is not ready yet */
-		if (!channel->connected) {
-			DPRINTF("%s: deferring pause request\n", path);
-			channel->pause_needed = 1;
-			goto out;
+	if (pause) {
+		if (paused || pausing) {
+			EPRINTF("bad pause event %s: channel %s", 
+				path, pausing ? "pausing" : "paused");
+			return;
 		}
 
 		err = tapdisk_channel_send_pause_request(channel);
 
-	} else if (xs_exists(xsh, channel->pause_done_str)) {
+	} else {
+		if (!paused || pausing) {
+			EPRINTF("bad resume event %s: channel %s", 
+				path, pausing ? "pausing" : "not paused");
+			return;
+		}
+
 		free(channel->params);
 		channel->params   = NULL;
 		channel->vdi_path = NULL;

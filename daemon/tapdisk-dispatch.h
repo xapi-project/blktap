@@ -57,7 +57,6 @@ struct tapdisk_channel {
 	 * requests received before tapdisk process is ready
 	 */
 	char                      connected;
-	char                      pause_needed;
 
 	char                     *path;
 	char                     *frontpath;
@@ -74,6 +73,7 @@ struct tapdisk_channel {
 	struct list_head          list;
 	struct xenbus_watch       pause_watch;
 	struct xenbus_watch       shutdown_watch;
+	int			  pause_watch_count;
 
 	struct xs_handle         *xsh;
 };
