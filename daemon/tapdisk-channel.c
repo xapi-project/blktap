@@ -54,7 +54,7 @@ static void tapdisk_channel_error(tapdisk_channel_t *,
 static void tapdisk_channel_fatal(tapdisk_channel_t *,
 				  const char *fmt, ...)
   __attribute__((format(printf, 2, 3)));
-static int tapdisk_channel_parse_params(tapdisk_channel_t *);
+static int tapdisk_channel_refresh_params(tapdisk_channel_t *);
 static void tapdisk_channel_pause_event(struct xs_handle *,
 					struct xenbus_watch *,
 					const char *);
@@ -711,28 +711,12 @@ tapdisk_channel_pause_event(struct xs_handle *xsh,
 			return;
 		}
 
-		free(channel->params);
-		channel->params   = NULL;
-		channel->vdi_path = NULL;
-
-		err = xs_gather(channel->xsh, channel->path,
-				"params", NULL, &channel->params, NULL);
-		if (err) {
-			EPRINTF("failure re-reading params: %d\n", err);
-			channel->params = NULL;
-			goto out;
-		}
-
-		err = tapdisk_channel_parse_params(channel);
+		err = tapdisk_channel_refresh_params(channel);
 		if (err)
 			goto out;
 
 		err = tapdisk_channel_send_resume_request(channel);
-		if (err)
-			goto out;
 	}
-
-	err = 0;
 
 out:
 	if (err)
@@ -1181,6 +1165,26 @@ tapdisk_channel_gather_info(tapdisk_channel_t *channel)
 	tapdisk_channel_get_storage_type(channel);
 
 	return 0;
+}
+
+static int
+tapdisk_channel_refresh_params(tapdisk_channel_t *channel)
+{
+	int err;
+
+	free(channel->params);
+	channel->params   = NULL;
+	channel->vdi_path = NULL;
+
+	err = xs_gather(channel->xsh, channel->path,
+			"params", NULL, &channel->params, NULL);
+	if (err) {
+		EPRINTF("failure re-reading params: %d\n", err);
+		channel->params = NULL;
+		return err;
+	}
+
+	return tapdisk_channel_parse_params(channel);
 }
 
 static int
