@@ -15,12 +15,13 @@ int
 vhd_util_create(int argc, char **argv)
 {
 	char *name;
-	uint64_t size;
+	uint64_t size, msize;
 	int c, sparse, err;
 	vhd_flag_creat_t flags;
 
 	err       = -EINVAL;
 	size      = 0;
+	msize     = 0;
 	sparse    = 1;
 	name      = NULL;
 	flags     = 0;
@@ -29,7 +30,7 @@ vhd_util_create(int argc, char **argv)
 		goto usage;
 
 	optind = 0;
-	while ((c = getopt(argc, argv, "n:s:rh")) != -1) {
+	while ((c = getopt(argc, argv, "n:s:S:rh")) != -1) {
 		switch (c) {
 		case 'n':
 			name = optarg;
@@ -37,6 +38,10 @@ vhd_util_create(int argc, char **argv)
 		case 's':
 			err  = 0;
 			size = strtoull(optarg, NULL, 10);
+			break;
+		case 'S':
+			err = 0;
+			msize = strtoull(optarg, NULL, 10);
 			break;
 		case 'r':
 			sparse = 0;
@@ -50,11 +55,18 @@ vhd_util_create(int argc, char **argv)
 	if (err || !name || optind != argc)
 		goto usage;
 
+	if (msize && msize < size) {
+		printf("Error: <-m size> must be greater than <-s size>\n");
+		return -EINVAL;
+	}
+
 	return vhd_create(name, size << 20,
 				  (sparse ? HD_TYPE_DYNAMIC : HD_TYPE_FIXED),
-				  flags);
+				  msize << 20, flags);
 
 usage:
-	printf("options: <-n name> <-s size (MB)> [-r reserve] [-h help]\n");
+	printf("options: <-n name> <-s size (MB)> [-r reserve] [-h help] "
+			"[<-S size (MB) for metadata preallocation "
+			"(see vhd-util resize)>]\n");
 	return -EINVAL;
 }

@@ -37,6 +37,14 @@ libvhd_set_log_level(int level)
 			       __func__, ##_a);				\
 	} while (0)
 
+#define ASSERT(_p)							\
+	if (!(_p)) {							\
+		libvhd_set_log_level(1);                                \
+		VHDLOG("%s:%d: FAILED ASSERTION: '%s'\n",		\
+			__FILE__, __LINE__, #_p);			\
+		*(int*)0 = 0;						\
+	}
+
 #define BIT_MASK 0x80
 
 #ifdef ENABLE_FAILURE_TESTING
@@ -335,18 +343,20 @@ vhd_validate_bat(vhd_bat_t *bat)
 }
 
 uint32_t
-vhd_checksum_batmap(vhd_batmap_t *batmap)
+vhd_checksum_batmap(vhd_context_t *ctx, vhd_batmap_t *batmap)
 {
-	int i, n;
+	int i;
 	char *blob;
 	uint32_t checksum;
+	size_t map_size;
 
 	blob     = batmap->map;
 	checksum = 0;
 
-	n = vhd_sectors_to_bytes(batmap->header.batmap_size);
+	map_size = vhd_sectors_to_bytes(secs_round_up_no_zero(
+			ctx->footer.curr_size >> (VHD_BLOCK_SHIFT + 3)));
 
-	for (i = 0; i < n; i++) {
+	for (i = 0; i < map_size; i++) {
 		if (batmap->header.batmap_version == VHD_BATMAP_VERSION(1, 1))
 			checksum += (uint32_t)blob[i];
 		else
@@ -369,14 +379,14 @@ vhd_validate_batmap_header(vhd_batmap_t *batmap)
 }
 
 int
-vhd_validate_batmap(vhd_batmap_t *batmap)
+vhd_validate_batmap(vhd_context_t *ctx, vhd_batmap_t *batmap)
 {
 	uint32_t checksum;
 
 	if (!batmap->map)
 		return -EINVAL;
 
-	checksum = vhd_checksum_batmap(batmap);
+	checksum = vhd_checksum_batmap(ctx, batmap);
 	if (checksum != batmap->header.checksum)
 		return -EINVAL;
 
@@ -802,7 +812,7 @@ vhd_get_batmap(vhd_context_t *ctx)
 	if (!vhd_has_batmap(ctx))
 		return -EINVAL;
 
-	if (!vhd_validate_batmap(&ctx->batmap))
+	if (!vhd_validate_batmap(ctx, &ctx->batmap))
 		return 0;
 
 	vhd_put_batmap(ctx);
@@ -1026,6 +1036,7 @@ vhd_read_bat(vhd_context_t *ctx, vhd_bat_t *bat)
 	int err;
 	char *buf;
 	off64_t off;
+	uint32_t vhd_blks;
 	size_t size;
 
 	buf  = NULL;
@@ -1036,7 +1047,12 @@ vhd_read_bat(vhd_context_t *ctx, vhd_bat_t *bat)
 	}
 
 	off  = ctx->header.table_offset;
-	size = vhd_bytes_padded(ctx->header.max_bat_size * sizeof(uint32_t));
+	/* The BAT size is stored in ctx->header.max_bat_size. However, we
+	 * sometimes preallocate BAT + batmap for max VHD size, so only read in
+	 * the BAT entries that are in use for curr_size */
+	vhd_blks = ctx->footer.curr_size >> VHD_BLOCK_SHIFT;
+	ASSERT(ctx->header.max_bat_size >= vhd_blks);
+	size = vhd_bytes_padded(vhd_blks * sizeof(uint32_t));
 
 	err  = posix_memalign((void **)&buf, VHD_SECTOR_SIZE, size);
 	if (err) {
@@ -1054,7 +1070,7 @@ vhd_read_bat(vhd_context_t *ctx, vhd_bat_t *bat)
 		goto fail;
 
 	bat->spb     = ctx->header.block_size >> VHD_SECTOR_SHIFT;
-	bat->entries = ctx->header.max_bat_size;
+	bat->entries = vhd_blks;
 	bat->bat     = (uint32_t *)buf;
 
 	vhd_bat_in(bat);
@@ -1121,7 +1137,9 @@ vhd_read_batmap_map(vhd_context_t *ctx, vhd_batmap_t *batmap)
 	off64_t off;
 	size_t map_size;
 
-	map_size = vhd_sectors_to_bytes(batmap->header.batmap_size);
+	map_size = vhd_sectors_to_bytes(secs_round_up_no_zero(
+			ctx->footer.curr_size >> (VHD_BLOCK_SHIFT + 3)));
+	ASSERT(vhd_sectors_to_bytes(batmap->header.batmap_size) >= map_size);
 
 	err = posix_memalign((void **)&buf, VHD_SECTOR_SIZE, map_size);
 	if (err) {
@@ -1171,7 +1189,7 @@ vhd_read_batmap(vhd_context_t *ctx, vhd_batmap_t *batmap)
 	if (err)
 		return err;
 
-	err = vhd_validate_batmap(batmap);
+	err = vhd_validate_batmap(ctx, batmap);
 	if (err)
 		goto fail;
 
@@ -2043,13 +2061,15 @@ vhd_write_batmap(vhd_context_t *ctx, vhd_batmap_t *batmap)
 	b.header = batmap->header;
 	b.map    = batmap->map;
 
-	b.header.checksum = vhd_checksum_batmap(&b);
-	err = vhd_validate_batmap(&b);
+	b.header.checksum = vhd_checksum_batmap(ctx, &b);
+	err = vhd_validate_batmap(ctx, &b);
 	if (err)
 		goto out;
 
 	off      = b.header.batmap_offset;
-	map_size = vhd_sectors_to_bytes(b.header.batmap_size);
+	map_size = vhd_sectors_to_bytes(secs_round_up_no_zero(
+			ctx->footer.curr_size >> (VHD_BLOCK_SHIFT + 3)));
+	ASSERT(vhd_sectors_to_bytes(b.header.batmap_size) >= map_size);
 
 	err  = vhd_seek(ctx, off, SEEK_SET);
 	if (err)
@@ -2492,7 +2512,7 @@ get_file_size(const char *name)
 
 static int
 vhd_initialize_header(vhd_context_t *ctx, const char *parent_path, 
-		uint64_t size, int raw)
+		uint64_t size, int raw, uint64_t *psize)
 {
 	int err;
 	struct stat stats;
@@ -2510,7 +2530,7 @@ vhd_initialize_header(vhd_context_t *ctx, const char *parent_path,
 	ctx->header.prt_ts       = 0;
 	ctx->header.res1         = 0;
 	ctx->header.max_bat_size = (ctx->footer.curr_size +
-				    VHD_BLOCK_SIZE - 1) >> VHD_BLOCK_SHIFT;
+			VHD_BLOCK_SIZE - 1) >> VHD_BLOCK_SHIFT;
 
 	ctx->footer.data_offset  = VHD_SECTOR_SIZE;
 
@@ -2523,8 +2543,9 @@ vhd_initialize_header(vhd_context_t *ctx, const char *parent_path,
 
 	if (raw) {
 		ctx->header.prt_ts = vhd_time(stats.st_mtime);
+		*psize = get_file_size(parent_path);
 		if (!size)
-			size = get_file_size(parent_path);
+			size = *psize;
 	}
 	else {
 		err = vhd_open(&parent, parent_path, VHD_OPEN_RDONLY);
@@ -2533,9 +2554,15 @@ vhd_initialize_header(vhd_context_t *ctx, const char *parent_path,
 
 		ctx->header.prt_ts = vhd_time(stats.st_mtime);
 		uuid_copy(ctx->header.prt_uuid, parent.footer.uuid);
+		*psize = parent.footer.curr_size;
 		if (!size)
-			size = parent.footer.curr_size;
+			size = *psize;
 		vhd_close(&parent);
+	}
+	if (size < *psize) {
+		VHDLOG("snapshot size (%llu) < parent size (%llu)\n",
+				size, *psize);
+		return -EINVAL;
 	}
 	ctx->footer.orig_size    = size;
 	ctx->footer.curr_size    = size;
@@ -2798,15 +2825,44 @@ vhd_set_phys_size(vhd_context_t *ctx, off64_t size)
 }
 
 static int
+vhd_set_virt_size_no_write(vhd_context_t *ctx, uint64_t size)
+{
+	if ((size >> VHD_BLOCK_SHIFT) > ctx->header.max_bat_size) {
+		VHDLOG("not enough metadata space reserved for fast "
+				"resize (BAT size %u, need %llu)\n",
+				ctx->header.max_bat_size, 
+				size >> VHD_BLOCK_SHIFT);
+		return -EINVAL;
+	}
+
+	/* update footer */
+	ctx->footer.curr_size = size;
+	ctx->footer.geometry  = vhd_chs(ctx->footer.curr_size);
+	ctx->footer.checksum  = vhd_checksum_footer(&ctx->footer);
+	return 0;
+}
+
+int
+vhd_set_virt_size(vhd_context_t *ctx, uint64_t size)
+{
+	int err;
+
+	err = vhd_set_virt_size_no_write(ctx, size);
+	if (err)
+		return err;
+	return vhd_write_footer(ctx, &ctx->footer);
+}
+
+static int
 __vhd_create(const char *name, const char *parent, uint64_t bytes, int type,
-		vhd_flag_creat_t flags)
+		uint64_t mbytes, vhd_flag_creat_t flags)
 {
 	int err;
 	off64_t off;
 	vhd_context_t ctx;
 	vhd_footer_t *footer;
 	vhd_header_t *header;
-	uint64_t size, blks;
+	uint64_t size, psize, blks;
 
 	switch (type) {
 	case HD_TYPE_DIFF:
@@ -2822,11 +2878,22 @@ __vhd_create(const char *name, const char *parent, uint64_t bytes, int type,
 	if (strnlen(name, VHD_MAX_NAME_LEN - 1) == VHD_MAX_NAME_LEN - 1)
 		return -ENAMETOOLONG;
 
+	if (bytes && mbytes && mbytes < bytes)
+		return -EINVAL;
+
 	memset(&ctx, 0, sizeof(vhd_context_t));
+	psize = 0;
 	footer = &ctx.footer;
 	header = &ctx.header;
 	blks   = (bytes + VHD_BLOCK_SIZE - 1) >> VHD_BLOCK_SHIFT;
-	size   = blks << VHD_BLOCK_SHIFT;
+	/* If mbytes is provided (virtual-size-for-metadata-preallocation),
+	 * create the VHD of size mbytes, which will create the BAT & the 
+	 * batmap of the appropriate size. Once the BAT & batmap are 
+	 * initialized, reset the virtual size to the requested one.
+	 */
+	if (mbytes)
+		blks = (mbytes + VHD_BLOCK_SIZE - 1) >> VHD_BLOCK_SHIFT;
+	size = blks << VHD_BLOCK_SHIFT;
 
 	ctx.fd = open(name, O_WRONLY | O_CREAT |
 		      O_TRUNC | O_LARGEFILE | O_DIRECT, 0644);
@@ -2851,15 +2918,7 @@ __vhd_create(const char *name, const char *parent, uint64_t bytes, int type,
 			goto out;
 	} else {
 		int raw = vhd_flag_test(flags, VHD_FLAG_CREAT_PARENT_RAW);
-		err = vhd_initialize_header(&ctx, parent, size, raw);
-		if (err)
-			goto out;
-
-		err = vhd_write_footer_at(&ctx, &ctx.footer, 0);
-		if (err)
-			goto out;
-
-		err = vhd_write_header_at(&ctx, &ctx.header, VHD_SECTOR_SIZE);
+		err = vhd_initialize_header(&ctx, parent, size, raw, &psize);
 		if (err)
 			goto out;
 
@@ -2876,8 +2935,29 @@ __vhd_create(const char *name, const char *parent, uint64_t bytes, int type,
 			if (err)
 				goto out;
 		}
+	}
 
-		/* write header again since it may have changed */
+	if (mbytes) {
+		/* set the virtual size to the requested size */
+		if (bytes) {
+			blks = (bytes + VHD_BLOCK_SIZE - 1) >> VHD_BLOCK_SHIFT;
+			size = blks << VHD_BLOCK_SHIFT;
+
+		}
+		else {
+			size = psize;
+		}
+		ctx.footer.orig_size = size;
+		err = vhd_set_virt_size_no_write(&ctx, size);
+		if (err)
+			goto out;
+	}
+
+	if (type != HD_TYPE_FIXED) {
+		err = vhd_write_footer_at(&ctx, &ctx.footer, 0);
+		if (err)
+			goto out;
+
 		err = vhd_write_header_at(&ctx, &ctx.header, VHD_SECTOR_SIZE);
 		if (err)
 			goto out;
@@ -2910,16 +2990,17 @@ out:
 }
 
 int
-vhd_create(const char *name, uint64_t bytes, int type, vhd_flag_creat_t flags)
+vhd_create(const char *name, uint64_t bytes, int type, uint64_t mbytes,
+		vhd_flag_creat_t flags)
 {
-	return __vhd_create(name, NULL, bytes, type, flags);
+	return __vhd_create(name, NULL, bytes, type, mbytes, flags);
 }
 
 int
 vhd_snapshot(const char *name, uint64_t bytes, const char *parent,
-		vhd_flag_creat_t flags)
+		uint64_t mbytes, vhd_flag_creat_t flags)
 {
-	return __vhd_create(name, parent, bytes, HD_TYPE_DIFF, flags);
+	return __vhd_create(name, parent, bytes, HD_TYPE_DIFF, mbytes, flags);
 }
 
 static int

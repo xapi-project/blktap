@@ -190,7 +190,7 @@ uint32_t vhd_chs(uint64_t size);
 
 uint32_t vhd_checksum_footer(vhd_footer_t *);
 uint32_t vhd_checksum_header(vhd_header_t *);
-uint32_t vhd_checksum_batmap(vhd_batmap_t *);
+uint32_t vhd_checksum_batmap(vhd_context_t *, vhd_batmap_t *);
 
 void vhd_footer_in(vhd_footer_t *);
 void vhd_footer_out(vhd_footer_t *);
@@ -204,16 +204,20 @@ void vhd_batmap_header_out(vhd_batmap_t *);
 int vhd_validate_footer(vhd_footer_t *footer);
 int vhd_validate_header(vhd_header_t *header);
 int vhd_validate_batmap_header(vhd_batmap_t *batmap);
-int vhd_validate_batmap(vhd_batmap_t *batmap);
+int vhd_validate_batmap(vhd_context_t *, vhd_batmap_t *batmap);
 int vhd_validate_platform_code(uint32_t code);
 
 int vhd_open(vhd_context_t *, const char *file, int flags);
 void vhd_close(vhd_context_t *);
-int vhd_create(const char *name, uint64_t bytes, int type, vhd_flag_creat_t);
+/* vhd_create: mbytes is the virtual size for BAT/batmap preallocation - see 
+ * vhd-util-resize.c
+ */
+int vhd_create(const char *name, uint64_t bytes, int type, uint64_t mbytes,
+		vhd_flag_creat_t);
 /* vhd_snapshot: the bytes parameter is optional and can be 0 if the snapshot 
  * is to have the same size as the (first non-empty) parent */
 int vhd_snapshot(const char *snapshot, uint64_t bytes, const char *parent,
-		vhd_flag_creat_t);
+		uint64_t mbytes, vhd_flag_creat_t);
 
 int vhd_hidden(vhd_context_t *, int *);
 int vhd_chain_depth(vhd_context_t *, int *);
@@ -246,6 +250,7 @@ void vhd_batmap_clear(vhd_context_t *, vhd_batmap_t *, uint32_t);
 
 int vhd_get_phys_size(vhd_context_t *, off64_t *);
 int vhd_set_phys_size(vhd_context_t *, off64_t);
+int vhd_set_virt_size(vhd_context_t *, uint64_t);
 
 int vhd_bitmap_test(vhd_context_t *, char *, uint32_t);
 void vhd_bitmap_set(vhd_context_t *, char *, uint32_t);

@@ -1027,12 +1027,51 @@ vhd_util_resize_check_creator(const char *name)
 	return err;
 }
 
+static int
+vhd_dynamic_grow_fast(const char *name, uint64_t bytes)
+{
+	vhd_context_t vhd;
+	uint64_t blks, size;
+	int err;
+
+	err = vhd_open(&vhd, name, VHD_OPEN_RDWR);
+	if (err)
+		return err;
+
+	err = vhd_get_bat(&vhd);
+	if (err)
+		goto done;
+
+	if (vhd_has_batmap(&vhd)) {
+		err = vhd_get_batmap(&vhd);
+		if (err)
+			goto done;
+	}
+
+	blks   = (bytes + VHD_BLOCK_SIZE - 1) >> VHD_BLOCK_SHIFT;
+	size   = blks << VHD_BLOCK_SHIFT;
+	if (size < vhd.footer.curr_size) {
+		printf("%s: size (%llu) < curr size (%llu)\n", 
+				name, size, vhd.footer.curr_size);
+		err = -EINVAL;
+		goto done;
+	}
+	if (size == vhd.footer.curr_size)
+		goto done;
+
+	err = vhd_set_virt_size(&vhd, size);
+
+done:
+	vhd_close(&vhd);
+	return err;
+}
+
 int
 vhd_util_resize(int argc, char **argv)
 {
 	char *name, *jname;
 	uint64_t size;
-	int c, err, jerr;
+	int fast, c, err, jerr;
 	vhd_journal_t journal;
 	vhd_context_t *vhd;
 
@@ -1040,15 +1079,19 @@ vhd_util_resize(int argc, char **argv)
 	size  = 0;
 	name  = NULL;
 	jname = NULL;
+	fast  = 0;
 
 	optind = 0;
-	while ((c = getopt(argc, argv, "n:j:s:h")) != -1) {
+	while ((c = getopt(argc, argv, "n:s:j:fh")) != -1) {
 		switch (c) {
 		case 'n':
 			name = optarg;
 			break;
 		case 'j':
 			jname = optarg;
+			break;
+		case 'f':
+			fast = 1;
 			break;
 		case 's':
 			err  = 0;
@@ -1060,7 +1103,10 @@ vhd_util_resize(int argc, char **argv)
 		}
 	}
 
-	if (err || !name || !jname || argc != optind)
+	if (err || !name || (!jname && !fast) || argc != optind)
+		goto usage;
+
+	if (jname && fast)
 		goto usage;
 
 	err = vhd_util_resize_check_creator(name);
@@ -1068,6 +1114,10 @@ vhd_util_resize(int argc, char **argv)
 		return err;
 
 	libvhd_set_log_level(1);
+
+	if (fast)
+		return vhd_dynamic_grow_fast(name, size << 20);
+
 	err = vhd_journal_create(&journal, name, jname);
 	if (err) {
 		printf("creating journal failed: %d\n", err);
@@ -1105,6 +1155,15 @@ out:
 	return (err ? : jerr);
 
 usage:
-	printf("options: <-n name> <-j journal> <-s size (in MB)> [-h help]\n");
+	printf("options: <-n name> <-s size (in MB)> (<-j journal>|<-f fast>) "
+			"[-h help]\n\n"
+			"The resize operation can only be performed offline "
+			"and must be journaled because resizing the metadata "
+			"might require moving data blocks. However, if a "
+			"VHD was created with -S <msize> option (during "
+			"vhd-util create/snapshot), which preallocates the "
+			"metadata for growing the VHD up to size <msize>, then "
+			"resizing such a VHD up to <msize> can be performed "
+			"online without journaling (-f option).\n");
 	return -EINVAL;
 }

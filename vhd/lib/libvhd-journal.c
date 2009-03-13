@@ -883,7 +883,7 @@ vhd_journal_read_batmap(vhd_journal_t *j, vhd_batmap_t *batmap)
 	if (err)
 		return err;
 
-	err = vhd_validate_batmap(batmap);
+	err = vhd_validate_batmap(&j->vhd, batmap);
 	if (err) {
 		free(batmap->map);
 		batmap->map = NULL;

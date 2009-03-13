@@ -87,7 +87,7 @@ vhd_util_snapshot(int argc, char **argv)
 	vhd_flag_creat_t flags;
 	int c, err, prt_raw, limit;
 	char *name, *pname, *ppath, *backing;
-	uint64_t size;
+	uint64_t size, msize;
 	vhd_context_t vhd;
 
 	name    = NULL;
@@ -95,6 +95,7 @@ vhd_util_snapshot(int argc, char **argv)
 	ppath   = NULL;
 	backing = NULL;
 	size    = 0;
+	msize   = 0;
 	flags   = 0;
 	limit   = 0;
 
@@ -104,7 +105,7 @@ vhd_util_snapshot(int argc, char **argv)
 	}
 
 	optind = 0;
-	while ((c = getopt(argc, argv, "n:p:l:mh")) != -1) {
+	while ((c = getopt(argc, argv, "n:p:S:l:mh")) != -1) {
 		switch (c) {
 		case 'n':
 			name = optarg;
@@ -112,6 +113,8 @@ vhd_util_snapshot(int argc, char **argv)
 		case 'p':
 			pname = optarg;
 			break;
+		case 'S':
+			msize = strtoull(optarg, NULL, 10);
 		case 'l':
 			limit = strtol(optarg, NULL, 10);
 			break;
@@ -181,7 +184,7 @@ vhd_util_snapshot(int argc, char **argv)
 			goto out;
 	}
 
-	err = vhd_snapshot(name, size, backing, flags);
+	err = vhd_snapshot(name, size, backing, msize << 20, flags);
 
 out:
 	free(ppath);
@@ -191,6 +194,7 @@ out:
 
 usage:
 	printf("options: <-n name> <-p parent name> [-l snapshot depth limit]"
-	       " [-m parent_is_raw] [-h help]\n");
+	       " [-m parent_is_raw] [-S size (MB) for metadata preallocation "
+	       "(see vhd-util resize)] [-h help]\n");
 	return err;
 }

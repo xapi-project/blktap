@@ -222,12 +222,16 @@ vhd_util_check_validate_batmap(vhd_context_t *vhd, vhd_batmap_t *batmap)
 	if (batmap->header.batmap_version > VHD_BATMAP_CURRENT_VERSION)
 		return "unsupported batmap version";
 
-	checksum = vhd_checksum_batmap(batmap);
+	checksum = vhd_checksum_batmap(vhd, batmap);
 	if (checksum != batmap->header.checksum)
 		return "invalid checksum";
 
 	if (!batmap->header.batmap_size)
 		return "invalid size zero";
+
+	if (batmap->header.batmap_size << (VHD_SECTOR_SHIFT + 3) <
+			vhd->header.max_bat_size)
+		return "batmap-BAT size mismatch";
 
 	eof = lseek64(vhd->fd, 0, SEEK_END);
 	if (eof == (off64_t)-1)
@@ -493,6 +497,7 @@ vhd_util_check_differencing_header(vhd_context_t *vhd)
 static int
 vhd_util_check_bat(vhd_context_t *vhd)
 {
+	uint32_t vhd_blks;
 	off64_t eof, eoh;
 	int i, j, err, block_size;
 
@@ -535,7 +540,14 @@ vhd_util_check_bat(vhd_context_t *vhd)
 	eoh >>= VHD_SECTOR_SHIFT;
 	block_size = vhd->spb + vhd->bm_secs;
 
-	for (i = 0; i < vhd->header.max_bat_size; i++) {
+	vhd_blks = vhd->footer.curr_size >> VHD_BLOCK_SHIFT;
+	if (vhd_blks > vhd->header.max_bat_size) {
+		printf("VHD size (%u blocks) exceeds BAT size (%u)\n",
+		       vhd_blks, vhd->header.max_bat_size);
+		return -EINVAL;
+	}
+
+	for (i = 0; i < vhd_blks; i++) {
 		uint32_t off = vhd->bat.bat[i];
 		if (off == DD_BLK_UNUSED)
 			continue;
@@ -552,7 +564,7 @@ vhd_util_check_bat(vhd_context_t *vhd)
 			return -EINVAL;
 		}
 
-		for (j = 0; j < vhd->header.max_bat_size; j++) {
+		for (j = 0; j < vhd_blks; j++) {
 			uint32_t joff = vhd->bat.bat[j];
 
 			if (i == j)
@@ -607,7 +619,7 @@ vhd_util_check_batmap(vhd_context_t *vhd)
 		return -EINVAL;
 	}
 
-	for (i = 0; i < vhd->header.max_bat_size; i++) {
+	for (i = 0; i < vhd->footer.curr_size >> VHD_BLOCK_SHIFT; i++) {
 		if (!vhd_batmap_test(vhd, &vhd->batmap, i))
 			continue;
 

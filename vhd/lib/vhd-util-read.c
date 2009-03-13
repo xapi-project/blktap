@@ -210,7 +210,7 @@ vhd_print_parent_locators(vhd_context_t *vhd, int hex)
 }
 
 static void
-vhd_print_batmap_header(vhd_batmap_t *batmap, int hex)
+vhd_print_batmap_header(vhd_context_t *vhd, vhd_batmap_t *batmap, int hex)
 {
 	uint32_t cksm;
 
@@ -222,7 +222,7 @@ vhd_print_batmap_header(vhd_batmap_t *batmap, int hex)
 	printf("Batmap version      : 0x%08x\n",
 	       batmap->header.batmap_version);
 
-	cksm = vhd_checksum_batmap(batmap);
+	cksm = vhd_checksum_batmap(vhd, batmap);
 	printf("Checksum            : 0x%x|0x%x (%s)\n",
 	       batmap->header.checksum, cksm,
 	       (batmap->header.checksum == cksm ? "Good!" : "Bad!"));
@@ -261,7 +261,7 @@ vhd_print_headers(vhd_context_t *vhd, int hex)
 				return err;
 			}
 
-			vhd_print_batmap_header(&vhd->batmap, hex);
+			vhd_print_batmap_header(vhd, &vhd->batmap, hex);
 		}
 	}
 

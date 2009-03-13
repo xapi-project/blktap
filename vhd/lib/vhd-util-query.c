@@ -18,14 +18,15 @@ vhd_util_query(int argc, char **argv)
 	char *name;
 	vhd_context_t vhd;
 	off64_t currsize;
-	int ret, err, c, size, physize, parent, fields, depth;
+	int ret, err, c, size, physize, parent, fields, depth, fastresize;
 
-	name    = NULL;
-	size    = 0;
-	physize = 0;
-	parent  = 0;
-	fields  = 0;
-	depth   = 0;
+	name       = NULL;
+	size       = 0;
+	physize    = 0;
+	parent     = 0;
+	fields     = 0;
+	depth      = 0;
+	fastresize = 0;
 
 	if (!argc || !argv) {
 		err = -EINVAL;
@@ -33,7 +34,7 @@ vhd_util_query(int argc, char **argv)
 	}
 
 	optind = 0;
-	while ((c = getopt(argc, argv, "n:vspfdh")) != -1) {
+	while ((c = getopt(argc, argv, "n:vspfdSh")) != -1) {
 		switch (c) {
 		case 'n':
 			name = optarg;
@@ -52,6 +53,9 @@ vhd_util_query(int argc, char **argv)
 			break;
 		case 'd':
 			depth = 1;
+			break;
+		case 'S':
+			fastresize = 1;
 			break;
 		case 'h':
 			err = 0;
@@ -127,6 +131,13 @@ vhd_util_query(int argc, char **argv)
 
 		err = (err ? : ret);
 	}
+
+	if (fastresize) {
+		uint64_t max_size;
+
+		max_size = vhd.header.max_bat_size << (VHD_BLOCK_SHIFT - 20);
+		printf("%llu\n", max_size);
+	}
 		
 	vhd_close(&vhd);
 	return err;
@@ -134,6 +145,7 @@ vhd_util_query(int argc, char **argv)
 usage:
 	printf("options: <-n name> [-v print virtual size (in MB)] "
 	       "[-s print physical utilization (bytes)] [-p print parent] "
-	       "[-f print fields] [-d print chain depth] [-h help]\n");
+	       "[-f print fields] [-d print chain depth] "
+	       "[-S print max virtual size (MB) for fast resize] [-h help]\n");
 	return err;
 }
