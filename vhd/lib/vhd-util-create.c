@@ -56,7 +56,7 @@ vhd_util_create(int argc, char **argv)
 		goto usage;
 
 	if (msize && msize < size) {
-		printf("Error: <-m size> must be greater than <-s size>\n");
+		printf("Error: <-S size> must be greater than <-s size>\n");
 		return -EINVAL;
 	}
 
