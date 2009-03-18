@@ -795,14 +795,6 @@ vhd_add_bat_entries(vhd_journal_t *journal, int entries)
 	if (err)
 		return err;
 
-	/* update footer */
-	vhd->footer.curr_size = (uint64_t)new_entries * vhd->header.block_size;
-	vhd->footer.geometry  = vhd_chs(vhd->footer.curr_size);
-	vhd->footer.checksum  = vhd_checksum_footer(&vhd->footer);
-	err = vhd_write_footer(vhd, &vhd->footer);
-	if (err)
-		return err;
-
 	/* allocate new bat */
 	err = posix_memalign((void **)&new_bat.bat, VHD_SECTOR_SIZE, new_bat_size);
 	if (err)
@@ -849,6 +841,14 @@ vhd_add_bat_entries(vhd_journal_t *journal, int entries)
 	/* update in-memory batmap */
 	free(vhd->batmap.map);
 	vhd->batmap = new_batmap;
+
+	/* update footer */
+	vhd->footer.curr_size = (uint64_t)new_entries * vhd->header.block_size;
+	vhd->footer.geometry  = vhd_chs(vhd->footer.curr_size);
+	vhd->footer.checksum  = vhd_checksum_footer(&vhd->footer);
+	err = vhd_write_footer(vhd, &vhd->footer);
+	if (err)
+		return err;
 
 	return 0;
 }
