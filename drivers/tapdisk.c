@@ -29,27 +29,65 @@
 #include <errno.h>
 #include <stdlib.h>
 #include <unistd.h>
+#include <libgen.h>
+#include <getopt.h>
 
 #include "tapdisk-utils.h"
 #include "tapdisk-server.h"
 
+static const char *program;
+
 static void
-usage(void)
+usage(FILE *stream)
 {
-	fprintf(stderr, "blktap-utils: v2.0.0\n");
-	fprintf(stderr, "usage: tapdisk <READ fifo> <WRITE fifo>\n");
-	exit(EINVAL);
+	fprintf(stream, "blktap-utils: v2.0.0\n");
+	fprintf(stream, "Usage: %s [-h ] [-D] <READ fifo> <WRITE fifo>\n", program);
 }
 
 int
 main(int argc, char *argv[])
 {
-	int err;
+	const struct option longopts[] = {
+		{ "help",		0, 0, 'h' },
+		{ "detach",		0, 0, 'D' }
+	};
+	int err, detach = 0;
+	
+	program = basename(argv[0]);
 
-	if (argc != 3)
-		usage();
+	do {
+		int c;
 
-	daemon(0, 0);
+		c = getopt_long(argc, argv, "hD", longopts, NULL);
+		if (c == -1)
+			break;
+
+		switch (c) {
+		case 'h':
+			usage(stdout);
+			return 0;
+		case 'D':
+			detach = 1;
+			break;
+		default:
+			goto usage;
+		}
+	} while (1);
+	
+	if (argc - optind < 2)
+		goto usage;
+	
+	if (detach) {
+		/* NB. This is expected to rarely, if ever, be
+		   used. Blktapctrl is already detached, and breaking
+		   affiliation will be exactly not desirable. */
+		err = daemon(0, 0);
+		if (err) {
+			PERROR("daemon");
+			return -errno;
+		}
+	}
+
 	tapdisk_start_logging("TAPDISK");
 
 	err = tapdisk_server_initialize(argv[1], argv[2]);
@@ -62,5 +100,10 @@ main(int argc, char *argv[])
 
 out:
 	tapdisk_stop_logging();
-	return err;
+
+	return err ? 1 : 0;
+
+usage:
+	usage(stderr);
+	return 1;
 }

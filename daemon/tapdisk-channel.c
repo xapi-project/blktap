@@ -858,27 +858,24 @@ tapdisk_channel_start_process(tapdisk_channel_t *channel,
 {
 	pid_t child;
 	char *argv[] = { "tapdisk", write_dev, read_dev, NULL };
+	int i;
 
 	if ((child = fork()) == -1)
 		return -errno;
 
-	if (!child) {
-		int i;
-		for (i = 0 ; i < sysconf(_SC_OPEN_MAX) ; i++)
-			if (i != STDIN_FILENO &&
-			    i != STDOUT_FILENO &&
-			    i != STDERR_FILENO)
-				close(i);
+	if (child)
+		return child;
 
-		execvp("tapdisk", argv);
-		_exit(1);
-	} else {
-		pid_t got;
-		do {
-			got = waitpid(child, NULL, 0);
-		} while (got != child);
-	}
-	return 0;
+	for (i = 0; i < sysconf(_SC_OPEN_MAX) ; i++)
+		if (i != STDIN_FILENO &&
+		    i != STDOUT_FILENO &&
+		    i != STDERR_FILENO)
+			close(i);
+
+	execvp("tapdisk", argv);
+
+	PERROR("execvp");
+	_exit(1);
 }
 
 static int
@@ -926,9 +923,13 @@ tapdisk_channel_launch_tapdisk(tapdisk_channel_t *channel)
 		goto fail;
 	}
 
-	err = tapdisk_channel_start_process(channel, write_dev, read_dev);
-	if (err)
+	channel->tapdisk_pid = 
+		tapdisk_channel_start_process(channel, write_dev, read_dev);
+	if (channel->tapdisk_pid < 0) {
+		err = channel->tapdisk_pid;
+		channel->tapdisk_pid = -1;
 		goto fail;
+	}
 
 	channel->open       = 1;
 	channel->channel_id = channel->write_fd;
@@ -1273,6 +1274,12 @@ mem_fail:
 void
 tapdisk_channel_close(tapdisk_channel_t *channel)
 {
+	if (channel->tapdisk_pid != -1) {
+		DPRINTF("%s: waiting for child %d to exit\n", 
+			channel->path, channel->tapdisk_pid);
+		return;
+	}
+
 	if (channel->channel_id)
 		DPRINTF("%s: closing channel %d:%d\n",
 			channel->path, channel->channel_id, channel->cookie);
@@ -1373,6 +1380,47 @@ tapdisk_channel_open(tapdisk_channel_t **_channel,
 fail:
 	tapdisk_channel_fatal(channel, "%s: %d", (msg ? : "failure"), err);
 	return err;
+}
+
+void
+tapdisk_channel_reap(tapdisk_channel_t *channel, int status)
+{
+	/* Nothing left to defer for in channel_close() */
+	channel->tapdisk_pid = -1; 
+
+	/* No IPC after this point */
+	channel->open = 0;
+
+	/*
+	 * A tapdisk writes CLOSE_RSP and exists. What triggers first,
+	 * SIGCHLD or the readfd? Cannot always guarantee events to be
+	 * ordered synchronously on the observer side, so we refrain
+	 * from assuming any particular order.
+	 *
+	 * Hence we escalate only the obvious cases. This also means:
+	 * A tapdisk broken enough to return status 0 AND dropping the
+	 * shutdown message would make us leak a channel.
+	 */
+
+	if (WIFEXITED(status) && WEXITSTATUS(status) != 0) {
+		tapdisk_channel_fatal(channel,
+				      "tapdisk died with status %d", 
+				      WEXITSTATUS(status));
+		return;
+	}
+	
+	if (WIFSIGNALED(status)) {
+		tapdisk_channel_fatal(channel,
+				      "tapdisk killed by signal %d", 
+				      WTERMSIG(status));
+		return;
+	}
+
+	if (channel->state == TAPDISK_CHANNEL_CLOSED) {
+		/* We saw the shutdown message */
+		tapdisk_channel_close(channel);
+		return;
+	}
 }
 
 int

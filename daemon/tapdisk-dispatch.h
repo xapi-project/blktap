@@ -92,5 +92,6 @@ void tapdisk_daemon_find_channel(tapdisk_channel_t *);
 void tapdisk_daemon_close_channel(tapdisk_channel_t *);
 
 int tapdisk_channel_receive_message(tapdisk_channel_t *, tapdisk_message_t *);
+void tapdisk_channel_reap(tapdisk_channel_t *channel, int status);
 
 #endif

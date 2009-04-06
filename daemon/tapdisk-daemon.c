@@ -32,6 +32,8 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/ioctl.h>
+#include <sys/wait.h>
+#include <signal.h>
 
 #include <xs.h>
 #include "disktypes.h"
@@ -48,6 +50,8 @@ typedef struct tapdisk_daemon {
 	struct xs_handle             *xsh;
 	struct list_head              channels;
 	struct xenbus_watch           watch;
+
+	sigset_t		      sigunmask;
 } tapdisk_daemon_t;
 
 static tapdisk_daemon_t tapdisk_daemon;
@@ -110,11 +114,18 @@ tapdisk_daemon_write_pidfile(long pid)
 	return 0;
 }
 
+static void
+tapdisk_daemon_sa_none(int signo)
+{
+	/* only take a syscall restart */
+}
+
 static int
 tapdisk_daemon_init(void)
 {
 	char *devname;
 	int i, err, blktap_major;
+	sigset_t mask;
 
 	memset(&tapdisk_daemon, 0, sizeof(tapdisk_daemon_t));
 
@@ -141,6 +152,22 @@ tapdisk_daemon_init(void)
 		goto fail;
 	}
 
+	/* 
+	 * Spoil any opportunity for set/check races by forcing
+	 * children to later serialize their demise into the event
+	 * loop.
+	 *
+	 * NB. It's no coincidence we're blocking those signals right
+	 * here. XS watches spawn threads [*shiver*]. The new mask is
+	 * heritage.
+	 */
+	sigemptyset(&mask);
+
+	sigaddset(&mask, SIGCHLD);
+	signal(SIGCHLD, tapdisk_daemon_sa_none);
+
+	sigprocmask(SIG_BLOCK, &mask, &tapdisk_daemon.sigunmask);
+
 	for (i = 0; i < 2; i++) {
 		tapdisk_daemon.xsh = xs_daemon_open();
 		if (!tapdisk_daemon.xsh) {
@@ -155,6 +182,8 @@ tapdisk_daemon_init(void)
 		goto fail;
 	}
 
+	fcntl(xs_fileno(tapdisk_daemon.xsh), F_SETFD, O_NONBLOCK);
+	
 	INIT_LIST_HEAD(&tapdisk_daemon.channels);
 
 	free(devname);
@@ -382,6 +411,64 @@ tapdisk_daemon_free(void)
 	memset(&tapdisk_daemon, 0, sizeof(tapdisk_daemon_t));
 }
 
+static pid_t
+tapdisk_daemon_wait(int *_status)
+{
+	tapdisk_channel_t *channel;
+	pid_t pid;
+	int status;
+
+	pid = waitpid(-1, &status, WNOHANG);
+	if (pid == 0)
+		return -1; /* No state changes */
+
+	if (pid < 0) {
+		if (errno != ECHILD) /* No children */
+			PERROR("waitpid");
+		return -1;
+	}
+
+	*_status = status;
+
+	if (WIFEXITED(status)) {
+		DPRINTF("child %d exited with status %d", pid, 
+			WEXITSTATUS(status));
+		return pid;
+	}
+
+	if (WIFSIGNALED(status)) {
+		DPRINTF("child %d killed by signal %d", pid, WTERMSIG(status));
+		return pid;
+	}
+		
+	/* WIFSTOPPED? Oh well. */
+	DPRINTF("ignoring child %d transition to state 0x%x.", pid, status);
+
+	return 0;
+}
+
+static void
+tapdisk_daemon_reap_channels(void)
+{
+	do {
+		tapdisk_channel_t *channel, *next;
+		pid_t pid;
+		int status;
+
+		pid = tapdisk_daemon_wait(&status);
+		if (pid < 0)
+			break;
+
+		if (!pid)
+			/* ignorable child state. */
+			continue;
+		
+		tapdisk_daemon_for_each_channel(channel, next)
+			if (channel->tapdisk_pid == pid)
+				tapdisk_channel_reap(channel, status);
+	} while (1);
+}
+
 static int
 tapdisk_daemon_read_message(int fd, tapdisk_message_t *message, int timeout)
 {
@@ -485,17 +572,23 @@ tapdisk_daemon_check_fds(fd_set *readfds)
 static int
 tapdisk_daemon_run(void)
 {
-	int err, max;
+	int nfds, max;
 	fd_set readfds;
 
 	while (1) {
 		max = tapdisk_daemon_set_fds(&readfds);
 
-		err = select(max + 1, &readfds, NULL, NULL, NULL);
-		if (err < 0)
-			continue;
+		nfds = pselect(max + 1, &readfds, NULL, NULL, NULL,
+			       &tapdisk_daemon.sigunmask);
+		if (nfds < 0) {
+			if (errno != EINTR)
+				PERROR("select");
+		}
 
-		tapdisk_daemon_check_fds(&readfds);
+		if (nfds > 0)
+			tapdisk_daemon_check_fds(&readfds);
+
+		tapdisk_daemon_reap_channels();
 	}
 
 	return 0;
