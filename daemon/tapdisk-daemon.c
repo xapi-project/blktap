@@ -466,7 +466,7 @@ tapdisk_daemon_set_fds(fd_set *readfds)
 	return max;
 }
 
-static int
+static void
 tapdisk_daemon_check_fds(fd_set *readfds)
 {
 	int err;
@@ -476,10 +476,10 @@ tapdisk_daemon_check_fds(fd_set *readfds)
 		xs_fire_next_watch(tapdisk_daemon.xsh);
 
 	tapdisk_daemon_for_each_channel(channel, tmp)
-		if (FD_ISSET(channel->read_fd, readfds))
-			return tapdisk_daemon_receive_message(channel->read_fd);
-
-	return 0;
+		if (FD_ISSET(channel->read_fd, readfds)) {
+			tapdisk_daemon_receive_message(channel->read_fd);
+			return;
+		}
 }
 
 static int
@@ -495,10 +495,10 @@ tapdisk_daemon_run(void)
 		if (err < 0)
 			continue;
 
-		err = tapdisk_daemon_check_fds(&readfds);
+		tapdisk_daemon_check_fds(&readfds);
 	}
 
-	return err;
+	return 0;
 }
 
 void
