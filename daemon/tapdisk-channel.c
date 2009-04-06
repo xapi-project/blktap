@@ -858,6 +858,7 @@ tapdisk_channel_start_process(tapdisk_channel_t *channel,
 {
 	pid_t child;
 	char *argv[] = { "tapdisk", write_dev, read_dev, NULL };
+	const char *tapdisk;
 	int i;
 
 	if ((child = fork()) == -1)
@@ -872,7 +873,11 @@ tapdisk_channel_start_process(tapdisk_channel_t *channel,
 		    i != STDERR_FILENO)
 			close(i);
 
-	execvp("tapdisk", argv);
+	tapdisk = getenv("TAPDISK");
+	if (!tapdisk)
+		tapdisk = argv[0];
+
+	execvp(tapdisk, argv);
 
 	PERROR("execvp");
 	_exit(1);
