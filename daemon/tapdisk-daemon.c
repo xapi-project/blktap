@@ -672,19 +672,20 @@ main(int argc, char *argv[])
 		goto out;
 
 	err = tapdisk_daemon_start();
-	if (err)
+	if (err) {
+		EPRINTF("failed to start %s: %d\n", argv[0], err);
 		goto out;
+	}
 
-	tapdisk_daemon_run();
+	err = tapdisk_daemon_run();
 
 	tapdisk_daemon_stop();
+
 	tapdisk_daemon_free();
 
-	err = 0;
 
 out:
-	if (err)
-		EPRINTF("failed to start %s: %d\n", argv[0], err);
 	closelog();
-	return err;
+
+	return err ? 1 : 0;
 }
