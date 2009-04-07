@@ -1422,6 +1422,7 @@ tapdisk_vbd_issue_request(td_vbd_t *vbd, td_vbd_request_t *vreq)
 	uint64_t sector_nr;
 	blkif_request_t *req;
 	int i, err, id, nsects;
+	struct timeval now;
 
 	req       = &vreq->req;
 	id        = req->id;
@@ -1430,8 +1431,11 @@ tapdisk_vbd_issue_request(td_vbd_t *vbd, td_vbd_request_t *vreq)
 	image     = tapdisk_vbd_first_image(vbd);
 
 	vreq->submitting = 1;
-	gettimeofday(&vbd->ts, NULL);
-	gettimeofday(&vreq->last_try, NULL);
+
+	gettimeofday(&now, NULL);
+	vbd->ts        = now;
+	vreq->last_try = now;
+
 	tapdisk_vbd_move_request(vreq, &vbd->pending_requests);
 
 	err = tapdisk_vbd_check_queue(vbd);
