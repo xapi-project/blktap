@@ -287,7 +287,7 @@ tapdisk_vbd_add_dirty_log(td_vbd_t *vbd)
 	if (err)
 		goto fail;
 
-	list_add(&log->next, &vbd->images);
+	tapdisk_vbd_add_image(vbd, log);
 	return 0;
 
 fail:
