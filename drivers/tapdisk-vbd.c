@@ -1181,7 +1181,7 @@ tapdisk_vbd_make_response(td_vbd_t *vbd, td_vbd_request_t *vreq)
 	    (int)tmp.id, tmp.sector_number, vreq->status);
 
 	if (rsp->status != BLKIF_RSP_OKAY)
-		ERR(EIO, "returning BLKIF_RSP %d", rsp->status);
+		ERR(-vreq->error, "returning BLKIF_RSP %d", rsp->status);
 
 	vbd->returned++;
 	vbd->callback(vbd->argument, rsp);
