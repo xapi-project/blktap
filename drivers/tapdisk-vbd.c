@@ -365,10 +365,6 @@ tapdisk_vbd_reactivate_volumes(td_vbd_t *vbd, int resume)
 
 	for (cnt = 0; 1; cnt++) {
 
-		/* only need to reactivate child and parent during resume */
-		if (resume && cnt == 2)
-			break;
-
 		err = tapdisk_vbd_reactivate_volume(name);
 		if (err)
 			goto fail;
