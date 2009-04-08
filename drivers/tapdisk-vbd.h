@@ -36,6 +36,7 @@
 #include "scheduler.h"
 #include "tapdisk-ipc.h"
 #include "tapdisk-image.h"
+#include "tapdisk-vbd-stats.h"
 
 #define TD_VBD_MAX_RETRIES          100
 #define TD_VBD_RETRY_INTERVAL       1
@@ -120,6 +121,8 @@ struct td_vbd_handle {
 	uint64_t                    secs_pending;
 	uint64_t                    retries;
 	uint64_t                    errors;
+
+	struct dispersion           failure_ttl;
 };
 
 #define tapdisk_vbd_for_each_request(vreq, tmp, list)	                \

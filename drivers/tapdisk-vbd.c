@@ -92,6 +92,7 @@ tapdisk_vbd_initialize(int rfd, int wfd, uint16_t uuid)
 	INIT_LIST_HEAD(&vbd->completed_requests);
 	INIT_LIST_HEAD(&vbd->next);
 	gettimeofday(&vbd->ts, NULL);
+	td_dispersion_init(&vbd->failure_ttl);
 
 	for (i = 0; i < MAX_REQUESTS; i++)
 		tapdisk_vbd_initialize_vreq(vbd->request_list + i);
@@ -861,6 +862,10 @@ tapdisk_vbd_shutdown(td_vbd_t *vbd)
 		vbd->ts.tv_sec, vbd->ts.tv_usec,
 		vbd->errors, vbd->retries, vbd->received, vbd->returned,
 		vbd->kicked);
+	DPRINTF("failure cnt: %d ttl min: %.3f max: %.3f avg: %.3f stdev: %.3f\n",
+		vbd->failure_ttl.k,
+		TD_STATS_MIN(&vbd->failure_ttl), TD_STATS_MAX(&vbd->failure_ttl),
+		TD_STATS_MEAN(&vbd->failure_ttl), TD_STATS_STDEV(&vbd->failure_ttl));
 
 	tapdisk_vbd_close_vdi(vbd);
 	tapdisk_ipc_write(&vbd->ipc, TAPDISK_MESSAGE_CLOSE_RSP);
@@ -1165,6 +1170,20 @@ tapdisk_vbd_callback(void *arg, blkif_response_t *rsp)
 }
 
 static void
+tapdisk_vbd_failure_stats_add(td_vbd_t *vbd, td_vbd_request_t *vreq)
+{
+	struct timeval now, delta;
+	float fdelta;
+
+	gettimeofday(&now, NULL);
+	timersub(&now, &vbd->ts, &delta);
+	
+	fdelta = (float)delta.tv_sec + (float)delta.tv_usec / 1000000;
+
+	td_dispersion_add(&vbd->failure_ttl, fdelta);
+}
+
+static void
 tapdisk_vbd_make_response(td_vbd_t *vbd, td_vbd_request_t *vreq)
 {
 	blkif_request_t tmp;
@@ -1180,8 +1199,10 @@ tapdisk_vbd_make_response(td_vbd_t *vbd, td_vbd_request_t *vreq)
 	DBG(TLOG_DBG, "writing req %d, sec 0x%08"PRIx64", res %d to ring\n",
 	    (int)tmp.id, tmp.sector_number, vreq->status);
 
-	if (rsp->status != BLKIF_RSP_OKAY)
+	if (rsp->status != BLKIF_RSP_OKAY) {
 		ERR(-vreq->error, "returning BLKIF_RSP %d", rsp->status);
+		tapdisk_vbd_failure_stats_add(vbd, vreq);
+	}
 
 	vbd->returned++;
 	vbd->callback(vbd->argument, rsp);

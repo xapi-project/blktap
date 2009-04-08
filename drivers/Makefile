@@ -14,7 +14,7 @@ CFLAGS    += -I../include
 CFLAGS    += -D_GNU_SOURCE
 CFLAGS    += -DUSE_NFS_LOCKS
 
-LIBS      += -lrt
+LIBS      += -lrt -lm
 
 # Get gcc to generate the dependencies for us.
 CFLAGS    += -Wp,-MD,.$(@F).d
