@@ -1619,10 +1619,13 @@ tapdisk_vbd_pull_ring_requests(td_vbd_t *vbd)
 	td_ring_t *ring;
 	blkif_request_t *req;
 	td_vbd_request_t *vreq;
+	struct timeval now;
 
 	ring = &vbd->ring;
 	if (!ring->sring)
 		return;
+
+	gettimeofday(&now, NULL);
 
 	rp   = ring->fe_ring.sring->req_prod;
 	rmb();
@@ -1640,6 +1643,7 @@ tapdisk_vbd_pull_ring_requests(td_vbd_t *vbd)
 		memcpy(&vreq->req, req, sizeof(blkif_request_t));
 		vbd->received++;
 		vreq->vbd = vbd;
+		vreq->ts  = now;
 
 		tapdisk_vbd_move_request(vreq, &vbd->new_requests);
 

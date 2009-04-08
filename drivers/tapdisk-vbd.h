@@ -73,6 +73,7 @@ struct td_vbd_request {
 	int                         submitting;
 	int                         secs_pending;
 	int                         num_retries;
+	struct timeval		    ts;
 	struct timeval              last_try;
 
 	td_vbd_t                   *vbd;
