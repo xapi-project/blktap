@@ -182,7 +182,6 @@ void tapdisk_vbd_close_vdi(td_vbd_t *);
 void tapdisk_vbd_forward_request(td_request_t);
 
 int tapdisk_vbd_get_image_info(td_vbd_t *, image_t *);
-int tapdisk_vbd_queue_ready(td_vbd_t *);
 int tapdisk_vbd_retry_needed(td_vbd_t *);
 int tapdisk_vbd_quiesce_queue(td_vbd_t *);
 int tapdisk_vbd_start_queue(td_vbd_t *);

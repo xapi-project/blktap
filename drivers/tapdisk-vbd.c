@@ -45,6 +45,7 @@
 static void tapdisk_vbd_ring_event(event_id_t, char, void *);
 static void tapdisk_vbd_complete_vbd_request(td_vbd_t *, td_vbd_request_t *);
 static void tapdisk_vbd_callback(void *, blkif_response_t *);
+static int  tapdisk_vbd_queue_ready(td_vbd_t *);
 
 /* 
  * initialization
@@ -960,7 +961,7 @@ tapdisk_vbd_get_image_info(td_vbd_t *vbd, image_t *img)
 	return 0;
 }
 
-int
+static int
 tapdisk_vbd_queue_ready(td_vbd_t *vbd)
 {
 	return (!td_flag_test(vbd->state, TD_VBD_DEAD) &&
