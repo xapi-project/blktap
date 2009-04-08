@@ -36,7 +36,6 @@
 #include "scheduler.h"
 #include "tapdisk-ipc.h"
 #include "tapdisk-image.h"
-#include "tapdisk-vbd-stats.h"
 
 #define TD_VBD_REQUEST_TIMEOUT      120
 #define TD_VBD_MAX_RETRIES          100
@@ -124,8 +123,6 @@ struct td_vbd_handle {
 
 	uint64_t                    kicks_in;
 	uint64_t                    kicks_out;
-
-	struct dispersion           failure_ttl;
 };
 
 #define tapdisk_vbd_for_each_request(vreq, tmp, list)	                \

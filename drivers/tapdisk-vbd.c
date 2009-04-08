@@ -94,7 +94,6 @@ tapdisk_vbd_initialize(int rfd, int wfd, uint16_t uuid)
 	INIT_LIST_HEAD(&vbd->completed_requests);
 	INIT_LIST_HEAD(&vbd->next);
 	gettimeofday(&vbd->ts, NULL);
-	td_dispersion_init(&vbd->failure_ttl);
 
 	for (i = 0; i < MAX_REQUESTS; i++)
 		tapdisk_vbd_initialize_vreq(vbd->request_list + i);
@@ -828,7 +827,6 @@ static int
 tapdisk_vbd_shutdown(td_vbd_t *vbd)
 {
 	int new, pending, failed, completed;
-	struct timeval min, max, avg, stdev;
 
 	if (!list_empty(&vbd->pending_requests))
 		return -EAGAIN;
@@ -846,15 +844,6 @@ tapdisk_vbd_shutdown(td_vbd_t *vbd)
 		vbd->ts.tv_sec, vbd->ts.tv_usec,
 		vbd->errors, vbd->retries, vbd->received, vbd->returned,
 		vbd->kicked, vbd->kicks_in, vbd->kicks_out);
-	min   = TD_STATS_MIN(&vbd->failure_ttl);
-	max   = TD_STATS_MAX(&vbd->failure_ttl);
-	avg   = TD_STATS_MEAN(&vbd->failure_ttl);
-	stdev = TD_STATS_STDEV(&vbd->failure_ttl);
-	DPRINTF("failure cnt: %d ttl min: %lu.%06lu max: %lu.%06lu "
-		"avg: %lu.%06lu stdev: %lu.%06lu\n",
-		vbd->failure_ttl.k,
-		min.tv_sec, min.tv_usec, max.tv_sec, max.tv_usec,
-		avg.tv_sec, avg.tv_usec, stdev.tv_sec, stdev.tv_usec);
 
 	tapdisk_vbd_close_vdi(vbd);
 	tapdisk_ipc_write(&vbd->ipc, TAPDISK_MESSAGE_CLOSE_RSP);
@@ -903,7 +892,6 @@ tapdisk_vbd_debug(td_vbd_t *vbd)
 {
 	td_image_t *image, *tmp;
 	int new, pending, failed, completed;
-	struct timeval min, max, avg, stdev;
 
 	tapdisk_vbd_queue_count(vbd, &new, &pending, &failed, &completed);
 
@@ -916,15 +904,6 @@ tapdisk_vbd_debug(td_vbd_t *vbd)
 	    vbd->ts.tv_sec, vbd->ts.tv_usec, vbd->errors, vbd->retries,
 	    vbd->received, vbd->returned, vbd->kicked,
 	    vbd->kicks_in, vbd->kicks_out);
-	min   = TD_STATS_MIN(&vbd->failure_ttl);
-	max   = TD_STATS_MAX(&vbd->failure_ttl);
-	avg   = TD_STATS_MEAN(&vbd->failure_ttl);
-	stdev = TD_STATS_STDEV(&vbd->failure_ttl);
-	DBG(TLOG_WARN, "failure cnt: %d ttl min: %lu.%06lu max: %lu.%06lu "
-	    "avg: %lu.%06lu stdev: %lu.%06lu\n",
-	    vbd->failure_ttl.k,
-	    min.tv_sec, min.tv_usec, max.tv_sec, max.tv_usec,
-	    avg.tv_sec, avg.tv_usec, stdev.tv_sec, stdev.tv_usec);
 
 	tapdisk_vbd_for_each_image(vbd, image, tmp)
 		td_debug(image);
@@ -1170,17 +1149,6 @@ tapdisk_vbd_callback(void *arg, blkif_response_t *rsp)
 }
 
 static void
-tapdisk_vbd_failure_stats_add(td_vbd_t *vbd, td_vbd_request_t *vreq)
-{
-	struct timeval now, delta;
-
-	gettimeofday(&now, NULL);
-	timersub(&now, &vreq->ts, &delta);
-
-	td_dispersion_add(&vbd->failure_ttl, &delta);
-}
-
-static void
 tapdisk_vbd_make_response(td_vbd_t *vbd, td_vbd_request_t *vreq)
 {
 	blkif_request_t tmp;
@@ -1196,10 +1164,8 @@ tapdisk_vbd_make_response(td_vbd_t *vbd, td_vbd_request_t *vreq)
 	DBG(TLOG_DBG, "writing req %d, sec 0x%08"PRIx64", res %d to ring\n",
 	    (int)tmp.id, tmp.sector_number, vreq->status);
 
-	if (rsp->status != BLKIF_RSP_OKAY) {
+	if (rsp->status != BLKIF_RSP_OKAY)
 		ERR(-vreq->error, "returning BLKIF_RSP %d", rsp->status);
-		tapdisk_vbd_failure_stats_add(vbd, vreq);
-	}
 
 	vbd->returned++;
 	vbd->callback(vbd->argument, rsp);
