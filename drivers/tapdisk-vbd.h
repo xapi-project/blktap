@@ -122,6 +122,9 @@ struct td_vbd_handle {
 	uint64_t                    retries;
 	uint64_t                    errors;
 
+	uint64_t                    kicks_in;
+	uint64_t                    kicks_out;
+
 	struct dispersion           failure_ttl;
 };
 
