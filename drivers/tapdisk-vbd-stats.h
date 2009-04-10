@@ -27,55 +27,108 @@
  */
 
 #include <math.h>
+#include <time.h>
+#include <string.h>
+#include <sys/time.h>
+#include <limits.h>
 
 /*
- * Incrementally track mean and standard deviation on sample sequences.
+ * Incrementally track mean and standard deviation on timer samples.
  */
 
 struct dispersion {
-	int     k;              /* number of samples */
-	float   max, min;
-	float   mean, S;        /* mean/stdev accumulators */
+	int            k;              /* number of samples */
+	struct timeval max, min;
+	struct timeval mean;
+	double         S;              /* stdev accumulator */
 };
 
+#define TV_FLT(_tv)							\
+	((double)(_tv).tv_sec + (double)(_tv).tv_usec / 1000000)
+
+#define FLT_TV(_f) ({							\
+	struct timeval __tv;						\
+	time_t __s = (_f);						\
+	__tv.tv_sec = __s;						\
+	__tv.tv_usec = ((_f) - __s) * 1000000;				\
+	__tv;								\
+})
+
+static const struct timeval __tv_zero = { 0, 0 };
+
 #define  TD_STATS_MEAN(_st) ((_st)->mean)
-#define   TD_STATS_VAR(_st) ((_st)->k > 1 ? (_st)->S / ((_st)->k - 1) : 0)
-#define TD_STATS_STDEV(_st) sqrt(TD_STATS_VAR(_st))
-#define   TD_STATS_MIN(_st) ((_st)->k > 0 ? (_st)->min : 0.0)
-#define   TD_STATS_MAX(_st) ((_st)->k > 0 ? (_st)->max : 0.0)
+
+#define __TD_STATS_VAR(_st) ((_st)->k > 1 ? (_st)->S / ((_st)->k - 1) : 0.0)
+#define   TD_STATS_VAR(_st) FLT_TV(TD_STATS_VAR(_st))
+#define TD_STATS_STDEV(_st) FLT_TV(sqrt(__TD_STATS_VAR(_st)))
+
+#define   TD_STATS_MIN(_st) ((_st)->k > 0 ? (_st)->min : __tv_zero)
+#define   TD_STATS_MAX(_st) ((_st)->k > 0 ? (_st)->max : __tv_zero)
 
 static inline void
 td_dispersion_init(struct dispersion *st)
 {
-	st->k    = 0;
-	st->min  = INFINITY;
-	st->max  = -INFINITY;
-	st->mean = 0.0;
-	st->S    = 0.0;
+	memset(st, 0, sizeof(struct dispersion));
+	st->min.tv_sec   = LONG_MAX;
+	st->max.tv_sec   = LONG_MIN;
 }
 
 static inline void
-td_dispersion_add(struct dispersion *st, float val)
+timerdiv(struct timeval *tv, long k, struct timeval *q)
 {
-	float _mean = st->mean;
+	time_t rest;
+
+	q->tv_sec  = tv->tv_sec / k;
+	rest       = tv->tv_sec % k;
+	q->tv_usec = (tv->tv_usec + rest * 1000000) / k;
+
+	if (q->tv_usec < 0) {
+		q->tv_usec += 1000000;
+		q->tv_sec  -= 1;
+	}
+}
+
+static inline void
+td_dispersion_add(struct dispersion *st, struct timeval *tv)
+{
+	struct timeval _mean, delta1, delta2;
 
 	++st->k;
 
-	if (val < st->min)
-		st->min = val;
+	if (timercmp(tv, &st->min, <))
+		st->min = *tv;
 
-	if (val > st->max)
-		st->max = val;
+	if (timercmp(&st->max, tv, <))
+		st->max = *tv;
 
 	/*
 	 * The mean is a simple recurrence:
 	 * M(1) := x(1); M(k) := M(k-1) + (x(k) - M(k-1)) / k
 	 */
-	st->mean += (val - _mean) / st->k;
+
+	_mean = st->mean;
+
+	timersub(tv, &_mean, &delta1);
+	timerdiv(&delta1, st->k, &delta2);
+
+	timeradd(&_mean, &delta2, &st->mean);
 
 	/*
 	 * Standard deviation is, uuhm, almost as simple (TAOCP Vol.2 4.2.2).
 	 * S(1) := 0; S(k) := S(k-1) + (x(k) - M(k-1)) * (x(k) - M(k))
 	 */
-	st->S += (val - _mean) * (val - st->mean);
+
+	timersub(tv, &st->mean, &delta2);
+
+	st->S += TV_FLT(delta1) * TV_FLT(delta2);
+}
+
+static inline void
+td_dispersion_add_now(struct dispersion *st)
+{
+	struct timeval now;
+
+	gettimeofday(&now, NULL);
+
+	td_dispersion_add(st, &now);
 }

@@ -847,6 +847,7 @@ static int
 tapdisk_vbd_shutdown(td_vbd_t *vbd)
 {
 	int new, pending, failed, completed;
+	struct timeval avg, stdev;
 
 	if (!list_empty(&vbd->pending_requests))
 		return -EAGAIN;
@@ -864,10 +865,15 @@ tapdisk_vbd_shutdown(td_vbd_t *vbd)
 		vbd->ts.tv_sec, vbd->ts.tv_usec,
 		vbd->errors, vbd->retries, vbd->received, vbd->returned,
 		vbd->kicked, vbd->kicks_in, vbd->kicks_out);
-	DPRINTF("failure cnt: %d ttl min: %.3f max: %.3f avg: %.3f stdev: %.3f\n",
+	avg   = TD_STATS_MEAN(&vbd->failure_ttl);
+	stdev = TD_STATS_STDEV(&vbd->failure_ttl);
+	DPRINTF("failure cnt: %d ttl min: %lu max: %lu "
+		"avg: %lu.%03lu stdev: %lu.%03lu\n",
 		vbd->failure_ttl.k,
-		TD_STATS_MIN(&vbd->failure_ttl), TD_STATS_MAX(&vbd->failure_ttl),
-		TD_STATS_MEAN(&vbd->failure_ttl), TD_STATS_STDEV(&vbd->failure_ttl));
+		TD_STATS_MIN(&vbd->failure_ttl).tv_sec,
+		TD_STATS_MAX(&vbd->failure_ttl).tv_sec,
+		avg.tv_sec, avg.tv_usec / 1000,
+		stdev.tv_sec, stdev.tv_usec / 1000);
 
 	tapdisk_vbd_close_vdi(vbd);
 	tapdisk_ipc_write(&vbd->ipc, TAPDISK_MESSAGE_CLOSE_RSP);
@@ -1178,14 +1184,11 @@ static void
 tapdisk_vbd_failure_stats_add(td_vbd_t *vbd, td_vbd_request_t *vreq)
 {
 	struct timeval now, delta;
-	float fdelta;
 
 	gettimeofday(&now, NULL);
 	timersub(&now, &vbd->ts, &delta);
-	
-	fdelta = (float)delta.tv_sec + (float)delta.tv_usec / 1000000;
 
-	td_dispersion_add(&vbd->failure_ttl, fdelta);
+	td_dispersion_add(&vbd->failure_ttl, &delta);
 }
 
 static void
