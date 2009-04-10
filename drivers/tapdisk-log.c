@@ -166,7 +166,7 @@ __tlog_error(int err, const char *func, const char *fmt, ...)
 	tlog_strtime(tstr, sizeof(tstr));
 	e = &tapdisk_err.errors[tapdisk_err.cnt];
 
-	len = snprintf(e->msg, MAX_ENTRY_LEN - 1, "[%s]:%s ", tstr, func);
+	len = snprintf(e->msg, MAX_ENTRY_LEN - 1, "[%s] ", tstr);
 
 	va_start(ap, fmt);
 	ret = vsnprintf(e->msg + len, MAX_ENTRY_LEN - (len + 1), fmt, ap);
