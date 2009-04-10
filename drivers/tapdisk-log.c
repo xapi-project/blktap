@@ -14,6 +14,7 @@
 #include <sys/time.h>
 
 #include "tapdisk-log.h"
+#include "tapdisk-vbd-stats.h"
 
 #define MAX_ENTRY_LEN      512
 #define MAX_ERROR_MESSAGES 16
@@ -23,6 +24,7 @@ struct error {
 	int            err;
 	char          *func;
 	char           msg[MAX_ENTRY_LEN];
+	struct dispersion st;
 };
 
 struct ehandle {
@@ -47,6 +49,8 @@ static struct tlog tapdisk_log;
 void
 open_tlog(char *file, size_t bytes, int level, int append)
 {
+	int i;
+
 	tapdisk_log.size = ((bytes + 511) & (~511));
 
 	if (asprintf(&tapdisk_log.file, "%s.%d", file, getpid()) == -1)
@@ -63,6 +67,9 @@ open_tlog(char *file, size_t bytes, int level, int append)
 	tapdisk_log.p      = tapdisk_log.buf;
 	tapdisk_log.level  = level;
 	tapdisk_log.append = append;
+
+	for (i = 0; i < MAX_ERROR_MESSAGES; ++i)
+		td_dispersion_init(&tapdisk_err.errors[i].st);
 }
 
 void
@@ -146,7 +153,6 @@ __tlog_error(int err, const char *func, const char *fmt, ...)
 	va_list ap;
 	int i, len, ret;
 	struct error *e;
-	char tstr[64];
 
 	err = (err > 0 ? err : -err);
 
@@ -154,6 +160,7 @@ __tlog_error(int err, const char *func, const char *fmt, ...)
 		e = &tapdisk_err.errors[i];
 		if (e->err == err && e->func == func) {
 			e->cnt++;
+			td_dispersion_add_now(&e->st);
 			return;
 		}
 	}
@@ -163,22 +170,16 @@ __tlog_error(int err, const char *func, const char *fmt, ...)
 		return;
 	}
 
-	tlog_strtime(tstr, sizeof(tstr));
 	e = &tapdisk_err.errors[tapdisk_err.cnt];
 
-	len = snprintf(e->msg, MAX_ENTRY_LEN - 1, "[%s] ", tstr);
-
 	va_start(ap, fmt);
-	ret = vsnprintf(e->msg + len, MAX_ENTRY_LEN - (len + 1), fmt, ap);
+	ret = vsnprintf(e->msg, MAX_ENTRY_LEN, fmt, ap);
 	va_end(ap);
-
-	len = (ret < MAX_ENTRY_LEN - (len + 1) ?
-	       len + ret : MAX_ENTRY_LEN - 1);
-	e->msg[len] = '\0';
 
 	e->cnt++;
 	e->err  = err;
 	e->func = (char *)func;
+	td_dispersion_add_now(&e->st);
 	tapdisk_err.cnt++;
 }
 
@@ -189,9 +190,21 @@ tlog_print_errors(void)
 	struct error *e;
 
 	for (i = 0; i < tapdisk_err.cnt; i++) {
+		char first[64], last[64];
+		struct timeval tv;
+
 		e = &tapdisk_err.errors[i];
+
+		tv = TD_STATS_MIN(&e->st);
+		__tlog_strtime(first, sizeof(first), &tv);
+
+		tv = TD_STATS_MAX(&e->st);
+		__tlog_strtime(last,  sizeof(last),  &tv);
+
+		tv = TD_STATS_STDEV(&e->st);
 		syslog(LOG_INFO, "TAPDISK ERROR: errno %d at %s (cnt = %d): "
-		       "%s\n", e->err, e->func, e->cnt, e->msg);
+		       "[%s/%s/%lu.%03lu] %s\n", e->err, e->func, e->cnt,
+		       first, last, tv.tv_sec, tv.tv_usec / 1000, e->msg);
 	}
 
 	if (tapdisk_err.dropped)
