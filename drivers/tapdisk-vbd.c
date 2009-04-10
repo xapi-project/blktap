@@ -1245,18 +1245,19 @@ tapdisk_vbd_check_state(td_vbd_t *vbd)
 void
 tapdisk_vbd_check_progress(td_vbd_t *vbd)
 {
-	int diff;
-	struct timeval now;
+	time_t diff;
+	struct timeval now, delta;
 
 	if (list_empty(&vbd->pending_requests))
 		return;
 
 	gettimeofday(&now, NULL);
-	diff = now.tv_sec - vbd->ts.tv_sec;
+	timersub(&now, &vbd->ts, &delta);
+	diff = delta.tv_sec;
 
 	if (diff >= TD_VBD_WATCHDOG_TIMEOUT) {
 		DBG(TLOG_WARN, "%s: watchdog timeout: pending requests "
-		    "idle for %d seconds\n", vbd->name, diff);
+		    "idle for %ld seconds\n", vbd->name, diff);
 		tapdisk_vbd_drop_log(vbd);
 		return;
 	}
