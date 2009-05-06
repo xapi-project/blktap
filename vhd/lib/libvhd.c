@@ -1935,6 +1935,12 @@ vhd_write_footer(vhd_context_t *ctx, vhd_footer_t *footer)
 	if (err)
 		return err;
 
+	if (!ctx->is_block) {
+		err = ftruncate(ctx->fd, off + sizeof(vhd_footer_t));
+		if (err)
+			return -errno;
+	}
+
 	if (!vhd_type_dynamic(ctx))
 		return 0;
 

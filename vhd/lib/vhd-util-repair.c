@@ -46,32 +46,10 @@ vhd_util_repair(int argc, char **argv)
 		return err;
 	}
 
-	if (vhd.is_block) {
-		err = EINVAL;
-		printf("This utility only works for regular-file VHDs\n");
-		goto done;
-	}
+	err = vhd_write_footer(&vhd, &vhd.footer);
+	if (err)
+		printf("error writing footer: %d\n", err);
 
-	err = vhd_end_of_data(&vhd, &eof);
-	if (err) {
-		printf("error finding end of data: %d\n", err);
-		goto done;
-	}
-
-	err = vhd_write_footer_at(&vhd, &vhd.footer, eof);
-	if (err) {
-		printf("error writing footer at %llu: %d\n", eof, err);
-		goto done;
-	}
-
-	eof += sizeof(vhd_footer_t);
-	err = ftruncate(vhd.fd, eof);
-	if (err) {
-		err = errno;
-		printf("error truncating file to %llu: %d\n", eof, err);
-	}
-
- done:
 	vhd_close(&vhd);
 	return err;
 
