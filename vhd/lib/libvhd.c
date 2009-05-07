@@ -967,8 +967,13 @@ vhd_read_footer(vhd_context_t *ctx, vhd_footer_t *footer)
 	if (err != -EINVAL)
 		return err;
 
-	if (ctx->oflags & VHD_OPEN_STRICT)
-		return -EINVAL;
+	/* 
+	 * Disable the enforcement of VHD_OPEN_STRICT until we figure out how 
+	 * to recover from crashes. Note that we never enforced it before 
+	 * anyways due to a bug (CA-28285) and everything was ok.
+	 */
+	/* if (ctx->oflags & VHD_OPEN_STRICT)
+		return -EINVAL; */
 
 	return vhd_read_footer_at(ctx, footer, 0);
 }
