@@ -23,6 +23,21 @@
 
 #define SPB_SHIFT (VHD_BLOCK_SHIFT - SECTOR_SHIFT)
 
+/* 
+ * we have to use half the max number of requests because we're using the same 
+ * tapdisk server for both streams and all the parents will be shared. If we 
+ * issue more than MAX_REQUESTS/2 requests, the vhd_state will run out of 
+ * vhd_request's and return EBUSY, which we don't handle here. However, even 
+ * with MAX_REQUESTS/2 we can still run out of vhd_request's because of 
+ * splitting: if some sectors spanned by a segment are in a parent, a segment 
+ * could be split into at most N/2 vhd_request's, where N is the number of 
+ * sectors per segment. Therefore, if we use 11 segments, we need to divide 
+ * MAX_REQUESTS by 11/2=6 on top of that. If we don't, we'd have to handle 
+ * EBUSY by retrying here.
+ */
+#define MAX_SEGMENTS 8
+#define MAX_STREAM_REQUESTS (MAX_REQUESTS / 2 / (MAX_SEGMENTS / 2))
+
 struct tapdisk_stream_poll {
 	int                              pipe[2];
 	int                              set;
@@ -57,7 +72,7 @@ struct tapdisk_stream {
 	struct list_head                 pending_list;
 	struct list_head                 completed_list;
 
-	struct tapdisk_stream_request    requests[MAX_REQUESTS];
+	struct tapdisk_stream_request    requests[MAX_STREAM_REQUESTS];
 };
 
 static unsigned int tapdisk_stream_count;
@@ -302,11 +317,12 @@ tapdisk_stream_dequeue(void *arg, blkif_response_t *rsp)
 	else {
 		s->err = EIO;
 		list_add_tail(&sreq->next, &s->free_list);
-		fprintf(stderr, "error reading sector 0x%llx\n", sreq->sec);
+		fprintf(stderr, "error reading sector %llu (stream %d)\n",
+				sreq->sec, (s == &stream2) + 1);
 	}
 
 	if (tapdisk_stream_process_data()) {
-		fprintf(stderr, "mismatch at sector 0x%llx\n",
+		fprintf(stderr, "mismatch at sector %llu\n",
 				sreq->sec);
 		stream1.err = EINVAL;
 		stream2.err = EINVAL;
@@ -355,6 +371,7 @@ tapdisk_stream_enqueue_copy(struct tapdisk_stream *s,
 	assert(vreq->secs_pending == 0);
 
 	memcpy(&vreq->req, breq, sizeof(*breq));
+	s->started++;
 	vbd->received++;
 	vreq->vbd = vbd;
 
@@ -406,7 +423,7 @@ tapdisk_stream_enqueue1(void)
 		breq->sector_number = sreq->sec;
 		breq->operation     = BLKIF_OP_READ;
 
-		for (i = 0; i < BLKIF_MAX_SEGMENTS_PER_REQUEST; i++) {
+		for (i = 0; i < MAX_SEGMENTS; i++) {
 			uint32_t secs;
 			struct blkif_request_segment *seg = breq->seg + i;
 
@@ -591,7 +608,7 @@ tapdisk_stream_initialize_requests(struct tapdisk_stream *s)
 		return err;
 	}
 
-	for (i = 0; i < MAX_REQUESTS; i++) {
+	for (i = 0; i < MAX_STREAM_REQUESTS; i++) {
 		struct tapdisk_stream_request *req = s->requests + i;
 		tapdisk_stream_initialize_request(req);
 		list_add_tail(&req->next, &s->free_list);
