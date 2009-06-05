@@ -360,6 +360,12 @@ tapdisk_channel_complete_connection(tapdisk_channel_t *channel)
 	char *path;
 
 	if (!xs_printf(channel->xsh, channel->path,
+		       "tapdisk-pid", "%d", channel->tapdisk_pid)) {
+		EPRINTF("ERROR: Failed writing tapdisk-pid");
+		return -errno;
+	}
+
+	if (!xs_printf(channel->xsh, channel->path,
 		       "sectors", "%llu", channel->image.size)) {
 		EPRINTF("ERROR: Failed writing sectors");
 		return -errno;
@@ -400,6 +406,13 @@ tapdisk_channel_complete_connection(tapdisk_channel_t *channel)
 
 	free(path);
 	if (asprintf(&path, "%s/sectors", channel->path) == -1)
+		return err;
+
+	if (!xs_rm(channel->xsh, XBT_NULL, path))
+		goto clean_out;
+
+	free(path);
+	if (asprintf(&path, "%s/tapdisk-pid", channel->path) == -1)
 		return err;
 
 	xs_rm(channel->xsh, XBT_NULL, path);
