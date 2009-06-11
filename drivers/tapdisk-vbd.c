@@ -1638,7 +1638,7 @@ tapdisk_vbd_pull_ring_requests(td_vbd_t *vbd)
 	gettimeofday(&now, NULL);
 
 	rp   = ring->fe_ring.sring->req_prod;
-	rmb();
+	xen_rmb();
 
 	for (rc = ring->fe_ring.req_cons; rc != rp; rc++) {
 		req = RING_GET_REQUEST(&ring->fe_ring, rc);
