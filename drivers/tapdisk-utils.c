@@ -144,7 +144,7 @@ tapdisk_get_image_size(int fd, uint64_t *_sectors, uint32_t *_sector_size)
 {
 	int ret;
 	struct stat stat;
-	uint64_t sectors;
+	uint64_t sectors, bytes;
 	uint32_t sector_size;
 
 	sectors       = 0;
@@ -159,8 +159,10 @@ tapdisk_get_image_size(int fd, uint64_t *_sectors, uint32_t *_sector_size)
 
 	if (S_ISBLK(stat.st_mode)) {
 		/*Accessing block device directly*/
-		if (ioctl(fd, BLKGETSIZE, &sectors)) {
-			DPRINTF("ERR: BLKGETSIZE failed, couldn't stat image");
+		if (ioctl(fd,BLKGETSIZE64,&bytes)==0) {
+			sectors = bytes >> SECTOR_SHIFT;
+		} else if (ioctl(fd,BLKGETSIZE,&sectors)!=0) {
+			DPRINTF("ERR: BLKGETSIZE and BLKGETSIZE64 failed, couldn't stat image");
 			return -EINVAL;
 		}
 

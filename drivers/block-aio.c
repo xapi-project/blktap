@@ -67,6 +67,7 @@ static int tdaio_get_image_info(int fd, td_disk_info_t *info)
 	int ret;
 	long size;
 	unsigned long total_size;
+	unsigned long long bytes;
 	struct statvfs statBuf;
 	struct stat stat;
 
@@ -79,8 +80,10 @@ static int tdaio_get_image_info(int fd, td_disk_info_t *info)
 	if (S_ISBLK(stat.st_mode)) {
 		/*Accessing block device directly*/
 		info->size = 0;
-		if (ioctl(fd,BLKGETSIZE,&info->size)!=0) {
-			DPRINTF("ERR: BLKGETSIZE failed, couldn't stat image");
+		if (ioctl(fd,BLKGETSIZE64,&bytes)==0) {
+			info->size = bytes >> SECTOR_SHIFT;
+		} else if (ioctl(fd,BLKGETSIZE,&info->size)!=0) {
+			DPRINTF("ERR: BLKGETSIZE and BLKGETSIZE64 failed, couldn't stat image");
 			return -EINVAL;
 		}
 
