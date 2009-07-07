@@ -1166,7 +1166,7 @@ tapdisk_vbd_failure_stats_add(td_vbd_t *vbd, td_vbd_request_t *vreq)
 	struct timeval now, delta;
 
 	gettimeofday(&now, NULL);
-	timersub(&now, &vbd->ts, &delta);
+	timersub(&now, &vreq->ts, &delta);
 
 	td_dispersion_add(&vbd->failure_ttl, &delta);
 }
