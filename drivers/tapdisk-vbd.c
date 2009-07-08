@@ -827,7 +827,7 @@ static int
 tapdisk_vbd_shutdown(td_vbd_t *vbd)
 {
 	int new, pending, failed, completed;
-	struct timeval avg, stdev;
+	struct timeval min, max, avg, stdev;
 
 	if (!list_empty(&vbd->pending_requests))
 		return -EAGAIN;
@@ -845,15 +845,15 @@ tapdisk_vbd_shutdown(td_vbd_t *vbd)
 		vbd->ts.tv_sec, vbd->ts.tv_usec,
 		vbd->errors, vbd->retries, vbd->received, vbd->returned,
 		vbd->kicked, vbd->kicks_in, vbd->kicks_out);
+	min   = TD_STATS_MIN(&vbd->failure_ttl);
+	max   = TD_STATS_MAX(&vbd->failure_ttl);
 	avg   = TD_STATS_MEAN(&vbd->failure_ttl);
 	stdev = TD_STATS_STDEV(&vbd->failure_ttl);
-	DPRINTF("failure cnt: %d ttl min: %lu max: %lu "
-		"avg: %lu.%03lu stdev: %lu.%03lu\n",
+	DPRINTF("failure cnt: %d ttl min: %lu.%06lu max: %lu.%06lu "
+		"avg: %lu.%06lu stdev: %lu.%06lu\n",
 		vbd->failure_ttl.k,
-		TD_STATS_MIN(&vbd->failure_ttl).tv_sec,
-		TD_STATS_MAX(&vbd->failure_ttl).tv_sec,
-		avg.tv_sec, avg.tv_usec / 1000,
-		stdev.tv_sec, stdev.tv_usec / 1000);
+		min.tv_sec, min.tv_usec, max.tv_sec, max.tv_usec,
+		avg.tv_sec, avg.tv_usec, stdev.tv_sec, stdev.tv_usec);
 
 	tapdisk_vbd_close_vdi(vbd);
 	tapdisk_ipc_write(&vbd->ipc, TAPDISK_MESSAGE_CLOSE_RSP);
@@ -904,6 +904,7 @@ tapdisk_vbd_debug(td_vbd_t *vbd)
 {
 	td_image_t *image, *tmp;
 	int new, pending, failed, completed;
+	struct timeval min, max, avg, stdev;
 
 	tapdisk_vbd_queue_count(vbd, &new, &pending, &failed, &completed);
 
@@ -916,6 +917,15 @@ tapdisk_vbd_debug(td_vbd_t *vbd)
 	    vbd->ts.tv_sec, vbd->ts.tv_usec, vbd->errors, vbd->retries,
 	    vbd->received, vbd->returned, vbd->kicked,
 	    vbd->kicks_in, vbd->kicks_out);
+	min   = TD_STATS_MIN(&vbd->failure_ttl);
+	max   = TD_STATS_MAX(&vbd->failure_ttl);
+	avg   = TD_STATS_MEAN(&vbd->failure_ttl);
+	stdev = TD_STATS_STDEV(&vbd->failure_ttl);
+	DBG(TLOG_WARN, "failure cnt: %d ttl min: %lu.%06lu max: %lu.%06lu "
+	    "avg: %lu.%06lu stdev: %lu.%06lu\n",
+	    vbd->failure_ttl.k,
+	    min.tv_sec, min.tv_usec, max.tv_sec, max.tv_usec,
+	    avg.tv_sec, avg.tv_usec, stdev.tv_sec, stdev.tv_usec);
 
 	tapdisk_vbd_for_each_image(vbd, image, tmp)
 		td_debug(image);
