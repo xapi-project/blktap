@@ -238,6 +238,9 @@ scheduler_wait_for_events(scheduler_t *s)
 	ret = select(s->max_fd + 1, &s->read_fds,
 		     &s->write_fds, &s->except_fds, &tv);
 
+	td_event_log_add_events(&s->event_log, ret,
+				&s->read_fds, &s->write_fds, &s->except_fds);
+
 	s->restart     = 0;
 	s->timeout     = SCHEDULER_MAX_TIMEOUT;
 	s->max_timeout = SCHEDULER_MAX_TIMEOUT;
@@ -262,4 +265,6 @@ scheduler_initialize(scheduler_t *s)
 	FD_ZERO(&s->except_fds);
 
 	INIT_LIST_HEAD(&s->events);
+
+	td_event_log_init(&s->event_log);
 }

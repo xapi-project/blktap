@@ -425,3 +425,20 @@ tapdisk_server_run()
 
 	return 0;
 }
+
+void
+tapdisk_server_log_events(void)
+{
+	td_vbd_t *vbd, *next;
+	int i;
+
+	tlog_write(TLOG_WARN, "index: ipc rfd:%x wfd:%x aio:%x other:%x\n",
+		   1<<server.ipc.rfd, 1<<server.ipc.wfd, 1<<server.aio_queue.poll_fd,
+		   1<<TD_EVENT_LOG_OTHER);
+
+	i = 0;
+	tapdisk_server_for_each_vbd(vbd, next)
+		tlog_write(TLOG_WARN, "index: vbd [%d]:%x\n", i++, 1<<vbd->ring.fd);
+
+	td_event_log_write(&server.scheduler.event_log, TLOG_WARN);
+}

@@ -1,4 +1,4 @@
-/* 
+/*
  * Copyright (c) 2008, XenSource Inc.
  * All rights reserved.
  *
@@ -25,30 +25,47 @@
  * NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
  * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
-#ifndef _TAPDISK_SERVER_H_
-#define _TAPDISK_SERVER_H_
 
-#include "tapdisk-vbd.h"
-#include "tapdisk-queue.h"
+#ifndef _EVENT_LOG_H_
+#define _EVENT_LOG_H_
 
-struct tap_disk *tapdisk_server_find_driver_interface(int);
+#include <sys/select.h>
 
-td_image_t *tapdisk_server_get_shared_image(td_image_t *);
+#define TD_EVENT_LOG_N_ENTRIES 128
 
-td_vbd_t *tapdisk_server_get_vbd(td_uuid_t);
-void tapdisk_server_add_vbd(td_vbd_t *);
-void tapdisk_server_remove_vbd(td_vbd_t *);
+struct event_log_entry {
+	struct timeval          ts;
+	long                    fds;
+};
 
-void tapdisk_server_queue_tiocb(struct tiocb *);
+struct event_log {
+	struct event_log_entry  ring[TD_EVENT_LOG_N_ENTRIES];
+	unsigned long long      count;
+};
 
-void tapdisk_server_check_state(void);
+/* NB. Reuse low fds <= 2, these are dupd to /dev/null */
+#define TD_EVENT_LOG_OTHER      (1<<0)
 
-event_id_t tapdisk_server_register_event(char, int, int, event_cb_t, void *);
-void tapdisk_server_unregister_event(event_id_t);
-void tapdisk_server_set_max_timeout(int);
+#define td_event_log_num_entries(_s)			\
+	MIN((_s)->count, TD_EVENT_LOG_N_ENTRIES)
 
-int tapdisk_server_initialize(const char *, const char *);
-int tapdisk_server_run(void);
-void tapdisk_server_log_events(void);
+#define td_event_log_first(_s)				\
+	((_s)->count < TD_EVENT_LOG_N_ENTRIES		\
+	 ? 0						\
+	 : (_s)->count % TD_EVENT_LOG_N_ENTRIES)
 
-#endif
+#define __td_event_log_entry(_i, _s)			\
+	&(_s)->ring[(_i) % TD_EVENT_LOG_N_ENTRIES]
+
+#define td_event_log_entry(_n, _s)			\
+	__td_event_log_entry(td_event_log_first(_s) + (_n), _s)
+
+void td_event_log_init(struct event_log *log);
+
+void td_event_log_add_events(struct event_log *log, int nfds,
+			     const fd_set *rdfds, const fd_set *wrfds,
+			     const fd_set *exfds);
+
+void td_event_log_write(struct event_log *log, int level);
+
+#endif /* _EVENT_LOG_H_ */
