@@ -1200,6 +1200,11 @@ tapdisk_vbd_make_response(td_vbd_t *vbd, td_vbd_request_t *vreq)
 	if (rsp->status != BLKIF_RSP_OKAY) {
 		ERR(-vreq->error, "returning BLKIF_RSP %d", rsp->status);
 		tapdisk_vbd_failure_stats_add(vbd, vreq);
+		if (-vreq->error == EBUSY &&
+		    vreq->num_retries >= TD_VBD_MAX_RETRIES) {
+			tapdisk_vbd_debug(vbd);
+			tapdisk_server_log_events();
+		}
 	}
 
 	vbd->returned++;
