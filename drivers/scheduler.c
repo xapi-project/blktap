@@ -313,9 +313,6 @@ scheduler_wait_for_events(scheduler_t *s)
 	if (ret < 0)
 		goto out;
 
-	td_event_log_add_events(&s->event_log, ret,
-				&s->read_fds, &s->write_fds, &s->except_fds);
-
 	ret = scheduler_check_events(s, ret);
 
 	s->timeout     = SCHEDULER_MAX_TIMEOUT;
@@ -343,6 +340,4 @@ scheduler_initialize(scheduler_t *s)
 	FD_ZERO(&s->except_fds);
 
 	INIT_LIST_HEAD(&s->events);
-
-	td_event_log_init(&s->event_log);
 }

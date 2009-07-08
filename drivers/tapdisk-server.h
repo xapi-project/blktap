@@ -51,7 +51,6 @@ void tapdisk_server_set_max_timeout(int);
 int tapdisk_server_initialize(const char *, const char *);
 int tapdisk_server_run(void);
 void tapdisk_server_iterate(void);
-void tapdisk_server_log_events(void);
 
 int tapdisk_server_openlog(const char *, int, int);
 void tapdisk_server_closelog(void);

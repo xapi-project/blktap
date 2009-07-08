@@ -31,7 +31,6 @@
 #include <sys/select.h>
 
 #include "list.h"
-#include "tapdisk-event-log.h"
 
 #define SCHEDULER_POLL_READ_FD       0x1
 #define SCHEDULER_POLL_WRITE_FD      0x2
@@ -53,8 +52,6 @@ typedef struct scheduler {
 	int                          timeout;
 	int                          max_timeout;
 	int                          depth;
-
-	struct event_log             event_log;
 } scheduler_t;
 
 void scheduler_initialize(scheduler_t *);
