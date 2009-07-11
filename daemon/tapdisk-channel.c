@@ -1292,12 +1292,6 @@ mem_fail:
 void
 tapdisk_channel_close(tapdisk_channel_t *channel)
 {
-	if (channel->tapdisk_pid != -1) {
-		DPRINTF("%s: waiting for child %d to exit\n", 
-			channel->path, channel->tapdisk_pid);
-		return;
-	}
-
 	if (channel->channel_id)
 		DPRINTF("%s: closing channel %d:%d\n",
 			channel->path, channel->channel_id, channel->cookie);
@@ -1314,17 +1308,6 @@ tapdisk_channel_close(tapdisk_channel_t *channel)
 		unregister_xenbus_watch(channel->xsh, &channel->shutdown_watch);
 		channel->shutdown_watch.node = NULL;
 	}
-
-	tapdisk_daemon_close_channel(channel);
-
-	free(channel->params);
-	free(channel->frontpath);
-	free(channel->shutdown_str);
-	free(channel->pause_done_str);
-	free(channel->pause_str);
-	free(channel->uuid_str);
-	free(channel->path);
-	free(channel);
 }
 
 int
@@ -1403,42 +1386,31 @@ fail:
 void
 tapdisk_channel_reap(tapdisk_channel_t *channel, int status)
 {
-	/* Nothing left to defer for in channel_close() */
-	channel->tapdisk_pid = -1; 
-
 	/* No IPC after this point */
 	channel->open = 0;
 
-	/*
-	 * A tapdisk writes CLOSE_RSP and exists. What triggers first,
-	 * SIGCHLD or the readfd? Cannot always guarantee events to be
-	 * ordered synchronously on the observer side, so we refrain
-	 * from assuming any particular order.
-	 *
-	 * Hence we escalate only the obvious cases. This also means:
-	 * A tapdisk broken enough to return status 0 AND dropping the
-	 * shutdown message would make us leak a channel.
-	 */
-
 	if (WIFEXITED(status) && WEXITSTATUS(status) != 0) {
-		tapdisk_channel_fatal(channel,
+		tapdisk_channel_error(channel,
 				      "tapdisk died with status %d", 
 				      WEXITSTATUS(status));
-		return;
-	}
-	
-	if (WIFSIGNALED(status)) {
-		tapdisk_channel_fatal(channel,
+	} else if (WIFSIGNALED(status)) {
+		tapdisk_channel_error(channel,
 				      "tapdisk killed by signal %d", 
 				      WTERMSIG(status));
-		return;
 	}
 
-	if (channel->state == TAPDISK_CHANNEL_CLOSED) {
-		/* We saw the shutdown message */
-		tapdisk_channel_close(channel);
-		return;
-	}
+	tapdisk_channel_close(channel);
+
+	tapdisk_daemon_close_channel(channel);
+
+	free(channel->params);
+	free(channel->frontpath);
+	free(channel->shutdown_str);
+	free(channel->pause_done_str);
+	free(channel->pause_str);
+	free(channel->uuid_str);
+	free(channel->path);
+	free(channel);
 }
 
 int
