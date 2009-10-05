@@ -1046,6 +1046,20 @@ fail:
 	return -ENOMEM;
 }
 
+static void
+tapdisk_channel_clear_watches(tapdisk_channel_t *channel)
+{
+	if (channel->pause_watch.node) {
+		unregister_xenbus_watch(channel->xsh, &channel->pause_watch);
+		channel->pause_watch.node    = NULL;
+	}
+
+	if (channel->shutdown_watch.node) {
+		unregister_xenbus_watch(channel->xsh, &channel->shutdown_watch);
+		channel->shutdown_watch.node = NULL;
+	}
+}
+
 static int
 tapdisk_channel_set_watches(tapdisk_channel_t *channel)
 {
@@ -1074,14 +1088,7 @@ tapdisk_channel_set_watches(tapdisk_channel_t *channel)
 	return 0;
 
 fail:
-	if (channel->pause_watch.node) {
-		unregister_xenbus_watch(channel->xsh, &channel->pause_watch);
-		channel->pause_watch.node    = NULL;
-	}
-	if (channel->shutdown_watch.node) {
-		unregister_xenbus_watch(channel->xsh, &channel->shutdown_watch);
-		channel->shutdown_watch.node = NULL;
-	}
+	tapdisk_channel_clear_watches(channel);
 	return err;
 }
 
@@ -1299,15 +1306,7 @@ tapdisk_channel_close(tapdisk_channel_t *channel)
 	if (channel->open)
 		tapdisk_channel_send_shutdown_request(channel);
 
-	if (channel->pause_watch.node) {
-		unregister_xenbus_watch(channel->xsh, &channel->pause_watch);
-		channel->pause_watch.node = NULL;
-	}
-
-	if (channel->shutdown_watch.node) {
-		unregister_xenbus_watch(channel->xsh, &channel->shutdown_watch);
-		channel->shutdown_watch.node = NULL;
-	}
+	tapdisk_channel_clear_watches(channel);
 }
 
 int
