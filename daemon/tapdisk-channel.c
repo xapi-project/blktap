@@ -468,15 +468,13 @@ tapdisk_channel_receive_open_response(tapdisk_channel_t *channel,
 	channel->image.info    = message->u.image.info;
 
 	err = tapdisk_channel_complete_connection(channel);
-	if (err)
-		goto fail;
+	if (err) {
+		tapdisk_channel_fatal(channel,
+				      "failure completing connection: %d", err);
+		return err;
+	}
 
 	return 0;
-
-fail:
-	tapdisk_channel_fatal(channel,
-			      "failure completing connection: %d", err);
-	return err;
 }
 
 static int
