@@ -1212,6 +1212,17 @@ fail:
 	return -EINVAL;
 }
 
+
+static void
+tapdisk_channel_release_info(tapdisk_channel_t *channel)
+{
+	free(channel->params);
+	channel->params = NULL;
+
+	free(channel->frontpath);
+	channel->frontpath = NULL;
+}
+
 static int
 tapdisk_channel_gather_info(tapdisk_channel_t *channel)
 {
@@ -1224,20 +1235,24 @@ tapdisk_channel_gather_info(tapdisk_channel_t *channel)
 			"mode", "%c", &channel->mode, NULL);
 	if (err) {
 		EPRINTF("could not find device info: %d\n", err);
-		return err;
+		goto fail;
 	}
 
 	err = tapdisk_channel_parse_params(channel);
 	if (err)
-		return err;
+		goto fail;
 
 	err = tapdisk_channel_get_busid(channel);
 	if (err)
-		return err;
+		goto fail;
 
 	tapdisk_channel_get_storage_type(channel);
 
 	return 0;
+
+fail:
+	tapdisk_channel_release_info(channel);
+	return err;
 }
 
 static int
@@ -1411,9 +1426,7 @@ tapdisk_channel_reap(tapdisk_channel_t *channel, int status)
 	tapdisk_channel_close(channel);
 
 	tapdisk_daemon_close_channel(channel);
-
-	free(channel->params);
-	free(channel->frontpath);
+	tapdisk_channel_release_info(channel);
 	tapdisk_channel_uninit(channel);
 	free(channel->path);
 	free(channel);
