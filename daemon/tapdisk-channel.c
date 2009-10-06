@@ -991,6 +991,24 @@ tapdisk_channel_connect(tapdisk_channel_t *channel)
 	return tapdisk_channel_send_pid_request(channel);
 }
 
+static void
+tapdisk_channel_uninit(tapdisk_channel_t *channel)
+{
+	free(channel->uuid_str);
+	channel->uuid_str = NULL;
+
+	free(channel->pause_str);
+	channel->pause_str = NULL;
+
+	free(channel->pause_done_str);
+	channel->pause_done_str = NULL;
+
+	free(channel->shutdown_str);
+	channel->shutdown_str = NULL;
+
+	channel->share_tapdisk_str = NULL;
+}
+
 static int
 tapdisk_channel_init(tapdisk_channel_t *channel)
 {
@@ -1034,15 +1052,7 @@ tapdisk_channel_init(tapdisk_channel_t *channel)
 	return 0;
 
 fail:
-	free(channel->uuid_str);
-	free(channel->pause_str);
-	free(channel->pause_done_str);
-	free(channel->shutdown_str);
-	channel->uuid_str          = NULL;
-	channel->pause_str         = NULL;
-	channel->pause_done_str    = NULL;
-	channel->shutdown_str      = NULL;
-	channel->share_tapdisk_str = NULL;
+	tapdisk_channel_uninit(channel);
 	return -ENOMEM;
 }
 
@@ -1404,10 +1414,7 @@ tapdisk_channel_reap(tapdisk_channel_t *channel, int status)
 
 	free(channel->params);
 	free(channel->frontpath);
-	free(channel->shutdown_str);
-	free(channel->pause_done_str);
-	free(channel->pause_str);
-	free(channel->uuid_str);
+	tapdisk_channel_uninit(channel);
 	free(channel->path);
 	free(channel);
 }
