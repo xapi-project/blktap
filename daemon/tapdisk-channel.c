@@ -1321,6 +1321,17 @@ mem_fail:
 	return -ENOMEM;
 }
 
+static void
+tapdisk_channel_destroy(tapdisk_channel_t *channel)
+{
+	tapdisk_channel_clear_watches(channel);
+	tapdisk_daemon_close_channel(channel);
+	tapdisk_channel_release_info(channel);
+	tapdisk_channel_uninit(channel);
+	free(channel->path);
+	free(channel);
+}
+
 void
 tapdisk_channel_close(tapdisk_channel_t *channel)
 {
@@ -1423,13 +1434,7 @@ tapdisk_channel_reap(tapdisk_channel_t *channel, int status)
 				      WTERMSIG(status));
 	}
 
-	tapdisk_channel_close(channel);
-
-	tapdisk_daemon_close_channel(channel);
-	tapdisk_channel_release_info(channel);
-	tapdisk_channel_uninit(channel);
-	free(channel->path);
-	free(channel);
+	tapdisk_channel_destroy(channel);
 }
 
 int
