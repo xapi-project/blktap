@@ -599,8 +599,6 @@ tapdisk_daemon_find_channel(tapdisk_channel_t *channel)
 {
 	tapdisk_channel_t *c, *tmp;
 
-	channel->read_fd     = 0;
-	channel->write_fd    = 0;
 	channel->tapdisk_pid = 0;
 
 	/* do we want multiple vbds per tapdisk? */

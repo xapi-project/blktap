@@ -903,6 +903,20 @@ tapdisk_channel_start_process(tapdisk_channel_t *channel,
 	_exit(1);
 }
 
+static void
+tapdisk_channel_close_tapdisk(tapdisk_channel_t *channel)
+{
+	if (channel->read_fd >= 0) {
+		close(channel->read_fd);
+		channel->read_fd = -1;
+	}
+
+	if (channel->write_fd >= 0) {
+		close(channel->write_fd);
+		channel->write_fd = -1;
+	}
+}
+
 static int
 tapdisk_channel_launch_tapdisk(tapdisk_channel_t *channel)
 {
@@ -911,8 +925,6 @@ tapdisk_channel_launch_tapdisk(tapdisk_channel_t *channel)
 
 	read_dev          = NULL;
 	write_dev         = NULL;
-	channel->read_fd  = -1;
-	channel->write_fd = -1;
 
 	err = tapdisk_channel_get_device_number(channel);
 	if (err)
@@ -970,10 +982,7 @@ tapdisk_channel_launch_tapdisk(tapdisk_channel_t *channel)
 fail:
 	free(read_dev);
 	free(write_dev);
-	if (channel->read_fd != -1)
-		close(channel->read_fd);
-	if (channel->write_fd != -1)
-		close(channel->write_fd);
+	tapdisk_channel_close_tapdisk(channel);
 	return err;
 }
 
@@ -1372,6 +1381,8 @@ tapdisk_channel_open(tapdisk_channel_t **_channel,
 	channel->blktap_fd = blktap_fd;
 	channel->cookie    = cookie;
 	channel->state     = TAPDISK_CHANNEL_IDLE;
+	channel->read_fd   = -1;
+	channel->write_fd  = -1;
 
 	INIT_LIST_HEAD(&channel->list);
 
@@ -1441,6 +1452,7 @@ tapdisk_channel_reap(tapdisk_channel_t *channel, int status)
 				      WTERMSIG(status));
 	}
 
+	tapdisk_channel_close_tapdisk(channel);
 	tapdisk_channel_destroy(channel);
 }
 
