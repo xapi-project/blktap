@@ -589,23 +589,44 @@ tapdisk_channel_send_pause_request(tapdisk_channel_t *channel)
 }
 
 static int
+tapdisk_channel_signal_paused(tapdisk_channel_t *channel)
+{
+	int err = 0;
+	bool ok;
+
+	DPRINTF("write %s\n", channel->pause_done_str);
+	ok = xs_write(channel->xsh, XBT_NULL, channel->pause_done_str, "", 0);
+	if (!ok) {
+		EPRINTF("error writing %s: %d\n",
+			channel->pause_done_str, err);
+		err = -errno;
+	}
+
+	return err;
+}
+
+static int
+tapdisk_channel_signal_unpaused(tapdisk_channel_t *channel)
+{
+	int err = 0;
+	bool ok;
+
+	DPRINTF("clear %s\n", channel->pause_done_str);
+	ok = xs_rm(channel->xsh, XBT_NULL, channel->pause_done_str);
+	if (!ok) {
+		EPRINTF("error removing %s: %d\n",
+			channel->pause_done_str, err);
+		err = -errno;
+	}
+
+	return err;
+}
+
+static int
 tapdisk_channel_receive_pause_response(tapdisk_channel_t *channel,
 				       tapdisk_message_t *message)
 {
-	int err;
-
-	if (!xs_write(channel->xsh, XBT_NULL,
-		      channel->pause_done_str, "", strlen(""))) {
-		err = -errno;
-		goto fail;
-	}
-
-	return 0;
-
-fail:
-	tapdisk_channel_fatal(channel,
-			      "failure receiving pause response: %d\n", err);
-	return err;
+	return tapdisk_channel_signal_paused(channel);
 }
 
 static int
@@ -633,19 +654,7 @@ static int
 tapdisk_channel_receive_resume_response(tapdisk_channel_t *channel,
 					tapdisk_message_t *message)
 {
-	int err;
-
-	if (!xs_rm(channel->xsh, XBT_NULL, channel->pause_done_str)) {
-		err = -errno;
-		goto fail;
-	}
-
-	return 0;
-
-fail:
-	tapdisk_channel_fatal(channel,
-			      "failure receiving pause response: %d", err);
-	return err;
+	return tapdisk_channel_signal_unpaused(channel);
 }
 
 static void
