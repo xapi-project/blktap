@@ -32,8 +32,48 @@
 #include "blktaplib.h"
 #include "tapdisk-message.h"
 
+typedef enum {
+	TAPDISK_CHANNEL_DEAD          = 1,
+	TAPDISK_CHANNEL_LAUNCHED      = 2,
+	TAPDISK_CHANNEL_WAIT_PID      = 3,
+	TAPDISK_CHANNEL_PID           = 4,
+	TAPDISK_CHANNEL_WAIT_OPEN     = 5,
+	TAPDISK_CHANNEL_RUNNING       = 6,
+	TAPDISK_CHANNEL_WAIT_PAUSE    = 7,
+	TAPDISK_CHANNEL_PAUSED        = 8,
+	TAPDISK_CHANNEL_WAIT_RESUME   = 9,
+	TAPDISK_CHANNEL_WAIT_CLOSE    = 10,
+	TAPDISK_CHANNEL_CLOSED        = 11,
+} channel_state_t;
+
+#define TAPDISK_CHANNEL_IPC_OPEN(_c)		    \
+	((_c)->state != TAPDISK_CHANNEL_DEAD     && \
+	 (_c)->state != TAPDISK_CHANNEL_CLOSED)
+
+#define TAPDISK_CHANNEL_IPC_IDLE(_c)		   \
+	((_c)->state == TAPDISK_CHANNEL_LAUNCHED || \
+	 (_c)->state == TAPDISK_CHANNEL_PID      || \
+	 (_c)->state == TAPDISK_CHANNEL_RUNNING  || \
+	 (_c)->state == TAPDISK_CHANNEL_PAUSED)
+
+typedef enum {
+	TAPDISK_VBD_UNPAUSED        = 1,
+	TAPDISK_VBD_PAUSING         = 2,
+	TAPDISK_VBD_PAUSED          = 3,
+	TAPDISK_VBD_BROKEN          = 4,
+	TAPDISK_VBD_DEAD            = 5,
+} vbd_state_t;
+
+typedef enum {
+	TAPDISK_VBD_UP              = 1,
+	TAPDISK_VBD_DOWN            = 2,
+} shutdown_state_t;
+
 struct tapdisk_channel {
-	int                       state;
+	channel_state_t           state;
+	vbd_state_t               vbd_state;
+	shutdown_state_t          shutdown_state;
+	int                       shutdown_force;
 
 	int                       read_fd;
 	int                       write_fd;
@@ -42,7 +82,6 @@ struct tapdisk_channel {
 
 	char                      mode;
 	char                      shared;
-	char                      open;
 	unsigned int              domid;
 	unsigned int              busid;
 	unsigned int              major;
@@ -52,17 +91,12 @@ struct tapdisk_channel {
 	uint16_t                  cookie;
 	pid_t                     tapdisk_pid;
 
-	/*
-	 * special accounting needed to handle pause
-	 * requests received before tapdisk process is ready
-	 */
-	char                      connected;
-
 	char                     *path;
 	char                     *frontpath;
 	char                     *params;
 	char                     *vdi_path;
 	char                     *uuid_str;
+	char                     *start_str;
 	char                     *pause_str;
 	char                     *pause_done_str;
 	char                     *shutdown_str;
@@ -71,9 +105,9 @@ struct tapdisk_channel {
 	image_t                   image;
 
 	struct list_head          list;
+	struct xenbus_watch       start_watch;
 	struct xenbus_watch       pause_watch;
 	struct xenbus_watch       shutdown_watch;
-	int			  pause_watch_count;
 
 	struct xs_handle         *xsh;
 };
@@ -84,14 +118,16 @@ int strsep_len(const char *str, char c, unsigned int len);
 int make_blktap_device(char *devname, int major, int minor, int perm);
 
 int tapdisk_channel_open(tapdisk_channel_t **,
-			 char *node, struct xs_handle *,
-			 int blktap_fd, uint16_t cookie);
-void tapdisk_channel_close(tapdisk_channel_t *);
+			 const char *node, struct xs_handle *,
+			 int blktap_fd, uint16_t cookie,
+			 int domid, int busid);
 
-void tapdisk_daemon_find_channel(tapdisk_channel_t *);
+void tapdisk_daemon_maybe_clone_channel(tapdisk_channel_t *);
 void tapdisk_daemon_close_channel(tapdisk_channel_t *);
 
 int tapdisk_channel_receive_message(tapdisk_channel_t *, tapdisk_message_t *);
-void tapdisk_channel_reap(tapdisk_channel_t *channel, int status);
+void tapdisk_channel_reap(tapdisk_channel_t *, int status);
+int tapdisk_channel_change_vbd_state(tapdisk_channel_t *, vbd_state_t);
+void tapdisk_channel_drive_vbd_state(tapdisk_channel_t *);
 
 #endif

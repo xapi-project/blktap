@@ -286,14 +286,8 @@ tapdisk_daemon_wait_for_domid(void)
 	return err;
 }
 
-static inline int
-tapdisk_daemon_new_vbd_event(const char *node)
-{
-	return (!strcmp(node, "start-tapdisk"));
-}
-
 static int
-tapdisk_daemon_write_uuid(char *path, uint32_t uuid)
+tapdisk_daemon_write_uuid(const char *path, uint32_t uuid)
 {
 	int err;
 	char *cpath, uuid_str[12];
@@ -311,54 +305,89 @@ tapdisk_daemon_write_uuid(char *path, uint32_t uuid)
 	return (err ? 0 : -errno);
 }
 
-static void
-tapdisk_daemon_probe(struct xs_handle *xsh,
-		     struct xenbus_watch *watch, const char *path)
+static tapdisk_channel_t*
+tapdisk_daemon_find_channel(int domid, int busid)
 {
-	char *cpath;
-	int len, err;
-	uint32_t cookie;
-	const char *node;
+	tapdisk_channel_t *channel, *next;
+
+	tapdisk_daemon_for_each_channel(channel, next)
+		if (channel->domid == domid &&
+		    channel->busid == busid)
+			return channel;
+
+	return NULL;
+}
+
+static void
+tapdisk_daemon_probe_vbd(int domid, int busid, const char *path)
+{
 	tapdisk_channel_t *channel;
+	uint32_t cookie;
+	int err;
 
-	len = strsep_len(path, '/', 7);
-	if (len < 0)
-		return;
-
-	node = path + len + 1;
-
-	if (!tapdisk_daemon_new_vbd_event(node))
-		return;
-
-	if (!xs_exists(xsh, path))
-		return;
-
-	cpath = strdup(path);
-	if (!cpath) {
-		EPRINTF("failed to allocate control path for %s\n", path);
+	channel = tapdisk_daemon_find_channel(domid, busid);
+	if (channel) {
+		DPRINTF("%s: ignoring duplicate probe event:"
+			" channel %d:%d, state %d\n",
+			path, channel->channel_id, channel->cookie, 
+			channel->vbd_state);
 		return;
 	}
-	cpath[len] = '\0';
 
 	cookie = tapdisk_daemon.cookie++;
-	err    = tapdisk_daemon_write_uuid(cpath, cookie);
+	err    = tapdisk_daemon_write_uuid(path, cookie);
 	if (err)
-		goto out;
+		return;
 
-	DPRINTF("%s: got watch on %s, uuid = %u\n", __func__, path, cookie);
+	DPRINTF("%s: creating channel, uuid %u\n", path, cookie);
 
-	err = tapdisk_channel_open(&channel, cpath,
+	err = tapdisk_channel_open(&channel, path,
 				   tapdisk_daemon.xsh,
 				   tapdisk_daemon.blktap_fd,
-				   cookie);
+				   cookie, domid, busid);
 	if (!err)
 		list_add(&channel->list, &tapdisk_daemon.channels);
 	else
 		EPRINTF("failed to open tapdisk channel for %s: %d\n",
 			path, err);
+}
 
-out:
-	free(cpath);
+static void
+tapdisk_daemon_remove_vbd(int domid, int busid, const char *path)
+{
+	tapdisk_channel_t *channel;
+
+	channel = tapdisk_daemon_find_channel(domid, busid);
+	if (!channel) {
+		DPRINTF("%s: ignoring remove event:"
+			" no channel.\n",
+			path);
+		return;
+	}
+
+	DPRINTF("%s: marking channel dead, uuid %u\n", path, channel->cookie);
+
+	channel->vbd_state = TAPDISK_VBD_DEAD;
+	tapdisk_channel_drive_vbd_state(channel);
+}
+
+static void
+tapdisk_daemon_node_event(struct xs_handle *xsh,
+			  struct xenbus_watch *watch, const char *path)
+{
+	int count, domid, busid, offset, exists;
+	char slash;
+
+	count = sscanf(path, "/local/domain/%*d/backend/tap/%d/%d%c",
+		       &domid, &busid, &slash);
+
+	if (count == 2) {
+		exists = xs_exists(xsh, path);
+		if (exists)
+			tapdisk_daemon_probe_vbd(domid, busid, path);
+		else
+			tapdisk_daemon_remove_vbd(domid, busid, path);
+	}
 }
 
 static int
@@ -371,7 +400,7 @@ tapdisk_daemon_start(void)
 		return err;
 
 	tapdisk_daemon.watch.node     = tapdisk_daemon.node;
-	tapdisk_daemon.watch.callback = tapdisk_daemon_probe;
+	tapdisk_daemon.watch.callback = tapdisk_daemon_node_event;
 
 	err = register_xenbus_watch(tapdisk_daemon.xsh, &tapdisk_daemon.watch);
 	if (err)
@@ -545,6 +574,8 @@ tapdisk_daemon_set_fds(fd_set *readfds)
 	FD_SET(max, readfds);
 
 	tapdisk_daemon_for_each_channel(channel, tmp) {
+		if (!TAPDISK_CHANNEL_IPC_OPEN(channel))
+			continue;
 		fd  = channel->read_fd;
 		max = MAX(fd, max);
 		FD_SET(fd, readfds);
@@ -562,11 +593,15 @@ tapdisk_daemon_check_fds(fd_set *readfds)
 	if (FD_ISSET(xs_fileno(tapdisk_daemon.xsh), readfds))
 		xs_fire_next_watch(tapdisk_daemon.xsh);
 
-	tapdisk_daemon_for_each_channel(channel, tmp)
+	tapdisk_daemon_for_each_channel(channel, tmp) {
+		if (!TAPDISK_CHANNEL_IPC_OPEN(channel))
+			continue;
+
 		if (FD_ISSET(channel->read_fd, readfds)) {
 			tapdisk_daemon_receive_message(channel->read_fd);
 			return;
 		}
+	}
 }
 
 static int
@@ -595,7 +630,7 @@ tapdisk_daemon_run(void)
 }
 
 void
-tapdisk_daemon_find_channel(tapdisk_channel_t *channel)
+tapdisk_daemon_maybe_clone_channel(tapdisk_channel_t *channel)
 {
 	tapdisk_channel_t *c, *tmp;
 

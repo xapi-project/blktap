@@ -40,13 +40,89 @@
 #include "disktypes.h"
 #include "tapdisk-dispatch.h"
 
-#define TAPDISK_CHANNEL_IDLE          1
-#define TAPDISK_CHANNEL_WAIT_PID      2
-#define TAPDISK_CHANNEL_WAIT_OPEN     3
-#define TAPDISK_CHANNEL_WAIT_PAUSE    4
-#define TAPDISK_CHANNEL_WAIT_RESUME   5
-#define TAPDISK_CHANNEL_WAIT_CLOSE    6
-#define TAPDISK_CHANNEL_CLOSED        7
+static inline const char*
+tapdisk_channel_state_name(channel_state_t state)
+{
+	switch (state) {
+	case TAPDISK_CHANNEL_DEAD:
+		return "dead";
+	case TAPDISK_CHANNEL_LAUNCHED:
+		return "launched";
+	case TAPDISK_CHANNEL_WAIT_PID:
+		return "wait-pid";
+	case TAPDISK_CHANNEL_PID:
+		return "pid";
+	case TAPDISK_CHANNEL_WAIT_OPEN:
+		return "wait-open";
+	case TAPDISK_CHANNEL_RUNNING:
+		return "running";
+	case TAPDISK_CHANNEL_WAIT_PAUSE:
+		return "wait-pause";
+	case TAPDISK_CHANNEL_PAUSED:
+		return "paused";
+	case TAPDISK_CHANNEL_WAIT_RESUME:
+		return "wait-resume";
+	case TAPDISK_CHANNEL_WAIT_CLOSE:
+		return "wait-close";
+	case TAPDISK_CHANNEL_CLOSED:
+		return "closed";
+	}
+
+	return "unknown";
+}
+
+static inline const char*
+tapdisk_channel_vbd_state_name(vbd_state_t state)
+{
+	switch (state) {
+	case TAPDISK_VBD_UNPAUSED:
+		return "unpaused";
+	case TAPDISK_VBD_PAUSING:
+		return "pausing";
+	case TAPDISK_VBD_PAUSED:
+		return "paused";
+	case TAPDISK_VBD_BROKEN:
+		return "broken";
+	case TAPDISK_VBD_DEAD:
+		return "dead";
+	}
+
+	return "unknown";
+}
+
+static inline int
+tapdisk_channel_enter_vbd_state(tapdisk_channel_t *channel, vbd_state_t state)
+{
+	int err = 0;
+
+	if (channel->vbd_state == TAPDISK_VBD_BROKEN ||
+	    channel->vbd_state == TAPDISK_VBD_DEAD)
+		err = -EINVAL;
+
+	DPRINTF("%s: vbd state %s -> %s: %d",
+		channel->path,
+		tapdisk_channel_vbd_state_name(channel->shutdown_state),
+		tapdisk_channel_vbd_state_name(state),
+		err);
+
+	if (!err)
+		channel->vbd_state = state;
+
+	return err;
+}
+
+static inline const char*
+tapdisk_channel_shutdown_state_name(shutdown_state_t state)
+{
+	switch (state) {
+	case TAPDISK_VBD_UP:
+		return "up";
+	case TAPDISK_VBD_DOWN:
+		return "down";
+	}
+
+	return "unknown";
+}
 
 static void tapdisk_channel_error(tapdisk_channel_t *,
 				  const char *fmt, ...)
@@ -55,9 +131,15 @@ static void tapdisk_channel_fatal(tapdisk_channel_t *,
 				  const char *fmt, ...)
   __attribute__((format(printf, 2, 3)));
 static int tapdisk_channel_refresh_params(tapdisk_channel_t *);
+static void tapdisk_channel_start_event(struct xs_handle *,
+					struct xenbus_watch *,
+					const char *);
 static void tapdisk_channel_pause_event(struct xs_handle *,
 					struct xenbus_watch *,
 					const char *);
+static int tapdisk_channel_connect(tapdisk_channel_t *);
+static void tapdisk_channel_close_tapdisk(tapdisk_channel_t *);
+static void tapdisk_channel_destroy(tapdisk_channel_t *);
 
 static int
 tapdisk_channel_check_uuid(tapdisk_channel_t *channel)
@@ -86,6 +168,9 @@ tapdisk_channel_validate_watch(tapdisk_channel_t *channel, const char *path)
 	len = strsep_len(path, '/', 7);
 	if (len < 0)
 		return -EINVAL;
+
+	if (!xs_exists(channel->xsh, channel->path))
+		return -ENOENT;
 
 	err = tapdisk_channel_check_uuid(channel);
 	if (err)
@@ -135,7 +220,6 @@ tapdisk_channel_validate_message(tapdisk_channel_t *channel,
 		return 0;
 	}
 
-	channel->state = TAPDISK_CHANNEL_IDLE;
 	return 0;
 }
 
@@ -152,15 +236,16 @@ tapdisk_channel_send_message(tapdisk_channel_t *channel,
 	offset     = 0;
 	len        = sizeof(tapdisk_message_t);
 
-	DPRINTF("%s: sending '%s' message to %d:%d\n",
+	DPRINTF("%s: sending '%s' message to %d:%d, state %s\n",
 		channel->path, tapdisk_message_name(message->type),
-		channel->channel_id, channel->cookie);
+		channel->channel_id, channel->cookie,
+		tapdisk_channel_state_name(channel->state));
 
-	if (channel->state != TAPDISK_CHANNEL_IDLE &&
-	    message->type  != TAPDISK_MESSAGE_CLOSE &&
-	    message->type  != TAPDISK_MESSAGE_FORCE_SHUTDOWN)
-		EPRINTF("%s: writing message to non-idle channel (%d)\n",
-			channel->path, channel->state);
+	if (!TAPDISK_CHANNEL_IPC_IDLE(channel))
+		EPRINTF("%s: writing message to non-idle channel, state %s (%d)\n",
+			channel->path,
+			tapdisk_channel_state_name(channel->state),
+			channel->state);
 
 	while (offset < len) {
 		FD_ZERO(&writefds);
@@ -272,11 +357,11 @@ tapdisk_channel_fatal(tapdisk_channel_t *channel, const char *fmt, ...)
 {
 	va_list ap;
 
+	tapdisk_channel_enter_vbd_state(channel, TAPDISK_VBD_BROKEN);
+
 	va_start(ap, fmt);
 	__tapdisk_channel_error(channel, fmt, ap);
 	va_end(ap);
-
-	tapdisk_channel_close(channel);
 }
 
 static int
@@ -387,7 +472,6 @@ tapdisk_channel_complete_connection(tapdisk_channel_t *channel)
 	if (err)
 		goto clean;
 
-	channel->connected = 1;
 	return 0;
 
  clean:
@@ -463,6 +547,8 @@ tapdisk_channel_receive_open_response(tapdisk_channel_t *channel,
 {
 	int err;
 
+	channel->state = TAPDISK_CHANNEL_RUNNING;
+
 	channel->image.size    = message->u.image.sectors;
 	channel->image.secsize = message->u.image.sector_size;
 	channel->image.info    = message->u.image.info;
@@ -510,9 +596,8 @@ static int
 tapdisk_channel_receive_shutdown_response(tapdisk_channel_t *channel,
 					  tapdisk_message_t *message)
 {
-	channel->open  = 0;
 	channel->state = TAPDISK_CHANNEL_CLOSED;
-	tapdisk_channel_close(channel);
+	tapdisk_channel_close_tapdisk(channel);
 	return 0;
 }
 
@@ -539,9 +624,6 @@ tapdisk_channel_send_pid_request(tapdisk_channel_t *channel)
 
 	err = tapdisk_channel_send_message(channel, &message, 2);
 
-	if (!err)
-		channel->open = 1;
-
 	return err;
 }
 
@@ -551,21 +633,14 @@ tapdisk_channel_receive_pid_response(tapdisk_channel_t *channel,
 {
 	int err;
 
+	channel->state       = TAPDISK_CHANNEL_PID;
 	channel->tapdisk_pid = message->u.tapdisk_pid;
-
 	DPRINTF("%s: tapdisk pid: %d\n", channel->path, channel->tapdisk_pid);
 
 	err = setpriority(PRIO_PROCESS, channel->tapdisk_pid, PRIO_SPECIAL_IO);
 	if (err) {
 		tapdisk_channel_fatal(channel,
 				      "setting tapdisk priority: %d", err);
-		return err;
-	}
-
-	err = tapdisk_channel_send_open_request(channel);
-	if (err) {
-		tapdisk_channel_fatal(channel,
-				      "sending open request: %d", err);
 		return err;
 	}
 
@@ -626,7 +701,8 @@ static int
 tapdisk_channel_receive_pause_response(tapdisk_channel_t *channel,
 				       tapdisk_message_t *message)
 {
-	return tapdisk_channel_signal_paused(channel);
+	channel->state = TAPDISK_CHANNEL_PAUSED;
+	return 0;
 }
 
 static int
@@ -654,26 +730,47 @@ static int
 tapdisk_channel_receive_resume_response(tapdisk_channel_t *channel,
 					tapdisk_message_t *message)
 {
-	return tapdisk_channel_signal_unpaused(channel);
+	channel->state = TAPDISK_CHANNEL_RUNNING;
+	return 0;
+}
+
+static int
+tapdisk_channel_check_shutdown_request(tapdisk_channel_t *channel)
+{
+	char *s;
+	size_t len;
+	int force;
+
+	force = 0;
+	s = xs_read(channel->xsh, XBT_NULL, channel->shutdown_str, &len);
+	if (!s) {
+		if (errno == ENOENT) {
+			channel->shutdown_state = TAPDISK_VBD_UP;
+			return 0;
+		}
+
+		return -errno;
+	}
+
+	force = (len == strlen("force")) && !memcmp(s, "force", len);
+	free(s);
+
+	channel->shutdown_state = TAPDISK_VBD_DOWN;
+	channel->shutdown_force = force;
+
+	return 0;
 }
 
 static void
 tapdisk_channel_shutdown_event(struct xs_handle *xsh,
 			       struct xenbus_watch *watch, const char *path)
 {
-	int err, force;
 	tapdisk_channel_t *channel;
-	char *s;
-	size_t len;
+	int err;
 
 	channel = watch->data;
 
 	DPRINTF("%s: got watch on %s\n", channel->path, path);
-
-	if (!xs_exists(channel->xsh, channel->path)) {
-		tapdisk_channel_close(channel);
-		return;
-	}
 
 	err = tapdisk_channel_validate_watch(channel, path);
 	if (err) {
@@ -682,49 +779,261 @@ tapdisk_channel_shutdown_event(struct xs_handle *xsh,
 		return;
 	}
 
-	force = 0;
-	s = xs_read(channel->xsh, XBT_NULL, path, &len);
-	if (s) {
-		force = (len == strlen("force")) && !memcmp(s, "force", len);
-		free(s);
+	err = tapdisk_channel_check_shutdown_request(channel);
+	if (err)
+		tapdisk_channel_error(channel, "shutdown event failed: %d", err);
+	else
+		tapdisk_channel_drive_vbd_state(channel);
+}
+
+static int
+tapdisk_channel_drive_paused(tapdisk_channel_t *channel)
+{
+	int err;
+
+	switch (channel->state) {
+	case TAPDISK_CHANNEL_WAIT_PID:
+	case TAPDISK_CHANNEL_WAIT_OPEN:
+	case TAPDISK_CHANNEL_WAIT_PAUSE:
+	case TAPDISK_CHANNEL_WAIT_RESUME:
+	case TAPDISK_CHANNEL_WAIT_CLOSE:
+		return -EAGAIN;
+
+	case TAPDISK_CHANNEL_PID:
+	case TAPDISK_CHANNEL_PAUSED:
+	case TAPDISK_CHANNEL_CLOSED:
+	case TAPDISK_CHANNEL_DEAD:
+		return 0;
+
+	case TAPDISK_CHANNEL_RUNNING:
+		err = tapdisk_channel_send_pause_request(channel);
+		if (err)
+			goto fail_msg;
+		return -EAGAIN;
+
+	default:
+		EPRINTF("%s: invalid channel state %d\n",
+			__func__, channel->state);
+		return -EINVAL;
 	}
 
-	if (force)
-		tapdisk_channel_send_force_shutdown_request(channel);
-	else
-		tapdisk_channel_send_shutdown_request(channel);
+fail_msg:
+	tapdisk_channel_fatal(channel, "sending message: %d", err);
+	return -EIO;
+}
+
+static int
+tapdisk_channel_drive_shutdown(tapdisk_channel_t *channel)
+{
+	int err;
+
+	switch (channel->state) {
+
+	case TAPDISK_CHANNEL_DEAD:
+		return 0;
+
+	case TAPDISK_CHANNEL_CLOSED:
+		if (channel->shared)
+			return 0;
+		/* let's duely wait for a clean exit */
+		return -EAGAIN;
+
+	case TAPDISK_CHANNEL_LAUNCHED:
+	case TAPDISK_CHANNEL_WAIT_PID:
+	case TAPDISK_CHANNEL_WAIT_OPEN:
+	case TAPDISK_CHANNEL_WAIT_PAUSE:
+	case TAPDISK_CHANNEL_WAIT_RESUME:
+	case TAPDISK_CHANNEL_WAIT_CLOSE:
+		return -EAGAIN;
+
+	case TAPDISK_CHANNEL_PID:
+	case TAPDISK_CHANNEL_RUNNING:
+	case TAPDISK_CHANNEL_PAUSED:
+		if (channel->shutdown_force)
+			err = tapdisk_channel_send_force_shutdown_request(channel);
+		else
+			err = tapdisk_channel_send_shutdown_request(channel);
+		if (err)
+			goto fail_msg;
+		return -EAGAIN;
+
+	default:
+		EPRINTF("%s: invalid channel state %d\n",
+			__func__, channel->state);
+		return -EINVAL;
+	}
+
+fail_msg:
+	tapdisk_channel_fatal(channel, "sending message: %d", err);
+	return -EIO;
+}
+
+static int
+tapdisk_channel_drive_running(tapdisk_channel_t *channel)
+{
+	int err;
+
+	switch (channel->state) {
+	case TAPDISK_CHANNEL_DEAD:
+	case TAPDISK_CHANNEL_CLOSED:
+		err = tapdisk_channel_connect(channel);
+		if (err) {
+			tapdisk_channel_fatal(channel, "failed connect: %d", err);
+			return err;
+		}
+		return -EAGAIN;
+
+	case TAPDISK_CHANNEL_LAUNCHED:
+	case TAPDISK_CHANNEL_WAIT_PID:
+	case TAPDISK_CHANNEL_WAIT_OPEN:
+	case TAPDISK_CHANNEL_WAIT_PAUSE:
+	case TAPDISK_CHANNEL_WAIT_RESUME:
+	case TAPDISK_CHANNEL_WAIT_CLOSE:
+		return -EAGAIN;
+
+	case TAPDISK_CHANNEL_PID:
+		err = tapdisk_channel_send_open_request(channel);
+		if (err)
+			goto fail_msg;
+		return -EAGAIN;
+
+	case TAPDISK_CHANNEL_RUNNING:
+		return 0;
+
+	case TAPDISK_CHANNEL_PAUSED:
+		err = tapdisk_channel_send_resume_request(channel);
+		if (err)
+			goto fail_msg;
+		return -EAGAIN;
+
+	default:
+		EPRINTF("%s: invalid channel state %d\n",
+			__func__, channel->state);
+		return -EINVAL;
+	}
+
+fail_msg:
+	tapdisk_channel_fatal(channel, "sending message: %d", err);
+	return -EIO;
+}
+
+static channel_state_t
+tapdisk_channel_map_vbd_state(tapdisk_channel_t *channel)
+{
+	channel_state_t next;
+
+	switch (channel->shutdown_state) {
+	case TAPDISK_VBD_DOWN:
+		return TAPDISK_CHANNEL_CLOSED;
+
+	case TAPDISK_VBD_UP:
+		switch (channel->vbd_state) {
+		case TAPDISK_VBD_UNPAUSED:
+			return TAPDISK_CHANNEL_RUNNING;
+
+		case TAPDISK_VBD_PAUSING:
+		case TAPDISK_VBD_PAUSED:
+			return TAPDISK_CHANNEL_PAUSED;
+
+		case TAPDISK_VBD_BROKEN:
+		case TAPDISK_VBD_DEAD:
+			return TAPDISK_CHANNEL_CLOSED;
+
+		default:
+			EPRINTF("%s: invalid vbd state %d\n",
+				__func__, channel->vbd_state);
+			return -EINVAL;
+		}
+		break;
+	default:
+		EPRINTF("%s: invalid shutdown state %d\n",
+			__func__, channel->shutdown_state);
+		return -EINVAL;
+	}
+}
+
+void
+tapdisk_channel_drive_vbd_state(tapdisk_channel_t *channel)
+{
+	channel_state_t next;
+
+	next = tapdisk_channel_map_vbd_state(channel);
+	DPRINTF("driving channel state %s, vbd %s, %s to %s (%d)\n",
+		tapdisk_channel_state_name(channel->state),
+		tapdisk_channel_shutdown_state_name(channel->shutdown_state),
+		tapdisk_channel_vbd_state_name(channel->vbd_state),
+		tapdisk_channel_state_name(next), next);
+	if (next < 0)
+		return;
+
+	if (channel->state != next) {
+		int err = 0;
+
+		switch (next) {
+		case TAPDISK_CHANNEL_RUNNING:
+			err = tapdisk_channel_drive_running(channel);
+			break;
+		case TAPDISK_CHANNEL_PAUSED:
+			err = tapdisk_channel_drive_paused(channel);
+			break;
+		case TAPDISK_CHANNEL_CLOSED:
+			err = tapdisk_channel_drive_shutdown(channel);
+			break;
+		default:
+			EPRINTF("%s: invalid target state %d\n", __func__, next);
+			err = -EINVAL;
+			break;
+		}
+		if (err)
+			/* -EAGAIN: not there yet */
+			return;
+	}
+
+	switch (channel->vbd_state) {
+	case TAPDISK_VBD_UNPAUSED:
+	case TAPDISK_VBD_PAUSED:
+	case TAPDISK_VBD_BROKEN:
+		break;
+
+	case TAPDISK_VBD_PAUSING:
+		channel->vbd_state = TAPDISK_VBD_PAUSED;
+		tapdisk_channel_signal_paused(channel);
+		break;
+
+	case TAPDISK_VBD_DEAD:
+		tapdisk_channel_destroy(channel);
+	}
+}
+
+static int
+tapdisk_channel_check_pause_request(tapdisk_channel_t *channel)
+{
+	int pause, err = 0;
+
+	pause = xs_exists(channel->xsh, channel->pause_str);
+	if (pause)
+		tapdisk_channel_enter_vbd_state(channel, TAPDISK_VBD_PAUSING);
+	else {
+		err = tapdisk_channel_refresh_params(channel);
+		if (!err)
+			err = tapdisk_channel_enter_vbd_state(channel, TAPDISK_VBD_UNPAUSED);
+		if (!err)
+			err = tapdisk_channel_signal_unpaused(channel);
+	}
+
+	return err;
 }
 
 static void
 tapdisk_channel_pause_event(struct xs_handle *xsh,
 			    struct xenbus_watch *watch, const char *path)
 {
-	int err, count, pause, pausing, paused, resuming;
+	int err, count;
 	tapdisk_channel_t *channel;
 
 	channel = watch->data;
 
-	count = channel->pause_watch_count++;
-	DPRINTF("%s: got watch %d on %s\n", channel->path, count, path);
-
-	if (!xs_exists(channel->xsh, channel->path)) {
-		tapdisk_channel_close(channel);
-		return;
-	}
-
-	/* 
-	 * We are not considered online until after OPEN_RSP. If the
-	 * pause request is valid:
-	 *
-	 *  - Safe to ignore the initial 'spurious' event. Pause
-	 *    requests won't preempt watch registration.
-	 *
-	 *  - No need to defer. If the request if valid, we're
-	 *    guaranteed to be ready.
-	 */
-
-	if (!count)
-		return;
+	DPRINTF("%s: got watch on %s\n", channel->path, path);
 
 	err = tapdisk_channel_validate_watch(channel, path);
 	if (err) {
@@ -737,47 +1046,11 @@ tapdisk_channel_pause_event(struct xs_handle *xsh,
 		err = 0;
 	}
 
-	pause    = xs_exists(xsh, channel->pause_str);
-	paused   = xs_exists(xsh, channel->pause_done_str);
-	pausing  = channel->state == TAPDISK_CHANNEL_WAIT_PAUSE;
-	resuming = channel->state == TAPDISK_CHANNEL_WAIT_RESUME;
-	
-	if (!channel->connected) {
-		EPRINTF("bad %s event %s: channel not connected\n", 
-			pause ? "pause" : "unpause", path);
-		return;
-	}
-
-	if (pause) {
-		if (paused || pausing || resuming) {
-			EPRINTF("bad pause event %s: channel %s", 
-				path,
-				pausing ? "pausing" : resuming ? "resuming"
-				: "paused");
-			return;
-		}
-
-		err = tapdisk_channel_send_pause_request(channel);
-
-	} else {
-		if (!paused || pausing || resuming) {
-			EPRINTF("bad resume event %s: channel %s", 
-				path,
-				pausing ? "pausing" : resuming ? "resuming" 
-				: "not paused");
-			return;
-		}
-
-		err = tapdisk_channel_refresh_params(channel);
-		if (err)
-			goto out;
-
-		err = tapdisk_channel_send_resume_request(channel);
-	}
-
-out:
+	err = tapdisk_channel_check_pause_request(channel);
 	if (err)
 		tapdisk_channel_error(channel, "pause event failed: %d", err);
+	else
+		tapdisk_channel_drive_vbd_state(channel);
 }
 
 static int
@@ -968,7 +1241,6 @@ tapdisk_channel_launch_tapdisk(tapdisk_channel_t *channel)
 		goto fail;
 	}
 
-	channel->open       = 1;
 	channel->channel_id = channel->write_fd;
 
 	free(read_dev);
@@ -977,6 +1249,7 @@ tapdisk_channel_launch_tapdisk(tapdisk_channel_t *channel)
 	DPRINTF("process launched, channel = %d:%d\n",
 		channel->channel_id, channel->cookie);
 
+	channel->state = TAPDISK_CHANNEL_LAUNCHED;
 	return tapdisk_channel_send_pid_request(channel);
 
 fail:
@@ -991,9 +1264,10 @@ tapdisk_channel_connect(tapdisk_channel_t *channel)
 {
 	int err;
 
-	tapdisk_daemon_find_channel(channel);
-
-	if (!channel->tapdisk_pid)
+	tapdisk_daemon_maybe_clone_channel(channel);
+	if (channel->tapdisk_pid)
+		channel->state = TAPDISK_CHANNEL_PID;
+	else
 		return tapdisk_channel_launch_tapdisk(channel);
 
 	DPRINTF("%s: process exists: %d, channel = %d:%d\n",
@@ -1043,6 +1317,12 @@ tapdisk_channel_init(tapdisk_channel_t *channel)
 		goto fail;
 	}
 
+	err = asprintf(&channel->start_str, "%s/start-tapdisk", channel->path);
+	if (err == -1) {
+		channel->start_str = NULL;
+		goto fail;
+	}
+
 	err = asprintf(&channel->pause_str, "%s/pause", channel->path);
 	if (err == -1) {
 		channel->pause_str = NULL;
@@ -1075,6 +1355,11 @@ fail:
 static void
 tapdisk_channel_clear_watches(tapdisk_channel_t *channel)
 {
+	if (channel->start_watch.node) {
+		unregister_xenbus_watch(channel->xsh, &channel->start_watch);
+		channel->start_watch.node    = NULL;
+	}
+
 	if (channel->pause_watch.node) {
 		unregister_xenbus_watch(channel->xsh, &channel->pause_watch);
 		channel->pause_watch.node    = NULL;
@@ -1090,6 +1375,16 @@ static int
 tapdisk_channel_set_watches(tapdisk_channel_t *channel)
 {
 	int err;
+
+	/* watch for start events */
+	channel->start_watch.node            = channel->start_str;
+	channel->start_watch.callback        = tapdisk_channel_start_event;
+	channel->start_watch.data            = channel;
+	err = register_xenbus_watch(channel->xsh, &channel->start_watch);
+	if (err) {
+		channel->start_watch.node    = NULL;
+		goto fail;
+	}
 
 	/* watch for pause events */
 	channel->pause_watch.node            = channel->pause_str;
@@ -1146,28 +1441,6 @@ out:
 	free(stype);
 }
 
-static int
-tapdisk_channel_get_busid(tapdisk_channel_t *channel)
-{
-	int len, end;
-	const char *ptr;
-	char *tptr, num[10];
-
-	len = strsep_len(channel->path, '/', 6);
-	end = strlen(channel->path);
-	if(len < 0 || end < 0) {
-		EPRINTF("invalid path: %s\n", channel->path);
-		return -EINVAL;
-	}
-	
-	ptr = channel->path + len + 1;
-	strncpy(num, ptr, end - len);
-	tptr = num + (end - (len + 1));
-	*tptr = '\0';
-
-	channel->busid = atoi(num);
-	return 0;
-}
 
 static int
 tapdisk_channel_parse_params(tapdisk_channel_t *channel)
@@ -1246,7 +1519,6 @@ tapdisk_channel_gather_info(tapdisk_channel_t *channel)
 
 	err = xs_gather(channel->xsh, channel->path,
 			"frontend", NULL, &channel->frontpath,
-			"frontend-id", "%li", &channel->domid,
 			"params", NULL, &channel->params,
 			"mode", "%c", &channel->mode, NULL);
 	if (err) {
@@ -1255,10 +1527,6 @@ tapdisk_channel_gather_info(tapdisk_channel_t *channel)
 	}
 
 	err = tapdisk_channel_parse_params(channel);
-	if (err)
-		goto fail;
-
-	err = tapdisk_channel_get_busid(channel);
 	if (err)
 		goto fail;
 
@@ -1297,14 +1565,6 @@ tapdisk_channel_verify_start_request(tapdisk_channel_t *channel)
 	char *path;
 	unsigned int err;
 
-	err = asprintf(&path, "%s/start-tapdisk", channel->path);
-	if (err == -1)
-		goto mem_fail;
-
-	if (!xs_exists(channel->xsh, path))
-		goto fail;
-
-	free(path);
 	err = asprintf(&path, "%s/shutdown-request", channel->path);
 	if (err == -1)
 		goto mem_fail;
@@ -1328,8 +1588,7 @@ tapdisk_channel_verify_start_request(tapdisk_channel_t *channel)
 	return 0;
 
 fail:
-	free(path);
-	EPRINTF("%s:%s: invalid start request\n", __func__, channel->path);
+	EPRINTF("%s:%s: invalid start request: %s\n", __func__, channel->path, path);
 	return -EINVAL;
 
 mem_fail:
@@ -1340,6 +1599,10 @@ mem_fail:
 static void
 tapdisk_channel_destroy(tapdisk_channel_t *channel)
 {
+	DPRINTF("destroying channel %d:%d, state %s\n",
+		channel->channel_id, channel->cookie,
+		tapdisk_channel_state_name(channel->state));
+
 	tapdisk_channel_clear_watches(channel);
 	tapdisk_daemon_close_channel(channel);
 	tapdisk_channel_release_info(channel);
@@ -1348,23 +1611,37 @@ tapdisk_channel_destroy(tapdisk_channel_t *channel)
 	free(channel);
 }
 
-void
-tapdisk_channel_close(tapdisk_channel_t *channel)
+static void
+tapdisk_channel_start_event(struct xs_handle *xsh,
+			    struct xenbus_watch *watch, const char *path)
 {
-	if (channel->channel_id)
-		DPRINTF("%s: closing channel %d:%d\n",
-			channel->path, channel->channel_id, channel->cookie);
+	tapdisk_channel_t *channel;
+	int err;
 
-	if (channel->open)
-		tapdisk_channel_send_shutdown_request(channel);
+	channel = watch->data;
 
-	tapdisk_channel_clear_watches(channel);
+	DPRINTF("%s: got watch on %s\n", channel->path, path);
+
+	err = tapdisk_channel_validate_watch(channel, path);
+	if (err) {
+		if (err == -EINVAL)
+			tapdisk_channel_fatal(channel, "bad start watch");
+		return;
+	}
+
+	err = tapdisk_channel_verify_start_request(channel);
+	if (err)
+		return;
+
+	channel->shutdown_state = TAPDISK_VBD_UP;
+	tapdisk_channel_drive_vbd_state(channel);
 }
 
 int
 tapdisk_channel_open(tapdisk_channel_t **_channel,
-		     char *path, struct xs_handle *xsh,
-		     int blktap_fd, uint16_t cookie)
+		     const char *path, struct xs_handle *xsh,
+		     int blktap_fd, uint16_t cookie,
+		     int domid, int busid)
 {
 	int err;
 	char *msg;
@@ -1380,7 +1657,9 @@ tapdisk_channel_open(tapdisk_channel_t **_channel,
 	channel->xsh       = xsh;
 	channel->blktap_fd = blktap_fd;
 	channel->cookie    = cookie;
-	channel->state     = TAPDISK_CHANNEL_IDLE;
+	channel->domid     = domid;
+	channel->busid     = busid;
+	channel->state     = TAPDISK_CHANNEL_DEAD;
 	channel->read_fd   = -1;
 	channel->write_fd  = -1;
 
@@ -1410,21 +1689,21 @@ tapdisk_channel_open(tapdisk_channel_t **_channel,
 		goto fail;
 	}
 
-	err = tapdisk_channel_verify_start_request(channel);
-	if (err) {
-		msg = "invalid start request";
-		goto fail;
-	}
-
 	err = tapdisk_channel_set_watches(channel);
 	if (err) {
 		msg = "registering xenstore watches";
 		goto fail;
 	}
 
-	err = tapdisk_channel_connect(channel);
+	err = tapdisk_channel_check_shutdown_request(channel);
 	if (err) {
-		msg = "connecting to tapdisk";
+		msg = "initializing shutdown state";
+		goto fail;
+	}
+
+	err = tapdisk_channel_check_pause_request(channel);
+	if (err) {
+		msg = "initializing pause state";
 		goto fail;
 	}
 
@@ -1439,21 +1718,36 @@ fail:
 void
 tapdisk_channel_reap(tapdisk_channel_t *channel, int status)
 {
-	/* No IPC after this point */
-	channel->open = 0;
+	const char *chn_state, *vbd_state, *krn_state;
+
+	chn_state = tapdisk_channel_state_name(channel->state);
+	vbd_state = tapdisk_channel_vbd_state_name(channel->vbd_state);
+	krn_state = tapdisk_channel_shutdown_state_name(channel->shutdown_state);
 
 	if (WIFEXITED(status) && WEXITSTATUS(status) != 0) {
-		tapdisk_channel_error(channel,
-				      "tapdisk died with status %d", 
-				      WEXITSTATUS(status));
+		tapdisk_channel_fatal(channel,
+				      "tapdisk died with status %d,"
+				      " channel state %s, vbd %s, %s",
+				      WEXITSTATUS(status),
+				      chn_state, vbd_state, krn_state);
 	} else if (WIFSIGNALED(status)) {
-		tapdisk_channel_error(channel,
-				      "tapdisk killed by signal %d", 
-				      WTERMSIG(status));
+		tapdisk_channel_fatal(channel,
+				      "tapdisk killed by signal %d,"
+				      " channel state %s, vbd %s, %s",
+				      WTERMSIG(status),
+				      chn_state, vbd_state, krn_state);
+	} else {
+		DPRINTF("tapdisk exit, status %x,"
+			" channel state %s, vbd %s, %s\n", status,
+			chn_state, vbd_state, krn_state);
 	}
 
 	tapdisk_channel_close_tapdisk(channel);
-	tapdisk_channel_destroy(channel);
+	channel->state = TAPDISK_CHANNEL_DEAD;
+
+	/* NB. we're in VBD_BROKEN state if we didn't exit properly,
+	   implicitly avoiding an unwanted restart */
+	tapdisk_channel_drive_vbd_state(channel);
 }
 
 int
@@ -1467,26 +1761,36 @@ tapdisk_channel_receive_message(tapdisk_channel_t *c, tapdisk_message_t *m)
 
 	switch (m->type) {
 	case TAPDISK_MESSAGE_PID_RSP:
-		return tapdisk_channel_receive_pid_response(c, m);
+		err = tapdisk_channel_receive_pid_response(c, m);
+		break;
 
 	case TAPDISK_MESSAGE_OPEN_RSP:
-		return tapdisk_channel_receive_open_response(c, m);
+		err = tapdisk_channel_receive_open_response(c, m);
+		break;
 
 	case TAPDISK_MESSAGE_PAUSE_RSP:
-		return tapdisk_channel_receive_pause_response(c, m);
+		err = tapdisk_channel_receive_pause_response(c, m);
+		break;
 
 	case TAPDISK_MESSAGE_RESUME_RSP:
-		return tapdisk_channel_receive_resume_response(c, m);
+		err = tapdisk_channel_receive_resume_response(c, m);
+		break;
 
 	case TAPDISK_MESSAGE_CLOSE_RSP:
-		return tapdisk_channel_receive_shutdown_response(c, m);
+		err = tapdisk_channel_receive_shutdown_response(c, m);
+		break;
 
 	case TAPDISK_MESSAGE_RUNTIME_ERROR:
-		return tapdisk_channel_receive_runtime_error(c, m);
+		err = tapdisk_channel_receive_runtime_error(c, m);
+		break;
+
+	default:
+	fail:
+		tapdisk_channel_fatal(c, "received unexpected message %s in state %d",
+				      tapdisk_message_name(m->type), c->state);
+		return -EINVAL;
 	}
 
-fail:
-	tapdisk_channel_fatal(c, "received unexpected message %s in state %d",
-			      tapdisk_message_name(m->type), c->state);
-	return -EINVAL;
+	tapdisk_channel_drive_vbd_state(c);
+	return 0;
 }
