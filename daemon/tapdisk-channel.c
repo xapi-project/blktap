@@ -672,9 +672,9 @@ tapdisk_channel_signal_paused(tapdisk_channel_t *channel)
 	DPRINTF("write %s\n", channel->pause_done_str);
 	ok = xs_write(channel->xsh, XBT_NULL, channel->pause_done_str, "", 0);
 	if (!ok) {
+		err = -errno;
 		EPRINTF("error writing %s: %d\n",
 			channel->pause_done_str, err);
-		err = -errno;
 	}
 
 	return err;
@@ -689,9 +689,9 @@ tapdisk_channel_signal_unpaused(tapdisk_channel_t *channel)
 	DPRINTF("clear %s\n", channel->pause_done_str);
 	ok = xs_rm(channel->xsh, XBT_NULL, channel->pause_done_str);
 	if (!ok) {
+		err = -errno;
 		EPRINTF("error removing %s: %d\n",
 			channel->pause_done_str, err);
-		err = -errno;
 	}
 
 	return err;
