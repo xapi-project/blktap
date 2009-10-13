@@ -62,6 +62,7 @@ typedef enum {
 	TAPDISK_VBD_PAUSED          = 3,
 	TAPDISK_VBD_BROKEN          = 4,
 	TAPDISK_VBD_DEAD            = 5,
+	TAPDISK_VBD_RECYCLED        = 6,
 } vbd_state_t;
 
 typedef enum {
@@ -129,5 +130,6 @@ int tapdisk_channel_receive_message(tapdisk_channel_t *, tapdisk_message_t *);
 void tapdisk_channel_reap(tapdisk_channel_t *, int status);
 int tapdisk_channel_change_vbd_state(tapdisk_channel_t *, vbd_state_t);
 void tapdisk_channel_drive_vbd_state(tapdisk_channel_t *);
+int tapdisk_channel_check_uuid(tapdisk_channel_t *);
 
 #endif

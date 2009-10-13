@@ -85,6 +85,8 @@ tapdisk_channel_vbd_state_name(vbd_state_t state)
 		return "broken";
 	case TAPDISK_VBD_DEAD:
 		return "dead";
+	case TAPDISK_VBD_RECYCLED:
+		return "recycled";
 	}
 
 	return "unknown";
@@ -141,7 +143,7 @@ static int tapdisk_channel_connect(tapdisk_channel_t *);
 static void tapdisk_channel_close_tapdisk(tapdisk_channel_t *);
 static void tapdisk_channel_destroy(tapdisk_channel_t *);
 
-static int
+int
 tapdisk_channel_check_uuid(tapdisk_channel_t *channel)
 {
 	uint32_t uuid;
@@ -664,6 +666,65 @@ tapdisk_channel_send_pause_request(tapdisk_channel_t *channel)
 }
 
 static int
+tapdisk_channel_trigger_reprobe(tapdisk_channel_t *channel)
+{
+	xs_transaction_t xbt;
+	int err, abort = 0;
+	unsigned int len;
+	void *data;
+	bool ok;
+
+	/*
+	 * NB. Kick the probe watch, paranoia-style. Performing an
+	 * atomic test/set on the directory path. Abort if it's
+	 * already gone again. Accidentally recreating the node would
+	 * lead to a spurious start failure.
+	 */
+
+again:
+	xbt = xs_transaction_start(channel->xsh);
+	if (!xbt) {
+		err = -errno;
+		EPRINTF("error starting transaction: %d\n", err);
+		return err;
+	}
+
+	data = xs_read(channel->xsh, xbt, channel->path, &len);
+	if (!data) {
+		err = -errno;
+		abort = err == -ENOENT;
+		if (err && !abort) {
+			EPRINTF("error reading %s: %d\n",
+				channel->path, err);
+			return err;
+		}
+	}
+	free(data);
+
+	if (!abort) {
+		DPRINTF("write %s\n", channel->path);
+		ok = xs_write(channel->xsh, xbt, channel->path, "", 0);
+		if (!ok) {
+			err = -errno;
+			EPRINTF("error writing %s: %d\n",
+				channel->path, err);
+			return err;
+		}
+	}
+
+	ok = xs_transaction_end(channel->xsh, xbt, abort);
+	if (!ok) {
+		err = -errno;
+		if (err == -EAGAIN && !abort)
+			goto again;
+		EPRINTF("error ending transaction: %d\n", err);
+		return err;
+	}
+
+	return 0;
+}
+
+static int
 tapdisk_channel_signal_paused(tapdisk_channel_t *channel)
 {
 	int err = 0;
@@ -937,6 +998,7 @@ tapdisk_channel_map_vbd_state(tapdisk_channel_t *channel)
 
 		case TAPDISK_VBD_BROKEN:
 		case TAPDISK_VBD_DEAD:
+		case TAPDISK_VBD_RECYCLED:
 			return TAPDISK_CHANNEL_CLOSED;
 
 		default:
@@ -1000,6 +1062,9 @@ tapdisk_channel_drive_vbd_state(tapdisk_channel_t *channel)
 		tapdisk_channel_signal_paused(channel);
 		break;
 
+	case TAPDISK_VBD_RECYCLED:
+		tapdisk_channel_trigger_reprobe(channel);
+		/* then destroy */
 	case TAPDISK_VBD_DEAD:
 		tapdisk_channel_destroy(channel);
 	}
