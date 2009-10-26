@@ -133,12 +133,6 @@ static void tapdisk_channel_fatal(tapdisk_channel_t *,
 				  const char *fmt, ...)
   __attribute__((format(printf, 2, 3)));
 static int tapdisk_channel_refresh_params(tapdisk_channel_t *);
-static void tapdisk_channel_start_event(struct xs_handle *,
-					struct xenbus_watch *,
-					const char *);
-static void tapdisk_channel_pause_event(struct xs_handle *,
-					struct xenbus_watch *,
-					const char *);
 static int tapdisk_channel_connect(tapdisk_channel_t *);
 static void tapdisk_channel_close_tapdisk(tapdisk_channel_t *);
 static void tapdisk_channel_destroy(tapdisk_channel_t *);
@@ -796,30 +790,49 @@ tapdisk_channel_receive_resume_response(tapdisk_channel_t *channel,
 }
 
 static int
-tapdisk_channel_check_shutdown_request(tapdisk_channel_t *channel)
+tapdisk_channel_check_start_request(tapdisk_channel_t *channel)
 {
 	char *s;
-	size_t len;
-	int force;
+	int err;
 
-	force = 0;
-	s = xs_read(channel->xsh, XBT_NULL, channel->shutdown_str, &len);
+	s = xs_read(channel->xsh, XBT_NULL, channel->start_str, NULL);
 	if (!s) {
-		if (errno == ENOENT) {
-			channel->shutdown_state = TAPDISK_VBD_UP;
-			return 0;
+		err = -errno;
+		if (err != -ENOENT) {
+			EPRINTF("error reading %s: %d\n",
+				channel->path, err);
+			goto out;
 		}
-
-		return -errno;
+		goto down;
 	}
 
-	force = (len == strlen("force")) && !memcmp(s, "force", len);
-	free(s);
+	err = 0;
+	if (!strcmp(s, "start")) {
+		channel->shutdown_state = TAPDISK_VBD_UP;
+		channel->shutdown_force = 0;
+		goto out;
 
+	} else if (!strcmp(s, "shutdown-force")) {
+		channel->shutdown_state = TAPDISK_VBD_DOWN;
+		channel->shutdown_force = 1;
+		goto out;
+
+	} else if (strcmp(s, "shutdown-normal")) {
+		EPRINTF("%s: invalid request '%s'", channel->path, s);
+		err = -EINVAL;
+		goto out;
+	}
+
+down:
 	channel->shutdown_state = TAPDISK_VBD_DOWN;
-	channel->shutdown_force = force;
-
-	return 0;
+	channel->shutdown_force = 0;
+out:
+	DPRINTF("%s: got tapdisk-request '%s', shutdown state %s (%s): %d\n",
+		channel->path, s,
+		tapdisk_channel_shutdown_state_name(channel->shutdown_state),
+		channel->shutdown_force ? "force" : "normal", err);
+	free(s);
+	return err;
 }
 
 static void
@@ -840,7 +853,7 @@ tapdisk_channel_shutdown_event(struct xs_handle *xsh,
 		return;
 	}
 
-	err = tapdisk_channel_check_shutdown_request(channel);
+	err = tapdisk_channel_check_start_request(channel);
 	if (err)
 		tapdisk_channel_error(channel, "shutdown event failed: %d", err);
 	else
@@ -1361,9 +1374,6 @@ tapdisk_channel_uninit(tapdisk_channel_t *channel)
 	free(channel->pause_done_str);
 	channel->pause_done_str = NULL;
 
-	free(channel->shutdown_str);
-	channel->shutdown_str = NULL;
-
 	channel->share_tapdisk_str = NULL;
 }
 
@@ -1375,7 +1385,7 @@ tapdisk_channel_init(tapdisk_channel_t *channel)
 	channel->uuid_str          = NULL;
 	channel->pause_str         = NULL;
 	channel->pause_done_str    = NULL;
-	channel->shutdown_str      = NULL;
+	channel->start_str         = NULL;
 	channel->share_tapdisk_str = NULL;
 
 	err = asprintf(&channel->uuid_str,
@@ -1385,7 +1395,8 @@ tapdisk_channel_init(tapdisk_channel_t *channel)
 		goto fail;
 	}
 
-	err = asprintf(&channel->start_str, "%s/start-tapdisk", channel->path);
+	err = asprintf(&channel->start_str,
+		       "%s/tapdisk-request", channel->path);
 	if (err == -1) {
 		channel->start_str = NULL;
 		goto fail;
@@ -1401,13 +1412,6 @@ tapdisk_channel_init(tapdisk_channel_t *channel)
 		       "%s/pause-done", channel->path);
 	if (err == -1) {
 		channel->pause_done_str = NULL;
-		goto fail;
-	}
-
-	err = asprintf(&channel->shutdown_str,
-		       "%s/shutdown-tapdisk", channel->path);
-	if (err == -1) {
-		channel->shutdown_str = NULL;
 		goto fail;
 	}
 
@@ -1432,11 +1436,6 @@ tapdisk_channel_clear_watches(tapdisk_channel_t *channel)
 		unregister_xenbus_watch(channel->xsh, &channel->pause_watch);
 		channel->pause_watch.node    = NULL;
 	}
-
-	if (channel->shutdown_watch.node) {
-		unregister_xenbus_watch(channel->xsh, &channel->shutdown_watch);
-		channel->shutdown_watch.node = NULL;
-	}
 }
 
 static int
@@ -1444,9 +1443,9 @@ tapdisk_channel_set_watches(tapdisk_channel_t *channel)
 {
 	int err;
 
-	/* watch for start events */
+	/* watch for start/shutdown events */
 	channel->start_watch.node            = channel->start_str;
-	channel->start_watch.callback        = tapdisk_channel_start_event;
+	channel->start_watch.callback        = tapdisk_channel_shutdown_event;
 	channel->start_watch.data            = channel;
 	err = register_xenbus_watch(channel->xsh, &channel->start_watch);
 	if (err) {
@@ -1461,16 +1460,6 @@ tapdisk_channel_set_watches(tapdisk_channel_t *channel)
 	err = register_xenbus_watch(channel->xsh, &channel->pause_watch);
 	if (err) {
 		channel->pause_watch.node    = NULL;
-		goto fail;
-	}
-
-	/* watch for shutdown events */
-	channel->shutdown_watch.node         = channel->shutdown_str;
-	channel->shutdown_watch.callback     = tapdisk_channel_shutdown_event;
-	channel->shutdown_watch.data         = channel;
-	err = register_xenbus_watch(channel->xsh, &channel->shutdown_watch);
-	if (err) {
-		channel->shutdown_watch.node = NULL;
 		goto fail;
 	}
 
@@ -1627,43 +1616,6 @@ tapdisk_channel_refresh_params(tapdisk_channel_t *channel)
 	return tapdisk_channel_parse_params(channel);
 }
 
-static int
-tapdisk_channel_verify_start_request(tapdisk_channel_t *channel)
-{
-	char *path;
-	unsigned int err;
-
-	err = asprintf(&path, "%s/shutdown-request", channel->path);
-	if (err == -1)
-		goto mem_fail;
-
-	if (xs_exists(channel->xsh, path))
-		goto fail;
-
-	if (xs_exists(channel->xsh, channel->shutdown_str))
-		goto fail;
-
-	free(path);
-	err = asprintf(&path, "%s/shutdown-done", channel->path);
-	if (err == -1)
-		goto mem_fail;
-
-	if (xs_exists(channel->xsh, path))
-		goto fail;
-
-	free(path);
-
-	return 0;
-
-fail:
-	EPRINTF("%s:%s: invalid start request: %s\n", __func__, channel->path, path);
-	return -EINVAL;
-
-mem_fail:
-	EPRINTF("%s:%s: out of memory\n", __func__, channel->path);
-	return -ENOMEM;
-}
-
 static void
 tapdisk_channel_destroy(tapdisk_channel_t *channel)
 {
@@ -1677,32 +1629,6 @@ tapdisk_channel_destroy(tapdisk_channel_t *channel)
 	tapdisk_channel_uninit(channel);
 	free(channel->path);
 	free(channel);
-}
-
-static void
-tapdisk_channel_start_event(struct xs_handle *xsh,
-			    struct xenbus_watch *watch, const char *path)
-{
-	tapdisk_channel_t *channel;
-	int err;
-
-	channel = watch->data;
-
-	DPRINTF("%s: got watch on %s\n", channel->path, path);
-
-	err = tapdisk_channel_validate_watch(channel, path);
-	if (err) {
-		if (err == -EINVAL)
-			tapdisk_channel_fatal(channel, "bad start watch");
-		return;
-	}
-
-	err = tapdisk_channel_verify_start_request(channel);
-	if (err)
-		return;
-
-	channel->shutdown_state = TAPDISK_VBD_UP;
-	tapdisk_channel_drive_vbd_state(channel);
 }
 
 int
@@ -1763,8 +1689,8 @@ tapdisk_channel_open(tapdisk_channel_t **_channel,
 		goto fail;
 	}
 
-	err = tapdisk_channel_check_shutdown_request(channel);
-	if (err) {
+	err = tapdisk_channel_check_start_request(channel);
+	if (err && err != -ENOENT) {
 		msg = "initializing shutdown state";
 		goto fail;
 	}

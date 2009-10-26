@@ -100,7 +100,6 @@ struct tapdisk_channel {
 	char                     *start_str;
 	char                     *pause_str;
 	char                     *pause_done_str;
-	char                     *shutdown_str;
 	char                     *share_tapdisk_str;
 
 	image_t                   image;
@@ -108,7 +107,6 @@ struct tapdisk_channel {
 	struct list_head          list;
 	struct xenbus_watch       start_watch;
 	struct xenbus_watch       pause_watch;
-	struct xenbus_watch       shutdown_watch;
 
 	struct xs_handle         *xsh;
 };
