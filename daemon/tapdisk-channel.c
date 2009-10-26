@@ -1352,6 +1352,9 @@ tapdisk_channel_uninit(tapdisk_channel_t *channel)
 	free(channel->uuid_str);
 	channel->uuid_str = NULL;
 
+	free(channel->start_str);
+	channel->start_str = NULL;
+
 	free(channel->pause_str);
 	channel->pause_str = NULL;
 
