@@ -1228,7 +1228,8 @@ tapdisk_channel_start_process(tapdisk_channel_t *channel,
 			      char *write_dev, char *read_dev)
 {
 	pid_t child;
-	char *argv[] = { "tapdisk", write_dev, read_dev, NULL };
+	char opt_facility[32];
+	char *argv[] = { "tapdisk", opt_facility, write_dev, read_dev, NULL };
 	const char *tapdisk;
 	int i;
 
@@ -1243,6 +1244,9 @@ tapdisk_channel_start_process(tapdisk_channel_t *channel,
 		    i != STDOUT_FILENO &&
 		    i != STDERR_FILENO)
 			close(i);
+
+	snprintf(opt_facility, sizeof(opt_facility),
+		 "-l%d", tapdisk_daemon_log_facility);
 
 	tapdisk = getenv("TAPDISK");
 	if (!tapdisk)

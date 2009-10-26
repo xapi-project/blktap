@@ -25,6 +25,8 @@
  * NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
  * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
+
+#include <stdlib.h>
 #include <errno.h>
 #include <stdio.h>
 #include <string.h>
@@ -35,6 +37,9 @@
 #include <sys/ioctl.h>
 #include <sys/resource.h>
 
+#define SYSLOG_NAMES
+#include <syslog.h>
+
 #include "tapdisk.h"
 #include "disktypes.h"
 #include "blktaplib.h"
@@ -42,12 +47,29 @@
 #include "tapdisk-utils.h"
 
 void
-tapdisk_start_logging(const char *name)
+tapdisk_start_logging(const char *ident, const char *facility_name)
 {
 	static char buf[128];
+	int facility;
 
-	snprintf(buf, sizeof(buf), "%s[%d]", name, getpid());
-	openlog(buf, LOG_CONS | LOG_ODELAY, LOG_DAEMON);
+	facility = LOG_DAEMON;
+
+	if (facility_name) {
+		char *endptr;
+
+		facility = strtol(facility_name, &endptr, 0);
+		if (*endptr != 0) {
+			CODE *c;
+
+			facility = LOG_DAEMON;
+			for (c = facilitynames; c->c_name != NULL; ++c)
+				if (!strcmp(c->c_name, facility_name))
+					facility = c->c_val;
+		}
+	}
+
+	snprintf(buf, sizeof(buf), "%s[%d]", ident, getpid());
+	openlog(buf, LOG_CONS | LOG_ODELAY, facility);
 	open_tlog("/tmp/tapdisk.log", (64 << 10), TLOG_WARN, 0);
 }
 

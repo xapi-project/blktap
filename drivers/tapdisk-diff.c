@@ -748,7 +748,7 @@ main(int argc, char *argv[])
 	if (err)
 		return err;
 
-	tapdisk_start_logging("tapdisk-diff");
+	tapdisk_start_logging("tapdisk-diff", "daemon");
 
 	err = tapdisk_server_initialize(NULL, NULL);
 	if (err)

@@ -32,7 +32,7 @@
 
 #define MAX_NAME_LEN                 1000
 
-void tapdisk_start_logging(const char *);
+void tapdisk_start_logging(const char *, const char *);
 void tapdisk_stop_logging(void);
 int tapdisk_set_resource_limits(void);
 int tapdisk_namedup(char **, const char *);

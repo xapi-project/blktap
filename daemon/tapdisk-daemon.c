@@ -34,6 +34,9 @@
 #include <sys/ioctl.h>
 #include <sys/wait.h>
 #include <signal.h>
+#include <getopt.h>
+#define SYSLOG_NAMES
+#include <syslog.h>
 
 #include <xs.h>
 #include "disktypes.h"
@@ -55,6 +58,7 @@ typedef struct tapdisk_daemon {
 } tapdisk_daemon_t;
 
 static tapdisk_daemon_t tapdisk_daemon;
+int tapdisk_daemon_log_facility;
 
 #define tapdisk_daemon_for_each_channel(c, tmp) \
 	list_for_each_entry_safe(c, tmp, &tapdisk_daemon.channels, list)
@@ -67,6 +71,7 @@ tapdisk_daemon_print_drivers(void)
 	int i, size;
 
 	DPRINTF("blktap-daemon: v1.0.2\n");
+	DPRINTF("Syslog facility %d\n", tapdisk_daemon_log_facility);
 
 	size = sizeof(dtypes) / sizeof(disk_info_t *);
 	for (i = 0; i < size; i++)
@@ -680,11 +685,68 @@ tapdisk_daemon_close_channel(tapdisk_channel_t *channel)
 	close(channel->write_fd);
 }
 
+static void
+tapdisk_daemon_openlog(const char *ident, const char *facility_name)
+{
+	static char buf[128];
+	int facility;
+
+	facility = LOG_DAEMON;
+
+	if (facility_name) {
+		char *endptr;
+
+		facility = strtol(facility_name, &endptr, 0);
+		if (*endptr != 0) {
+			CODE *c;
+
+			facility = LOG_DAEMON;
+			for (c = facilitynames; c->c_name != NULL; ++c)
+				if (!strcmp(c->c_name, facility_name))
+					facility = c->c_val;
+		}
+	}
+
+	snprintf(buf, sizeof(buf), "%s[%d]", ident, getpid());
+	openlog(buf, LOG_CONS | LOG_ODELAY, facility);
+	tapdisk_daemon_log_facility = facility;
+}
+
+static const char *program;
+
+static void
+usage(FILE *stream)
+{
+	fprintf(stream, "Usage: %s [-h] [-l <syslog_facility>]\n", program);
+}
+
 int
 main(int argc, char *argv[])
 {
 	int err;
-	char buf[128];
+	const char *facility;
+
+	program  = basename(argv[0]);
+	facility = "daemon";
+
+	do {
+		char c;
+
+		c = getopt(argc, argv, "hl:");
+		if (c < 0)
+			break;
+
+		switch (c) {
+		case 'h':
+			usage(stdout);
+			return 0;
+		case 'l':
+			facility = optarg;
+			break;
+		default:
+			goto usage;
+		}
+	} while (1);
 
 	daemon(0, 0);
 
@@ -701,8 +763,7 @@ main(int argc, char *argv[])
 	}
 #endif
 
-	snprintf(buf, sizeof(buf), "BLKTAP-DAEMON[%d]", getpid());
-	openlog(buf, LOG_CONS | LOG_ODELAY, LOG_DAEMON);
+	tapdisk_daemon_openlog("BLKTAP-DAEMON", facility);
 
 	err = tapdisk_daemon_write_pidfile(getpid());
 	if (err)
@@ -729,6 +790,10 @@ main(int argc, char *argv[])
 
 out:
 	closelog();
-
 	return err ? 1 : 0;
+
+usage:
+	usage(stderr);
+	return EINVAL;
+
 }

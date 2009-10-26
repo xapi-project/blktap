@@ -52,17 +52,23 @@ main(int argc, char *argv[])
 		{ "detach",		0, 0, 'D' }
 	};
 	int err, detach = 0;
-	
-	program = basename(argv[0]);
+	const char *facility;
+	const char *ipc_read, *ipc_write;
+
+	program  = basename(argv[0]);
+	facility = "daemon";
 
 	do {
 		int c;
 
-		c = getopt_long(argc, argv, "hD", longopts, NULL);
+		c = getopt_long(argc, argv, "hDl:", longopts, NULL);
 		if (c == -1)
 			break;
 
 		switch (c) {
+		case 'l':
+			facility = optarg;
+			break;
 		case 'h':
 			usage(stdout);
 			return 0;
@@ -76,7 +82,13 @@ main(int argc, char *argv[])
 	
 	if (argc - optind < 2)
 		goto usage;
-	
+
+	ipc_read  = argv[optind++];
+	ipc_write = argv[optind++];
+
+	if (argc - optind)
+		goto usage;
+
 	if (detach) {
 		/* NB. This is expected to rarely, if ever, be
 		   used. Blktapctrl is already detached, and breaking
@@ -88,9 +100,9 @@ main(int argc, char *argv[])
 		}
 	}
 
-	tapdisk_start_logging("TAPDISK");
+	tapdisk_start_logging("TAPDISK", facility);
 
-	err = tapdisk_server_initialize(argv[1], argv[2]);
+	err = tapdisk_server_initialize(ipc_read, ipc_write);
 	if (err) {
 		EPRINTF("failed to initialize tapdisk server: %d\n", err);
 		goto out;

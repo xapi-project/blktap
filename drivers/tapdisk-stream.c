@@ -581,7 +581,7 @@ main(int argc, char *argv[])
 		return err;
 	}
 
-	tapdisk_start_logging("tapdisk-stream");
+	tapdisk_start_logging("tapdisk-stream", "daemon");
 
 	err = tapdisk_stream_open(&stream, path, type, count, skip);
 	if (err)

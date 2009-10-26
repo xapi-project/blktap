@@ -321,7 +321,6 @@ tapdisk2_create_device(const char *params)
 	int err, type;
 
 	chdir("/");
-	tapdisk_start_logging("tapdisk2");
 
 	err = tapdisk2_set_child_fds();
 	if (err)
@@ -401,11 +400,16 @@ main(int argc, char *argv[])
 {
 	int c;
 	char *params;
+	const char *facility;
 
-	params = NULL;
+	params   = NULL;
+	facility = "daemon";
 
-	while ((c = getopt(argc, argv, "n:h")) != -1) {
+	while ((c = getopt(argc, argv, "n:hl:")) != -1) {
 		switch (c) {
+		case 'l':
+			facility = optarg;
+			break;
 		case 'n':
 			params = optarg;
 			break;
@@ -429,6 +433,7 @@ main(int argc, char *argv[])
 		printf("fork failed: %d\n", errno);
 		return errno;
 	case 0:
+		tapdisk_start_logging("tapdisk2", facility);
 		return tapdisk2_create_device(params);
 	default:
 		return tapdisk2_wait_for_device();

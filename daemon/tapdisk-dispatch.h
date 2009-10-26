@@ -111,6 +111,8 @@ struct tapdisk_channel {
 	struct xs_handle         *xsh;
 };
 
+extern int tapdisk_daemon_log_facility;
+
 typedef struct tapdisk_channel tapdisk_channel_t;
 
 int strsep_len(const char *str, char c, unsigned int len);
