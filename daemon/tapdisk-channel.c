@@ -103,7 +103,7 @@ tapdisk_channel_enter_vbd_state(tapdisk_channel_t *channel, vbd_state_t state)
 
 	DPRINTF("%s: vbd state %s -> %s: %d",
 		channel->path,
-		tapdisk_channel_vbd_state_name(channel->shutdown_state),
+		tapdisk_channel_vbd_state_name(channel->vbd_state),
 		tapdisk_channel_vbd_state_name(state),
 		err);
 

@@ -331,19 +331,16 @@ tapdisk_daemon_probe_vbd(int domid, int busid, const char *path)
 		if (err == -ENOENT) {
 			/* NB. Fast unplug/plug and we missed the path
 			   removal. Typically a dom0 phenonmenon */
-			DPRINTF("%s: pending re-probe:"
-				" channel %d:%d, state %d\n",
-				path, channel->channel_id, channel->cookie, 
-				channel->vbd_state);
+			DPRINTF("%s: pending re-probe: uuid %d, state %d\n",
+				path, channel->cookie, channel->vbd_state);
 			channel->vbd_state = TAPDISK_VBD_RECYCLED;
 			tapdisk_channel_drive_vbd_state(channel);
 			return;
 		}
 
 		DPRINTF("%s: ignoring duplicate probe event:"
-			" channel %d:%d, state %d\n",
-			path, channel->channel_id, channel->cookie, 
-			channel->vbd_state);
+			" uuid %d, state %d\n",
+			path, channel->cookie, channel->vbd_state);
 		return;
 	}
 
