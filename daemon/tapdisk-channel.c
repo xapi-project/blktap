@@ -1084,7 +1084,7 @@ tapdisk_channel_drive_vbd_state(tapdisk_channel_t *channel)
 		break;
 
 	case TAPDISK_VBD_PAUSING:
-		channel->vbd_state = TAPDISK_VBD_PAUSED;
+		tapdisk_channel_enter_vbd_state(channel, TAPDISK_VBD_PAUSED);
 		tapdisk_channel_signal_paused(channel);
 		break;
 
