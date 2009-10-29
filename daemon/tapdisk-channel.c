@@ -721,34 +721,30 @@ again:
 static int
 tapdisk_channel_signal_paused(tapdisk_channel_t *channel)
 {
-	int err = 0;
 	bool ok;
+	int err;
 
-	DPRINTF("write %s\n", channel->pause_done_str);
 	ok = xs_write(channel->xsh, XBT_NULL, channel->pause_done_str, "", 0);
-	if (!ok) {
-		err = -errno;
-		EPRINTF("error writing %s: %d\n",
-			channel->pause_done_str, err);
-	}
+	err = ok ? 0 : -errno;
+	if (err)
+		EPRINTF("error writing %s: %d\n", channel->pause_done_str, err);
 
+	DPRINTF("write %s: %d\n", channel->pause_done_str, err);
 	return err;
 }
 
 static int
 tapdisk_channel_signal_unpaused(tapdisk_channel_t *channel)
 {
-	int err = 0;
 	bool ok;
+	int err;
 
-	DPRINTF("clear %s\n", channel->pause_done_str);
 	ok = xs_rm(channel->xsh, XBT_NULL, channel->pause_done_str);
-	if (!ok) {
-		err = -errno;
-		EPRINTF("error removing %s: %d\n",
-			channel->pause_done_str, err);
-	}
+	err = ok ? 0 : -errno;
+	if (err && err != -ENOENT)
+		EPRINTF("error removing %s: %d\n", channel->pause_done_str, err);
 
+	DPRINTF("clear %s: %d\n", channel->pause_done_str, err);
 	return err;
 }
 
