@@ -126,6 +126,9 @@ tapdisk_channel_shutdown_state_name(shutdown_state_t state)
 	return "unknown";
 }
 
+static int tapdisk_channel_write_atomic(tapdisk_channel_t *,
+					const char *, const void *,
+					unsigned int);
 static void tapdisk_channel_error(tapdisk_channel_t *,
 				  const char *fmt, ...)
   __attribute__((format(printf, 2, 3)));
@@ -331,7 +334,7 @@ __tapdisk_channel_error(tapdisk_channel_t *channel,
 		goto out;
 	}
 
-	xs_write(channel->xsh, XBT_NULL, dir, message, strlen(message));
+	tapdisk_channel_write_atomic(channel, dir, message, strlen(message));
 
 out:
 	free(dir);
@@ -660,13 +663,62 @@ tapdisk_channel_send_pause_request(tapdisk_channel_t *channel)
 }
 
 static int
-tapdisk_channel_trigger_reprobe(tapdisk_channel_t *channel)
+tapdisk_channel_write_atomic(tapdisk_channel_t *channel,
+			     const char *_path, const void *_data,
+			     unsigned int _len)
 {
 	xs_transaction_t xbt;
-	int err, abort = 0;
+	int err, abort;
 	unsigned int len;
 	void *data;
 	bool ok;
+
+again:
+	err = 0;
+
+	xbt = xs_transaction_start(channel->xsh);
+	if (!xbt) {
+		err = -errno;
+		EPRINTF("error starting transaction: %d\n", err);
+		return err;
+	}
+
+	abort = 1;
+
+	data = xs_read(channel->xsh, xbt, channel->path, &len);
+	if (!data) {
+		err = -errno;
+		if (err == -ENOENT)
+			goto abort;
+		EPRINTF("error reading %s: %d\n", channel->path, err);
+		goto abort;
+	}
+
+	ok = xs_write(channel->xsh, xbt, _path, _data, _len);
+	if (!ok) {
+		err = -errno;
+		EPRINTF("error writing %s: %d\n", _path, err);
+		goto abort;
+	}
+
+	abort = 0;
+
+abort:
+	ok = xs_transaction_end(channel->xsh, xbt, abort);
+	if (!ok) {
+		err = -errno;
+		if (err == -EAGAIN && !abort)
+			goto again;
+		EPRINTF("error ending transaction: %d\n", err);
+	}
+
+	return err;
+}
+
+static int
+tapdisk_channel_trigger_reprobe(tapdisk_channel_t *channel)
+{
+	int err;
 
 	/*
 	 * NB. Kick the probe watch, paranoia-style. Performing an
@@ -675,47 +727,12 @@ tapdisk_channel_trigger_reprobe(tapdisk_channel_t *channel)
 	 * lead to a spurious start failure.
 	 */
 
-again:
-	xbt = xs_transaction_start(channel->xsh);
-	if (!xbt) {
-		err = -errno;
-		EPRINTF("error starting transaction: %d\n", err);
-		return err;
-	}
+	err = tapdisk_channel_write_atomic(channel, channel->path, "", 0);
+	if (err && err != -ENOENT)
+		EPRINTF("error writing %s: %d\n", channel->pause_done_str, err);
 
-	data = xs_read(channel->xsh, xbt, channel->path, &len);
-	if (!data) {
-		err = -errno;
-		abort = err == -ENOENT;
-		if (err && !abort) {
-			EPRINTF("error reading %s: %d\n",
-				channel->path, err);
-			return err;
-		}
-	}
-	free(data);
-
-	if (!abort) {
-		DPRINTF("write %s\n", channel->path);
-		ok = xs_write(channel->xsh, xbt, channel->path, "", 0);
-		if (!ok) {
-			err = -errno;
-			EPRINTF("error writing %s: %d\n",
-				channel->path, err);
-			return err;
-		}
-	}
-
-	ok = xs_transaction_end(channel->xsh, xbt, abort);
-	if (!ok) {
-		err = -errno;
-		if (err == -EAGAIN && !abort)
-			goto again;
-		EPRINTF("error ending transaction: %d\n", err);
-		return err;
-	}
-
-	return 0;
+	DPRINTF("write %s: %d\n", channel->path, err);
+	return err;
 }
 
 static int
@@ -724,9 +741,9 @@ tapdisk_channel_signal_paused(tapdisk_channel_t *channel)
 	bool ok;
 	int err;
 
-	ok = xs_write(channel->xsh, XBT_NULL, channel->pause_done_str, "", 0);
-	err = ok ? 0 : -errno;
-	if (err)
+	err = tapdisk_channel_write_atomic(channel,
+					   channel->pause_done_str, "", 0);
+	if (err && errno != -ENOENT)
 		EPRINTF("error writing %s: %d\n", channel->pause_done_str, err);
 
 	DPRINTF("write %s: %d\n", channel->pause_done_str, err);
