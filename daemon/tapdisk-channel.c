@@ -148,13 +148,13 @@ static int tapdisk_channel_connect(tapdisk_channel_t *);
 static void tapdisk_channel_close_tapdisk(tapdisk_channel_t *);
 static void tapdisk_channel_destroy(tapdisk_channel_t *);
 
-int
-tapdisk_channel_check_uuid(tapdisk_channel_t *channel)
+static int
+__tapdisk_channel_check_uuid(tapdisk_channel_t *channel, xs_transaction_t xbt)
 {
 	uint32_t uuid;
 	char *uuid_str;
 
-	uuid_str = xs_read(channel->xsh, XBT_NULL, channel->uuid_str, NULL);
+	uuid_str = xs_read(channel->xsh, xbt, channel->uuid_str, NULL);
 	if (!uuid_str)
 		return -errno;
 
@@ -165,6 +165,12 @@ tapdisk_channel_check_uuid(tapdisk_channel_t *channel)
 		return -EINVAL;
 
 	return 0;
+}
+
+int
+tapdisk_channel_check_uuid(tapdisk_channel_t *channel)
+{
+	return __tapdisk_channel_check_uuid(channel, XBT_NULL);
 }
 
 static inline int
@@ -690,9 +696,8 @@ again:
 
 	abort = 1;
 
-	data = xs_read(channel->xsh, xbt, channel->path, &len);
-	if (!data) {
-		err = -errno;
+	err = __tapdisk_channel_check_uuid(channel, xbt);
+	if (err) {
 		if (err == -ENOENT)
 			goto abort;
 		EPRINTF("error reading %s: %d\n", channel->path, err);
