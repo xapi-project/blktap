@@ -93,12 +93,20 @@ tapdisk_channel_vbd_state_name(vbd_state_t state)
 }
 
 static inline int
+tapdisk_channel_vbd_fenced(tapdisk_channel_t *channel)
+{
+	return
+		channel->vbd_state == TAPDISK_VBD_BROKEN ||
+		channel->vbd_state == TAPDISK_VBD_DEAD ||
+		channel->vbd_state == TAPDISK_VBD_RECYCLED;
+}
+
+static inline int
 tapdisk_channel_enter_vbd_state(tapdisk_channel_t *channel, vbd_state_t state)
 {
 	int err = 0;
 
-	if (channel->vbd_state == TAPDISK_VBD_BROKEN ||
-	    channel->vbd_state == TAPDISK_VBD_DEAD)
+	if (tapdisk_channel_vbd_fenced(channel))
 		err = -EINVAL;
 
 	DPRINTF("%s: vbd state %s -> %s: %d",
@@ -167,6 +175,9 @@ tapdisk_channel_validate_watch(tapdisk_channel_t *channel, const char *path)
 	len = strsep_len(path, '/', 7);
 	if (len < 0)
 		return -EINVAL;
+
+	if (tapdisk_channel_vbd_fenced(channel))
+		return -ENOENT;
 
 	err = tapdisk_channel_check_uuid(channel);
 	if (err)
