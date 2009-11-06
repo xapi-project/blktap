@@ -168,14 +168,8 @@ tapdisk_channel_validate_watch(tapdisk_channel_t *channel, const char *path)
 	if (len < 0)
 		return -EINVAL;
 
-	if (!xs_exists(channel->xsh, channel->path))
-		return -ENOENT;
-
 	err = tapdisk_channel_check_uuid(channel);
 	if (err)
-		return err;
-
-	if (!xs_exists(channel->xsh, path))
 		return -ENOENT;
 
 	return 0;
@@ -1130,11 +1124,7 @@ tapdisk_channel_pause_event(struct xs_handle *xsh,
 	if (err) {
 		if (err == -EINVAL)
 			tapdisk_channel_fatal(channel, "bad pause watch");
-
-		if (err != -ENOENT)
-			return;
-
-		err = 0;
+		return;
 	}
 
 	err = tapdisk_channel_check_pause_request(channel);
