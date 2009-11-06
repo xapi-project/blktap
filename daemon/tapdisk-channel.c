@@ -1741,22 +1741,17 @@ tapdisk_channel_reap(tapdisk_channel_t *channel, int status)
 	vbd_state = tapdisk_channel_vbd_state_name(channel->vbd_state);
 	krn_state = tapdisk_channel_shutdown_state_name(channel->shutdown_state);
 
+	DPRINTF("reaping tapdisk, status %x, channel state %s, vbd %s, %s\n",
+		status, chn_state, vbd_state, krn_state);
+
 	if (WIFEXITED(status) && WEXITSTATUS(status) != 0) {
 		tapdisk_channel_fatal(channel,
-				      "tapdisk died with status %d,"
-				      " channel state %s, vbd %s, %s",
-				      WEXITSTATUS(status),
-				      chn_state, vbd_state, krn_state);
+				      "tapdisk died with status %d",
+				      WEXITSTATUS(status));
 	} else if (WIFSIGNALED(status)) {
 		tapdisk_channel_fatal(channel,
-				      "tapdisk killed by signal %d,"
-				      " channel state %s, vbd %s, %s",
-				      WTERMSIG(status),
-				      chn_state, vbd_state, krn_state);
-	} else {
-		DPRINTF("tapdisk exit, status %x,"
-			" channel state %s, vbd %s, %s\n", status,
-			chn_state, vbd_state, krn_state);
+				      "tapdisk killed by signal %d",
+				      WTERMSIG(status));
 	}
 
 	tapdisk_channel_close_tapdisk(channel);
