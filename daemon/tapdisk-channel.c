@@ -818,18 +818,18 @@ tapdisk_channel_check_start_request(tapdisk_channel_t *channel)
 	char *s;
 	int err;
 
+	err = 0;
+
 	s = xs_read(channel->xsh, XBT_NULL, channel->start_str, NULL);
 	if (!s) {
+		if (errno == ENOENT)
+			goto down;
+
 		err = -errno;
-		if (err != -ENOENT) {
-			EPRINTF("error reading %s: %d\n",
-				channel->path, err);
-			goto out;
-		}
-		goto down;
+		EPRINTF("error reading %s: %d\n", channel->path, err);
+		goto out;
 	}
 
-	err = 0;
 	if (!strcmp(s, "start")) {
 		channel->shutdown_state = TAPDISK_VBD_UP;
 		channel->shutdown_force = 0;
