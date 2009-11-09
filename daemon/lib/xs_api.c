@@ -309,13 +309,10 @@ int xs_fire_next_watch(struct xs_handle *h)
 
 	node  = res[XS_WATCH_PATH];
 	token = res[XS_WATCH_TOKEN];
-	DPRINTF("got watch %s on %s\n", token, node);
 
 	w = find_watch(token);
 	if (w) 
 		w->callback(h, w, node);
-
-	DPRINTF("handled watch %s on %s\n", token, node);
 
 	free(res);
 

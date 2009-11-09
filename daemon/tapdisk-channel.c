@@ -867,20 +867,27 @@ tapdisk_channel_shutdown_event(struct xs_handle *xsh,
 
 	channel = watch->data;
 
-	DPRINTF("%s: got watch on %s\n", channel->path, path);
+	DPRINTF("%s: got start/shutdown watch on %s\n",
+		channel->path, path);
 
 	err = tapdisk_channel_validate_watch(channel, path);
 	if (err) {
 		if (err == -EINVAL)
-			tapdisk_channel_fatal(channel, "bad shutdown watch");
-		return;
+			tapdisk_channel_fatal(channel,
+					      "bad shutdown watch");
+		goto out;
 	}
 
 	err = tapdisk_channel_check_start_request(channel);
 	if (err)
-		tapdisk_channel_error(channel, "shutdown event failed: %d", err);
+		tapdisk_channel_error(channel,
+				      "shutdown event failed: %d", err);
 	else
 		tapdisk_channel_drive_vbd_state(channel);
+
+out:
+	DPRINTF("%s: handled start/shutdown watch on %s\n",
+		channel->path, path);
 }
 
 static int
@@ -1134,20 +1141,27 @@ tapdisk_channel_pause_event(struct xs_handle *xsh,
 
 	channel = watch->data;
 
-	DPRINTF("%s: got watch on %s\n", channel->path, path);
+	DPRINTF("%s: got pause watch on %s\n",
+		channel->path, path);
 
 	err = tapdisk_channel_validate_watch(channel, path);
 	if (err) {
 		if (err == -EINVAL)
-			tapdisk_channel_fatal(channel, "bad pause watch");
-		return;
+			tapdisk_channel_fatal(channel,
+					      "bad pause watch");
+		goto out;
 	}
 
 	err = tapdisk_channel_check_pause_request(channel);
 	if (err)
-		tapdisk_channel_error(channel, "pause event failed: %d", err);
+		tapdisk_channel_error(channel,
+				      "pause event failed: %d", err);
 	else
 		tapdisk_channel_drive_vbd_state(channel);
+
+out:
+	DPRINTF("%s: handled pause watch on %s\n",
+		channel->path, path);
 }
 
 static int

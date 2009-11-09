@@ -390,18 +390,27 @@ static void
 tapdisk_daemon_node_event(struct xs_handle *xsh,
 			  struct xenbus_watch *watch, const char *path)
 {
-	int count, domid, busid, offset, exists;
+	int count, domid, busid, offset;
 	char slash;
 
 	count = sscanf(path, "/local/domain/%*d/backend/tap/%d/%d%c",
 		       &domid, &busid, &slash);
 
 	if (count == 2) {
+		const char *action;
+		int exists;
+
 		exists = xs_exists(xsh, path);
+		action = exists ? "probe" : "remove";
+
+		DPRINTF("got %s watch on %s\n", action, path);
+
 		if (exists)
 			tapdisk_daemon_probe_vbd(domid, busid, path);
 		else
 			tapdisk_daemon_remove_vbd(domid, busid, path);
+
+		DPRINTF("handled %s watch on %s\n", action, path);
 	}
 }
 
