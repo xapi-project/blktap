@@ -26,6 +26,9 @@
  * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
+#ifndef _TAPDISK_VBD_STATS_H_
+#define _TAPDISK_VBD_STATS_H_
+
 #include <math.h>
 #include <time.h>
 #include <string.h>
@@ -132,3 +135,5 @@ td_dispersion_add_now(struct dispersion *st)
 
 	td_dispersion_add(st, &now);
 }
+
+#endif /* _TAPDISK_VBD_STATS_H_ */
