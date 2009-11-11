@@ -2133,7 +2133,7 @@ finish_redundant_bm_write(struct vhd_request *req)
 	   DBG(TLOG_DBG, "blk: %u\n", blk); */
 
 	if (req->error) {
-		DPRINTF("******* finish redundant W: error: %d\n", req->error);
+		ERR(req->error, "lsec: 0x%08"PRIx64, req->treq.sec);
 	}
 	free_vhd_request(s, req);
 	s->debug_done_redundant_writes++;
