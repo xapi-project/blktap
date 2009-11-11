@@ -1437,6 +1437,23 @@ tapdisk_vbd_complete_td_request(td_request_t treq, int res)
 	__tapdisk_vbd_complete_td_request(vbd, vreq, treq, res);
 }
 
+static inline void
+tapdisk_vbd_submit_request(td_image_t *image, blkif_request_t *req,
+		td_request_t treq)
+{
+	switch (req->operation)	{
+	case BLKIF_OP_WRITE:
+		treq.op = TD_OP_WRITE;
+		td_queue_write(image, treq);
+		break;
+
+	case BLKIF_OP_READ:
+		treq.op = TD_OP_READ;
+		td_queue_read(image, treq);
+		break;
+	}
+}
+
 static int
 tapdisk_vbd_issue_request(td_vbd_t *vbd, td_vbd_request_t *vreq)
 {
@@ -1448,6 +1465,7 @@ tapdisk_vbd_issue_request(td_vbd_t *vbd, td_vbd_request_t *vreq)
 	blkif_request_t *req;
 	int i, err, id, nsects;
 	struct timeval now;
+	int treq_started = 0;
 
 	req       = &vreq->req;
 	id        = req->id;
@@ -1471,22 +1489,40 @@ tapdisk_vbd_issue_request(td_vbd_t *vbd, td_vbd_request_t *vreq)
 	if (err)
 		goto fail;
 
+	memset(&treq, 0, sizeof(td_request_t));
 	for (i = 0; i < req->nr_segments; i++) {
 		nsects = req->seg[i].last_sect - req->seg[i].first_sect + 1;
 		page   = (char *)MMAP_VADDR(ring->vstart, 
 					   (unsigned long)req->id, i);
 		page  += (req->seg[i].first_sect << SECTOR_SHIFT);
 
-		treq.id             = id;
-		treq.sidx           = i;
-		treq.blocked        = 0;
-		treq.buf            = page;
-		treq.sec            = sector_nr;
-		treq.secs           = nsects;
-		treq.image          = image;
-		treq.cb             = tapdisk_vbd_complete_td_request;
-		treq.cb_data        = NULL;
-		treq.private        = vreq;
+		if (treq_started) {
+			if (page == treq.buf + (treq.secs << SECTOR_SHIFT)) {
+				treq.secs += nsects;
+			} else {
+				tapdisk_vbd_submit_request(image, req, treq);
+				treq_started = 0;
+			}
+		}
+
+		if (!treq_started) {
+			treq.id      = id;
+			treq.sidx    = i;
+			treq.blocked = 0;
+			treq.buf     = page;
+			treq.sec     = sector_nr;
+			treq.secs    = nsects;
+			treq.image   = image;
+			treq.cb      = tapdisk_vbd_complete_td_request;
+			treq.cb_data = NULL;
+			treq.private = vreq;
+			treq_started = 1;
+		}
+
+		if (i == req->nr_segments - 1) {
+			tapdisk_vbd_submit_request(image, req, treq);
+			treq_started = 0;
+		}
 
 		DBG(TLOG_DBG, "%s: req %d seg %d sec 0x%08llx secs 0x%04x "
 		    "buf %p op %d\n", image->name, id, i, treq.sec, treq.secs,
@@ -1494,18 +1530,6 @@ tapdisk_vbd_issue_request(td_vbd_t *vbd, td_vbd_request_t *vreq)
 
 		vreq->secs_pending += nsects;
 		vbd->secs_pending  += nsects;
-
-		switch (req->operation)	{
-		case BLKIF_OP_WRITE:
-			treq.op = TD_OP_WRITE;
-			td_queue_write(image, treq);
-			break;
-
-		case BLKIF_OP_READ:
-			treq.op = TD_OP_READ;
-			td_queue_read(image, treq);
-			break;
-		}
 
 		sector_nr += nsects;
 	}
