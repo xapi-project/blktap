@@ -46,38 +46,38 @@
 #include "tapdisk-log.h"
 #include "tapdisk-utils.h"
 
-void
-tapdisk_start_logging(const char *ident, const char *facility_name)
+static int
+tapdisk_syslog_facility_by_name(const char *name)
 {
-	static char buf[128];
 	int facility;
+	CODE *c;
 
-	facility = LOG_DAEMON;
+	facility = -1;
 
-	if (facility_name) {
-		char *endptr;
-
-		facility = strtol(facility_name, &endptr, 0);
-		if (*endptr != 0) {
-			CODE *c;
-
-			facility = LOG_DAEMON;
-			for (c = facilitynames; c->c_name != NULL; ++c)
-				if (!strcmp(c->c_name, facility_name))
-					facility = c->c_val;
+	for (c = facilitynames; c->c_name != NULL; ++c)
+		if (!strcmp(c->c_name, name)) {
+			facility = c->c_val;
+			break;
 		}
-	}
 
-	snprintf(buf, sizeof(buf), "%s[%d]", ident, getpid());
-	openlog(buf, LOG_CONS | LOG_ODELAY, facility);
-	open_tlog("/tmp/tapdisk.log", (64 << 10), TLOG_WARN, 0);
+	return facility;
 }
 
-void
-tapdisk_stop_logging(void)
+int
+tapdisk_syslog_facility(const char *arg)
 {
-	closelog();
-	close_tlog();
+	int facility;
+	char *endptr;
+
+	facility = strtol(arg, &endptr, 0);
+	if (*endptr == 0)
+		return facility;
+
+	facility = tapdisk_syslog_facility_by_name(arg);
+	if (facility >= 0)
+		return facility;
+
+	return LOG_DAEMON;
 }
 
 int

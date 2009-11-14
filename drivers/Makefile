@@ -72,7 +72,7 @@ tapdisk-client: tapdisk-client.o
 tapdisk-stream tapdisk-diff: %: %.o $(TAP-OBJS) $(BLK-OBJS)
 	$(CC) $(CFLAGS) -o $@ $^ $(LIBS) $(AIOLIBS)
 
-td-util: td.o tapdisk-utils.o tapdisk-log.o
+td-util: td.o tapdisk-utils.o
 	$(CC) $(CFLAGS) -o $@ $^ $(LIBS)
 
 lock-util: lock.c

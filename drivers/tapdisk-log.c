@@ -14,6 +14,7 @@
 #include <sys/time.h>
 
 #include "tapdisk-log.h"
+#include "tapdisk-utils.h"
 #include "tapdisk-vbd-stats.h"
 
 #define MAX_ENTRY_LEN      512
@@ -263,4 +264,23 @@ tlog_flush(void)
 
 out:
 	close(fd);
+}
+
+void
+tapdisk_start_logging(const char *ident, const char *facility)
+{
+	static char buf[128];
+
+	snprintf(buf, sizeof(buf), "%s[%d]", ident, getpid());
+
+	openlog(buf, LOG_CONS|LOG_ODELAY, tapdisk_syslog_facility(facility));
+
+	open_tlog("/tmp/tapdisk.log", (64 << 10), TLOG_WARN, 0);
+}
+
+void
+tapdisk_stop_logging(void)
+{
+	close_tlog();
+	closelog();
 }

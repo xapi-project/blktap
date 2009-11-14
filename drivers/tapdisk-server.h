@@ -51,4 +51,7 @@ int tapdisk_server_initialize(const char *, const char *);
 int tapdisk_server_run(void);
 void tapdisk_server_log_events(void);
 
+void tapdisk_start_logging(const char *, const char *);
+void tapdisk_stop_logging(void);
+
 #endif
