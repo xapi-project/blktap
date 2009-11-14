@@ -38,6 +38,7 @@
 #include "tapdisk-image.h"
 #include "tapdisk-vbd-stats.h"
 
+#define TD_VBD_REQUEST_TIMEOUT      120
 #define TD_VBD_MAX_RETRIES          100
 #define TD_VBD_RETRY_INTERVAL       1
 

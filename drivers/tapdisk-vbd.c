@@ -1200,24 +1200,52 @@ tapdisk_vbd_make_response(td_vbd_t *vbd, td_vbd_request_t *vreq)
 	if (rsp->status != BLKIF_RSP_OKAY) {
 		ERR(-vreq->error, "returning BLKIF_RSP %d", rsp->status);
 		tapdisk_vbd_failure_stats_add(vbd, vreq);
-		if (-vreq->error == EBUSY &&
-		    vreq->num_retries >= TD_VBD_MAX_RETRIES) {
-			tapdisk_vbd_debug(vbd);
-			tapdisk_server_log_events();
-		}
 	}
 
 	vbd->returned++;
 	vbd->callback(vbd->argument, rsp);
 }
 
+static int
+tapdisk_vbd_request_ttl(td_vbd_request_t *vreq,
+			const struct timeval *now)
+{
+	struct timeval delta;
+	timersub(now, &vreq->ts, &delta);
+	return TD_VBD_REQUEST_TIMEOUT - delta.tv_sec;
+}
+
+static int
+__tapdisk_vbd_request_timeout(td_vbd_request_t *vreq,
+			      const struct timeval *now)
+{
+	int timeout;
+
+	timeout = tapdisk_vbd_request_ttl(vreq, now) < 0;
+	if (timeout)
+		DBG(TLOG_INFO, "req %"PRIu64" timed out, retried %d times\n",
+		    vreq->req.id, vreq->num_retries);
+
+	return timeout;
+}
+
+static int
+tapdisk_vbd_request_timeout(td_vbd_request_t *vreq)
+{
+	struct timeval now;
+	gettimeofday(&now, NULL);
+	return __tapdisk_vbd_request_timeout(vreq, &now);
+}
+
 void
 tapdisk_vbd_check_state(td_vbd_t *vbd)
 {
 	td_vbd_request_t *vreq, *tmp;
+	struct timeval now;
 
+	gettimeofday(&now, NULL);
 	tapdisk_vbd_for_each_request(vreq, tmp, &vbd->failed_requests)
-		if (vreq->num_retries >= TD_VBD_MAX_RETRIES)
+		if (__tapdisk_vbd_request_timeout(vreq, &now))
 			tapdisk_vbd_complete_vbd_request(vbd, vreq);
 
 	if (!list_empty(&vbd->new_requests) ||
@@ -1305,7 +1333,7 @@ tapdisk_vbd_complete_vbd_request(td_vbd_t *vbd, td_vbd_request_t *vreq)
 {
 	if (!vreq->submitting && !vreq->secs_pending) {
 		if (vreq->status == BLKIF_RSP_ERROR &&
-		    vreq->num_retries < TD_VBD_MAX_RETRIES &&
+		    !tapdisk_vbd_request_timeout(vreq) &&
 		    !td_flag_test(vbd->state, TD_VBD_DEAD) &&
 		    !td_flag_test(vbd->state, TD_VBD_SHUTDOWN_REQUESTED))
 			tapdisk_vbd_move_request(vreq, &vbd->failed_requests);
@@ -1561,20 +1589,14 @@ tapdisk_vbd_reissue_failed_requests(td_vbd_t *vbd)
 		if (vreq->secs_pending)
 			continue;
 
-		if (td_flag_test(vbd->state, TD_VBD_SHUTDOWN_REQUESTED))
-			goto fail;
+		if (td_flag_test(vbd->state, TD_VBD_SHUTDOWN_REQUESTED)) {
+			tapdisk_vbd_complete_vbd_request(vbd, vreq);
+			continue;
+		}
 
 		if (vreq->error != -EBUSY &&
 		    now.tv_sec - vreq->last_try.tv_sec < TD_VBD_RETRY_INTERVAL)
 			continue;
-
-		if (vreq->num_retries >= TD_VBD_MAX_RETRIES) {
-		fail:
-			DBG(TLOG_INFO, "req %"PRIu64"retried %d times\n",
-			    vreq->req.id, vreq->num_retries);
-			tapdisk_vbd_complete_vbd_request(vbd, vreq);
-			continue;
-		}
 
 		vbd->retries++;
 		vreq->num_retries++;
