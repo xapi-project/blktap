@@ -43,6 +43,7 @@ TAP-OBJS  += tapdisk-interface.o
 TAP-OBJS  += tapdisk-server.o
 TAP-OBJS  += tapdisk-queue.o
 TAP-OBJS  += tapdisk-filter.o
+TAP-OBJS  += tapdisk-logfile.o
 TAP-OBJS  += tapdisk-log.o
 TAP-OBJS  += tapdisk-event-log.o
 TAP-OBJS  += tapdisk-utils.o
