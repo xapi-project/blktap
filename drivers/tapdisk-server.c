@@ -131,7 +131,8 @@ tapdisk_server_debug(void)
 	tapdisk_server_for_each_vbd(vbd, tmp)
 		tapdisk_vbd_debug(vbd);
 
-	tlog_flush();
+	DBG(TLOG_INFO, "debug log completed\n");
+	tlog_precious();
 }
 
 void
@@ -337,6 +338,7 @@ tapdisk_server_signal_handler(int signal)
 		break;
 
 	case SIGUSR1:
+		DBG(TLOG_INFO, "debugging on signal %d\n", signal);
 		tapdisk_server_debug();
 		break;
 	}

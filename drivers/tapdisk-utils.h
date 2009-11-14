@@ -33,6 +33,7 @@
 #define MAX_NAME_LEN                 1000
 
 int tapdisk_syslog_facility(const char *);
+const char* tapdisk_syslog_ident(const char *);
 int tapdisk_set_resource_limits(void);
 int tapdisk_namedup(char **, const char *);
 int tapdisk_parse_disk_type(const char *, char **, int *);

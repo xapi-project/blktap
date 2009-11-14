@@ -938,7 +938,7 @@ tapdisk_vbd_drop_log(td_vbd_t *vbd)
 		return;
 
 	tapdisk_vbd_debug(vbd);
-	tlog_flush();
+	tlog_precious();
 	td_flag_set(vbd->state, TD_VBD_LOG_DROPPED);
 }
 

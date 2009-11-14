@@ -24,8 +24,7 @@
 #define ASSERT(condition)					\
 	if (!(condition)) {					\
 		WARN("FAILED ASSERTION: '%s'\n", #condition);	\
-		tlog_flush();					\
-		*(int *)0 = 0;					\
+		td_panic();					\
 	}
 
 #define VHD_INDEX_FILE_POOL_SIZE     12

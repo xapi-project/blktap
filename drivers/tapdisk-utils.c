@@ -80,6 +80,26 @@ tapdisk_syslog_facility(const char *arg)
 	return LOG_DAEMON;
 }
 
+#define TD_SYSLOG_IDENT_MAX 32
+
+const char*
+tapdisk_syslog_ident(const char *name)
+{
+	static char ident[TD_SYSLOG_IDENT_MAX];
+	size_t size, len;
+	pid_t pid;
+
+	pid  = getpid();
+	size = sizeof(ident);
+	len  = 0;
+
+	len  = snprintf(NULL, 0, "[%d]", pid);
+	len  = snprintf(ident, size - len, name);
+	len += snprintf(ident + len, size - len, "[%d]", pid);
+
+	return ident;
+}
+
 int
 tapdisk_set_resource_limits(void)
 {

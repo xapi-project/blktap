@@ -25,6 +25,8 @@
  * NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
  * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
+
+#include <signal.h>
 #include <errno.h>
 
 #include "tapdisk.h"
@@ -33,6 +35,7 @@
 #include "tapdisk-driver.h"
 #include "tapdisk-server.h"
 #include "tapdisk-interface.h"
+#include "tapdisk-log.h"
 
 int
 td_load(td_image_t *image)
@@ -247,4 +250,11 @@ td_debug(td_image_t *image)
 		return;
 
 	tapdisk_driver_debug(driver);
+}
+
+void
+td_panic(void)
+{
+	tlog_precious();
+	raise(SIGABRT);
 }
