@@ -263,24 +263,29 @@ tapdisk_server_close(void)
 	tapdisk_server_close_ipc();
 }
 
-static void
-__tapdisk_server_run(void)
+void
+tapdisk_server_iterate(void)
 {
 	int ret;
 
-	while (server.run) {
-		tapdisk_server_assert_locks();
-		tapdisk_server_set_retry_timeout();
-		tapdisk_server_check_progress();
+	tapdisk_server_assert_locks();
+	tapdisk_server_set_retry_timeout();
+	tapdisk_server_check_progress();
 
-		ret = scheduler_wait_for_events(&server.scheduler);
-		if (ret < 0)
-			DBG(TLOG_WARN, "server wait returned %d\n", ret);
+	ret = scheduler_wait_for_events(&server.scheduler);
+	if (ret < 0)
+		DBG(TLOG_WARN, "server wait returned %d\n", ret);
 
-		tapdisk_server_check_vbds();
-		tapdisk_server_submit_tiocbs();
-		tapdisk_server_kick_responses();
-	}
+	tapdisk_server_check_vbds();
+	tapdisk_server_submit_tiocbs();
+	tapdisk_server_kick_responses();
+}
+
+static void
+__tapdisk_server_run(void)
+{
+	while (server.run)
+		tapdisk_server_iterate();
 }
 
 static void
