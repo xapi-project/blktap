@@ -76,7 +76,7 @@ scheduler_prepare_events(scheduler_t *s)
 	FD_ZERO(&s->write_fds);
 	FD_ZERO(&s->except_fds);
 
-	s->max_fd  = 0;
+	s->max_fd  = -1;
 	s->timeout = SCHEDULER_MAX_TIMEOUT;
 
 	gettimeofday(&now, NULL);
