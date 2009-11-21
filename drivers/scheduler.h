@@ -52,6 +52,7 @@ typedef struct scheduler {
 	int                          max_fd;
 	int                          timeout;
 	int                          max_timeout;
+	int                          depth;
 
 	struct event_log             event_log;
 } scheduler_t;

@@ -52,6 +52,7 @@
 typedef struct event {
 	char                         mode;
 	char                         dead;
+	char                         pending;
 
 	event_id_t                   id;
 
@@ -109,6 +110,51 @@ scheduler_prepare_events(scheduler_t *s)
 	s->timeout = MIN(s->timeout, s->max_timeout);
 }
 
+static int
+scheduler_check_events(scheduler_t *s, int nfds)
+{
+	event_t *event;
+	struct timeval now;
+
+	if (nfds <= 0)
+		return nfds;
+
+	gettimeofday(&now, NULL);
+
+	scheduler_for_each_event(s, event) {
+
+		if ((event->mode & SCHEDULER_POLL_READ_FD) &&
+		    FD_ISSET(event->fd, &s->read_fds)) {
+			FD_CLR(event->fd, &s->read_fds);
+			event->pending |= SCHEDULER_POLL_READ_FD;
+			--nfds;
+		}
+
+		if ((event->mode & SCHEDULER_POLL_WRITE_FD) &&
+		    FD_ISSET(event->fd, &s->write_fds)) {
+			FD_CLR(event->fd, &s->write_fds);
+			event->pending |= SCHEDULER_POLL_WRITE_FD;
+			--nfds;
+		}
+
+		if ((event->mode & SCHEDULER_POLL_EXCEPT_FD) &&
+		    FD_ISSET(event->fd, &s->except_fds)) {
+			FD_CLR(event->fd, &s->except_fds);
+			event->pending |= SCHEDULER_POLL_EXCEPT_FD;
+			--nfds;
+		}
+
+		if (event->pending)
+			continue;
+
+		if ((event->mode & SCHEDULER_POLL_TIMEOUT) &&
+		    (event->deadline <= now.tv_sec))
+			event->pending = SCHEDULER_POLL_TIMEOUT;
+	}
+
+	return nfds;
+}
+
 static void
 scheduler_event_callback(event_t *event, char mode)
 {
@@ -121,44 +167,28 @@ scheduler_event_callback(event_t *event, char mode)
 	event->cb(event->id, mode, event->private);
 }
 
-static void
+static int
 scheduler_run_events(scheduler_t *s)
 {
-	struct timeval now;
 	event_t *event;
-
-	gettimeofday(&now, NULL);
+	int n_dispatched = 0;
 
 	scheduler_for_each_event(s, event) {
+		char pending;
 
 		if (event->dead)
 			continue;
 
-		if ((event->mode & SCHEDULER_POLL_READ_FD) &&
-		    FD_ISSET(event->fd, &s->read_fds)) {
-			FD_CLR(event->fd, &s->read_fds);
-			scheduler_event_callback(event, SCHEDULER_POLL_READ_FD);
-			continue;
+		pending = event->pending;
+		if (pending) {
+			event->pending = 0;
+			/* NB. must clear before cb */
+			scheduler_event_callback(event, pending);
+			n_dispatched++;
 		}
-
-		if ((event->mode & SCHEDULER_POLL_WRITE_FD) &&
-		    FD_ISSET(event->fd, &s->write_fds)) {
-			FD_CLR(event->fd, &s->write_fds);
-			scheduler_event_callback(event, SCHEDULER_POLL_WRITE_FD);
-			continue;
-		}
-
-		if ((event->mode & SCHEDULER_POLL_EXCEPT_FD) &&
-		    FD_ISSET(event->fd, &s->except_fds)) {
-			FD_CLR(event->fd, &s->except_fds);
-			scheduler_event_callback(event, SCHEDULER_POLL_EXCEPT_FD);
-			continue;
-		}
-
-		if ((event->mode & SCHEDULER_POLL_TIMEOUT) &&
-		    (event->deadline <= now.tv_sec))
-		    scheduler_event_callback(event, SCHEDULER_POLL_TIMEOUT);
 	}
+
+	return n_dispatched;
 }
 
 int
@@ -238,6 +268,15 @@ scheduler_wait_for_events(scheduler_t *s)
 	int ret;
 	struct timeval tv;
 
+	s->depth++;
+	ret = 0;
+
+	if (s->depth > 1 && scheduler_run_events(s))
+		/* NB. recursive invocations continue with the pending
+		 * event set. We return as soon as we made some
+		 * progress. */
+		goto out;
+
 	scheduler_prepare_events(s);
 
 	tv.tv_sec  = s->timeout;
@@ -249,17 +288,22 @@ scheduler_wait_for_events(scheduler_t *s)
 	ret = select(s->max_fd + 1, &s->read_fds,
 		     &s->write_fds, &s->except_fds, &tv);
 
+	if (ret < 0)
+		goto out;
+
 	td_event_log_add_events(&s->event_log, ret,
 				&s->read_fds, &s->write_fds, &s->except_fds);
+
+	ret = scheduler_check_events(s, ret);
 
 	s->timeout     = SCHEDULER_MAX_TIMEOUT;
 	s->max_timeout = SCHEDULER_MAX_TIMEOUT;
 
-	if (ret < 0)
-		return ret;
-
 	scheduler_run_events(s);
 	scheduler_gc_events(s);
+
+out:
+	s->depth--;
 
 	return ret;
 }
@@ -269,7 +313,8 @@ scheduler_initialize(scheduler_t *s)
 {
 	memset(s, 0, sizeof(scheduler_t));
 
-	s->uuid = 1;
+	s->uuid  = 1;
+	s->depth = 0;
 
 	FD_ZERO(&s->read_fds);
 	FD_ZERO(&s->write_fds);
