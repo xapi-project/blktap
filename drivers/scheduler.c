@@ -44,11 +44,15 @@
 #define MIN(a, b)                   ((a) <= (b) ? (a) : (b))
 #define MAX(a, b)                   ((a) >= (b) ? (a) : (b))
 
-#define scheduler_for_each_event(s, event, tmp)	\
+#define scheduler_for_each_event(s, event)	\
+	list_for_each_entry(event, &(s)->events, next)
+#define scheduler_for_each_event_safe(s, event, tmp)	\
 	list_for_each_entry_safe(event, tmp, &(s)->events, next)
 
 typedef struct event {
 	char                         mode;
+	char                         dead;
+
 	event_id_t                   id;
 
 	int                          fd;
@@ -66,7 +70,7 @@ scheduler_prepare_events(scheduler_t *s)
 {
 	int diff;
 	struct timeval now;
-	event_t *event, *tmp;
+	event_t *event;
 
 	FD_ZERO(&s->read_fds);
 	FD_ZERO(&s->write_fds);
@@ -77,7 +81,7 @@ scheduler_prepare_events(scheduler_t *s)
 
 	gettimeofday(&now, NULL);
 
-	scheduler_for_each_event(s, event, tmp) {
+	scheduler_for_each_event(s, event) {
 		if (event->mode & SCHEDULER_POLL_READ_FD) {
 			FD_SET(event->fd, &s->read_fds);
 			s->max_fd = MAX(event->fd, s->max_fd);
@@ -121,42 +125,39 @@ static void
 scheduler_run_events(scheduler_t *s)
 {
 	struct timeval now;
-	event_t *event, *tmp;
+	event_t *event;
 
 	gettimeofday(&now, NULL);
 
- again:
-	s->restart = 0;
+	scheduler_for_each_event(s, event) {
 
-	scheduler_for_each_event(s, event, tmp) {
+		if (event->dead)
+			continue;
+
 		if ((event->mode & SCHEDULER_POLL_READ_FD) &&
 		    FD_ISSET(event->fd, &s->read_fds)) {
 			FD_CLR(event->fd, &s->read_fds);
 			scheduler_event_callback(event, SCHEDULER_POLL_READ_FD);
-			goto next;
+			continue;
 		}
 
 		if ((event->mode & SCHEDULER_POLL_WRITE_FD) &&
 		    FD_ISSET(event->fd, &s->write_fds)) {
 			FD_CLR(event->fd, &s->write_fds);
 			scheduler_event_callback(event, SCHEDULER_POLL_WRITE_FD);
-			goto next;
+			continue;
 		}
 
 		if ((event->mode & SCHEDULER_POLL_EXCEPT_FD) &&
 		    FD_ISSET(event->fd, &s->except_fds)) {
 			FD_CLR(event->fd, &s->except_fds);
 			scheduler_event_callback(event, SCHEDULER_POLL_EXCEPT_FD);
-			goto next;
+			continue;
 		}
 
 		if ((event->mode & SCHEDULER_POLL_TIMEOUT) &&
 		    (event->deadline <= now.tv_sec))
 		    scheduler_event_callback(event, SCHEDULER_POLL_TIMEOUT);
-
-	next:
-		if (s->restart)
-			goto again;
 	}
 }
 
@@ -205,12 +206,22 @@ scheduler_unregister_event(scheduler_t *s, event_id_t id)
 	if (!id)
 		return;
 
-	scheduler_for_each_event(s, event, tmp)
+	scheduler_for_each_event(s, event)
 		if (event->id == id) {
+			event->dead = 1;
+			break;
+		}
+}
+
+static void
+scheduler_gc_events(scheduler_t *s)
+{
+	event_t *event, *next;
+
+	scheduler_for_each_event_safe(s, event, next)
+		if (event->dead) {
 			list_del(&event->next);
 			free(event);
-			s->restart = 1;
-			break;
 		}
 }
 
@@ -241,7 +252,6 @@ scheduler_wait_for_events(scheduler_t *s)
 	td_event_log_add_events(&s->event_log, ret,
 				&s->read_fds, &s->write_fds, &s->except_fds);
 
-	s->restart     = 0;
 	s->timeout     = SCHEDULER_MAX_TIMEOUT;
 	s->max_timeout = SCHEDULER_MAX_TIMEOUT;
 
@@ -249,6 +259,7 @@ scheduler_wait_for_events(scheduler_t *s)
 		return ret;
 
 	scheduler_run_events(s);
+	scheduler_gc_events(s);
 
 	return ret;
 }
