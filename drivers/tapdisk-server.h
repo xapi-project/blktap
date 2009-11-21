@@ -45,6 +45,7 @@ void tapdisk_server_check_state(void);
 
 event_id_t tapdisk_server_register_event(char, int, int, event_cb_t, void *);
 void tapdisk_server_unregister_event(event_id_t);
+void tapdisk_server_mask_event(event_id_t, int);
 void tapdisk_server_set_max_timeout(int);
 
 int tapdisk_server_initialize(const char *, const char *);

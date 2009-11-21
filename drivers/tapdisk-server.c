@@ -154,6 +154,12 @@ tapdisk_server_unregister_event(event_id_t event)
 }
 
 void
+tapdisk_server_mask_event(event_id_t event, int masked)
+{
+	return scheduler_mask_event(&server.scheduler, event, masked);
+}
+
+void
 tapdisk_server_set_max_timeout(int seconds)
 {
 	scheduler_set_max_timeout(&server.scheduler, seconds);

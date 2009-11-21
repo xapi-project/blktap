@@ -53,6 +53,7 @@ typedef struct event {
 	char                         mode;
 	char                         dead;
 	char                         pending;
+	char                         masked;
 
 	event_id_t                   id;
 
@@ -83,6 +84,9 @@ scheduler_prepare_events(scheduler_t *s)
 	gettimeofday(&now, NULL);
 
 	scheduler_for_each_event(s, event) {
+		if (event->masked)
+			continue;
+
 		if (event->mode & SCHEDULER_POLL_READ_FD) {
 			FD_SET(event->fd, &s->read_fds);
 			s->max_fd = MAX(event->fd, s->max_fd);
@@ -122,6 +126,8 @@ scheduler_check_events(scheduler_t *s, int nfds)
 	gettimeofday(&now, NULL);
 
 	scheduler_for_each_event(s, event) {
+		if (event->masked)
+			continue;
 
 		if ((event->mode & SCHEDULER_POLL_READ_FD) &&
 		    FD_ISSET(event->fd, &s->read_fds)) {
@@ -219,6 +225,7 @@ scheduler_register_event(scheduler_t *s, char mode, int fd,
 	event->cb       = cb;
 	event->private  = private;
 	event->id       = s->uuid++;
+	event->masked   = 0;
 
 	if (!s->uuid)
 		s->uuid++;
@@ -239,6 +246,21 @@ scheduler_unregister_event(scheduler_t *s, event_id_t id)
 	scheduler_for_each_event(s, event)
 		if (event->id == id) {
 			event->dead = 1;
+			break;
+		}
+}
+
+void
+scheduler_mask_event(scheduler_t *s, event_id_t id, int masked)
+{
+	event_t *event;
+
+	if (!id)
+		return;
+
+	scheduler_for_each_event(s, event)
+		if (event->id == id) {
+			event->masked = !!masked;
 			break;
 		}
 }

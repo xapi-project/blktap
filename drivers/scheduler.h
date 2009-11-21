@@ -62,6 +62,7 @@ event_id_t scheduler_register_event(scheduler_t *, char mode,
 				    int fd, int timeout,
 				    event_cb_t cb, void *private);
 void scheduler_unregister_event(scheduler_t *,  event_id_t);
+void scheduler_mask_event(scheduler_t *, event_id_t, int masked);
 void scheduler_set_max_timeout(scheduler_t *, int);
 int scheduler_wait_for_events(scheduler_t *);
 
