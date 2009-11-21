@@ -42,6 +42,7 @@
 #include "tapdisk.h"
 #include "tapdisk-driver.h"
 #include "tapdisk-interface.h"
+#include "disktypes.h"
 
 unsigned int SPB;
 

@@ -20,6 +20,7 @@
 #include "tapdisk-interface.h"
 
 #include "blktap2.h"
+#include "disktypes.h"
 
 #define DBG(_level, _f, _a...) tlog_write(_level, _f, ##_a)
 #define ERR(_err, _f, _a...) tlog_error(_err, _f, ##_a)
