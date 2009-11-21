@@ -36,6 +36,7 @@
 #include <sys/mman.h>
 
 #include "tapdisk-logfile.h"
+#include "tapdisk-utils.h"
 
 #define MIN(a,b) (((a) < (b)) ? (a) : (b))
 
@@ -192,33 +193,6 @@ tapdisk_logfile_setvbuf(td_logfile_t *log, int mode)
 	}
 
 	return err;
-}
-
-/* FIXME: merge with syslog */
-static size_t
-tapdisk_syslog_strftime(char *buf, size_t size, const struct timeval *tv)
-{
-	const char *mon[] = { "Jan", "Feb", "Mar", "Apr", "May", "Jun",
-			      "Jul", "Aug", "Sep", "Oct", "Nov", "Dec" };
-	struct tm tm;
-
-	localtime_r(&tv->tv_sec, &tm);
-
-	return snprintf(buf, size, "%s %2d %02d:%02d:%02d",
-			mon[tm.tm_mon], tm.tm_mday,
-			tm.tm_hour, tm.tm_min, tm.tm_sec);
-}
-
-static size_t
-tapdisk_syslog_strftv(char *buf, size_t size, const struct timeval *tv)
-{
-	struct tm tm;
-
-	localtime_r(&tv->tv_sec, &tm);
-
-	return snprintf(buf, size, "[%02d:%02d:%02d.%03ld]",
-			tm.tm_hour, tm.tm_min, tm.tm_sec,
-			(long)tv->tv_usec / 1000);
 }
 
 ssize_t

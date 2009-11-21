@@ -38,18 +38,18 @@
 int  tlog_open(const char *, int, int);
 void tlog_close(void);
 void tlog_precious(void);
-void tlog_print_errors(void);
 
 void __tlog_write(int, const char *, ...)
 	__attribute__((format(printf, 2, 3)));
 
-void __tlog_error(int err, const char *func, const char *fmt, ...)
-  __attribute__((format(printf, 3, 4)));
+void __tlog_error(const char *fmt, ...)
+	__attribute__((format(printf, 1, 2)));
 
 #define tlog_write(_level, _f, _a...)			\
 	__tlog_write(_level, "%s: " _f,  __func__, ##_a)
 
 #define tlog_error(_err, _f, _a...)			\
-	__tlog_error(_err, __func__, _f, ##_a)
+	__tlog_error("ERROR: errno %d at %s: " _f,	\
+		     _err, __func__, ##_a)
 
 #endif

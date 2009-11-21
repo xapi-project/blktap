@@ -47,6 +47,8 @@
 #include "tapdisk-utils.h"
 #include "tapdisk-syslog.h"
 
+#define MIN(a,b) (((a) < (b)) ? (a) : (b))
+
 static int
 tapdisk_syslog_facility_by_name(const char *name)
 {
@@ -81,10 +83,10 @@ tapdisk_syslog_facility(const char *arg)
 	return LOG_DAEMON;
 }
 
-const char*
+char*
 tapdisk_syslog_ident(const char *name)
 {
-	static char ident[TD_SYSLOG_IDENT_MAX];
+	char ident[TD_SYSLOG_IDENT_MAX+1];
 	size_t size, len;
 	pid_t pid;
 
@@ -96,7 +98,7 @@ tapdisk_syslog_ident(const char *name)
 	len  = snprintf(ident, size - len, name);
 	len += snprintf(ident + len, size - len, "[%d]", pid);
 
-	return ident;
+	return strdup(ident);
 }
 
 size_t

@@ -35,7 +35,7 @@
 #define TD_SYSLOG_STRTIME_LEN 15
 
 int tapdisk_syslog_facility(const char *);
-const char* tapdisk_syslog_ident(const char *);
+char* tapdisk_syslog_ident(const char *);
 size_t tapdisk_syslog_strftime(char *, size_t, const struct timeval *);
 size_t tapdisk_syslog_strftv(char *, size_t, const struct timeval *);
 int tapdisk_set_resource_limits(void);

@@ -864,8 +864,6 @@ tapdisk_vbd_shutdown(td_vbd_t *vbd)
 	free(vbd->name);
 	free(vbd);
 
-	tlog_print_errors();
-
 	return 0;
 }
 

@@ -33,10 +33,11 @@
 #include <sys/signal.h>
 
 #define TAPDISK
-#include "tapdisk-utils.h"
+#include "tapdisk-syslog.h"
 #include "tapdisk-server.h"
 #include "tapdisk-driver.h"
 #include "tapdisk-interface.h"
+#include "tapdisk-log.h"
 #include "disktypes.h"
 
 #define DBG(_level, _f, _a...)       tlog_write(_level, _f, ##_a)
@@ -50,6 +51,9 @@ typedef struct tapdisk_server {
 	struct list_head             vbds;
 	scheduler_t                  scheduler;
 	struct tqueue                aio_queue;
+	char                        *name;
+	char                        *ident;
+	int                          facility;
 } tapdisk_server_t;
 
 static tapdisk_server_t server;
@@ -263,9 +267,54 @@ tapdisk_server_close_aio(void)
 	tapdisk_free_queue(&server.aio_queue);
 }
 
+int
+tapdisk_server_openlog(const char *name, int options, int facility)
+{
+	server.facility = facility;
+	server.name     = strdup(name);
+	server.ident    = tapdisk_syslog_ident(name);
+
+	if (!server.name || !server.ident)
+		return -errno;
+
+	openlog(server.ident, options, facility);
+
+	return 0;
+}
+
+void
+tapdisk_server_closelog(void)
+{
+	closelog();
+
+	free(server.name);
+	server.name = NULL;
+
+	free(server.ident);
+	server.ident = NULL;
+}
+
+static int
+tapdisk_server_open_tlog(void)
+{
+	int err = 0;
+
+	if (server.name)
+		err = tlog_open(server.name, server.facility, TLOG_WARN);
+
+	return err;
+}
+
+static void
+tapdisk_server_close_tlog(void)
+{
+	tlog_close();
+}
+
 static void
 tapdisk_server_close(void)
 {
+	tapdisk_server_close_tlog();
 	tapdisk_server_close_aio();
 	tapdisk_server_close_ipc();
 }
@@ -330,7 +379,6 @@ tapdisk_server_initialize(const char *read, const char *write)
 {
 	int err;
 
-	memset(&server, 0, sizeof(tapdisk_server_t));
 	INIT_LIST_HEAD(&server.vbds);
 
 	scheduler_initialize(&server.scheduler);
@@ -340,6 +388,10 @@ tapdisk_server_initialize(const char *read, const char *write)
 		goto fail;
 
 	err = tapdisk_server_init_aio();
+	if (err)
+		goto fail;
+
+	err = tapdisk_server_open_tlog();
 	if (err)
 		goto fail;
 

@@ -39,36 +39,29 @@
 #include "tapdisk-log.h"
 #include "tapdisk-utils.h"
 #include "tapdisk-logfile.h"
-#include "tapdisk-vbd-stats.h"
+#include "tapdisk-syslog.h"
+#include "tapdisk-server.h"
 
 #define TLOG_LOGFILE_BUFSZ (16<<10)
+#define TLOG_SYSLOG_BUFSZ   (8<<10)
 
 #define MAX_ENTRY_LEN      512
-#define MAX_ERROR_MESSAGES 16
-
-struct error {
-	int            cnt;
-	int            err;
-	char          *func;
-	char           msg[MAX_ENTRY_LEN];
-	struct dispersion st;
-};
-
-struct ehandle {
-	int            cnt;
-	int            dropped;
-	struct error   errors[MAX_ERROR_MESSAGES];
-};
 
 struct tlog {
-	char          *ident;
+	char          *name;
 	td_logfile_t   logfile;
 	int            precious;
 	int            level;
+
+	char          *ident;
+	td_syslog_t    syslog;
+	unsigned long  errors;
 };
 
-static struct ehandle tapdisk_err;
 static struct tlog tapdisk_log;
+
+static void  tlog_syslog(int prio, const char *fmt, ...);
+static void tlog_vsyslog(int prio, const char *fmt, va_list ap);
 
 static void
 tlog_logfile_vprint(const char *fmt, va_list ap)
@@ -87,41 +80,39 @@ tlog_logfile_print(const char *fmt, ...)
 	va_end(ap);
 }
 
+#define tlog_info(_fmt, _args ...)					\
+	tlog_logfile_print("%s: "_fmt, tapdisk_log.ident, ##_args)
+
 static void
 tlog_logfile_save(void)
 {
 	td_logfile_t *logfile = &tapdisk_log.logfile;
-	const char *ident = tapdisk_log.ident;
+	const char *name = tapdisk_log.name;
 	int err;
 
-	tlog_logfile_print("%s: saving log, %d errors",
-			   tapdisk_syslog_ident(ident), tapdisk_err.cnt);
+	tlog_info("saving log, %lu errors", tapdisk_log.errors);
 
 	tapdisk_logfile_flush(logfile);
 
 	err = tapdisk_logfile_rename(logfile,
-				     TLOG_DIR, ident, ".log");
-#if 0
-	tlog_syslog("logfile saved to %s: %d\n", logfile->path, err);
-#endif
+				     TLOG_DIR, name, ".log");
+
+	tlog_syslog(LOG_INFO,
+		    "logfile saved to %s: %d\n", logfile->path, err);
 }
 
 static void
 tlog_logfile_close(void)
 {
 	td_logfile_t *logfile = &tapdisk_log.logfile;
-	const char *ident = tapdisk_log.ident;
 	int keep, err;
 
-	keep = tapdisk_log.precious || tapdisk_err.cnt;
+	keep = tapdisk_log.precious || tapdisk_log.errors;
 
-	tlog_logfile_print("%s: closing log, %d errors",
-			   tapdisk_syslog_ident(ident), tapdisk_err.cnt);
+	tlog_info("closing log, %lu errors", tapdisk_log.errors);
 
-	if (keep) {
+	if (keep)
 		tlog_logfile_save();
-		DPRINTF("logfile kept as %s\n", logfile->path);
-	}
 
 	tapdisk_logfile_close(logfile);
 
@@ -130,7 +121,7 @@ tlog_logfile_close(void)
 }
 
 static int
-tlog_logfile_open(const char *ident, int level)
+tlog_logfile_open(const char *name, int level)
 {
 	td_logfile_t *logfile = &tapdisk_log.logfile;
 	int mode, err;
@@ -143,7 +134,7 @@ tlog_logfile_open(const char *ident, int level)
 	}
 
 	err = tapdisk_logfile_open(logfile,
-				   TLOG_DIR, ident, ".tmp",
+				   TLOG_DIR, name, ".tmp",
 				   TLOG_LOGFILE_BUFSZ);
 	if (err)
 		goto fail;
@@ -154,8 +145,7 @@ tlog_logfile_open(const char *ident, int level)
 	if (err)
 		goto fail;
 
-	tlog_logfile_print("%s: log start, level %d",
-			   tapdisk_syslog_ident(ident), level);
+	tlog_info("log start, level %d", level);
 
 	return 0;
 
@@ -165,47 +155,68 @@ fail:
 }
 
 static void
-tlog_logfile_error(int err, const char *func, const char *fmt, va_list ap)
+tlog_syslog_close(void)
 {
-	td_logfile_t *logfile = &tapdisk_log.logfile;
-	char buf[MAX_ENTRY_LEN+1];
+	td_syslog_t *syslog = &tapdisk_log.syslog;
 
-	vsnprintf(buf, sizeof(buf), fmt, ap);
+	tapdisk_syslog_stats(syslog, LOG_INFO);
+	tapdisk_syslog_flush(syslog);
+	tapdisk_syslog_close(syslog);
+}
 
-	tlog_logfile_print("ERROR: errno %d at %s: %s", err, func, buf);
+static int
+tlog_syslog_open(const char *ident, int facility)
+{
+	td_syslog_t *syslog = &tapdisk_log.syslog;
+	int err;
 
-	tlog_precious();
+	err = tapdisk_syslog_open(syslog,
+				  tapdisk_log.ident, facility,
+				  TLOG_SYSLOG_BUFSZ);
+	return err;
 }
 
 static void
-tlog_errors_init(const char *ident, int facility)
+tlog_vsyslog(int prio, const char *fmt, va_list ap)
 {
-	int i;
+	td_syslog_t *syslog = &tapdisk_log.syslog;
 
-	for (i = 0; i < MAX_ERROR_MESSAGES; ++i)
-		td_dispersion_init(&tapdisk_err.errors[i].st);
+	tapdisk_vsyslog(syslog, prio, fmt, ap);
+}
+
+static void
+tlog_syslog(int prio, const char *fmt, ...)
+{
+	va_list ap;
+
+	va_start(ap, fmt);
+	tlog_vsyslog(prio, fmt, ap);
+	va_end(ap);
 }
 
 int
-tlog_open(const char *ident, int facility, int level)
+tlog_open(const char *name, int facility, int level)
 {
 	int err;
 
-	DPRINTF("tlog starting, level %d\n", level);
+	DPRINTF("tapdisk-log: started, level %d\n", level);
 
 	tapdisk_log.level = level;
-	tapdisk_log.ident = strdup(ident);
+	tapdisk_log.name  = strdup(name);
+	tapdisk_log.ident = tapdisk_syslog_ident(name);
 
-	if (!tapdisk_log.ident) {
+	if (!tapdisk_log.name || !tapdisk_log.ident) {
 		err = -errno;
 		goto fail;
 	}
 
-	err = tlog_logfile_open(ident, level);
+	err = tlog_logfile_open(tapdisk_log.name, level);
 	if (err)
 		goto fail;
 
-	tlog_errors_init(ident, facility);
+	err = tlog_syslog_open(tapdisk_log.ident, facility);
+	if (err)
+		goto fail;
 
 	return 0;
 
@@ -217,9 +228,11 @@ fail:
 void
 tlog_close(void)
 {
-	DPRINTF("tlog closing with %d errors\n", tapdisk_err.cnt);
+	DPRINTF("tapdisk-log: closing after %lu errors\n",
+		tapdisk_log.errors);
 
 	tlog_logfile_close();
+	tlog_syslog_close();
 
 	free(tapdisk_log.ident);
 	tapdisk_log.ident = NULL;
@@ -235,106 +248,31 @@ tlog_precious(void)
 }
 
 void
-__tlog_write(int prio, const char *fmt, ...)
+__tlog_write(int level, const char *fmt, ...)
 {
 	va_list ap;
 
-	if (prio <= tapdisk_log.level) {
+	if (level <= tapdisk_log.level) {
 		va_start(ap, fmt);
 		tlog_logfile_vprint(fmt, ap);
 		va_end(ap);
 	}
 }
 
-static void
-__tlog_strtime(char *s, size_t len, struct timeval *tv)
-{
-	struct tm tm;
-	char *buf;
-
-	localtime_r(&tv->tv_sec, &tm);
-
-	buf = s;
-	buf += strftime(buf, len, "%b %d %H:%M:%S", &tm);
-	buf += snprintf(buf, s + len - buf, ".%06lu", tv->tv_usec);
-}
-
-static void
-tlog_strtime(char *tstr, size_t len)
-{
-	struct timeval tv;
-
-	gettimeofday(&tv, NULL);
-	__tlog_strtime(tstr, len, &tv);
-}
-
 void
-__tlog_error(int err, const char *func, const char *fmt, ...)
+__tlog_error(const char *fmt, ...)
 {
 	va_list ap;
-	int i, len, ret;
-	struct error *e;
-
-	err = (err > 0 ? err : -err);
 
 	va_start(ap, fmt);
-	tlog_logfile_error(err, func, fmt, ap);
+	tlog_logfile_vprint(fmt, ap);
 	va_end(ap);
-
-	for (i = 0; i < tapdisk_err.cnt; i++) {
-		e = &tapdisk_err.errors[i];
-		if (e->err == err && e->func == func) {
-			e->cnt++;
-			td_dispersion_add_now(&e->st);
-			return;
-		}
-	}
-
-	if (tapdisk_err.cnt >= MAX_ERROR_MESSAGES) {
-		tapdisk_err.dropped++;
-		return;
-	}
-
-	e = &tapdisk_err.errors[tapdisk_err.cnt];
 
 	va_start(ap, fmt);
-	ret = vsnprintf(e->msg, MAX_ENTRY_LEN, fmt, ap);
+	tlog_vsyslog(LOG_ERR, fmt, ap);
 	va_end(ap);
 
-	e->cnt++;
-	e->err  = err;
-	e->func = (char *)func;
-	td_dispersion_add_now(&e->st);
-	tapdisk_err.cnt++;
-}
-
-void
-tlog_print_errors(void)
-{
-	int i;
-	struct error *e;
-
-	for (i = 0; i < tapdisk_err.cnt; i++) {
-		char first[64], last[64];
-		struct timeval tv;
-
-		e = &tapdisk_err.errors[i];
-
-		tv = TD_STATS_MIN(&e->st);
-		__tlog_strtime(first, sizeof(first), &tv);
-
-		tv = TD_STATS_MAX(&e->st);
-		__tlog_strtime(last,  sizeof(last),  &tv);
-
-		tv = TD_STATS_STDEV(&e->st);
-		syslog(LOG_INFO, "TAPDISK ERROR: errno %d at %s (cnt = %d): "
-		       "[%s/%s/%lu.%03lu] %s\n", e->err, e->func, e->cnt,
-		       first, last, tv.tv_sec, tv.tv_usec / 1000, e->msg);
-	}
-
-	if (tapdisk_err.dropped)
-		syslog(LOG_INFO, "TAPDISK ERROR: %d other error messages "
-		       "dropped\n", tapdisk_err.dropped);
+	tapdisk_log.errors++;
 }
 
 void
@@ -344,18 +282,11 @@ tapdisk_start_logging(const char *ident, const char *_facility)
 	int facility, err;
 
 	facility = tapdisk_syslog_facility(_facility);
-
-	snprintf(buf, sizeof(buf), "%s[%d]", ident, getpid());
-	openlog(buf, LOG_CONS|LOG_ODELAY, facility);
-
-	err = tlog_open(ident, facility, TLOG_WARN);
-	if (err)
-		EPRINTF("tlog open failure: %d\n", err);
+	tapdisk_server_openlog(ident, LOG_CONS|LOG_ODELAY, facility);
 }
 
 void
 tapdisk_stop_logging(void)
 {
-	tlog_close();
-	closelog();
+	tapdisk_server_closelog();
 }
