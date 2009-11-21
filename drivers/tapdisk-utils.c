@@ -45,6 +45,7 @@
 #include "blktaplib.h"
 #include "tapdisk-log.h"
 #include "tapdisk-utils.h"
+#include "tapdisk-syslog.h"
 
 static int
 tapdisk_syslog_facility_by_name(const char *name)
@@ -80,8 +81,6 @@ tapdisk_syslog_facility(const char *arg)
 	return LOG_DAEMON;
 }
 
-#define TD_SYSLOG_IDENT_MAX 32
-
 const char*
 tapdisk_syslog_ident(const char *name)
 {
@@ -98,6 +97,37 @@ tapdisk_syslog_ident(const char *name)
 	len += snprintf(ident + len, size - len, "[%d]", pid);
 
 	return ident;
+}
+
+size_t
+tapdisk_syslog_strftime(char *buf, size_t size, const struct timeval *tv)
+{
+	const char *mon[] = { "Jan", "Feb", "Mar", "Apr", "May", "Jun",
+			      "Jul", "Aug", "Sep", "Oct", "Nov", "Dec" };
+	struct tm tm;
+
+	/*
+	 * TIMESTAMP :=  <Mmm> " " <dd> " " <hh> ":" <mm> ":" <ss>.
+	 * Local time, no locales.
+	 */
+
+	localtime_r(&tv->tv_sec, &tm);
+
+	return snprintf(buf, size, "%s %2d %02d:%02d:%02d",
+			mon[tm.tm_mon], tm.tm_mday,
+			tm.tm_hour, tm.tm_min, tm.tm_sec);
+}
+
+size_t
+tapdisk_syslog_strftv(char *buf, size_t size, const struct timeval *tv)
+{
+	struct tm tm;
+
+	localtime_r(&tv->tv_sec, &tm);
+
+	return snprintf(buf, size, "[%02d:%02d:%02d.%03ld]",
+			tm.tm_hour, tm.tm_min, tm.tm_sec,
+			(long)tv->tv_usec / 1000);
 }
 
 int

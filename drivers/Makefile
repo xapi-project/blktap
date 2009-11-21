@@ -47,6 +47,7 @@ TAP-OBJS  += tapdisk-logfile.o
 TAP-OBJS  += tapdisk-log.o
 TAP-OBJS  += tapdisk-event-log.o
 TAP-OBJS  += tapdisk-utils.o
+TAP-OBJS  += tapdisk-syslog.o
 TAP-OBJS  += io-optimize.o
 TAP-OBJS  += lock.o
 

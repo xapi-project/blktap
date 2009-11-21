@@ -1,5 +1,5 @@
-/* 
- * Copyright (c) 2008, XenSource Inc.
+/*
+ * Copyright (c) 2009, XenSource Inc.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -25,22 +25,57 @@
  * NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
  * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
-#ifndef _TAPDISK_UTILS_H_
-#define _TAPDISK_UTILS_H_
 
-#include <inttypes.h>
+#ifndef __TAPDISK_SYSLOG_H__
+#define __TAPDISK_SYSLOG_H__
 
-#define MAX_NAME_LEN          1000
-#define TD_SYSLOG_IDENT_MAX   32
-#define TD_SYSLOG_STRTIME_LEN 15
+#include <syslog.h>
+#include <stdarg.h>
+#include "scheduler.h"
 
-int tapdisk_syslog_facility(const char *);
-const char* tapdisk_syslog_ident(const char *);
-size_t tapdisk_syslog_strftime(char *, size_t, const struct timeval *);
-size_t tapdisk_syslog_strftv(char *, size_t, const struct timeval *);
-int tapdisk_set_resource_limits(void);
-int tapdisk_namedup(char **, const char *);
-int tapdisk_parse_disk_type(const char *, char **, int *);
-int tapdisk_get_image_size(int, uint64_t *, uint32_t *);
+typedef struct _td_syslog td_syslog_t;
 
-#endif
+#define TD_SYSLOG_PACKET_MAX  1024
+
+struct _td_syslog_stats {
+	unsigned long long count;
+	unsigned long long bytes;
+	unsigned long long xmits;
+	unsigned long long fails;
+	unsigned long long drops;
+};
+
+struct _td_syslog {
+	char            *ident;
+	int              facility;
+
+	int              sock;
+	event_id_t       event_id;
+
+	void            *buf;
+	size_t           bufsz;
+
+	char            *msg;
+
+	char            *ring;
+	size_t           ringsz;
+
+	size_t           prod;
+	size_t           cons;
+
+	int              oom;
+	struct timeval   oom_tv;
+
+	struct _td_syslog_stats stats;
+};
+
+int  tapdisk_syslog_open(td_syslog_t *,
+			 const char *ident, int facility, size_t bufsz);
+void tapdisk_syslog_close(td_syslog_t *);
+void tapdisk_syslog_flush(td_syslog_t *);
+void tapdisk_syslog_stats(td_syslog_t *, int prio);
+
+int tapdisk_vsyslog(td_syslog_t *, int prio, const char *fmt, va_list ap);
+int tapdisk_syslog(td_syslog_t *, int prio, const char *fmt, ...);
+
+#endif /* __TAPDISK_SYSLOG_H__ */
