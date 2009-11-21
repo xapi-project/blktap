@@ -36,7 +36,6 @@
 #define TLOG_DIR "/var/log/blktap"
 
 int  tlog_open(const char *, int, int);
-int  tlog_setvbuf(void);
 void tlog_close(void);
 void tlog_precious(void);
 void tlog_print_errors(void);
