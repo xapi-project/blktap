@@ -206,6 +206,7 @@ struct vhd_state {
 	vhd_context_t             vhd;
 	u32                       spp;         /* sectors per page */
         u32                       spb;         /* sectors per block */
+	u64                       first_db;    /* pointer to datablock 0 */
         u64                       next_db;     /* pointer to the next 
 						* (unallocated) datablock */
 
@@ -366,6 +367,9 @@ find_next_free_block(struct vhd_state *s)
 		return err;
 
 	s->next_db = secs_round_up(eom);
+	s->first_db = s->next_db;
+	if ((s->first_db + s->bm_secs) % s->spp)
+		s->first_db += (s->spp - ((s->first_db + s->bm_secs) % s->spp));
 
 	for (i = 0; i < s->bat.bat.entries; i++) {
 		entry = bat_entry(s, i);
@@ -1600,7 +1604,7 @@ schedule_data_write(struct vhd_state *s, td_request_t treq, vhd_flag_t flags)
 			add_to_transaction(&bm->tx, req);
 	} else if (sec == 0 && 	/* first sector inside data block */
 		   s->vhd.footer.type != HD_TYPE_FIXED && 
-		   treq.sec > 0 && /* not the first block */
+		   bat_entry(s, blk) != s->first_db &&
 		   test_batmap(s, blk))
 		schedule_redundant_bm_write(s, blk);
 
