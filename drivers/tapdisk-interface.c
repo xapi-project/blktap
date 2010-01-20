@@ -27,6 +27,7 @@
  */
 
 #include <signal.h>
+#include <unistd.h>
 #include <errno.h>
 
 #include "tapdisk.h"
@@ -257,4 +258,5 @@ td_panic(void)
 {
 	tlog_precious();
 	raise(SIGABRT);
+	_exit(-1); /* not reached */
 }

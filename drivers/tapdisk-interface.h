@@ -49,6 +49,6 @@ void td_prep_read(struct tiocb *, int, char *, size_t,
 		  long long, td_queue_callback_t, void *);
 void td_prep_write(struct tiocb *, int, char *, size_t,
 		   long long, td_queue_callback_t, void *);
-void td_panic(void);
+void td_panic(void) __attribute__((noreturn));
 
 #endif
