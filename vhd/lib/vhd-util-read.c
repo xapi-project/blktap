@@ -354,6 +354,35 @@ vhd_print_bat(vhd_context_t *vhd, uint64_t block, int count, int hex)
 }
 
 static int
+vhd_print_bat_str(vhd_context_t *vhd)
+{
+	int i, total_blocks, bitmap_size;
+	char *bitmap;
+
+	if (!vhd_type_dynamic(vhd))
+		return -EINVAL;
+
+	total_blocks = vhd->footer.curr_size / vhd->header.block_size;
+	bitmap_size = total_blocks >> 3;
+	if (bitmap_size << 3 < total_blocks)
+		bitmap_size++;
+
+	bitmap = malloc(bitmap_size);
+	if (!bitmap)
+		return -ENOMEM;
+	memset(bitmap, 0, bitmap_size);
+
+	for (i = 0; i < total_blocks; i++) {
+		if (vhd->bat.bat[i] != DD_BLK_UNUSED)
+			bitmap[i >> 3] |= 1 << (i % 8);
+	}
+
+	write(STDOUT_FILENO, bitmap, bitmap_size);
+	free(bitmap);
+	return 0;
+}
+
+static int
 vhd_print_bitmap(vhd_context_t *vhd, uint64_t block, int count, int hex)
 {
 	char *buf;
@@ -543,12 +572,13 @@ vhd_util_read(int argc, char **argv)
 {
 	char *name;
 	vhd_context_t vhd;
-	int c, err, headers, hex;
+	int c, err, headers, hex, bat_str;
 	uint64_t bat, bitmap, tbitmap, batmap, tbatmap, data, lsec, count, read;
 
 	err     = 0;
 	hex     = 0;
 	headers = 0;
+	bat_str = 0;
 	count   = 1;
 	bat     = -1;
 	bitmap  = -1;
@@ -564,13 +594,16 @@ vhd_util_read(int argc, char **argv)
 		goto usage;
 
 	optind = 0;
-	while ((c = getopt(argc, argv, "n:pt:b:m:i:aj:d:c:r:xh")) != -1) {
+	while ((c = getopt(argc, argv, "n:pt:b:Bm:i:aj:d:c:r:xh")) != -1) {
 		switch(c) {
 		case 'n':
 			name = optarg;
 			break;
 		case 'p':
 			headers = 1;
+			break;
+		case 'B':
+			bat_str = 1;
 			break;
 		case 't':
 			lsec = strtoul(optarg, NULL, 10);
@@ -639,6 +672,12 @@ vhd_util_read(int argc, char **argv)
 			goto out;
 	}
 
+	if (bat_str != -1) {
+		err = vhd_print_bat_str(&vhd);
+		if (err)
+			goto out;
+	}
+
 	if (bitmap != -1) {
 		err = vhd_print_bitmap(&vhd, bitmap, count, hex);
 		if (err)
@@ -688,6 +727,7 @@ vhd_util_read(int argc, char **argv)
 	       "-p          print VHD headers\n"
 	       "-t sec      translate logical sector to VHD location\n"
 	       "-b blk      print bat entry\n"
+	       "-B          print entire bat as a bitmap\n"
 	       "-m blk      print bitmap\n"
 	       "-i sec      test bitmap for logical sector\n"
 	       "-a          print batmap\n"
