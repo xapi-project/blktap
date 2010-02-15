@@ -12,6 +12,7 @@
 #include <stdlib.h>
 #include <unistd.h>
 #include <fnmatch.h>
+#include <syslog.h>
 
 #include "list.h"
 #include "libvhd.h"
@@ -28,6 +29,11 @@
 #define VHD_TYPE_VHD_FILE    0x02
 #define VHD_TYPE_RAW_VOLUME  0x04
 #define VHD_TYPE_VHD_VOLUME  0x08
+
+#define EPRINTF(_f, _a...)					\
+	do {							\
+		syslog(LOG_INFO, "%s: " _f, __func__, ##_a);	\
+	} while (0)
 
 static inline int
 target_volume(uint8_t type)
@@ -753,12 +759,17 @@ vhd_util_scan_init_volume_target(struct target *target,
 		return -ENOSYS;
 
 	err = copy_name(target->name, lv->name);
-	if (err)
+	if (err) {
+		EPRINTF("copy target name failed: '%s'\n", lv->name);
 		return err;
+	}
 
 	err = copy_name(target->device, lv->first_segment.device);
-	if (err)
+	if (err) {
+		EPRINTF("copy target device failed: '%s'\n",
+				lv->first_segment.device);
 		return err;
+	}
 
 	target->type  = type;
 	target->size  = lv->size;
@@ -1122,6 +1133,8 @@ vhd_util_scan_sort_volumes(struct lv *lvs, int cnt,
 		err = fnmatch(filter, lv->name, FNM_PATHNAME);
 		if (err) {
 			if (err != FNM_NOMATCH) {
+				EPRINTF("fnmatch failed: '%s', '%s'\n", 
+						filter, lv->name);
 				vhd_util_scan_error(lv->name, err);
 				if (!(flags & VHD_SCAN_NOFAIL))
 					return err;

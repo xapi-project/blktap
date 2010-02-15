@@ -29,8 +29,14 @@
 #include <errno.h>
 #include <stdlib.h>
 #include <string.h>
+#include <syslog.h>
 
 #include "lvm-util.h"
+
+#define EPRINTF(_f, _a...)					\
+	do {							\
+		syslog(LOG_INFO, "%s: " _f, __func__, ##_a);	\
+	} while (0)
 
 #define _NAME "%255s"
 static char line[1024];
@@ -124,12 +130,16 @@ lvm_open_vg(const char *vgname, struct vg *vg)
 			break;
 
 		err = -EINVAL;
-		if (sscanf(line, _NAME" %llu %d %d "_NAME" %llu",
-			   vg->name, &size, &lvs, &pvs, pvname, &pv_start) != 6)
+		if (sscanf(line, _NAME" %llu %d %d "_NAME" %llu", vg->name, 
+			   &size, &lvs, &pvs, pvname, &pv_start) != 6) {
+			EPRINTF("sscanf failed on '%s'\n", line);
 			goto out;
+		}
 
-		if (strcmp(vg->name, vgname))
+		if (strcmp(vg->name, vgname)) {
+			EPRINTF("VG name '%s' != '%s'\n", vg->name, vgname);
 			goto out;
+		}
 
 		err = lvm_parse_pv(vg, pvname, pvs, pv_start);
 		if (err)
@@ -140,12 +150,16 @@ lvm_open_vg(const char *vgname, struct vg *vg)
 	}
 
 	err = -EINVAL;
-	if (strcmp(vg->name, vgname))
+	if (strcmp(vg->name, vgname)) {
+		EPRINTF("VG name '%s' != '%s'\n", vg->name, vgname);
 		goto out;
+	}
 
 	for (i = 0; i < pvs; i++)
-		if (!vg->pvs[i].name[0])
+		if (!vg->pvs[i].name[0]) {
+			EPRINTF("pvs %d name empty\n", i);
 			goto out;
+		}
 
 	err = -ENOMEM;
 	vg->lvs = calloc(lvs, sizeof(struct lv));
@@ -176,8 +190,10 @@ lvm_parse_lv_devices(struct vg *vg, struct lv_segment *seg, char *devices)
 		if (strchr(",()", devices[i]))
 			devices[i] = ' ';
 
-	if (sscanf(devices, _NAME" %llu", seg->device, &start) != 2)
+	if (sscanf(devices, _NAME" %llu", seg->device, &start) != 2) {
+		EPRINTF("sscanf failed on '%s'\n", devices);
 		return -EINVAL;
+	}
 
 	pe_start = -1;
 	for (i = 0; i < vg->pv_cnt; i++)
@@ -186,8 +202,10 @@ lvm_parse_lv_devices(struct vg *vg, struct lv_segment *seg, char *devices)
 			break;
 		}
 
-	if (pe_start == -1)
+	if (pe_start == -1) {
+		EPRINTF("invalid pe_start value\n");
 		return -EINVAL;
+	}
 
 	seg->pe_start = (start * vg->extent_size) + pe_start;
 	return 0;
@@ -233,8 +251,10 @@ lvm_scan_lvs(struct vg *vg)
 
 		if (sscanf(line, _NAME" %llu %31s %u %llu %llu %1023s",
 			   name, &size, type, &segs, &seg_start,
-			   &seg.pe_size, devices) != 7)
+			   &seg.pe_size, devices) != 7) {
+			EPRINTF("sscanf failed on '%s'\n", line);
 			goto out;
+		}
 
 		if (seg_start)
 			goto next;
@@ -258,8 +278,11 @@ lvm_scan_lvs(struct vg *vg)
 		err = -EINVAL;
 
 	next:
-		if (lvm_next_line(scan))
+		if (lvm_next_line(scan)) {
+			if (err)
+				EPRINTF("fscanf failed\n");
 			goto out;
+		}
 	}
 
 	err = 0;
