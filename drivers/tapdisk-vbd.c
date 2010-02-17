@@ -59,6 +59,12 @@ tapdisk_vbd_initialize_vreq(td_vbd_request_t *vreq)
 	INIT_LIST_HEAD(&vreq->next);
 }
 
+static void
+tapdisk_vbd_mark_progress(td_vbd_t *vbd)
+{
+	gettimeofday(&vbd->ts, NULL);
+}
+
 int
 tapdisk_vbd_initialize(int rfd, int wfd, uint16_t uuid)
 {
@@ -93,7 +99,7 @@ tapdisk_vbd_initialize(int rfd, int wfd, uint16_t uuid)
 	INIT_LIST_HEAD(&vbd->failed_requests);
 	INIT_LIST_HEAD(&vbd->completed_requests);
 	INIT_LIST_HEAD(&vbd->next);
-	gettimeofday(&vbd->ts, NULL);
+	tapdisk_vbd_mark_progress(vbd);
 
 	for (i = 0; i < MAX_REQUESTS; i++)
 		tapdisk_vbd_initialize_vreq(vbd->request_list + i);
@@ -977,6 +983,7 @@ tapdisk_vbd_start_queue(td_vbd_t *vbd)
 {
 	td_flag_clear(vbd->state, TD_VBD_QUIESCED);
 	td_flag_clear(vbd->state, TD_VBD_QUIESCE_REQUESTED);
+	tapdisk_vbd_mark_progress(vbd);
 	return 0;
 }
 
@@ -1248,7 +1255,7 @@ tapdisk_vbd_check_progress(td_vbd_t *vbd)
 	timersub(&now, &vbd->ts, &delta);
 	diff = delta.tv_sec;
 
-	if (diff >= TD_VBD_WATCHDOG_TIMEOUT) {
+	if (diff >= TD_VBD_WATCHDOG_TIMEOUT && tapdisk_vbd_queue_ready(vbd)) {
 		DBG(TLOG_WARN, "%s: watchdog timeout: pending requests "
 		    "idle for %ld seconds\n", vbd->name, diff);
 		tapdisk_vbd_drop_log(vbd);
@@ -1402,7 +1409,7 @@ tapdisk_vbd_forward_request(td_request_t treq)
 	vbd   = (td_vbd_t *)image->private;
 	vreq  = (td_vbd_request_t *)treq.private;
 
-	gettimeofday(&vbd->ts, NULL);
+	tapdisk_vbd_mark_progress(vbd);
 
 	if (tapdisk_vbd_queue_ready(vbd))
 		__tapdisk_vbd_reissue_td_request(vbd, image, treq);
@@ -1421,7 +1428,8 @@ tapdisk_vbd_complete_td_request(td_request_t treq, int res)
 	vbd   = (td_vbd_t *)image->private;
 	vreq  = (td_vbd_request_t *)treq.private;
 
-	gettimeofday(&vbd->ts, NULL);
+	tapdisk_vbd_mark_progress(vbd);
+
 	DBG(TLOG_DBG, "%s: req %d seg %d sec 0x%08llx "
 	    "secs 0x%04x buf %p op %d res %d\n", image->name,
 	    (int)treq.id, treq.sidx, treq.sec, treq.secs,
@@ -1468,9 +1476,8 @@ tapdisk_vbd_issue_request(td_vbd_t *vbd, td_vbd_request_t *vreq)
 
 	vreq->submitting = 1;
 
-	gettimeofday(&now, NULL);
-	vbd->ts        = now;
-	vreq->last_try = now;
+	tapdisk_vbd_mark_progress(vbd);
+	vreq->last_try = vbd->ts;
 
 	tapdisk_vbd_move_request(vreq, &vbd->pending_requests);
 
