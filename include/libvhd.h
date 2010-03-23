@@ -29,6 +29,8 @@
   #define BE64_OUT(foo)
 #endif
 
+#define BIT_MASK                   0x80
+
 #define MIN(a, b)                  (((a) < (b)) ? (a) : (b))
 #define MAX(a, b)                  (((a) > (b)) ? (a) : (b))
 
@@ -113,6 +115,24 @@ struct vhd_context {
 	vhd_bat_t                  bat;
 	vhd_batmap_t               batmap;
 };
+
+static inline int
+test_bit (volatile char *addr, int nr)
+{
+	return ((addr[nr >> 3] << (nr & 7)) & BIT_MASK) != 0;
+}
+
+static inline void
+set_bit (volatile char *addr, int nr)
+{
+	addr[nr >> 3] |= (BIT_MASK >> (nr & 7));
+}
+
+static inline void
+clear_bit (volatile char *addr, int nr)
+{
+	addr[nr >> 3] &= ~(BIT_MASK >> (nr & 7));
+}
 
 static inline uint32_t
 secs_round_up(uint64_t bytes)

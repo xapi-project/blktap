@@ -45,8 +45,6 @@ libvhd_set_log_level(int level)
 		*(int*)0 = 0;						\
 	}
 
-#define BIT_MASK 0x80
-
 #ifdef ENABLE_FAILURE_TESTING
 const char* ENV_VAR_FAIL[NUM_FAIL_TESTS] = {
 	"VHD_UTIL_TEST_FAIL_REPARENT_BEGIN",
@@ -60,23 +58,6 @@ const char* ENV_VAR_FAIL[NUM_FAIL_TESTS] = {
 int TEST_FAIL[NUM_FAIL_TESTS];
 #endif // ENABLE_FAILURE_TESTING
 
-static inline int
-test_bit (volatile char *addr, int nr)
-{
-	return ((addr[nr >> 3] << (nr & 7)) & BIT_MASK) != 0;
-}
-
-static inline void
-set_bit (volatile char *addr, int nr)
-{
-	addr[nr >> 3] |= (BIT_MASK >> (nr & 7));
-}
-
-static inline void
-clear_bit (volatile char *addr, int nr)
-{
-	addr[nr >> 3] &= ~(BIT_MASK >> (nr & 7));
-}
 
 static inline int
 old_test_bit(volatile char *addr, int nr)

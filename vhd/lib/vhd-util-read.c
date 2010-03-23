@@ -374,7 +374,7 @@ vhd_print_bat_str(vhd_context_t *vhd)
 
 	for (i = 0; i < total_blocks; i++) {
 		if (vhd->bat.bat[i] != DD_BLK_UNUSED)
-			bitmap[i >> 3] |= 1 << (i % 8);
+			set_bit(bitmap, i);
 	}
 
 	write(STDOUT_FILENO, bitmap, bitmap_size);
