@@ -292,7 +292,7 @@ vhd_validate_header(vhd_header_t *header)
 		return -EINVAL;
 	}
 
-	if (header->data_offset != 0xFFFFFFFFFFFFFFFF) {
+	if (header->data_offset != 0xFFFFFFFFFFFFFFFFULL) {
 		VHDLOG("invalid header data_offset 0x%016llx\n",
 		       header->data_offset);
 		return -EINVAL;
@@ -1287,7 +1287,7 @@ out:
 	return err;
 }
 
-static int 
+int 
 vhd_macx_encode_location(char *name, char **out, int *outlen)
 {
 	iconv_t cd;
@@ -1343,7 +1343,7 @@ vhd_macx_encode_location(char *name, char **out, int *outlen)
 	return err;
 }
 
-static int
+int
 vhd_w2u_encode_location(char *name, char **out, int *outlen)
 {
 	iconv_t cd;
@@ -2432,12 +2432,12 @@ vhd_initialize_footer(vhd_context_t *ctx, int type, uint64_t size)
 	ctx->footer.geometry     = vhd_chs(size);
 	ctx->footer.type         = type;
 	ctx->footer.saved        = 0;
-	ctx->footer.data_offset  = 0xFFFFFFFFFFFFFFFF;
+	ctx->footer.data_offset  = 0xFFFFFFFFFFFFFFFFULL;
 	strcpy(ctx->footer.crtr_app, "tap");
 	uuid_generate(ctx->footer.uuid);
 }
 
-static int
+int
 vhd_initialize_header_parent_name(vhd_context_t *ctx, const char *parent_path)
 {
 	int err;
@@ -2565,7 +2565,7 @@ vhd_initialize_header(vhd_context_t *ctx, const char *parent_path,
 	return vhd_initialize_header_parent_name(ctx, parent_path);
 }
 
-static int
+int
 vhd_write_parent_locators(vhd_context_t *ctx, const char *parent)
 {
 	int i, err;

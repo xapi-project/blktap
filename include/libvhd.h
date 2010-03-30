@@ -276,6 +276,8 @@ int vhd_bitmap_test(vhd_context_t *, char *, uint32_t);
 void vhd_bitmap_set(vhd_context_t *, char *, uint32_t);
 void vhd_bitmap_clear(vhd_context_t *, char *, uint32_t);
 
+int vhd_initialize_header_parent_name(vhd_context_t *, const char *);
+int vhd_write_parent_locators(vhd_context_t *, const char *);
 int vhd_parent_locator_count(vhd_context_t *);
 int vhd_parent_locator_get(vhd_context_t *, char **);
 int vhd_parent_locator_read(vhd_context_t *, vhd_parent_locator_t *, char **);
@@ -286,6 +288,8 @@ int vhd_parent_locator_write_at(vhd_context_t *, const char *,
 
 int vhd_header_decode_parent(vhd_context_t *, vhd_header_t *, char **);
 int vhd_change_parent(vhd_context_t *, char *parent_path, int raw);
+int vhd_macx_encode_location(char *name, char **out, int *outlen);
+int vhd_w2u_encode_location(char *name, char **out, int *outlen);
 
 int vhd_read_footer(vhd_context_t *, vhd_footer_t *);
 int vhd_read_footer_at(vhd_context_t *, vhd_footer_t *, off64_t);

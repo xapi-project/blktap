@@ -7,7 +7,7 @@ LIBVHD-SONAME    = libvhd.so.$(LIBVHD-MAJOR)
 
 LVM-UTIL-OBJ    := $(BLKTAP_ROOT)lvm/lvm-util.o
 
-LIBVHD-BUILD    := libvhd.a
+LIBVHD-BUILD    := libvhd.so.$(LIBVHD-MAJOR).$(LIBVHD-MINOR) libvhd.a
 
 INST-DIR         = /usr/lib
 
@@ -15,7 +15,9 @@ CFLAGS          += -Werror
 CFLAGS          += -Wno-unused
 CFLAGS          += -I../../include
 CFLAGS          += -D_GNU_SOURCE
+ifndef TRANSFERVM
 CFLAGS          += -fPIC
+endif
 CFLAGS          += -g
 
 LIBS            := -luuid
@@ -44,7 +46,9 @@ LIB-SRCS        += relative-path.c
 LIB-SRCS        += atomicio.c
 
 LIB-OBJS         = $(patsubst %.c,%.o,$(LIB-SRCS))
+ifndef TRANSFERVM
 LIB-OBJS        += $(LVM-UTIL-OBJ)
+endif
 
 LIBVHD           = libvhd.a libvhd.so.$(LIBVHD-MAJOR).$(LIBVHD-MINOR)
 
@@ -52,11 +56,17 @@ all: build
 
 build: $(LIBVHD-BUILD)
 
-libvhd.a: $(LIB-OBJS)
+libvhd.so: libvhd.so.$(LIBVHD-MAJOR)
+	ln -sf $^ $@
+
+libvhd.so.$(LIBVHD-MAJOR): libvhd.so.$(LIBVHD-MAJOR).$(LIBVHD-MINOR)
+	ln -sf $^ $@
+
+libvhd.so.$(LIBVHD-MAJOR).$(LIBVHD-MINOR): $(LIB-OBJS)
 	$(CC) $(CFLAGS) -Wl,$(SONAME_LDFLAG),$(LIBVHD-SONAME) $(SHLIB_CFLAGS) \
-		-o libvhd.so.$(LIBVHD-MAJOR).$(LIBVHD-MINOR) $(LIBS) $^
-	ln -sf libvhd.so.$(LIBVHD-MAJOR).$(LIBVHD-MINOR) libvhd.so.$(LIBVHD-MAJOR)
-	ln -sf libvhd.so.$(LIBVHD-MAJOR) libvhd.so
+		-o $@ $(LIBS) $^
+
+libvhd.a: $(LIB-OBJS)
 	$(AR) rc $@ $^
 
 install: all
