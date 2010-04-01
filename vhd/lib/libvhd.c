@@ -58,6 +58,11 @@ const char* ENV_VAR_FAIL[NUM_FAIL_TESTS] = {
 int TEST_FAIL[NUM_FAIL_TESTS];
 #endif // ENABLE_FAILURE_TESTING
 
+static void vhd_cache_init(vhd_context_t *);
+static int vhd_cache_enabled(vhd_context_t *);
+static int vhd_cache_load(vhd_context_t *);
+static int vhd_cache_unload(vhd_context_t *);
+static vhd_context_t * vhd_cache_get_parent(vhd_context_t *);
 
 static inline int
 old_test_bit(volatile char *addr, int nr)
@@ -2033,6 +2038,44 @@ vhd_write_bat(vhd_context_t *ctx, vhd_bat_t *bat)
 	return err;
 }
 
+static int
+vhd_write_batmap_header(vhd_context_t *ctx, vhd_batmap_t *batmap)
+{
+	int err;
+	size_t size;
+	off64_t off;
+	char *buf = NULL;
+
+	err = vhd_batmap_header_offset(ctx, &off);
+	if (err)
+		goto out;
+
+	size = vhd_bytes_padded(sizeof(*batmap));
+
+	err = vhd_seek(ctx, off, SEEK_SET);
+	if (err)
+		goto out;
+
+	err = posix_memalign((void **)&buf, VHD_SECTOR_SIZE, size);
+	if (err) {
+		err = -err;
+		buf = NULL;
+		goto out;
+	}
+
+	vhd_batmap_header_out(batmap);
+	memset(buf, 0, size);
+	memcpy(buf, &batmap->header, sizeof(batmap->header));
+
+	err = vhd_write(ctx, buf, size);
+
+out:
+	if (err)
+		VHDLOG("%s: failed writing batmap: %d\n", ctx->file, err);
+	free(buf);
+	return err;
+}
+
 int
 vhd_write_batmap(vhd_context_t *ctx, vhd_batmap_t *batmap)
 {
@@ -2204,6 +2247,71 @@ namedup(char **dup, const char *name)
 	return 0;
 }
 
+#define vwrite (ssize_t (*)(int, void *, size_t))write
+#define vpwrite (ssize_t (*)(int, void *, size_t, off_t))pwrite
+
+static ssize_t
+vhd_atomic_pio(ssize_t (*f) (int, void *, size_t, off_t),
+	       int fd, void *_s, size_t n, off_t off)
+{
+	char *s = _s;
+	size_t pos = 0;
+	ssize_t res;
+	struct stat st;
+
+	memset(&st, 0, sizeof(st));
+
+	for (;;) {
+		res = (f) (fd, s + pos, n - pos, off + pos);
+		switch (res) {
+		case -1:
+			if (errno == EINTR || errno == EAGAIN)
+				continue;
+			else
+				return 0;
+			break;
+		case 0:
+			errno = EPIPE;
+			return pos;
+		}
+
+		if (pos + res == n)
+			return n;
+
+		if (!st.st_size)
+			if (fstat(fd, &st) == -1)
+				return -1;
+
+		if (off + pos + res == st.st_size)
+			return pos + res;
+
+		pos += (res & ~(VHD_SECTOR_SIZE - 1));
+	}
+
+	return -1;
+}
+
+static ssize_t
+vhd_atomic_io(ssize_t (*f) (int, void *, size_t), int fd, void *_s, size_t n)
+{
+	off64_t off;
+	ssize_t res;
+	ssize_t (*pf) (int, void *, size_t, off_t);
+
+	off = lseek64(fd, 0, SEEK_CUR);
+	if (off == (off_t)-1)
+		return -1;
+
+	pf = (f == read ? pread : vpwrite);
+	res = vhd_atomic_pio(pf, fd, _s, n, off);
+
+	if (res > 0)
+		if (lseek64(fd, off + res, SEEK_SET) == (off64_t)-1)
+			return -1;
+
+	return res;
+}
+
 int
 vhd_seek(vhd_context_t *ctx, off64_t offset, int whence)
 {
@@ -2232,7 +2340,7 @@ vhd_read(vhd_context_t *ctx, void *buf, size_t size)
 
 	errno = 0;
 
-	ret = read(ctx->fd, buf, size);
+	ret = vhd_atomic_io(read, ctx->fd, buf, size);
 	if (ret == size)
 		return 0;
 
@@ -2249,11 +2357,45 @@ vhd_write(vhd_context_t *ctx, void *buf, size_t size)
 
 	errno = 0;
 
-	ret = write(ctx->fd, buf, size);
+	ret = vhd_atomic_io(vwrite, ctx->fd, buf, size);
 	if (ret == size)
 		return 0;
 
 	VHDLOG("%s: write of %zu returned %zd, errno: %d\n",
+	       ctx->file, size, ret, -errno);
+
+	return (errno ? -errno : -EIO);
+}
+
+static int
+vhd_pread(vhd_context_t *ctx, void *buf, size_t size, off64_t offset)
+{
+	ssize_t ret;
+
+	errno = 0;
+
+	ret = vhd_atomic_pio(pread, ctx->fd, buf, size, offset);
+	if (ret == size)
+		return 0;
+
+	VHDLOG("%s: pread of %zu returned %zd, errno: %d\n",
+	       ctx->file, size, ret, -errno);
+
+	return (errno ? -errno : -EIO);
+}
+
+static int
+vhd_pwrite(vhd_context_t *ctx, void *buf, size_t size, off64_t offset)
+{
+	ssize_t ret;
+
+	errno = 0;
+
+	ret = vhd_atomic_pio(vpwrite, ctx->fd, buf, size, offset);
+	if (ret == size)
+		return 0;
+
+	VHDLOG("%s: pwrite of %zu returned %zd, errno: %d\n",
 	       ctx->file, size, ret, -errno);
 
 	return (errno ? -errno : -EIO);
@@ -2334,12 +2476,14 @@ out:
 int
 vhd_open(vhd_context_t *ctx, const char *file, int flags)
 {
-	int err, oflags, i;
+	int i, err, oflags;
 
 	if (flags & VHD_OPEN_STRICT)
 		vhd_flag_clear(flags, VHD_OPEN_FAST);
 
 	memset(ctx, 0, sizeof(vhd_context_t));
+	vhd_cache_init(ctx);
+
 	ctx->fd     = -1;
 	ctx->oflags = flags;
 
@@ -2347,7 +2491,9 @@ vhd_open(vhd_context_t *ctx, const char *file, int flags)
 	if (err)
 		return err;
 
-	oflags = O_DIRECT | O_LARGEFILE;
+	oflags = O_LARGEFILE;
+	if (!(flags & VHD_OPEN_CACHED))
+		oflags |= O_DIRECT;
 	if (flags & VHD_OPEN_RDONLY)
 		oflags |= O_RDONLY;
 	if (flags & VHD_OPEN_RDWR)
@@ -2396,6 +2542,12 @@ vhd_open(vhd_context_t *ctx, const char *file, int flags)
 		ctx->bm_secs = secs_round_up_no_zero(ctx->spb >> 3);
 	}
 
+	err = vhd_cache_load(ctx);
+	if (err) {
+		VHDLOG("failed to load cache: %d\n", err);
+		goto fail;
+	}
+
 	return 0;
 
 fail:
@@ -2409,8 +2561,13 @@ fail:
 void
 vhd_close(vhd_context_t *ctx)
 {
-	if (ctx->file)
+	vhd_cache_unload(ctx);
+
+	if (ctx->file) {
+		fsync(ctx->fd);
 		close(ctx->fd);
+	}
+
 	free(ctx->file);
 	free(ctx->bat.bat);
 	free(ctx->batmap.map);
@@ -3170,6 +3327,16 @@ __vhd_io_dynamic_read(vhd_context_t *ctx,
 		}
 
 		if (vhd->footer.type == HD_TYPE_DIFF) {
+			vhd_context_t *p;
+			p = vhd_cache_get_parent(vhd);
+			if (p) {
+				vhd = p;
+				err = vhd_get_bat(vhd);
+				if (err)
+					goto out;
+				continue;
+			}
+
 			err = vhd_parent_locator_get(vhd, &next);
 			if (err)
 				goto close;
@@ -3200,7 +3367,7 @@ __vhd_io_dynamic_read(vhd_context_t *ctx,
 	}
 
 close:
-	if (vhd != ctx)
+	if (vhd != ctx && !vhd_flag_test(vhd->oflags, VHD_OPEN_CACHED))
 		vhd_close(vhd);
 out:
 	free(map);
@@ -3239,7 +3406,7 @@ __vhd_io_allocate_block(vhd_context_t *ctx, uint32_t block)
 	char *buf;
 	size_t size;
 	off64_t off, max;
-	int i, err, gap, spp;
+	int i, err, gap, spp, secs;
 
 	spp = getpagesize() >> VHD_SECTOR_SHIFT;
 
@@ -3261,7 +3428,11 @@ __vhd_io_allocate_block(vhd_context_t *ctx, uint32_t block)
 	if (err)
 		return err;
 
-	size = vhd_sectors_to_bytes(ctx->spb + ctx->bm_secs + gap);
+	secs = ctx->bm_secs + gap;
+	if (!vhd_flag_test(ctx->oflags, VHD_OPEN_IO_WRITE_SPARSE))
+		secs += ctx->spb;
+
+	size = vhd_sectors_to_bytes(secs);
 	buf  = mmap(0, size, PROT_READ, MAP_SHARED | MAP_ANONYMOUS, -1, 0);
 	if (buf == MAP_FAILED)
 		return -errno;
@@ -3385,4 +3556,784 @@ vhd_io_write(vhd_context_t *ctx, char *buf, uint64_t sec, uint32_t secs)
 		return __vhd_io_fixed_write(ctx, buf, sec, secs);
 
 	return __vhd_io_dynamic_write(ctx, buf, sec, secs);
+}
+
+static inline void
+vhd_cache_init(vhd_context_t *ctx)
+{
+	INIT_LIST_HEAD(&ctx->next);
+}
+
+static inline int
+vhd_cache_enabled(vhd_context_t *ctx)
+{
+	return vhd_flag_test(ctx->oflags, VHD_OPEN_CACHED);
+}
+
+static int
+vhd_cache_load(vhd_context_t *ctx)
+{
+	char *next;
+	int err, pflags;
+	vhd_context_t *vhd;
+
+	err    = 1;
+	pflags = ctx->oflags;
+	vhd    = ctx;
+	next   = NULL;
+
+	vhd_flag_set(pflags, VHD_OPEN_RDONLY);
+	vhd_flag_clear(pflags, VHD_OPEN_CACHED);
+
+	if (!vhd_cache_enabled(vhd))
+		goto done;
+
+	while (vhd->footer.type == HD_TYPE_DIFF) {
+		vhd_context_t *parent;
+
+		parent = NULL;
+
+		if (vhd_parent_raw(vhd))
+			goto done;
+
+		err = vhd_parent_locator_get(vhd, &next);
+		if (err)
+			goto out;
+
+		parent = calloc(1, sizeof(*parent));
+		if (!parent)
+			goto out;
+
+		err = vhd_open(parent, next, pflags);
+		if (err) {
+			free(parent);
+			parent = NULL;
+			goto out;
+		}
+
+		fcntl(parent->fd, F_SETFL,
+		      fcntl(parent->fd, F_GETFL) & ~O_DIRECT);
+		vhd_flag_set(parent->oflags, VHD_OPEN_CACHED);
+		list_add(&parent->next, &vhd->next);
+
+		free(next);
+		next = NULL;
+		vhd  = parent;
+	}
+
+done:
+	err = 0;
+out:
+	free(next);
+	if (err)
+		vhd_cache_unload(vhd);
+
+	return err;
+}
+
+static int
+vhd_cache_unload(vhd_context_t *ctx)
+{
+	vhd_context_t *vhd, *tmp;
+
+	if (!vhd_cache_enabled(ctx))
+		goto out;
+
+	list_for_each_entry_safe(vhd, tmp, &ctx->next, next) {
+		list_del_init(&vhd->next);
+		vhd_close(vhd);
+		free(vhd);
+	}
+
+	INIT_LIST_HEAD(&ctx->next);
+
+out:
+	return 0;
+}
+
+static vhd_context_t *
+vhd_cache_get_parent(vhd_context_t *ctx)
+{
+	vhd_context_t *vhd;
+
+	vhd = NULL;
+
+	if (!vhd_cache_enabled(ctx))
+		goto out;
+
+	if (list_empty(&ctx->next))
+		goto out;
+
+	vhd = list_entry(ctx->next.next, vhd_context_t, next);
+
+out:
+	return vhd;
+}
+
+typedef struct vhd_block_vector vhd_block_vector_t;
+typedef struct vhd_block_vector_entry vhd_block_vector_entry_t;
+
+struct vhd_block_vector_entry {
+	uint64_t                   off;       /* byte offset from block */
+	uint32_t                   bytes;     /* size in bytes */
+	char                      *buf;       /* destination buffer */
+};
+
+struct vhd_block_vector {
+	uint32_t                   block;     /* logical block in vhd */
+	int                        entries;   /* number of vector entries */
+	vhd_block_vector_entry_t  *array;     /* vector list */
+};
+
+/**
+ * @vec: block vector describing read
+ *
+ * @vec describes a list of byte-spans within a given block
+ * and a corresponding list of destination buffers.
+ */
+static int
+vhd_block_vector_read(vhd_context_t *ctx, vhd_block_vector_t *vec)
+{
+	int err, i;
+	off64_t off;
+	uint32_t blk;
+
+	err = vhd_get_bat(ctx);
+	if (err)
+		goto out;
+
+	if (vec->block >= ctx->bat.entries) {
+		err = -ERANGE;
+		goto out;
+	}
+
+	blk = ctx->bat.bat[vec->block];
+	if (blk == DD_BLK_UNUSED) {
+		err = -EINVAL;
+		goto out;
+	}
+
+	off = vhd_sectors_to_bytes(blk + ctx->bm_secs);
+
+	for (i = 0; i < vec->entries; i++) {
+		vhd_block_vector_entry_t *v = vec->array + i;
+		err = vhd_pread(ctx, v->buf, v->bytes, off + v->off);
+		if (err)
+			goto out;
+	}
+
+out:
+	return err;
+}
+
+/**
+ * @vec: block vector to initialize
+ * @block: vhd block number
+ * @map: optional bitmap of sectors to map (relative to beginning of block)
+ * @buf: destination buffer
+ * @blk_start: byte offset relative to beginning of block
+ * @blk_end: byte offset relative to beginning of block
+ *
+ * initializes @vec to describe a read into a contiguous buffer
+ * of potentially non-contiguous byte ranges in a given vhd block.
+ * only sectors with corresponding bits set in @map (if it is not NULL)
+ * will be mapped; bits corresponding to unmapped sectors will be cleared.
+ * first and last sector maps may be smaller than vhd sector size.
+ */
+static int
+vhd_block_vector_init(vhd_context_t *ctx,
+		      vhd_block_vector_t *vec, uint32_t block, char *map,
+		      char *buf, uint64_t blk_start, uint64_t blk_end)
+{
+	int err, sec;
+	char *bitmap;
+	uint32_t blk, first_sec, last_sec;
+
+	bitmap = NULL;
+	memset(vec, 0, sizeof(*vec));
+
+	first_sec = blk_start >> VHD_SECTOR_SHIFT;
+	last_sec  = secs_round_up_no_zero(blk_end);
+
+	err = vhd_read_bitmap(ctx, block, &bitmap);
+	if (err)
+		goto out;
+
+	vec->array = calloc(ctx->spb, sizeof(vhd_block_vector_entry_t));
+	if (!vec->array) {
+		err = -ENOMEM;
+		goto out;
+	}
+
+	for (sec = first_sec; sec < last_sec; sec++) {
+		uint32_t cnt;
+		vhd_block_vector_entry_t *v;
+
+		cnt = VHD_SECTOR_SIZE - (blk_start & (VHD_SECTOR_SIZE - 1));
+		if (cnt > blk_end - blk_start)
+			cnt = blk_end - blk_start;
+
+		if (map && !test_bit(map, sec))
+			goto next;
+
+		if (vhd_bitmap_test(ctx, bitmap, sec)) {
+			if (vec->entries > 0) {
+				v = vec->array + vec->entries - 1;
+				if (v->off + v->bytes == blk_start) {
+					v->bytes += cnt;
+					goto next;
+				}
+			}
+
+			v        = vec->array + vec->entries;
+			v->off   = blk_start;
+			v->bytes = cnt;
+			v->buf   = buf;
+
+			vec->entries++;
+
+		} else if (map) {
+			clear_bit(map, sec);
+		}
+
+	next:
+		blk_start += cnt;
+		buf       += cnt;
+	}
+
+	vec->block = block;
+
+out:
+	free(bitmap);
+	return err;
+}
+
+/**
+ * @block: vhd block number
+ * @buf: buffer to place data in
+ * @size: number of bytes to read
+ * @start: byte offset into block from which to start reading
+ * @end: byte offset in block at which to stop reading
+ *
+ * reads data (if it exists) into @buf.  partial reads may occur
+ * for the first and last sectors if @start and @end are not multiples
+ * of vhd sector size.
+ */
+static int
+vhd_block_vector_read_allocated(vhd_context_t *ctx, uint32_t block,
+				char *buf, uint64_t start, uint64_t end)
+{
+	int err;
+	vhd_block_vector_t vec;
+
+	vec.array = NULL;
+
+	err = vhd_block_vector_init(ctx, &vec, block, NULL, buf, start, end);
+	if (err)
+		goto out;
+
+	err = vhd_block_vector_read(ctx, &vec);
+
+out:
+	free(vec.array);
+	return err;
+}
+
+/**
+ * @block: vhd block number
+ * @map: bitmap of sectors in block which should be read
+ * @buf: buffer to place data in
+ * @start: byte offset into block from which to start reading
+ * @end: byte offset in block at which to stop reading
+ *
+ * for every bit set in @map (corresponding to sectors in @block),
+ * reads data (if it exists) into @buf.  if data does not exist,
+ * clears corresponding bit in @map.  partial reads may occur
+ * for the first and last sectors if @start and @end are not multiples
+ * of vhd sector size.
+ */
+static int
+vhd_block_vector_read_allocated_selective(vhd_context_t *ctx,
+					  uint32_t block, char *map, char *buf,
+					  uint64_t start, uint64_t end)
+{
+	int err;
+	vhd_block_vector_t vec;
+
+	vec.array = NULL;
+
+	err = vhd_block_vector_init(ctx, &vec, block, map, buf, start, end);
+	if (err)
+		goto out;
+
+	err = vhd_block_vector_read(ctx, &vec);
+
+out:
+	free(vec.array);
+	return err;
+}
+
+/**
+ * @map: bitmap of sectors which have already been read
+ * @buf: destination buffer
+ * @size: size in bytes to read
+ * @off: byte offset in virtual disk to read
+ *
+ * reads @size bytes into @buf, starting at @off, skipping sectors
+ * which have corresponding bits set in @map
+ */
+static int
+__vhd_io_dynamic_read_link_bytes(vhd_context_t *ctx, char *map,
+				 char *buf, size_t size, uint64_t off)
+{
+	char *blkmap;
+	int i, err, cnt, map_off;
+	off64_t blk_off, blk_size;
+	uint32_t blk, bytes, first_sec, last_sec;
+
+	blkmap = malloc((ctx->spb + 7) >> 3);
+	if (!blkmap) {
+		err = -ENOMEM;
+		goto out;
+	}
+
+	map_off  = 0;
+	blk_size = vhd_sectors_to_bytes(ctx->spb);
+
+	do {
+		blk     = off / blk_size;
+		blk_off = off % blk_size;
+		bytes   = MIN(blk_size - blk_off, size);
+
+		first_sec = blk_off >> VHD_SECTOR_SHIFT;
+		last_sec  = secs_round_up_no_zero(blk_off + bytes);
+
+		if (ctx->bat.bat[blk] == DD_BLK_UNUSED)
+			goto next;
+
+		memset(blkmap, 0, (ctx->spb + 7) >> 3);
+
+		for (i = 0; i < (last_sec - first_sec); i++)
+			if (!test_bit(map, map_off + i))
+				set_bit(blkmap, first_sec + i);
+
+		err = vhd_block_vector_read_allocated_selective(ctx, blk,
+								blkmap, buf,
+								blk_off,
+								blk_off +
+								bytes);
+		if (err)
+			goto out;
+
+		for (i = 0; i < (last_sec - first_sec); i++)
+			if (test_bit(blkmap, first_sec + i))
+				set_bit(map, map_off + i);
+
+	next:
+		size    -= bytes;
+		off     += bytes;
+		map_off += (last_sec - first_sec);
+		buf     += bytes;
+
+	} while (size);
+
+	err = 0;
+out:
+	free(blkmap);
+	return err;
+}
+
+static int
+__raw_read_link_bytes(const char *filename,
+		      char *map, char *buf, size_t size, uint64_t off)
+{
+	int fd, err;
+	uint32_t i, first_sec, last_sec;
+
+	fd = open(filename, O_RDONLY | O_LARGEFILE);
+	if (fd == -1) {
+		VHDLOG("%s: failed to open: %d\n", filename, -errno);
+		return -errno;
+	}
+
+	first_sec = off >> VHD_SECTOR_SHIFT;
+	last_sec  = secs_round_up_no_zero(off + size);
+
+	for (i = first_sec; i < last_sec; i++) {
+		if (!test_bit(map, i - first_sec)) {
+			uint32_t secs = 0;
+			uint64_t coff, csize;
+
+			while (i + secs < last_sec &&
+			       !test_bit(map, i + secs - first_sec))
+				secs++;
+
+			coff  = vhd_sectors_to_bytes(i);
+			csize = vhd_sectors_to_bytes(secs);
+
+			if (i == first_sec)
+				coff = off;
+			if (secs == last_sec - 1)
+				csize = (off + size) - coff;
+
+			if (pread(fd, buf + coff - off, csize, coff) != csize) {
+				err = (errno ? -errno : -EIO);
+				goto close;
+			}
+
+			i += secs - 1;
+		}
+	}
+
+	err = 0;
+
+close:
+	close(fd);
+	return err;
+}
+
+static int
+__vhd_io_dynamic_read_bytes(vhd_context_t *ctx,
+			    char *buf, size_t size, uint64_t off)
+{
+	int err;
+	char *next, *map;
+	vhd_context_t parent, *vhd;
+	uint32_t i, done, first_sec, last_sec;
+
+	err  = vhd_get_bat(ctx);
+	if (err)
+		return err;
+
+	first_sec = off >> VHD_SECTOR_SHIFT;
+	last_sec  = secs_round_up_no_zero(off + size);
+
+	vhd  = ctx;
+	next = NULL;
+	map  = calloc(1, ((last_sec - first_sec) + 7) >> 3);
+	if (!map) {
+		err = -ENOMEM;
+		goto out;
+	}
+
+	for (;;) {
+		err = __vhd_io_dynamic_read_link_bytes(vhd, map,
+						       buf, size, off);
+		if (err)
+			goto close;
+
+		for (done = 0, i = 0; i < (last_sec - first_sec); i++)
+			if (test_bit(map, i))
+				done++;
+
+		if (done == last_sec - first_sec) {
+			err = 0;
+			goto close;
+		}
+
+		if (vhd->footer.type == HD_TYPE_DIFF) {
+			vhd_context_t *p;
+			p = vhd_cache_get_parent(vhd);
+			if (p) {
+				vhd = p;
+				err = vhd_get_bat(vhd);
+				if (err)
+					goto out;
+				continue;
+			}
+
+			err = vhd_parent_locator_get(vhd, &next);
+			if (err)
+				goto close;
+
+			if (vhd_parent_raw(vhd)) {
+				err = __raw_read_link_bytes(next, map,
+							    buf, size, off);
+				goto close;
+			}
+		} else {
+			err = 0;
+			goto close;
+		}
+
+		if (vhd != ctx)
+			vhd_close(vhd);
+		vhd = &parent;
+
+		err = vhd_open(vhd, next, VHD_OPEN_RDONLY);
+		if (err)
+			goto out;
+
+		err = vhd_get_bat(vhd);
+		if (err)
+			goto close;
+
+		free(next);
+		next = NULL;
+	}
+
+close:
+	if (!err) {
+		/*
+		 * clear any regions not present on disk
+		 */
+		for (i = first_sec; i < last_sec; i++) {
+			if (!test_bit(map, i - first_sec)) {
+				uint64_t coff  = vhd_sectors_to_bytes(i);
+				uint32_t csize = VHD_SECTOR_SIZE;
+
+				if (i == first_sec)
+					coff = off;
+				if (i == last_sec - 1)
+					csize = (off + size) - coff;
+
+				memset(buf + coff - off, 0, csize);
+			}
+		}
+	}
+
+	if (vhd != ctx && !vhd_flag_test(vhd->oflags, VHD_OPEN_CACHED))
+		vhd_close(vhd);
+out:
+	free(map);
+	free(next);
+	return err;
+}
+
+int
+vhd_io_read_bytes(vhd_context_t *ctx, char *buf, size_t size, uint64_t off)
+{
+	if (off + size > ctx->footer.curr_size)
+		return -ERANGE;
+
+	if (!vhd_type_dynamic(ctx))
+		return vhd_pread(ctx, buf, size, off);
+
+	return __vhd_io_dynamic_read_bytes(ctx, buf, size, off);
+}
+
+static int
+__vhd_io_dynamic_write_bytes_aligned(vhd_context_t *ctx,
+				     char *buf, size_t size, uint64_t off)
+{
+	char *map;
+	int i, err, ret;
+	uint64_t blk_off, blk_size, blk_start;
+	uint32_t blk, bytes, first_sec, last_sec;
+
+	if (off & (VHD_SECTOR_SIZE - 1) || size & (VHD_SECTOR_SIZE - 1))
+		return -EINVAL;
+
+	err = vhd_get_bat(ctx);
+	if (err)
+		return err;
+
+	if (vhd_has_batmap(ctx)) {
+		err = vhd_get_batmap(ctx);
+		if (err)
+			return err;
+	}
+
+	map      = NULL;
+	blk_size = vhd_sectors_to_bytes(ctx->spb);
+
+	do {
+		blk     = off / blk_size;
+		blk_off = off % blk_size;
+		bytes   = MIN(blk_size - blk_off, size);
+
+		first_sec = blk_off >> VHD_SECTOR_SHIFT;
+		last_sec  = secs_round_up_no_zero(blk_off + bytes);
+
+		blk_start = ctx->bat.bat[blk];
+		if (blk_start == DD_BLK_UNUSED) {
+			err = __vhd_io_allocate_block(ctx, blk);
+			if (err)
+				goto fail;
+
+			blk_start = ctx->bat.bat[blk];
+		}
+
+		blk_start = vhd_sectors_to_bytes(blk_start + ctx->bm_secs);
+
+		err = vhd_pwrite(ctx, buf, bytes, blk_start + blk_off);
+		if (err)
+			goto fail;
+
+		if (vhd_has_batmap(ctx) &&
+		    vhd_batmap_test(ctx, &ctx->batmap, blk))
+			goto next;
+
+		err = vhd_read_bitmap(ctx, blk, &map);
+		if (err) {
+			map = NULL;
+			goto fail;
+		}
+
+		for (i = first_sec; i < last_sec; i++)
+			vhd_bitmap_set(ctx, map, i);
+
+		err = vhd_write_bitmap(ctx, blk, map);
+		if (err)
+			goto fail;
+
+		if (vhd_has_batmap(ctx)) {
+			for (i = 0; i < ctx->spb; i++)
+				if (!vhd_bitmap_test(ctx, map, i)) {
+					free(map);
+					map = NULL;
+					goto next;
+				}
+
+			vhd_batmap_set(ctx, &ctx->batmap, blk);
+			err = vhd_write_batmap(ctx, &ctx->batmap);
+			if (err)
+				goto fail;
+		}
+
+		free(map);
+		map = NULL;
+
+	next:
+		size   -= bytes;
+		off    += bytes;
+		buf    += bytes;
+
+	} while (size);
+
+	err = 0;
+
+out:
+	ret = vhd_write_footer(ctx, &ctx->footer);
+	return (err ? err : ret);
+
+fail:
+	free(map);
+	goto out;
+}
+
+static int
+__vhd_io_dynamic_write_bytes(vhd_context_t *ctx,
+			     char *buf, size_t size, uint64_t off)
+{
+	int err;
+	char *tmp;
+	uint32_t first_sec, last_sec, first_sec_off, last_sec_off;
+
+	err = 0;
+	tmp = NULL;
+
+	first_sec = off >> VHD_SECTOR_SHIFT;
+	last_sec  = secs_round_up_no_zero(off + size);
+
+	first_sec_off = off & (VHD_SECTOR_SIZE - 1);
+	last_sec_off  = (off + size) & (VHD_SECTOR_SIZE - 1);
+
+	if (first_sec_off || last_sec_off) {
+		tmp = malloc(VHD_SECTOR_SIZE);
+		if (!tmp) {
+			err = -ENOMEM;
+			goto out;
+		}
+
+		if (first_sec_off) {
+			uint32_t new = VHD_SECTOR_SIZE - first_sec_off;
+			if (new > size)
+				new = size;
+
+			err = vhd_io_read_bytes(
+				ctx, tmp, VHD_SECTOR_SIZE,
+				vhd_sectors_to_bytes(first_sec));
+			if (err)
+				goto out;
+
+			memcpy(tmp + first_sec_off, buf, new);
+
+			err = __vhd_io_dynamic_write_bytes_aligned(
+				ctx, tmp, VHD_SECTOR_SIZE,
+				vhd_sectors_to_bytes(first_sec));
+			if (err)
+				goto out;
+
+			buf  += new;
+			off  += new;
+			size -= new;
+		}
+
+		if (last_sec_off &&
+		    (last_sec - first_sec > 1 || !first_sec_off)) {
+			uint32_t new = last_sec_off;
+
+			err = vhd_io_read_bytes(
+				ctx, tmp, VHD_SECTOR_SIZE,
+				vhd_sectors_to_bytes(last_sec - 1));
+			if (err)
+				goto out;
+
+			memcpy(tmp, buf + size - new, new);
+
+			err = __vhd_io_dynamic_write_bytes_aligned(
+				ctx, tmp, VHD_SECTOR_SIZE,
+				vhd_sectors_to_bytes(last_sec - 1));
+			if (err)
+				goto out;
+
+			size -= new;
+		}
+	}
+
+	if (size)
+		err = __vhd_io_dynamic_write_bytes_aligned(ctx, buf, size, off);
+
+out:
+	free(tmp);
+	return err;
+}
+
+int
+vhd_io_write_bytes(vhd_context_t *ctx, char *buf, size_t size, uint64_t off)
+{
+	if (off + size > ctx->footer.curr_size)
+		return -ERANGE;
+
+	if (!vhd_type_dynamic(ctx))
+		return vhd_pwrite(ctx, buf, size, off);
+
+	return __vhd_io_dynamic_write_bytes(ctx, buf, size, off);
+}
+
+int
+vhd_marker(vhd_context_t *ctx, char *marker)
+{
+	int err;
+	vhd_batmap_t batmap;
+
+	*marker = 0;
+
+	if (!vhd_has_batmap(ctx))
+		return -ENOSYS;
+
+	err = vhd_read_batmap_header(ctx, &batmap);
+	if (err)
+		return err;
+
+	*marker = batmap.header.marker;
+	return 0;
+}
+
+int
+vhd_set_marker(vhd_context_t *ctx, char marker)
+{
+	int err;
+	vhd_batmap_t batmap;
+
+	if (!vhd_has_batmap(ctx))
+		return -ENOSYS;
+
+	err = vhd_read_batmap_header(ctx, &batmap);
+	if (err)
+		return err;
+
+	batmap.header.marker = marker;
+	return vhd_write_batmap_header(ctx, &batmap);
 }

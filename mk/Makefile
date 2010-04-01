@@ -56,6 +56,7 @@ PROPRIETARY_SOURCE += drivers/tapdisk-filter.c
 PROPRIETARY_SOURCE += drivers/tapdisk-vbd.c
 PROPRIETARY_SOURCE += drivers/tapdisk-diff.c
 PROPRIETARY_SOURCE += vhd/lib/libvhd.c
+PROPRIETARY_SOURCE += vhd/lib/libvhdio.c
 PROPRIETARY_SOURCE += vhd/lib/libvhd-journal.c
 PROPRIETARY_SOURCE += vhd/lib/libvhd-index.c
 PROPRIETARY_SOURCE += vhd/lib/vhd-util-coalesce.c

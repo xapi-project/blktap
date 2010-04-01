@@ -7,11 +7,12 @@ LIBVHD-SONAME    = libvhd.so.$(LIBVHD-MAJOR)
 
 LVM-UTIL-OBJ    := $(BLKTAP_ROOT)lvm/lvm-util.o
 
-LIBVHD-BUILD    := libvhd.so.$(LIBVHD-MAJOR).$(LIBVHD-MINOR) libvhd.a
+LIBVHD          := libvhd.a libvhd.so.$(LIBVHD-MAJOR).$(LIBVHD-MINOR)
+LIBVHDIO        := libvhdio.a libvhdio.so.$(LIBVHD-MAJOR).$(LIBVHD-MINOR)
+LIBVHD-BUILD    := $(LIBVHD) $(LIBVHDIO)
 
 INST-DIR         = /usr/lib
 
-CFLAGS          += -Werror
 CFLAGS          += -Wno-unused
 CFLAGS          += -I../../include
 CFLAGS          += -D_GNU_SOURCE
@@ -50,8 +51,11 @@ ifndef TRANSFERVM
 LIB-OBJS        += $(LVM-UTIL-OBJ)
 endif
 
-LIBVHD           = libvhd.a libvhd.so.$(LIBVHD-MAJOR).$(LIBVHD-MINOR)
-
+LIBVHD-IO-LIBS  := -ldl -L./ -lvhd
+LIBVHD-IO-OBJS  := libvhdio.o $(BLKTAP_ROOT)/part/partition.o
+LIBVHD-IO        = libvhdio.a libvhdio.so.$(LIBVHD-MAJOR).$(LIBVHD-MINOR)
+LIBVHD-IO-SONAME = libvhdio.so.$(LIBVHD-MAJOR)
+ 
 all: build
 
 build: $(LIBVHD-BUILD)
@@ -59,24 +63,39 @@ build: $(LIBVHD-BUILD)
 libvhd.so: libvhd.so.$(LIBVHD-MAJOR)
 	ln -sf $^ $@
 
+libvhdio.so: libvhdio.so.$(LIBVHD-MAJOR)
+	ln -sf $^ $@
+
 libvhd.so.$(LIBVHD-MAJOR): libvhd.so.$(LIBVHD-MAJOR).$(LIBVHD-MINOR)
+	ln -sf $^ $@
+
+libvhdio.so.$(LIBVHD-MAJOR): libvhdio.so.$(LIBVHD-MAJOR).$(LIBVHD-MINOR)
 	ln -sf $^ $@
 
 libvhd.so.$(LIBVHD-MAJOR).$(LIBVHD-MINOR): $(LIB-OBJS)
 	$(CC) $(CFLAGS) -Wl,$(SONAME_LDFLAG),$(LIBVHD-SONAME) $(SHLIB_CFLAGS) \
 		-o $@ $(LIBS) $^
 
+libvhdio.so.$(LIBVHD-MAJOR).$(LIBVHD-MINOR): $(LIBVHD-IO-OBJS) libvhd.so
+	$(CC) $(CFLAGS) -Wl,$(SONAME_LDFLAG),$(LIBVHD-IO-SONAME) $(SHLIB_CFLAGS) \
+		-o $@ $(LIBVHD-IO-LIBS) $^
+
 libvhd.a: $(LIB-OBJS)
+	$(AR) rc $@ $^
+
+libvhdio.a: $(LIBVHD-IO-OBJS)
 	$(AR) rc $@ $^
 
 install: all
 	$(INSTALL_DIR) -p $(DESTDIR)$(INST-DIR)
-	$(INSTALL_DATA) $(LIBVHD) $(DESTDIR)$(INST-DIR)
+	$(INSTALL_DATA) $(LIBVHD) $(LIBVHD-IO) $(DESTDIR)$(INST-DIR)
 	ln -sf libvhd.so.$(LIBVHD-MAJOR).$(LIBVHD-MINOR) $(DESTDIR)$(INST-DIR)/libvhd.so.$(LIBVHD-MAJOR)
 	ln -sf libvhd.so.$(LIBVHD-MAJOR) $(DESTDIR)$(INST-DIR)/libvhd.so
+	ln -sf libvhdio.so.$(LIBVHD-MAJOR).$(LIBVHD-MINOR) $(DESTDIR)$(INST-DIR)/libvhdio.so.$(LIBVHD-MAJOR)
+	ln -sf libvhdio.so.$(LIBVHD-MAJOR) $(DESTDIR)$(INST-DIR)/libvhdio.so
 
 clean:
-	rm -rf *.a *.so* *.o *~ $(DEPS) $(LIBVHD)
+	rm -rf *.a *.so* *.o *~ $(DEPS) $(LIBVHD) $(LIBVHD-IO)
 
 .PHONY: all build clean install libvhd
 

@@ -12,6 +12,7 @@
 #include <uuid/uuid.h>
 
 #include "vhd.h"
+#include "list.h"
 
 #if BYTE_ORDER == LITTLE_ENDIAN
   #define BE16_IN(foo)             (*(foo)) = bswap_16(*(foo))
@@ -48,8 +49,11 @@
 #define VHD_OPEN_FAST              0x00004
 #define VHD_OPEN_STRICT            0x00008
 #define VHD_OPEN_IGNORE_DISABLED   0x00010
+#define VHD_OPEN_CACHED            0x00020
+#define VHD_OPEN_IO_WRITE_SPARSE   0x00040
 
-#define VHD_FLAG_CREAT_PARENT_RAW        0x00001
+#define VHD_FLAG_CREAT_FILE_SIZE_FIXED   0x00001
+#define VHD_FLAG_CREAT_PARENT_RAW        0x00002
 
 #define vhd_flag_set(word, flag)         ((word) |= (flag))
 #define vhd_flag_clear(word, flag)       ((word) &= ~(flag))
@@ -114,6 +118,8 @@ struct vhd_context {
 	vhd_footer_t               footer;
 	vhd_bat_t                  bat;
 	vhd_batmap_t               batmap;
+
+	struct list_head           next;
 };
 
 static inline int
@@ -241,6 +247,8 @@ int vhd_snapshot(const char *snapshot, uint64_t bytes, const char *parent,
 
 int vhd_hidden(vhd_context_t *, int *);
 int vhd_chain_depth(vhd_context_t *, int *);
+int vhd_marker(vhd_context_t *, char *);   
+int vhd_set_marker(vhd_context_t *, char); 
 
 off64_t vhd_position(vhd_context_t *);
 int vhd_seek(vhd_context_t *, off64_t, int);
@@ -268,6 +276,7 @@ int vhd_batmap_test(vhd_context_t *, vhd_batmap_t *, uint32_t);
 void vhd_batmap_set(vhd_context_t *, vhd_batmap_t *, uint32_t);
 void vhd_batmap_clear(vhd_context_t *, vhd_batmap_t *, uint32_t);
 
+int vhd_file_size_fixed(vhd_context_t *);
 int vhd_get_phys_size(vhd_context_t *, off64_t *);
 int vhd_set_phys_size(vhd_context_t *, off64_t);
 int vhd_set_virt_size(vhd_context_t *, uint64_t);
@@ -312,5 +321,7 @@ int vhd_write_block(vhd_context_t *, uint32_t block, char *data);
 
 int vhd_io_read(vhd_context_t *, char *, uint64_t, uint32_t);
 int vhd_io_write(vhd_context_t *, char *, uint64_t, uint32_t);
+int vhd_io_read_bytes(vhd_context_t *, char *, size_t, uint64_t);
+int vhd_io_write_bytes(vhd_context_t *, char *, size_t, uint64_t);
 
 #endif

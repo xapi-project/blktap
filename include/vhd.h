@@ -154,6 +154,7 @@ struct dd_batmap_hdr {
   u32    batmap_size;     /* batmap size in sectors                       */
   u32    batmap_version;  /* version of batmap                            */
   u32    checksum;        /* batmap checksum -- 1's complement of batmap  */
+  char   marker;          /* generic marker field                         */
 };
 
 static const char VHD_BATMAP_COOKIE[9] = "tdbatmap";

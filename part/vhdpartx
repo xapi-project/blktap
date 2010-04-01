@@ -1,0 +1,109 @@
+#!/bin/sh
+
+set -e
+
+PARTUTIL=/usr/sbin/part-util
+LIBVHDIO=/usr/lib/libvhdio.so.1.0
+
+die()
+{
+    echo "$@"
+    exit 1
+}
+
+usage()
+{
+    echo "usage: $0 [-a | -d | -l] vhd [lib]"
+    echo "-a add partition mappings"
+    echo "-d del partition mappings"
+    echo "-l list partition mappings"
+    exit 1
+}
+
+parse_args()
+{
+    part_util=$PARTUTIL
+
+    while [ $# -ge 1 ]; do
+	case $1 in
+	    -a) add="TRUE" && count="1$count";;
+	    -d) del="TRUE" && count="1$count";;
+	    -l) list="TRUE" && count="1$count";;
+	    *) if [ -z "$vhd" ]; then vhd=$1;
+	       elif [ -z "$lib" ]; then lib=$1;
+	       else usage;
+	       fi;;
+	esac
+	shift
+    done
+
+    [[ -z "$lib" ]] && lib=$LIBVHDIO
+    [[ -z "$vhd" || "$count" != "1" ]] && usage
+    return 0
+}
+
+# screen-scraping of fdisk... not used
+fdisk_read_partitions()
+{
+    local data=$(LD_PRELOAD=$lib fdisk -l $vhd)
+
+    local none=$(echo $data | grep "This doesn't look like a partition table")
+    [[ -n "$none" ]] && partitions=0 && return 0
+
+    partitions=4
+    while [[ "$partitions" != "0" ]]; do
+	local hit=$(echo $data | grep "${vhd}$partitions")
+	[[ -n "$hit" ]] && break
+	let partitions=$partitions-1
+    done
+}
+
+part_util_read_partitions()
+{
+    partitions=$(LD_PRELOAD=$lib $part_util -c -i $vhd)
+}
+
+list_mappings()
+{
+    local parts=1
+    while [[ $parts -le $partitions ]]; do
+	echo ${vhd}$parts
+	let parts=$parts+1
+    done
+}
+
+add_mappings()
+{
+    local parts=1
+    local path=$(realpath $vhd)
+    while [[ $parts -le $partitions ]]; do
+	[[ -e ${path}${parts} ]] || ln -s $(basename $path) ${path}$parts
+	let parts=$parts+1
+    done
+}
+
+del_mappings()
+{
+    local parts=1
+    while [[ $parts -le $partitions ]]; do
+	[[ -L ${vhd}$parts ]] && rm -f ${vhd}$parts
+	let parts=$parts+1
+    done
+}
+
+main()
+{
+    parse_args $@
+    [[ -x $part_util ]] || die "can't find part-util"
+    [[ -r $vhd && -r $lib ]] || die "can't find vhd or lib"
+
+    part_util_read_partitions
+
+    [[ -n "$add" ]] && add_mappings
+    [[ -n "$del" ]] && del_mappings
+    [[ -n "$list" ]] && list_mappings
+
+    return 0
+}
+
+main $@

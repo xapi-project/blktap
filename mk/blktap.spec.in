@@ -33,6 +33,7 @@ Source25: vhd-util-scan.o
 Source26: vhd-util-check.o
 Source27: vhd-util-revert.o
 Source28: tapdisk-diff.o
+Source29: libvhdio.o
 
 Patch0: %{name}-development.patch
 BuildRoot: %{_tmppath}/%{name}-%{version}-%{release}-buildroot
@@ -81,6 +82,7 @@ cp %{SOURCE25} vhd/lib
 cp %{SOURCE26} vhd/lib
 cp %{SOURCE27} vhd/lib
 cp %{SOURCE28} drivers
+cp %{SOURCE29} vhd/lib
 
 %build
 %{__make} USE_SYSTEM_LIBRARIES=y
@@ -97,6 +99,7 @@ rm -rf $RPM_BUILD_ROOT
 %doc
 %{_libdir}/libblktap.so.*
 %{_libdir}/libvhd.so.*
+%{_libdir}/libvhdio.so.*
 %{_sbindir}/blktapctrl
 %{_sbindir}/tapdisk
 %{_sbindir}/tapdisk2
@@ -108,6 +111,8 @@ rm -rf $RPM_BUILD_ROOT
 %{_sbindir}/tapdisk-client
 %{_sbindir}/tapdisk-stream
 %{_sbindir}/tapdisk-diff
+%{_sbindir}/part-util
+%{_sbindir}/vhdpartx
 
 %files devel
 %defattr(-,root,root,-)
@@ -117,5 +122,7 @@ rm -rf $RPM_BUILD_ROOT
 %{_libdir}/libblktap.so
 %{_libdir}/libvhd.a
 %{_libdir}/libvhd.so
+%{_libdir}/libvhdio.a
+%{_libdir}/libvhdio.so
 
 %changelog
