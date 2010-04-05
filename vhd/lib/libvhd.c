@@ -3558,13 +3558,13 @@ vhd_io_write(vhd_context_t *ctx, char *buf, uint64_t sec, uint32_t secs)
 	return __vhd_io_dynamic_write(ctx, buf, sec, secs);
 }
 
-static inline void
+static void
 vhd_cache_init(vhd_context_t *ctx)
 {
 	INIT_LIST_HEAD(&ctx->next);
 }
 
-static inline int
+static int
 vhd_cache_enabled(vhd_context_t *ctx)
 {
 	return vhd_flag_test(ctx->oflags, VHD_OPEN_CACHED);
