@@ -47,6 +47,7 @@ static void tapdisk_vbd_ring_event(event_id_t, char, void *);
 static void tapdisk_vbd_complete_vbd_request(td_vbd_t *, td_vbd_request_t *);
 static void tapdisk_vbd_callback(void *, blkif_response_t *);
 static int  tapdisk_vbd_queue_ready(td_vbd_t *);
+static void tapdisk_vbd_check_queue_state(td_vbd_t *);
 
 /* 
  * initialization
@@ -1117,7 +1118,7 @@ tapdisk_vbd_kick(td_vbd_t *vbd)
 	int n;
 	td_ring_t *ring;
 
-	tapdisk_vbd_check_state(vbd);
+	tapdisk_vbd_check_queue_state(vbd);
 
 	ring = &vbd->ring;
 	if (!ring->sring)
@@ -1211,8 +1212,8 @@ tapdisk_vbd_request_timeout(td_vbd_request_t *vreq)
 	return __tapdisk_vbd_request_timeout(vreq, &now);
 }
 
-void
-tapdisk_vbd_check_state(td_vbd_t *vbd)
+static void
+tapdisk_vbd_check_queue_state(td_vbd_t *vbd)
 {
 	td_vbd_request_t *vreq, *tmp;
 	struct timeval now;
@@ -1231,6 +1232,12 @@ tapdisk_vbd_check_state(td_vbd_t *vbd)
 		list_del(&vreq->next);
 		tapdisk_vbd_initialize_vreq(vreq);
 	}
+}
+
+void
+tapdisk_vbd_check_state(td_vbd_t *vbd)
+{
+	tapdisk_vbd_check_queue_state(vbd);
 
 	if (td_flag_test(vbd->state, TD_VBD_QUIESCE_REQUESTED))
 		tapdisk_vbd_quiesce_queue(vbd);
