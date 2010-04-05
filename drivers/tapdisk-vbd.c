@@ -1567,10 +1567,8 @@ tapdisk_vbd_issue_request(td_vbd_t *vbd, td_vbd_request_t *vreq)
 
 out:
 	vreq->submitting--;
-	if (!vreq->secs_pending) {
-		err = (err ? : vreq->error);
+	if (!vreq->secs_pending)
 		tapdisk_vbd_complete_vbd_request(vbd, vreq);
-	}
 
 	return err;
 
