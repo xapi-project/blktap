@@ -5,35 +5,6 @@ Release: @BLKTAP_RELEASE@
 License: Proprietary
 Group: System/Hypervisor
 Source0: %{name}-%{version}.tar.bz2
-Source1: block-vhd.o
-Source2: block-vindex.o
-Source3: io-optimize.o
-Source4: td.o
-Source5: tapdisk-queue.o
-Source6: tapdisk-filter.o
-Source7: libvhd.o
-Source8: libvhd-journal.o
-Source9: libvhd-index.o
-Source10: vhd-util-coalesce.o
-Source11: vhd-util-create.o
-Source12: vhd-util-fill.o
-Source13: vhd-util-query.o
-Source14: vhd-util-read.o
-Source15: vhd-util-repair.o
-Source16: vhd-util-resize.o
-Source17: vhd-util-set-field.o
-Source18: vhd-util-snapshot.o
-Source19: vhd-util-modify.o
-Source20: relative-path.o
-Source21: vhd-util.o
-Source22: vhd-index.o
-Source23: vhd-update.o
-Source24: tapdisk-vbd.o
-Source25: vhd-util-scan.o
-Source26: vhd-util-check.o
-Source27: vhd-util-revert.o
-Source28: tapdisk-diff.o
-Source29: libvhdio.o
 
 Patch0: %{name}-development.patch
 BuildRoot: %{_tmppath}/%{name}-%{version}-%{release}-buildroot
@@ -54,35 +25,6 @@ This package contains the blktap development libraries and header files.
 %prep
 %setup -q
 %patch0 -p1
-cp %{SOURCE1} drivers
-cp %{SOURCE2} drivers
-cp %{SOURCE3} drivers
-cp %{SOURCE4} drivers
-cp %{SOURCE5} drivers
-cp %{SOURCE6} drivers
-cp %{SOURCE7} vhd/lib
-cp %{SOURCE8} vhd/lib
-cp %{SOURCE9} vhd/lib
-cp %{SOURCE10} vhd/lib
-cp %{SOURCE11} vhd/lib
-cp %{SOURCE12} vhd/lib
-cp %{SOURCE13} vhd/lib
-cp %{SOURCE14} vhd/lib
-cp %{SOURCE15} vhd/lib
-cp %{SOURCE16} vhd/lib
-cp %{SOURCE17} vhd/lib
-cp %{SOURCE18} vhd/lib
-cp %{SOURCE19} vhd/lib
-cp %{SOURCE20} vhd/lib
-cp %{SOURCE21} vhd
-cp %{SOURCE22} vhd
-cp %{SOURCE23} vhd
-cp %{SOURCE24} drivers
-cp %{SOURCE25} vhd/lib
-cp %{SOURCE26} vhd/lib
-cp %{SOURCE27} vhd/lib
-cp %{SOURCE28} drivers
-cp %{SOURCE29} vhd/lib
 
 %build
 %{__make} USE_SYSTEM_LIBRARIES=y
