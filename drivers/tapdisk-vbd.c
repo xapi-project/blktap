@@ -1334,40 +1334,17 @@ tapdisk_vbd_check_queue(td_vbd_t *vbd)
 	return 0;
 }
 
-static int
-tapdisk_vbd_request_failed_transient(td_vbd_t *vbd, td_vbd_request_t *vreq)
-{
-	if (vreq->status != BLKIF_RSP_ERROR)
-		return 0;
-
-	if (td_flag_test(vbd->state, TD_VBD_DEAD) ||
-	    td_flag_test(vbd->state, TD_VBD_SHUTDOWN_REQUESTED))
-		return 0;
-
-	switch (abs(vreq->error)) {
-	case ESTALE:
-	case ENOSPC:
-		return 0;
-	}
-
-	if (tapdisk_vbd_request_timeout(vreq))
-		return 0;
-
-	return 1;
-}
-
 static void
 tapdisk_vbd_complete_vbd_request(td_vbd_t *vbd, td_vbd_request_t *vreq)
 {
 	if (!vreq->submitting && !vreq->secs_pending) {
-		struct list_head *dest;
-
-		if (tapdisk_vbd_request_failed_transient(vbd, vreq))
-			dest = &vbd->failed_requests;
+		if (vreq->status == BLKIF_RSP_ERROR &&
+		    !tapdisk_vbd_request_timeout(vreq) &&
+		    !td_flag_test(vbd->state, TD_VBD_DEAD) &&
+		    !td_flag_test(vbd->state, TD_VBD_SHUTDOWN_REQUESTED))
+			tapdisk_vbd_move_request(vreq, &vbd->failed_requests);
 		else
-			dest = &vbd->completed_requests;
-
-		tapdisk_vbd_move_request(vreq, dest);
+			tapdisk_vbd_move_request(vreq, &vbd->completed_requests);
 	}
 }
 
