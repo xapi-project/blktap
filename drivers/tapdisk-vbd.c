@@ -361,6 +361,7 @@ tapdisk_vbd_reactivate_volumes(td_vbd_t *vbd, int resume)
 	char *name, *new;
 	vhd_context_t vhd;
 	vhd_parent_locator_t *loc;
+	uuid_t prt_uuid;
 
 	new  = NULL;
 	name = NULL;
@@ -388,6 +389,13 @@ tapdisk_vbd_reactivate_volumes(td_vbd_t *vbd, int resume)
 
 		for (i = 0; i < TD_VBD_EIO_RETRIES; i++) {
 			err = vhd_open(&vhd, name, VHD_OPEN_RDONLY);
+			if (!err && cnt > 0) {
+				err = uuid_compare(vhd.footer.uuid, prt_uuid);
+				if (err) {
+					EPRINTF("child/parent uuid mismatch");
+					err = -EINVAL;
+				}
+			}
 			if (!err)
 				break;
 
@@ -403,6 +411,8 @@ tapdisk_vbd_reactivate_volumes(td_vbd_t *vbd, int resume)
 			break;
 		}
 
+		uuid_copy(prt_uuid, vhd.header.prt_uuid);
+
 		loc = NULL;
 		for (i = 0; i < 8; i++)
 			if (vhd.header.loc[i].code == PLAT_CODE_MACX) {
@@ -411,6 +421,7 @@ tapdisk_vbd_reactivate_volumes(td_vbd_t *vbd, int resume)
 			}
 
 		if (!loc) {
+			EPRINTF("failed to find parent locator");
 			vhd_close(&vhd);
 			err = -EINVAL;
 			goto fail;
@@ -421,6 +432,7 @@ tapdisk_vbd_reactivate_volumes(td_vbd_t *vbd, int resume)
 		vhd_close(&vhd);
 
 		if (err) {
+			EPRINTF("failed to read parent locator");
 			name = NULL;
 			goto fail;
 		}
