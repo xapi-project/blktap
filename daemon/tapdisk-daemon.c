@@ -52,6 +52,7 @@ typedef struct tapdisk_daemon {
 
 	struct xs_handle             *xsh;
 	struct list_head              channels;
+	int                           n_channels;
 	struct xenbus_watch           watch;
 
 	sigset_t		      sigunmask;
@@ -354,17 +355,26 @@ tapdisk_daemon_probe_vbd(int domid, int busid, const char *path)
 	if (err)
 		return;
 
+	if (tapdisk_daemon.n_channels >= TAPDISK_DAEMON_MAX_CHANNELS) {
+		err = -EMFILE;
+		goto fail;
+	}
+
 	DPRINTF("%s: creating channel, uuid %u\n", path, cookie);
 
 	err = tapdisk_channel_open(&channel, path,
 				   tapdisk_daemon.xsh,
 				   tapdisk_daemon.blktap_fd,
 				   cookie, domid, busid);
-	if (!err)
-		list_add(&channel->list, &tapdisk_daemon.channels);
-	else
-		EPRINTF("failed to open tapdisk channel for %s: %d\n",
-			path, err);
+	if (err)
+		goto fail;
+
+	list_add(&channel->list, &tapdisk_daemon.channels);
+	tapdisk_daemon.n_channels++;
+	return;
+
+fail:
+	EPRINTF("failed to open tapdisk channel for %s: %d\n", path, err);
 }
 
 static void
@@ -685,6 +695,7 @@ tapdisk_daemon_close_channel(tapdisk_channel_t *channel)
 	tapdisk_channel_t *c, *tmp;
 
 	list_del(&channel->list);
+	tapdisk_daemon.n_channels--;
 
 	tapdisk_daemon_for_each_channel(c, tmp)
 		if (c->channel_id == channel->channel_id)

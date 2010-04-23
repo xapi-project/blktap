@@ -226,7 +226,7 @@ typedef struct msg_lock {
 #define TAPDISK_STORAGE_TYPE_DEFAULT   TAPDISK_STORAGE_TYPE_EXT
 
 /* Abitrary values, must match the underlying driver... */
-#define MAX_TAP_DEV 256
+#define MAX_TAP_DEV 1024
 
 /* Accessing attached data page mappings */
 #define MMAP_PAGES                                                    \

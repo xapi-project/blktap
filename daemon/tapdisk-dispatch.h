@@ -32,6 +32,13 @@
 #include "blktaplib.h"
 #include "tapdisk-message.h"
 
+/*
+ * This goes below MAX_TAP_DEV, bound by our ipc architecture and
+ * fd_set size (1024 bits, minus room for misc). Named pipes are
+ * simplex. Socketpairs might might have been a better choice.
+ */
+#define TAPDISK_DAEMON_MAX_CHANNELS   ((1024 - 16) / 2)
+
 typedef enum {
 	TAPDISK_CHANNEL_DEAD          = 1,
 	TAPDISK_CHANNEL_LAUNCHED      = 2,

@@ -1222,8 +1222,14 @@ tapdisk_channel_get_device_number(tapdisk_channel_t *channel)
         tr.busid = channel->busid;
 
 	minor = ioctl(channel->blktap_fd, BLKTAP_IOCTL_NEWINTF, tr);
-	if (minor <= 0 || minor > MAX_TAP_DEV) {
+	if (minor <= 0) {
 		EPRINTF("invalid dev id: %d\n", minor);
+		return -EINVAL;
+	}
+
+	if (minor > MAX_TAP_DEV) {
+		EPRINTF("dev id %d exceeds maximum devices (%d)\n",
+			minor, MAX_TAP_DEV);
 		return -EINVAL;
 	}
 
