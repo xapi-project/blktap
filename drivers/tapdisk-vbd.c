@@ -393,6 +393,7 @@ tapdisk_vbd_reactivate_volumes(td_vbd_t *vbd, int resume)
 				err = uuid_compare(vhd.footer.uuid, prt_uuid);
 				if (err) {
 					EPRINTF("child/parent uuid mismatch");
+					vhd_close(&vhd);
 					err = -EINVAL;
 				}
 			}
