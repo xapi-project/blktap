@@ -355,7 +355,7 @@ tapdisk_vbd_reactivate_volume(const char *name)
 }
 
 static int
-tapdisk_vbd_reactivate_volumes(td_vbd_t *vbd, int resume)
+__tapdisk_vbd_reactivate_volumes(td_vbd_t *vbd, int resume)
 {
 	int i, cnt, err;
 	char *name, *new;
@@ -394,7 +394,8 @@ tapdisk_vbd_reactivate_volumes(td_vbd_t *vbd, int resume)
 				if (err) {
 					EPRINTF("child/parent uuid mismatch");
 					vhd_close(&vhd);
-					err = -EINVAL;
+					err = -EAGAIN;
+					break;
 				}
 			}
 			if (!err)
@@ -464,6 +465,27 @@ fail:
 	EPRINTF("failed to reactivate %s: %d\n", vbd->name, err);
 	goto out;
 }
+
+static int
+tapdisk_vbd_reactivate_volumes(td_vbd_t *vbd, int resume)
+{
+	int i, err;
+
+	for (i = 0; i < TD_VBD_EIO_RETRIES; i++) {
+		err = __tapdisk_vbd_reactivate_volumes(vbd, resume);
+		/*
+		 * CA-41048: prt_uuid mismatch when racing against
+		 * vhd_change_parent(), which relinks parent uuid and
+		 * locators sequentially. Restart from the leaf node.
+		 */
+		if (err != -EAGAIN)
+			break;
+		sleep(1);
+	}
+
+	return err;
+}
+
 
 /*
  * LVHD hack: 
