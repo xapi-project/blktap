@@ -695,7 +695,7 @@ vhd_util_read(int argc, char **argv)
 			goto out;
 	}
 
-	if (bat_str != -1) {
+	if (bat_str) {
 		err = vhd_print_bat_str(&vhd);
 		if (err)
 			goto out;
