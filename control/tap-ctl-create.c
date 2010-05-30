@@ -1,4 +1,4 @@
-/* 
+/*
  * Copyright (c) 2008, XenSource Inc.
  * All rights reserved.
  *
@@ -25,40 +25,87 @@
  * NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
  * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
-#ifndef _TAPDISK_SERVER_H_
-#define _TAPDISK_SERVER_H_
+#include <stdio.h>
+#include <errno.h>
+#include <stdlib.h>
+#include <unistd.h>
+#include <getopt.h>
 
-#include "list.h"
-#include "tapdisk-vbd.h"
-#include "tapdisk-queue.h"
+#include "tap-ctl.h"
+#include "blktap2.h"
 
-struct tap_disk *tapdisk_server_find_driver_interface(int);
+static void
+usage(void)
+{
+	printf("usage: create <-t type> <-f file> [-d device name]\n");
+}
 
-td_image_t *tapdisk_server_get_shared_image(td_image_t *);
+int
+_tap_ctl_create(const int type, const char *file, char **devname)
+{
+	int err, id;
 
-struct list_head *tapdisk_server_get_all_vbds(void);
-td_vbd_t *tapdisk_server_get_vbd(td_uuid_t);
-void tapdisk_server_add_vbd(td_vbd_t *);
-void tapdisk_server_remove_vbd(td_vbd_t *);
+	err = _tap_ctl_allocate(&id, devname);
+	if (err)
+		return err;
 
-void tapdisk_server_queue_tiocb(struct tiocb *);
+	err = _tap_ctl_spawn(id);
+	if (err < 0)
+		goto destroy;
 
-void tapdisk_server_check_state(void);
+	err = _tap_ctl_attach(id, id);
+	if (err)
+		goto destroy;
 
-event_id_t tapdisk_server_register_event(char, int, int, event_cb_t, void *);
-void tapdisk_server_unregister_event(event_id_t);
-void tapdisk_server_mask_event(event_id_t, int);
-void tapdisk_server_set_max_timeout(int);
+	err = tap_ctl_open(id, id, type, file);
+	if (err)
+		goto detach;
 
-int tapdisk_server_init(void);
-int tapdisk_server_initialize(const char *, const char *);
-int tapdisk_server_complete(void);
-int tapdisk_server_run(void);
-void tapdisk_server_iterate(void);
+	return 0;
 
-int tapdisk_server_openlog(const char *, int, int);
-void tapdisk_server_closelog(void);
-void tapdisk_start_logging(const char *, const char *);
-void tapdisk_stop_logging(void);
+detach:
+	_tap_ctl_detach(id, id);
+destroy:
+	_tap_ctl_free(id);
+	return err;
+}
 
-#endif
+int
+tap_ctl_create(int argc, char **argv)
+{
+	int c, err, type;
+	char *file, *devname;
+
+	type    = -1;
+	file    = NULL;
+	devname = NULL;
+
+	optind = 0;
+	while ((c = getopt(argc, argv, "t:f:d:h")) != -1) {
+		switch (c) {
+		case 't':
+			type = atoi(optarg);
+			break;
+		case 'f':
+			file = optarg;
+			break;
+		case 'd':
+			devname = optarg;
+			break;
+		case 'h':
+			usage();
+			return 0;
+		}
+	}
+
+	if (!file || type == -1) {
+		usage();
+		return EINVAL;
+	}
+
+	err = _tap_ctl_create(type, file, &devname);
+	if (!err)
+		printf("%s\n", devname);
+
+	return err;
+}

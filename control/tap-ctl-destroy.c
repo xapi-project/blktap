@@ -1,4 +1,4 @@
-/* 
+/*
  * Copyright (c) 2008, XenSource Inc.
  * All rights reserved.
  *
@@ -25,40 +25,69 @@
  * NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
  * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
-#ifndef _TAPDISK_SERVER_H_
-#define _TAPDISK_SERVER_H_
+#include <stdio.h>
+#include <errno.h>
+#include <fcntl.h>
+#include <stdlib.h>
+#include <unistd.h>
+#include <getopt.h>
 
-#include "list.h"
-#include "tapdisk-vbd.h"
-#include "tapdisk-queue.h"
+#include "tap-ctl.h"
+#include "blktap2.h"
 
-struct tap_disk *tapdisk_server_find_driver_interface(int);
+static void
+usage(void)
+{
+	printf("usage: destroy <-i id> <-m minor>\n");
+}
 
-td_image_t *tapdisk_server_get_shared_image(td_image_t *);
+int
+_tap_ctl_destroy(const int id, const int minor)
+{
+	int err;
 
-struct list_head *tapdisk_server_get_all_vbds(void);
-td_vbd_t *tapdisk_server_get_vbd(td_uuid_t);
-void tapdisk_server_add_vbd(td_vbd_t *);
-void tapdisk_server_remove_vbd(td_vbd_t *);
+	err = _tap_ctl_close(id, minor, 0);
+	if (err)
+		return err;
 
-void tapdisk_server_queue_tiocb(struct tiocb *);
+	err = _tap_ctl_detach(id, minor);
+	if (err)
+		return err;
 
-void tapdisk_server_check_state(void);
+	err = _tap_ctl_free(minor);
+	if (err)
+		return err;
 
-event_id_t tapdisk_server_register_event(char, int, int, event_cb_t, void *);
-void tapdisk_server_unregister_event(event_id_t);
-void tapdisk_server_mask_event(event_id_t, int);
-void tapdisk_server_set_max_timeout(int);
+	return 0;
+}
 
-int tapdisk_server_init(void);
-int tapdisk_server_initialize(const char *, const char *);
-int tapdisk_server_complete(void);
-int tapdisk_server_run(void);
-void tapdisk_server_iterate(void);
+int
+tap_ctl_destroy(int argc, char **argv)
+{
+	int c, id, minor;
 
-int tapdisk_server_openlog(const char *, int, int);
-void tapdisk_server_closelog(void);
-void tapdisk_start_logging(const char *, const char *);
-void tapdisk_stop_logging(void);
+	id    = -1;
+	minor = -1;
 
-#endif
+	optind = 0;
+	while ((c = getopt(argc, argv, "i:m:h")) != -1) {
+		switch (c) {
+		case 'i':
+			id = atoi(optarg);
+			break;
+		case 'm':
+			minor = atoi(optarg);
+			break;
+		case 'h':
+			usage();
+			return 0;
+		}
+	}
+
+	if (id == -1 || minor == -1) {
+		usage();
+		return EINVAL;
+	}
+
+	return _tap_ctl_destroy(id, minor);
+}

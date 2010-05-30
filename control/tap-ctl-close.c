@@ -29,90 +29,100 @@
 #include <errno.h>
 #include <stdlib.h>
 #include <unistd.h>
+#include <string.h>
+#include <getopt.h>
 
-#include "tapdisk.h"
-#include "tapdisk-utils.h"
-#include "tapdisk-server.h"
-#include "tapdisk-control.h"
+#include "tap-ctl.h"
 
 static void
-usage(const char *app, int err)
+usage(void)
 {
-	fprintf(stderr,
-		"usage: %s [-h] [-l <syslog>] "
-		"-u <uuid> -c <control socket>\n", app);
-	exit(err);
+	printf("usage: close <-i id> <-m minor> [-f force]\n");
+}
+
+static int
+__tap_ctl_close(const int id, const int minor, const int force)
+{
+	int err;
+	tapdisk_message_t message;
+
+	memset(&message, 0, sizeof(message));
+	message.type = TAPDISK_MESSAGE_CLOSE;
+	if (force)
+		message.type = TAPDISK_MESSAGE_FORCE_SHUTDOWN;
+	message.cookie = minor;
+
+	err = tap_ctl_connect_send_and_receive(id, &message, 5);
+	if (err)
+		return err;
+
+	if (message.type == TAPDISK_MESSAGE_CLOSE_RSP) {
+		err = message.u.response.error;
+		if (err)
+			printf("close failed: %d\n", err);
+	} else {
+		printf("got unexpected result '%s' from %d\n",
+		       tapdisk_message_name(message.type), id);
+		err = EINVAL;
+	}
+
+	return err;
 }
 
 int
-main(int argc, char *argv[])
+_tap_ctl_close(const int id, const int minor, const int force)
 {
-	char *control;
-	int c, uuid, err, nodaemon;
-	const char *facility;
+	int i, err;
 
-	uuid     = -1;
-	control  = NULL;
-	facility = "daemon";
-	nodaemon = 0;
+	for (i = 0; i < 20; i++) {
+		err = __tap_ctl_close(id, minor, force);
+		if (!err)
+			return 0;
 
-	while ((c = getopt(argc, argv, "l:u:c:Dh")) != -1) {
+		err = (err < 0 ? -err : err);
+		if (err != EAGAIN) {
+			printf("close failed: %d\n", err);
+			return err;
+		}
+
+		usleep(1000);
+	}
+
+	printf("close timed out\n");
+	return EIO;
+}
+
+int
+tap_ctl_close(int argc, char **argv)
+{
+	int c, id, minor, force;
+
+	id    = -1;
+	minor = -1;
+	force = 0;
+
+	optind = 0;
+	while ((c = getopt(argc, argv, "i:m:fh")) != -1) {
 		switch (c) {
-		case 'l':
-			facility = optarg;
+		case 'i':
+			id = atoi(optarg);
 			break;
-		case 'u':
-			uuid = atoi(optarg);
+		case 'm':
+			minor = atoi(optarg);
 			break;
-		case 'c':
-			control = optarg;
-			break;
-		case 'D':
-			nodaemon = 1;
+		case 'f':
+			force = -1;
 			break;
 		case 'h':
-			usage(argv[0], 0);
-		default:
-			usage(argv[0], EINVAL);
+			usage();
+			return 0;
 		}
 	}
 
-	if (optind != argc || uuid == -1 || !control)
-		usage(argv[0], EINVAL);
-
-	chdir("/");
-	tapdisk_start_logging("tapdisk2", facility);
-
-	err = tapdisk_server_init();
-	if (err) {
-		DPRINTF("failed to initialize server: %d\n", err);
-		goto out;
+	if (id == -1 || minor == -1) {
+		usage();
+		return EINVAL;
 	}
 
-	err = tapdisk_control_open(uuid, control);
-	if (err) {
-		DPRINTF("failed to open control socket: %d\n", err);
-		goto out;
-	}
-
-	if (!nodaemon) {
-		err = daemon(0, 0);
-		if (err) {
-			DPRINTF("failed to daemonize: %d\n", errno);
-			goto out;
-		}
-	}
-
-	err = tapdisk_server_complete();
-	if (err) {
-		DPRINTF("failed to complete server: %d\n", err);
-		goto out;
-	}
-
-	err = tapdisk_server_run();
-
-out:
-	tapdisk_control_close();
-	tapdisk_stop_logging();
-	return err;
+	return _tap_ctl_close(id, minor, force);
 }

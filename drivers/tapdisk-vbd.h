@@ -84,6 +84,7 @@ struct td_vbd_handle {
 	char                       *name;
 
 	td_uuid_t                   uuid;
+	int                         minor;
 	int                         type;
 
 	int                         storage;
@@ -169,15 +170,19 @@ tapdisk_vbd_next_image(td_image_t *image)
 	return list_entry(image->next.next, td_image_t, next);
 }
 
+td_vbd_t *tapdisk_vbd_create(td_uuid_t);
 int tapdisk_vbd_initialize(int, int, td_uuid_t);
 void tapdisk_vbd_set_callback(td_vbd_t *, td_vbd_cb_t, void *);
 int tapdisk_vbd_open(td_vbd_t *, const char *, uint16_t,
-		     uint16_t, const char *, td_flag_t);
+		     uint16_t, int, const char *, td_flag_t);
 int tapdisk_vbd_close(td_vbd_t *);
 
 int tapdisk_vbd_open_vdi(td_vbd_t *, const char *,
 			 uint16_t, uint16_t, td_flag_t);
 void tapdisk_vbd_close_vdi(td_vbd_t *);
+
+int tapdisk_vbd_attach(td_vbd_t *, const char *, int);
+void tapdisk_vbd_detach(td_vbd_t *);
 
 void tapdisk_vbd_forward_request(td_request_t);
 

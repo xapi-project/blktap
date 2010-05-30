@@ -45,6 +45,7 @@ rm -rf $RPM_BUILD_ROOT
 %{_sbindir}/blktapctrl
 %{_sbindir}/tapdisk
 %{_sbindir}/tapdisk2
+%{_sbindir}/tap-ctl
 %{_sbindir}/td-util
 %{_sbindir}/lock-util
 %{_sbindir}/vhd-update

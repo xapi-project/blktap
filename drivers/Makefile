@@ -35,6 +35,7 @@ td-util: CFLAGS += -static
 endif
 
 TAP-OBJS  := scheduler.o
+TAP-OBJS  += tapdisk-control.o
 TAP-OBJS  += tapdisk-ipc.o
 TAP-OBJS  += tapdisk-vbd.o
 TAP-OBJS  += tapdisk-image.o

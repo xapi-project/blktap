@@ -1,4 +1,4 @@
-/* 
+/*
  * Copyright (c) 2008, XenSource Inc.
  * All rights reserved.
  *
@@ -25,40 +25,76 @@
  * NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
  * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
-#ifndef _TAPDISK_SERVER_H_
-#define _TAPDISK_SERVER_H_
+#include <stdio.h>
+#include <errno.h>
+#include <stdlib.h>
+#include <unistd.h>
+#include <string.h>
+#include <getopt.h>
 
-#include "list.h"
-#include "tapdisk-vbd.h"
-#include "tapdisk-queue.h"
+#include "tap-ctl.h"
+#include "blktaplib.h"
+#include "disktypes.h"
 
-struct tap_disk *tapdisk_server_find_driver_interface(int);
+int
+tap_ctl_open(const int id, const int minor, const int type, const char *file)
+{
+	int err;
+	tapdisk_message_t message;
 
-td_image_t *tapdisk_server_get_shared_image(td_image_t *);
+	memset(&message, 0, sizeof(message));
+	message.type = TAPDISK_MESSAGE_OPEN;
+	message.cookie = minor;
+	message.drivertype = type;
+	message.u.params.storage = TAPDISK_STORAGE_TYPE_DEFAULT;
+	message.u.params.devnum = minor;
 
-struct list_head *tapdisk_server_get_all_vbds(void);
-td_vbd_t *tapdisk_server_get_vbd(td_uuid_t);
-void tapdisk_server_add_vbd(td_vbd_t *);
-void tapdisk_server_remove_vbd(td_vbd_t *);
+	err = snprintf(message.u.params.path,
+		       sizeof(message.u.params.path) - 1, "%s", file);
+	if (err >= sizeof(message.u.params.path)) {
+		printf("name too long\n");
+		return ENAMETOOLONG;
+	}
 
-void tapdisk_server_queue_tiocb(struct tiocb *);
+	err = tap_ctl_connect_send_and_receive(id, &message, 5);
+	if (err)
+		return err;
 
-void tapdisk_server_check_state(void);
+	switch (message.type) {
+	case TAPDISK_MESSAGE_OPEN_RSP:
+		break;
+	case TAPDISK_MESSAGE_ERROR:
+		err = -message.u.response.error;
+		fprintf(stderr, "open failed, err %d\n", err);
+		break;
+	default:
+		printf("got unexpected result '%s' from %d\n",
+		       tapdisk_message_name(message.type), id);
+		err = EINVAL;
+	}
 
-event_id_t tapdisk_server_register_event(char, int, int, event_cb_t, void *);
-void tapdisk_server_unregister_event(event_id_t);
-void tapdisk_server_mask_event(event_id_t, int);
-void tapdisk_server_set_max_timeout(int);
+	return err;
+}
 
-int tapdisk_server_init(void);
-int tapdisk_server_initialize(const char *, const char *);
-int tapdisk_server_complete(void);
-int tapdisk_server_run(void);
-void tapdisk_server_iterate(void);
+int
+tap_ctl_get_driver_id(const char *handle)
+{
+	disk_info_t *info;
+	int n_drivers, i;
 
-int tapdisk_server_openlog(const char *, int, int);
-void tapdisk_server_closelog(void);
-void tapdisk_start_logging(const char *, const char *);
-void tapdisk_stop_logging(void);
+	n_drivers = sizeof(dtypes) / sizeof(dtypes[0]);
 
-#endif
+	for (i = 0; i < n_drivers; ++i) {
+		info = dtypes[i];
+		if (!strncmp(handle, info->handle, sizeof(info->handle)))
+			break;
+	}
+
+	if (i == n_drivers)
+		return -ENOENT;
+
+	if (info->idnum < 0)
+		return -EINVAL;
+
+	return info->idnum;
+}

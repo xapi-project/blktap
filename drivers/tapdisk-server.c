@@ -91,6 +91,12 @@ tapdisk_server_get_shared_image(td_image_t *image)
 	return NULL;
 }
 
+struct list_head *
+tapdisk_server_get_all_vbds(void)
+{
+	return &server.vbds;
+}
+
 td_vbd_t *
 tapdisk_server_get_vbd(uint16_t uuid)
 {
@@ -376,17 +382,20 @@ tapdisk_server_signal_handler(int signal)
 }
 
 int
-tapdisk_server_initialize(const char *read, const char *write)
+tapdisk_server_init(void)
 {
-	int err;
 
 	INIT_LIST_HEAD(&server.vbds);
 
 	scheduler_initialize(&server.scheduler);
 
-	err = tapdisk_server_init_ipc(read, write);
-	if (err)
-		goto fail;
+	return 0;
+}
+
+int
+tapdisk_server_complete(void)
+{
+	int err;
 
 	err = tapdisk_server_init_aio();
 	if (err)
@@ -401,7 +410,30 @@ tapdisk_server_initialize(const char *read, const char *write)
 	return 0;
 
 fail:
-	tapdisk_server_close_ipc();
+	tapdisk_server_close_tlog();
+	tapdisk_server_close_aio();
+	return err;
+}
+
+int
+tapdisk_server_initialize(const char *read, const char *write)
+{
+	int err;
+
+	tapdisk_server_init();
+
+	err = tapdisk_server_init_ipc(read, write);
+	if (err)
+		goto fail;
+
+	err = tapdisk_server_complete();
+	if (err)
+		goto fail;
+
+	return 0;
+
+fail:
+	tapdisk_server_close();
 	return err;
 }
 

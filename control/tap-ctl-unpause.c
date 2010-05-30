@@ -25,42 +25,46 @@
  * NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
  * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
-#ifndef _BLKTAP_2_H_
-#define _BLKTAP_2_H_
+#include <stdio.h>
+#include <errno.h>
+#include <stdlib.h>
+#include <unistd.h>
+#include <string.h>
+#include <getopt.h>
 
-#define MISC_MAJOR_NUMBER              10
+#include "tap-ctl.h"
 
-#define BLKTAP2_MAX_MESSAGE_LEN        256
+int
+tap_ctl_unpause(const int id, const int minor, const int type, const char *file)
+{
+	int err;
+	tapdisk_message_t message;
 
-#define BLKTAP2_RING_MESSAGE_PAUSE     1
-#define BLKTAP2_RING_MESSAGE_RESUME    2
-#define BLKTAP2_RING_MESSAGE_CLOSE     3
+	memset(&message, 0, sizeof(message));
+	message.type = TAPDISK_MESSAGE_RESUME;
+	message.cookie = minor;
+	message.drivertype = type;
 
-#define BLKTAP2_IOCTL_KICK_FE          1
-#define BLKTAP2_IOCTL_ALLOC_TAP        200
-#define BLKTAP2_IOCTL_FREE_TAP         201
-#define BLKTAP2_IOCTL_CREATE_DEVICE    202
-#define BLKTAP2_IOCTL_SET_PARAMS       203
-#define BLKTAP2_IOCTL_PAUSE            204
-#define BLKTAP2_IOCTL_REOPEN           205
-#define BLKTAP2_IOCTL_RESUME           206
+	if (file) {
+		if (snprintf(message.u.params.path,
+			     sizeof(message.u.params.path) - 1, "%s", file) >=
+		    sizeof(message.u.params.path) - 1) {
+			printf("invalid name\n");
+			return ENAMETOOLONG;
+		}
+	}
 
-#define BLKTAP2_CONTROL_NAME           "blktap-control"
-#define BLKTAP2_DIRECTORY              "/dev/xen/blktap-2"
-#define BLKTAP2_CONTROL_DEVICE         BLKTAP2_DIRECTORY"/control"
-#define BLKTAP2_RING_DEVICE            BLKTAP2_DIRECTORY"/blktap"
-#define BLKTAP2_IO_DEVICE              BLKTAP2_DIRECTORY"/tapdev"
+	err = tap_ctl_connect_send_and_receive(id, &message, 15);
+	if (err)
+		return err;
 
-struct blktap2_handle {
-	unsigned int                   ring;
-	unsigned int                   device;
-	unsigned int                   minor;
-};
+	if (message.type == TAPDISK_MESSAGE_RESUME_RSP)
+		err = message.u.response.error;
+	else {
+		err = EINVAL;
+		printf("got unexpected result '%s' from %d\n",
+		       tapdisk_message_name(message.type), id);
+	}
 
-struct blktap2_params {
-	char                           name[BLKTAP2_MAX_MESSAGE_LEN];
-	unsigned long long             capacity;
-	unsigned long                  sector_size;
-};
-
-#endif
+	return err;
+}
