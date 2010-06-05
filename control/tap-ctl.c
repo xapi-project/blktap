@@ -40,18 +40,6 @@ struct command {
 	tap_ctl_func_t            func;
 };
 
-static int
-tap_cli_get_driver_id(const char *handle)
-{
-	int type;
-
-	type = tap_ctl_get_driver_id(handle);
-	if (type < 0)
-		fprintf(stderr, "No such driver '%s': %d\n", handle, type);
-
-	return type;
-}
-
 static void
 tap_cli_list_usage(FILE *stream)
 {
@@ -63,8 +51,8 @@ int
 tap_cli_list(int argc, char **argv)
 {
 	tap_list_t **list, **_entry;
-	int c, id, minor, type, err;
-	const char *driver, *file;
+	int c, id, minor, err;
+	const char *type, *file;
 	pid_t pid;
 
 	err = tap_ctl_list(&list);
@@ -74,8 +62,7 @@ tap_cli_list(int argc, char **argv)
 	id     = -1;
 	minor  = -1;
 	pid    = -1;
-	type   = -1;
-	driver = NULL;
+	type   = NULL;
 	file   = NULL;
 
 	while ((c = getopt(argc, argv, "m:i:p:t:f:h")) != -1) {
@@ -90,10 +77,7 @@ tap_cli_list(int argc, char **argv)
 			pid = atoi(optarg);
 			break;
 		case 't':
-			driver = optarg;
-			type = tap_cli_get_driver_id(driver);
-			if (type < 0)
-				return -type;
+			type = optarg;
 			break;
 		case 'f':
 			file = optarg;
@@ -120,7 +104,7 @@ tap_cli_list(int argc, char **argv)
 		if (pid >= 0 && entry->pid != pid)
 			continue;
 
-		if (driver && entry->driver && strcmp(entry->driver, driver))
+		if (type && entry->type && strcmp(entry->type, type))
 			continue;
 
 		if (file && entry->path && strcmp(entry->path, file))
@@ -140,7 +124,7 @@ tap_cli_list(int argc, char **argv)
 
 		printf("%-3s %2s %8s %4s %10s %s\n",
 		       minor_str, id_str, pid_str, state_str,
-		       entry->driver ? : "-", entry->path ? : "-");
+		       entry->type ? : "-", entry->path ? : "-");
 	}
 
 	tap_ctl_free_list(list);
@@ -192,22 +176,21 @@ tap_cli_pause(int argc, char **argv)
 static void
 tap_cli_unpause_usage(FILE *stream)
 {
-	fprintf(stream, "usage: unpause <-i id> <-m minor> <-t type> <-f file>\n");
+	fprintf(stream, "usage: unpause <-p pid> <-m minor> [-a args]\n");
 }
 
 int
 tap_cli_unpause(int argc, char **argv)
 {
-	char *file;
+	char *args;
 	int c, id, minor, type;
 
 	id    = -1;
 	minor = -1;
-	type  = -1;
-	file  = NULL;
+	args  = NULL;
 
 	optind = 0;
-	while ((c = getopt(argc, argv, "i:m:t:f:h")) != -1) {
+	while ((c = getopt(argc, argv, "i:m:a:h")) != -1) {
 		switch (c) {
 		case 'i':
 			id = atoi(optarg);
@@ -215,11 +198,8 @@ tap_cli_unpause(int argc, char **argv)
 		case 'm':
 			minor = atoi(optarg);
 			break;
-		case 't':
-			type = atoi(optarg);
-			break;
-		case 'f':
-			file = optarg;
+		case 'a':
+			args = optarg;
 			break;
 		case 'h':
 			tap_cli_unpause_usage(stdout);
@@ -227,12 +207,14 @@ tap_cli_unpause(int argc, char **argv)
 		}
 	}
 
-	if (id == -1 || minor == -1) {
-		tap_cli_unpause_usage(stderr);
-		return EINVAL;
-	}
+	if (id == -1 || minor == -1)
+		goto usage;
 
-	return tap_ctl_unpause(id, minor, type, file);
+	return tap_ctl_unpause(id, minor, args);
+
+usage:
+	tap_cli_unpause_usage(stderr);
+	return EINVAL;
 }
 
 static void
@@ -284,22 +266,21 @@ usage:
 static void
 tap_cli_open_usage(FILE *stream)
 {
-	fprintf(stream, "usage: open <-t type> <-f file> <-i id> <-m minor>\n");
+	fprintf(stream, "usage: open <-i id> <-m minor> <-a args>\n");
 }
 
 static int
 tap_cli_open(int argc, char **argv)
 {
-	const char *file;
-	int c, id, minor, type;
+	const char *args;
+	int c, id, minor;
 
 	id    = -1;
-	type  = -1;
 	minor = -1;
-	file  = NULL;
+	args  = NULL;
 
 	optind = 0;
-	while ((c = getopt(argc, argv, "i:m:t:f:h")) != -1) {
+	while ((c = getopt(argc, argv, "i:m:a:h")) != -1) {
 		switch (c) {
 		case 'i':
 			id = atoi(optarg);
@@ -307,13 +288,8 @@ tap_cli_open(int argc, char **argv)
 		case 'm':
 			minor = atoi(optarg);
 			break;
-		case 't':
-			type = tap_cli_get_driver_id(optarg);
-			if (type < 0)
-				return -type;
-			break;
-		case 'f':
-			file = optarg;
+		case 'a':
+			args = optarg;
 			break;
 		case 'h':
 			tap_cli_open_usage(stdout);
@@ -321,10 +297,10 @@ tap_cli_open(int argc, char **argv)
 		}
 	}
 
-	if (id == -1 || minor == -1 || type == -1 || !file)
+	if (id == -1 || minor == -1 || !args)
 		goto usage;
 
-	return tap_ctl_open(id, minor, type, file);
+	return tap_ctl_open(id, minor, args);
 
 usage:
 	tap_cli_open_usage(stderr);

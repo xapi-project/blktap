@@ -36,11 +36,16 @@
 #include "tap-ctl.h"
 #include "blktap2.h"
 #include "list.h"
-#include "disktypes.h"
+#include "tapdisk-disktype.h"
 
 static void
 free_list(tap_list_t *entry)
 {
+	if (entry->type) {
+		free(entry->type);
+		entry->type = NULL;
+	}
+
 	if (entry->path) {
 		free(entry->path);
 		entry->path = NULL;
@@ -49,46 +54,50 @@ free_list(tap_list_t *entry)
 	free(entry);
 }
 
+int
+_parse_params(const char *params, char **type, char **path)
+{
+	char *ptr;
+	size_t len;
+
+	ptr = strchr(params, ':');
+	if (!ptr)
+		return -EINVAL;
+
+	len = ptr - params;
+
+	*type = strndup(params, len);
+	*path =  strdup(params + len + 1);
+
+	if (!*type || !*path) {
+		free(*type);
+		*type = NULL;
+
+		free(*path);
+		*path = NULL;
+
+		return -errno;
+	}
+
+	return 0;
+}
+
 static int
 init_list(tap_list_t *entry,
 	  int tap_id, pid_t tap_pid, int vbd_minor, int vbd_state,
-	  const char *driver, const char *vdi_path)
+	  const char *params)
 {
+	int err = 0;
 
 	entry->id     = tap_id;
 	entry->pid    = tap_pid;
 	entry->minor  = vbd_minor;
 	entry->state  = vbd_state;
-	entry->driver = driver;
-	entry->path   = vdi_path ? strdup(vdi_path) : NULL;
 
-	if (vdi_path && !entry->path)
-		return -ENOMEM;
+	if (params)
+		err = _parse_params(params, &entry->type, &entry->path);
 
-	return 0;
-}
-
-static tap_list_t *
-alloc_list(int tap_id, pid_t tap_pid, int vbd_minor, int vbd_state, const char *vdi_driver, const char *vdi_path)
-{
-	tap_list_t *entry;
-	int err;
-
-	entry = malloc(sizeof(tap_list_t));
-	if (!entry)
-		goto fail;
-
-	err = init_list(entry, tap_id, tap_pid, vbd_minor, vbd_state, vdi_driver, vdi_path);
-	if (err)
-		goto fail;
-
-	return entry;
-
-fail:
-	if (entry)
-		free_list(entry);
-
-	return NULL;
+	return err;
 }
 
 void
@@ -302,35 +311,9 @@ fail:
 struct tapdisk_list {
 	int  minor;
 	int  state;
-	const char *driver;
-	char *path;
+	char *params;
 	struct list_head entry;
 };
-
-static int
-_tap_ctl_get_driver_handle(int id, const char **_handle)
-{
-	disk_info_t *info;
-	int n_drivers, i;
-
-	n_drivers = sizeof(dtypes) / sizeof(dtypes[0]);
-
-	for (i = 0; i < n_drivers; ++i) {
-		info = dtypes[i];
-		if (info->idnum == id)
-			break;
-	}
-
-	if (i == n_drivers)
-		return -ENOENT;
-
-	if (info->idnum < 0)
-		return -EINVAL;
-
-	*_handle = info->handle;
-
-	return 0;
-}
 
 int
 _tap_ctl_list_tapdisk(int id, struct list_head *_list)
@@ -371,28 +354,23 @@ _tap_ctl_list_tapdisk(int id, struct list_head *_list)
 
 		tl->minor  = message.u.list.minor;
 		tl->state  = message.u.list.state;
-		tl->path   = NULL;
-		tl->driver = NULL;
 		if (message.u.list.path[0] != 0) {
-			tl->path = strndup(message.u.list.path,
-					   sizeof(message.u.list.path));
-			if (!tl->path) {
+			tl->params = strndup(message.u.list.path,
+					     sizeof(message.u.list.path));
+			if (!tl->params) {
 				err = -errno;
 				break;
 			}
+		} else
+			tl->params = NULL;
 
-			err = _tap_ctl_get_driver_handle(message.drivertype,
-							 &tl->driver);
-			if (err)
-				break;
-		}
 		list_add(&tl->entry, &list);
 	} while (1);
 
 	if (err)
 		list_for_each_entry_safe(tl, next, &list, entry) {
 			list_del(&tl->entry);
-			free(tl->path);
+			free(tl->params);
 			free(tl);
 		}
 
@@ -409,8 +387,10 @@ _tap_ctl_free_tapdisks(struct tapdisk *tapv, int n_taps)
 	for (tap = tapv; tap < &tapv[n_taps]; ++tap) {
 		struct tapdisk_list *tl;
 
-		list_for_each_entry(tl, &tap->list, entry)
+		list_for_each_entry(tl, &tap->list, entry) {
+			free(tl->params);
 			free(tl);
+		}
 	}
 
 	free(tapv);
@@ -437,7 +417,7 @@ _tap_list_join3(int n_minors, int *minorv, int n_taps, struct tapdisk *tapv,
 
 		/* orphaned tapdisk */
 		if (list_empty(&tap->list)) {
-			err = init_list(*_entry++, tap->id, tap->pid, -1, -1, NULL, NULL);
+			err = init_list(*_entry++, tap->id, tap->pid, -1, -1, NULL);
 			if (err)
 				goto fail;
 			continue;
@@ -447,7 +427,7 @@ _tap_list_join3(int n_minors, int *minorv, int n_taps, struct tapdisk *tapv,
 
 			err = init_list(*_entry++,
 					tap->id, tap->pid,
-					tl->minor, tl->state, tl->driver, tl->path);
+					tl->minor, tl->state, tl->params);
 			if (err)
 				goto fail;
 
@@ -467,7 +447,7 @@ _tap_list_join3(int n_minors, int *minorv, int n_taps, struct tapdisk *tapv,
 	for (_m = 0; _m < n_minors; ++_m) {
 		int minor = minorv[_m];
 		if (minor >= 0) {
-			err = init_list(*_entry++, -1, -1, minor, -1, NULL, NULL);
+			err = init_list(*_entry++, -1, -1, minor, -1, NULL);
 			if (err)
 				goto fail;
 		}

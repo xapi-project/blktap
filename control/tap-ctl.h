@@ -57,7 +57,7 @@ typedef struct {
 	pid_t       pid;
 	int         minor;
 	int         state;
-	const char *driver;
+	char       *type;
 	char       *path;
 } tap_list_t;
 
@@ -73,7 +73,7 @@ int tap_ctl_free(int argc, char **argv);
 int _tap_ctl_free(const int minor);
 
 int tap_ctl_create(int argc, char **argv);
-int _tap_ctl_create(const int type, const char *name, char **devname);
+int _tap_ctl_create(const char *params, char **devname);
 
 int tap_ctl_destroy(int argc, char **argv);
 int _tap_ctl_destroy(const int id, const int minor);
@@ -88,14 +88,14 @@ int _tap_ctl_attach(const int id, const int minor);
 int tap_ctl_detach(int argc, char **argv);
 int _tap_ctl_detach(const int id, const int minor);
 
-int tap_ctl_open(const int id, const int minor, const int type, const char *file);
+int tap_ctl_open(const int id, const int minor, const char *params);
 
 int tap_ctl_close(int argc, char **argv);
 int _tap_ctl_close(const int id, const int minor, const int force);
 
 int tap_ctl_pause(const int id, const int minor);
 
-int tap_ctl_unpause(const int id, const int minor, const int type, const char *file);
+int tap_ctl_unpause(const int id, const int minor, const char *args);
 
 int tap_ctl_blk_major(void);
 

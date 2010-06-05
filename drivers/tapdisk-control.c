@@ -46,6 +46,7 @@
 #include "tapdisk-utils.h"
 #include "tapdisk-server.h"
 #include "tapdisk-message.h"
+#include "tapdisk-disktype.h"
 
 struct tapdisk_control {
 	char              *path;
@@ -265,15 +266,17 @@ tapdisk_control_list(struct tapdisk_control_connection *connection,
 		count++;
 
 	list_for_each_entry(vbd, head, next) {
-		response.drivertype     = vbd->type;
 		response.u.list.count   = count--;
 		response.u.list.minor   = vbd->minor;
 		response.u.list.state   = vbd->state;
 		response.u.list.path[0] = 0;
 
 		if (vbd->name)
-			strncpy(response.u.list.path, vbd->name,
-				sizeof(response.u.list.path));
+			snprintf(response.u.list.path,
+				 sizeof(response.u.list.path),
+				 "%s:%s",
+				 tapdisk_disk_types[vbd->type]->name,
+				 vbd->name);
 
 		tapdisk_control_write_message(connection->socket, &response, 2);
 	}
@@ -379,6 +382,11 @@ tapdisk_control_detach_vbd(struct tapdisk_control_connection *connection,
 		goto out;
 	}
 
+	if (vbd->name) {
+		err = -EBUSY;
+		goto out;
+	}
+
 	tapdisk_vbd_detach(vbd);
 
 	if (list_empty(&vbd->images)) {
@@ -401,12 +409,13 @@ static void
 tapdisk_control_open_image(struct tapdisk_control_connection *connection,
 			   tapdisk_message_t *request)
 {
-	int err;
+	int err, type;
 	image_t image;
 	td_vbd_t *vbd;
 	td_flag_t flags;
 	tapdisk_message_t response;
 	struct blktap2_params params;
+	const char *path;
 
 	vbd = tapdisk_server_get_vbd(request->cookie);
 	if (!vbd) {
@@ -436,9 +445,14 @@ tapdisk_control_open_image(struct tapdisk_control_connection *connection,
 	if (request->u.params.flags & TAPDISK_MESSAGE_FLAG_LOG_DIRTY)
 		flags |= TD_OPEN_LOG_DIRTY;
 
+	type = tapdisk_disktype_parse_params(request->u.params.path, &path);
+	if (type < 0) {
+		err = type;
+		goto out;
+	}
+
 	err = tapdisk_vbd_open_vdi(vbd,
-				   request->u.params.path,
-				   request->drivertype,
+				   type, path,
 				   request->u.params.storage,
 				   flags);
 	if (err)
@@ -576,8 +590,8 @@ tapdisk_control_resume_vbd(struct tapdisk_control_connection *connection,
 	int err;
 	td_vbd_t *vbd;
 	tapdisk_message_t response;
-	const char *path;
-	uint16_t type;
+	const char *path = NULL;
+	int type = -1;
 	size_t len;
 
 	memset(&response, 0, sizeof(response));
@@ -591,12 +605,15 @@ tapdisk_control_resume_vbd(struct tapdisk_control_connection *connection,
 	}
 
 	len = strnlen(request->u.params.path, sizeof(request->u.params.path));
-	if (len)
-		path = request->u.params.path;
-	else
-		path = NULL;
+	if (len) {
+		type = tapdisk_disktype_parse_params(request->u.params.path, &path);
+		if (type < 0) {
+			err = type;
+			goto out;
+		}
+	}
 
-	err = tapdisk_vbd_resume(vbd, path, request->drivertype);
+	err = tapdisk_vbd_resume(vbd, type, path);
 
 out:
 	response.cookie = request->cookie;

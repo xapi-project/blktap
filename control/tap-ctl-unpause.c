@@ -35,7 +35,7 @@
 #include "tap-ctl.h"
 
 int
-tap_ctl_unpause(const int id, const int minor, const int type, const char *file)
+tap_ctl_unpause(const int id, const int minor, const char *params)
 {
 	int err;
 	tapdisk_message_t message;
@@ -43,16 +43,10 @@ tap_ctl_unpause(const int id, const int minor, const int type, const char *file)
 	memset(&message, 0, sizeof(message));
 	message.type = TAPDISK_MESSAGE_RESUME;
 	message.cookie = minor;
-	message.drivertype = type;
 
-	if (file) {
-		if (snprintf(message.u.params.path,
-			     sizeof(message.u.params.path) - 1, "%s", file) >=
-		    sizeof(message.u.params.path) - 1) {
-			printf("invalid name\n");
-			return ENAMETOOLONG;
-		}
-	}
+	if (params)
+		strncpy(message.u.params.path, params,
+			sizeof(message.u.params.path) - 1);
 
 	err = tap_ctl_connect_send_and_receive(id, &message, 15);
 	if (err)

@@ -45,7 +45,6 @@
 #include <syslog.h>
 
 #include "tapdisk.h"
-#include "disktypes.h"
 #include "blktaplib.h"
 #include "tapdisk-log.h"
 #include "tapdisk-utils.h"
@@ -180,40 +179,6 @@ tapdisk_namedup(char **dup, const char *name)
 		return -ENOMEM;
 
 	return 0;
-}
-
-int
-tapdisk_parse_disk_type(const char *params, char **_path, int *_type)
-{
-	int i, err, size;
-	char *ptr, *path, handle[10];
-
-	if (strlen(params) + 1 >= MAX_NAME_LEN)
-		return -ENAMETOOLONG;
-
-	ptr = strchr(params, ':');
-	if (!ptr)
-		return -EINVAL;
-
-	path = ptr + 1;
-	memcpy(handle, params, (ptr - params));
-	handle[(ptr - params)] = '\0';
-
-	size = sizeof(dtypes) / sizeof(disk_info_t *);
-	for (i = 0; i < size; i++) {
-		if (strncmp(handle, dtypes[i]->handle, (ptr - params)))
-			continue;
-
-		if (dtypes[i]->idnum == -1)
-			return -ENODEV;
-
-		*_type = dtypes[i]->idnum;
-		*_path = path;
-
-		return 0;
-	}
-
-	return -ENODEV;
 }
 
 /*Get Image size, secsize*/

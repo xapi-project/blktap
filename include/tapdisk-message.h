@@ -91,7 +91,6 @@ struct tapdisk_message_list {
 struct tapdisk_message {
 	uint16_t                         type;
 	uint16_t                         cookie;
-	uint16_t                         drivertype;
 
 	union {
 		pid_t                    tapdisk_pid;

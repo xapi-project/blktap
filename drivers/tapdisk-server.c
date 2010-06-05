@@ -32,13 +32,11 @@
 #include <sys/ioctl.h>
 #include <sys/signal.h>
 
-#define TAPDISK
 #include "tapdisk-syslog.h"
 #include "tapdisk-server.h"
 #include "tapdisk-driver.h"
 #include "tapdisk-interface.h"
 #include "tapdisk-log.h"
-#include "disktypes.h"
 
 #define DBG(_level, _f, _a...)       tlog_write(_level, _f, ##_a)
 #define ERR(_err, _f, _a...)         tlog_error(_err, _f, ##_a)
@@ -60,18 +58,6 @@ static tapdisk_server_t server;
 
 #define tapdisk_server_for_each_vbd(vbd, tmp)			        \
 	list_for_each_entry_safe(vbd, tmp, &server.vbds, next)
-
-struct tap_disk *
-tapdisk_server_find_driver_interface(int type)
-{
-	int n;
-
-	n = sizeof(dtypes) / sizeof(struct disk_info_t *);
-	if (type > n)
-		return NULL;
-
-	return dtypes[type]->drv;
-}
 
 td_image_t *
 tapdisk_server_get_shared_image(td_image_t *image)

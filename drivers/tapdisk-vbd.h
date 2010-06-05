@@ -173,12 +173,11 @@ tapdisk_vbd_next_image(td_image_t *image)
 td_vbd_t *tapdisk_vbd_create(td_uuid_t);
 int tapdisk_vbd_initialize(int, int, td_uuid_t);
 void tapdisk_vbd_set_callback(td_vbd_t *, td_vbd_cb_t, void *);
-int tapdisk_vbd_open(td_vbd_t *, const char *, uint16_t,
+int tapdisk_vbd_open(td_vbd_t *, int, const char *,
 		     uint16_t, int, const char *, td_flag_t);
 int tapdisk_vbd_close(td_vbd_t *);
 
-int tapdisk_vbd_open_vdi(td_vbd_t *, const char *,
-			 uint16_t, uint16_t, td_flag_t);
+int tapdisk_vbd_open_vdi(td_vbd_t *, int, const char *, uint16_t, td_flag_t);
 void tapdisk_vbd_close_vdi(td_vbd_t *);
 
 int tapdisk_vbd_attach(td_vbd_t *, const char *, int);
@@ -193,7 +192,7 @@ int tapdisk_vbd_start_queue(td_vbd_t *);
 int tapdisk_vbd_issue_requests(td_vbd_t *);
 int tapdisk_vbd_kill_queue(td_vbd_t *);
 int tapdisk_vbd_pause(td_vbd_t *);
-int tapdisk_vbd_resume(td_vbd_t *, const char *, uint16_t);
+int tapdisk_vbd_resume(td_vbd_t *, int, const char *);
 int tapdisk_vbd_kick(td_vbd_t *);
 void tapdisk_vbd_check_state(td_vbd_t *);
 void tapdisk_vbd_check_progress(td_vbd_t *);

@@ -37,11 +37,11 @@
 static void
 usage(void)
 {
-	printf("usage: create <-t type> <-f file> [-d device name]\n");
+	printf("usage: create <-a args> [-d device name]\n");
 }
 
 int
-_tap_ctl_create(const int type, const char *file, char **devname)
+_tap_ctl_create(const char *params, char **devname)
 {
 	int err, id;
 
@@ -57,7 +57,7 @@ _tap_ctl_create(const int type, const char *file, char **devname)
 	if (err)
 		goto destroy;
 
-	err = tap_ctl_open(id, id, type, file);
+	err = tap_ctl_open(id, id, params);
 	if (err)
 		goto detach;
 
@@ -74,20 +74,16 @@ int
 tap_ctl_create(int argc, char **argv)
 {
 	int c, err, type;
-	char *file, *devname;
+	char *args, *devname;
 
-	type    = -1;
-	file    = NULL;
+	args    = NULL;
 	devname = NULL;
 
 	optind = 0;
-	while ((c = getopt(argc, argv, "t:f:d:h")) != -1) {
+	while ((c = getopt(argc, argv, "a:d:h")) != -1) {
 		switch (c) {
-		case 't':
-			type = atoi(optarg);
-			break;
-		case 'f':
-			file = optarg;
+		case 'a':
+			args = optarg;
 			break;
 		case 'd':
 			devname = optarg;
@@ -98,12 +94,12 @@ tap_ctl_create(int argc, char **argv)
 		}
 	}
 
-	if (!file || type == -1) {
+	if (!args) {
 		usage();
 		return EINVAL;
 	}
 
-	err = _tap_ctl_create(type, file, &devname);
+	err = _tap_ctl_create(args, &devname);
 	if (!err)
 		printf("%s\n", devname);
 

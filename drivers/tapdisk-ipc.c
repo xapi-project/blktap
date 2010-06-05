@@ -36,6 +36,7 @@
 #include "tapdisk-ipc.h"
 #include "tapdisk-vbd.h"
 #include "tapdisk-server.h"
+#include "tapdisk-disktype.h"
 
 static void
 tapdisk_ipc_read_event(event_id_t id, char mode, void *private)
@@ -277,6 +278,8 @@ tapdisk_ipc_read(td_ipc_t *ipc)
 		image_t image;
 		char *devname;
 		td_flag_t flags;
+		int type;
+		const char *path;
 
 		flags = 0;
 
@@ -297,9 +300,14 @@ tapdisk_ipc_read(td_ipc_t *ipc)
 		if (err == -1)
 			goto fail;
 
+		type = tapdisk_disktype_parse_params(message.u.params.path, &path);
+		if (type < 0) {
+			err = type;
+			goto fail;
+		}
+
 		err   = tapdisk_vbd_open(vbd,
-					 message.u.params.path,
-					 message.drivertype,
+					 type, path,
 					 message.u.params.storage,
 					 message.u.params.devnum,
 					 devname, flags);
@@ -325,12 +333,17 @@ tapdisk_ipc_read(td_ipc_t *ipc)
 		tapdisk_vbd_pause(vbd);
 		return 0; /* response written asynchronously */
 
-	case TAPDISK_MESSAGE_RESUME:
-		tapdisk_vbd_resume(vbd,
-				   message.u.params.path,
-				   message.drivertype);
-		return 0; /* response written asynchronously */
+	case TAPDISK_MESSAGE_RESUME: {
+		int type;
+		const char *path;
 
+		type = tapdisk_disktype_parse_params(message.u.params.path, &path);
+		if (type < 0)
+			return type;
+
+		tapdisk_vbd_resume(vbd, type, path);
+		return 0; /* response written asynchronously */
+	}
 	case TAPDISK_MESSAGE_CLOSE:
 		tapdisk_vbd_close(vbd);
 		return 0; /* response written asynchronously */

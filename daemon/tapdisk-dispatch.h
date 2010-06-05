@@ -31,6 +31,7 @@
 #include <sys/select.h>
 
 #include "xs_api.h"
+#define TAPDISK
 #include "blktaplib.h"
 #include "tapdisk-message.h"
 
@@ -104,6 +105,7 @@ struct tapdisk_channel {
 	char                     *path;
 	char                     *frontpath;
 	char                     *params;
+	char                     *vdi_type;
 	char                     *vdi_path;
 	char                     *uuid_str;
 	char                     *start_str;

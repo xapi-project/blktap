@@ -37,6 +37,7 @@
 #include "scheduler.h"
 #include "tapdisk-vbd.h"
 #include "tapdisk-server.h"
+#include "tapdisk-disktype.h"
 
 #define POLL_READ                        0
 #define POLL_WRITE                       1
@@ -349,7 +350,7 @@ tapdisk_stream_open_image(struct tapdisk_stream *s, const char *path, int type)
 
 	tapdisk_vbd_set_callback(s->vbd, tapdisk_stream_dequeue, s);
 
-	err = tapdisk_vbd_open_vdi(s->vbd, path, type,
+	err = tapdisk_vbd_open_vdi(s->vbd, type, path,
 				   TAPDISK_STORAGE_TYPE_DEFAULT,
 				   TD_OPEN_RDONLY);
 	if (err)
@@ -545,7 +546,9 @@ int
 main(int argc, char *argv[])
 {
 	int c, err, type;
-	char *params, *path;
+	const char *params;
+	const disk_info_t *info;
+	const char *path;
 	uint64_t count, skip;
 	struct tapdisk_stream stream;
 
@@ -575,8 +578,9 @@ main(int argc, char *argv[])
 	if (!params)
 		usage(argv[0], EINVAL);
 
-	err = tapdisk_parse_disk_type(params, &path, &type);
-	if (err) {
+	type = tapdisk_disktype_parse_params(params, &path);
+	if (type < 0) {
+		err = type;
 		fprintf(stderr, "invalid argument %s: %d\n", params, err);
 		return err;
 	}

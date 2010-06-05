@@ -40,6 +40,7 @@ TAP-OBJS  += tapdisk-ipc.o
 TAP-OBJS  += tapdisk-vbd.o
 TAP-OBJS  += tapdisk-image.o
 TAP-OBJS  += tapdisk-driver.o
+TAP-OBJS  += tapdisk-disktype.o
 TAP-OBJS  += tapdisk-interface.o
 TAP-OBJS  += tapdisk-server.o
 TAP-OBJS  += tapdisk-queue.o

@@ -39,7 +39,6 @@
 #include <syslog.h>
 
 #include <xs.h>
-#include "disktypes.h"
 #include "tapdisk-dispatch.h"
 
 #define TAPDISK_DAEMON_DOMID_WATCH   "domid-watch"
@@ -73,10 +72,6 @@ tapdisk_daemon_print_drivers(void)
 
 	DPRINTF("blktap-daemon: v1.0.2\n");
 	DPRINTF("Syslog facility %d\n", tapdisk_daemon_log_facility);
-
-	size = sizeof(dtypes) / sizeof(disk_info_t *);
-	for (i = 0; i < size; i++)
-		DPRINTF("Found driver: [%s]\n", dtypes[i]->name);
 }
 
 static int
@@ -680,7 +675,7 @@ tapdisk_daemon_maybe_clone_channel(tapdisk_channel_t *channel)
 
 	/* check if we already have a process started */
 	tapdisk_daemon_for_each_channel(c, tmp)
-		if (c->drivertype == channel->drivertype) {
+		if (!strcmp(c->vdi_type, channel->vdi_type)) {
 			channel->write_fd    = c->write_fd;
 			channel->read_fd     = c->read_fd;
 			channel->channel_id  = c->channel_id;

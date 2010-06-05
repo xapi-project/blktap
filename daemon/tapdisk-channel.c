@@ -37,7 +37,6 @@
 #include <sys/resource.h>
 
 #include <xs.h>
-#include "disktypes.h"
 #include "tapdisk-dispatch.h"
 
 static inline const char*
@@ -524,16 +523,13 @@ tapdisk_channel_send_open_request(tapdisk_channel_t *channel)
 
 	memset(&message, 0, sizeof(tapdisk_message_t));
 
-	len = strlen(channel->vdi_path);
-
 	message.type              = TAPDISK_MESSAGE_OPEN;
 	message.cookie            = channel->cookie;
-	message.drivertype        = channel->drivertype;
 	message.u.params.storage  = channel->storage;
 	message.u.params.devnum   = channel->minor;
 	message.u.params.domid    = channel->domid;
-	message.u.params.path_len = len;
-	strncpy(message.u.params.path, channel->vdi_path, len);
+	snprintf(message.u.params.path, sizeof(message.u.params.path),
+		 "%s:%s", channel->vdi_type, channel->vdi_path);
 
 	if (channel->mode == 'r')
 		message.u.params.flags |= TAPDISK_MESSAGE_FLAG_RDONLY;
@@ -581,7 +577,6 @@ tapdisk_channel_send_shutdown_request(tapdisk_channel_t *channel)
 	memset(&message, 0, sizeof(tapdisk_message_t));
 
 	message.type       = TAPDISK_MESSAGE_CLOSE;
-	message.drivertype = channel->drivertype;
 	message.cookie     = channel->cookie;
 
 	return tapdisk_channel_send_message(channel, &message, 2);
@@ -595,9 +590,8 @@ tapdisk_channel_send_force_shutdown_request(tapdisk_channel_t *channel)
 	memset(&message, 0, sizeof(tapdisk_message_t));
 
 	message.type       = TAPDISK_MESSAGE_FORCE_SHUTDOWN;
-	message.drivertype = channel->drivertype;
 	message.cookie     = channel->cookie;
-	
+
 	return tapdisk_channel_send_message(channel, &message, 2);
 }
 
@@ -629,7 +623,6 @@ tapdisk_channel_send_pid_request(tapdisk_channel_t *channel)
 	memset(&message, 0, sizeof(tapdisk_message_t));
 
 	message.type       = TAPDISK_MESSAGE_PID;
-	message.drivertype = channel->drivertype;
 	message.cookie     = channel->cookie;
 
 	err = tapdisk_channel_send_message(channel, &message, 2);
@@ -667,7 +660,6 @@ tapdisk_channel_send_pause_request(tapdisk_channel_t *channel)
 	DPRINTF("pausing %s\n", channel->path);
 
 	message.type       = TAPDISK_MESSAGE_PAUSE;
-	message.drivertype = channel->drivertype;
 	message.cookie     = channel->cookie;
 
 	return tapdisk_channel_send_message(channel, &message, 2);
@@ -796,10 +788,9 @@ tapdisk_channel_send_resume_request(tapdisk_channel_t *channel)
 	DPRINTF("resuming %s\n", channel->path);
 
 	message.type              = TAPDISK_MESSAGE_RESUME;
-	message.drivertype        = channel->drivertype;
 	message.cookie            = channel->cookie;
-	message.u.params.path_len = len;
-	strncpy(message.u.params.path, channel->vdi_path, len);
+	snprintf(message.u.params.path, sizeof(message.u.params.path),
+		 "%s:%s", channel->vdi_type, channel->vdi_path);
 
 	return tapdisk_channel_send_message(channel, &message, 2);
 }
@@ -1545,59 +1536,49 @@ out:
 static int
 tapdisk_channel_parse_params(tapdisk_channel_t *channel)
 {
-	int i, size, err;
-	unsigned int len;
-	char *ptr, *path, handle[10];
-	char *vdi_type;
-	char *vtype;
+	char *vdi_type_path;
+	char *ptr, *path;
+	size_t len;
+	int err;
 
 	path = channel->params;
-	size = sizeof(dtypes) / sizeof(disk_info_t *);
-
-	if (strlen(path) + 1 >= TAPDISK_MESSAGE_MAX_PATH_LENGTH)
-		goto fail;
 
 	ptr = strchr(path, ':');
 	if (!ptr)
 		goto fail;
 
 	channel->vdi_path = ptr + 1;
-	memcpy(handle, path, (ptr - path));
-	ptr  = handle + (ptr - path);
-	*ptr = '\0';
+	channel->vdi_type = strndup(path, ptr - path);
 
-	err = asprintf(&vdi_type, "%s/sm-data/vdi-type", channel->path);
+	err = asprintf(&vdi_type_path, "%s/sm-data/vdi-type", channel->path);
 	if (err == -1)
 		goto fail;
 
-	if (xs_exists(channel->xsh, vdi_type)) {
-		vtype = xs_read(channel->xsh, XBT_NULL, vdi_type, &len);
-		free(vdi_type);
-		if (!vtype)
+	if (xs_exists(channel->xsh, vdi_type_path)) {
+		free(channel->vdi_type);
+
+		channel->vdi_type =
+			xs_read(channel->xsh, XBT_NULL, vdi_type_path, &len);
+		free(vdi_type_path);
+
+		if (!channel->vdi_type)
 			goto fail;
-		if (len >= sizeof(handle) - 1) {
-			free(vtype);
-			goto fail;
-		}
-		sprintf(handle, "%s", vtype);
-		free(vtype);
 	}
 
-	for (i = 0; i < size; i++) {
-		if (strncmp(handle, dtypes[i]->handle, (ptr - path)))
-			continue;
+	len  = strlen(channel->vdi_type);
+	len += strlen(":");
+	len += strlen(channel->vdi_path);
 
-		if (dtypes[i]->idnum == -1)
-			goto fail;
+	if (len + 1 >= TAPDISK_MESSAGE_MAX_PATH_LENGTH)
+		goto fail;
 
-		channel->drivertype = dtypes[i]->idnum;
-		return 0;
-	}
+	return 0;
 
 fail:
 	EPRINTF("%s: invalid blktap params: %s\n",
 		channel->path, channel->params);
 	channel->vdi_path = NULL;
+	channel->vdi_type = NULL;
 	return -EINVAL;
 }
 

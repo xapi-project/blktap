@@ -34,10 +34,9 @@
 
 #include "tap-ctl.h"
 #include "blktaplib.h"
-#include "disktypes.h"
 
 int
-tap_ctl_open(const int id, const int minor, const int type, const char *file)
+tap_ctl_open(const int id, const int minor, const char *args)
 {
 	int err;
 	tapdisk_message_t message;
@@ -45,12 +44,11 @@ tap_ctl_open(const int id, const int minor, const int type, const char *file)
 	memset(&message, 0, sizeof(message));
 	message.type = TAPDISK_MESSAGE_OPEN;
 	message.cookie = minor;
-	message.drivertype = type;
 	message.u.params.storage = TAPDISK_STORAGE_TYPE_DEFAULT;
 	message.u.params.devnum = minor;
 
 	err = snprintf(message.u.params.path,
-		       sizeof(message.u.params.path) - 1, "%s", file);
+		       sizeof(message.u.params.path) - 1, "%s", args);
 	if (err >= sizeof(message.u.params.path)) {
 		printf("name too long\n");
 		return ENAMETOOLONG;
@@ -74,27 +72,4 @@ tap_ctl_open(const int id, const int minor, const int type, const char *file)
 	}
 
 	return err;
-}
-
-int
-tap_ctl_get_driver_id(const char *handle)
-{
-	disk_info_t *info;
-	int n_drivers, i;
-
-	n_drivers = sizeof(dtypes) / sizeof(dtypes[0]);
-
-	for (i = 0; i < n_drivers; ++i) {
-		info = dtypes[i];
-		if (!strncmp(handle, info->handle, sizeof(info->handle)))
-			break;
-	}
-
-	if (i == n_drivers)
-		return -ENOENT;
-
-	if (info->idnum < 0)
-		return -EINVAL;
-
-	return info->idnum;
 }

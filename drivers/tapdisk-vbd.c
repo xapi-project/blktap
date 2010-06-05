@@ -42,10 +42,11 @@
 #include "tapdisk-image.h"
 #include "tapdisk-driver.h"
 #include "tapdisk-server.h"
+#include "tapdisk-vbd.h"
+#include "tapdisk-disktype.h"
 #include "tapdisk-interface.h"
 
 #include "blktap2.h"
-#include "disktypes.h"
 
 #define DBG(_level, _f, _a...) tlog_write(_level, _f, ##_a)
 #define ERR(_err, _f, _a...) tlog_error(_err, _f, ##_a)
@@ -724,17 +725,18 @@ fail:
 }
 
 int
-tapdisk_vbd_open_vdi(td_vbd_t *vbd, const char *path,
-		     uint16_t drivertype, uint16_t storage, td_flag_t flags)
+tapdisk_vbd_open_vdi(td_vbd_t *vbd, int type, const char *path,
+		     uint16_t storage, td_flag_t flags)
 {
+	const disk_info_t *info;
 	int i, err;
-	struct tap_disk *ops;
 
-	ops = tapdisk_server_find_driver_interface(drivertype);
-	if (!ops)
+	info = tapdisk_disk_types[type];
+	if (!info)
 		return -EINVAL;
-	DPRINTF("Loaded %s driver for vbd %u %s 0x%08x\n",
-		ops->disk_type, vbd->uuid, path, flags);
+
+	DPRINTF("Loading driver '%s' for vbd %u %s 0x%08x\n",
+		info->name, vbd->uuid, path, flags);
 
 	err = tapdisk_namedup(&vbd->name, path);
 	if (err)
@@ -742,7 +744,7 @@ tapdisk_vbd_open_vdi(td_vbd_t *vbd, const char *path,
 
 	vbd->flags   = flags;
 	vbd->storage = storage;
-	vbd->type    = drivertype;
+	vbd->type    = type;
 
 	for (i = 0; i < TD_VBD_EIO_RETRIES; i++) {
 		err = __tapdisk_vbd_open_vdi(vbd, 0);
@@ -879,12 +881,12 @@ fail:
 }
 
 int
-tapdisk_vbd_open(td_vbd_t *vbd, const char *name, uint16_t type,
+tapdisk_vbd_open(td_vbd_t *vbd, int type, const char *path,
 		 uint16_t storage, int minor, const char *ring, td_flag_t flags)
 {
 	int err;
 
-	err = tapdisk_vbd_open_vdi(vbd, name, type, storage, flags);
+	err = tapdisk_vbd_open_vdi(vbd, type, path, storage, flags);
 	if (err)
 		goto out;
 
@@ -1165,7 +1167,7 @@ tapdisk_vbd_pause(td_vbd_t *vbd)
 }
 
 int
-tapdisk_vbd_resume(td_vbd_t *vbd, const char *path, uint16_t drivertype)
+tapdisk_vbd_resume(td_vbd_t *vbd, int type, const char *path)
 {
 	int i, err;
 
@@ -1185,7 +1187,7 @@ tapdisk_vbd_resume(td_vbd_t *vbd, const char *path, uint16_t drivertype)
 			tapdisk_ipc_write(&vbd->ipc, TAPDISK_MESSAGE_ERROR);
 			return -EINVAL;
 		}
-		vbd->type = drivertype;
+		vbd->type = type;
 	}
 
 	for (i = 0; i < TD_VBD_EIO_RETRIES; i++) {
@@ -1839,7 +1841,8 @@ static int
 tapdisk_vbd_resume_ring(td_vbd_t *vbd)
 {
 	int i, err, type;
-	char *path, message[BLKTAP2_MAX_MESSAGE_LEN];
+	char message[BLKTAP2_MAX_MESSAGE_LEN];
+	const char *path;
 
 	memset(message, 0, sizeof(message));
 
@@ -1854,8 +1857,9 @@ tapdisk_vbd_resume_ring(td_vbd_t *vbd)
 		return err;
 	}
 
-	err = tapdisk_parse_disk_type(message, &path, &type);
-	if (err) {
+	type = tapdisk_disktype_parse_params(message, &path);
+	if (type < 0) {
+		err = type;
 		EPRINTF("%s: invalid resume string %s\n", vbd->name, message);
 		goto out;
 	}
