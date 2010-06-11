@@ -39,9 +39,9 @@ rm -rf $RPM_BUILD_ROOT
 %files
 %defattr(-,root,root,-)
 %doc
-%{_libdir}/libblktap.so.*
-%{_libdir}/libvhd.so.*
-%{_libdir}/libvhdio.so.*
+%{_libdir}/libblktap.so*
+%{_libdir}/libvhd.so*
+%{_libdir}/libvhdio.so*
 %{_sbindir}/blktapctrl
 %{_sbindir}/tapdisk
 %{_sbindir}/tapdisk2
@@ -60,12 +60,10 @@ rm -rf $RPM_BUILD_ROOT
 %files devel
 %defattr(-,root,root,-)
 %doc
-%{_includedir}/blktaplib.h
 %{_libdir}/libblktap.a
-%{_libdir}/libblktap.so
 %{_libdir}/libvhd.a
-%{_libdir}/libvhd.so
 %{_libdir}/libvhdio.a
-%{_libdir}/libvhdio.so
+%{_includedir}/vhd/*
+%{_includedir}/blktap/*
 
 %changelog
