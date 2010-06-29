@@ -689,6 +689,7 @@ tapdisk_control_accept(event_id_t id, char mode, void *private)
 	if (!connection) {
 		close(fd);
 		EPRINTF("failed to allocate new control connection\n");
+		return;
 	}
 
 	err = tapdisk_server_register_event(SCHEDULER_POLL_READ_FD,
@@ -699,6 +700,7 @@ tapdisk_control_accept(event_id_t id, char mode, void *private)
 		close(fd);
 		free(connection);
 		EPRINTF("failed to register new control event: %d\n", err);
+		return;
 	}
 
 	connection->event_id = err;
