@@ -31,7 +31,7 @@ This package contains the blktap development libraries and header files.
 
 %install
 rm -rf $RPM_BUILD_ROOT
-%{__make} install USE_SYSTEM_LIBRARIES=y DESTDIR=$RPM_BUILD_ROOT
+%{__make} install USE_SYSTEM_LIBRARIES=y DESTDIR=$RPM_BUILD_ROOT LIBDIR=/usr/lib SBINDIR=/usr/sbin
 
 %clean
 rm -rf $RPM_BUILD_ROOT

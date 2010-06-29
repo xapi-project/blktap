@@ -53,6 +53,7 @@ libblktapctl.so: $(CTL_PICS)
 install: $(IBIN) $(LIBS)
 	$(INSTALL_DIR) -p $(DESTDIR)$(SBINDIR)
 	$(INSTALL_PROG) $(IBIN) $(DESTDIR)$(SBINDIR)
+	$(INSTALL_DIR) -p $(DESTDIR)$(LIBDIR)
 	$(INSTALL_PROG) $(LIBS) $(DESTDIR)$(LIBDIR)
 
 clean:

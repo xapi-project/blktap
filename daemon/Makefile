@@ -4,8 +4,6 @@ include $(BLKTAP_ROOT)/Rules.mk
 IBIN          = blktapctrl
 INST_DIR      = /usr/sbin
 
-LIBDIR        = lib
-
 LIBS         := -lxenstore
 LIBS         += -Llib
 LIBS         += -lblktap
@@ -37,15 +35,15 @@ blktapctrl: tapdisk-daemon.c $(OBJS)
 
 libblktap:
 	@set -e
-	$(MAKE) -C $(LIBDIR) all
+	$(MAKE) -C lib all
 
 install: all
-	$(MAKE) -C $(LIBDIR) install
+	$(MAKE) -C lib install
 	$(INSTALL_DIR) -p $(DESTDIR)$(INST_DIR)
 	$(INSTALL_PROG) $(IBIN) $(DESTDIR)$(INST_DIR)
 
 clean:
-	$(MAKE) -C $(LIBDIR) clean
+	$(MAKE) -C lib clean
 	rm -rf *.o *~ $(IBIN) $(DEPS) xen TAGS
 
 .PHONY: all clean install libblktap
