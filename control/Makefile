@@ -2,7 +2,6 @@ BLKTAP_ROOT := ../
 include $(BLKTAP_ROOT)/Rules.mk
 
 IBIN               = tap-ctl
-INST_DIR           = /usr/sbin
 
 CFLAGS            += -Werror
 CFLAGS            += -Wno-unused
@@ -44,8 +43,8 @@ libblktapctl.a: $(CTL_OBJS)
 	ar r $@ $^
 
 install: all
-	$(INSTALL_DIR) -p $(DESTDIR)$(INST_DIR)
-	$(INSTALL_PROG) $(IBIN) $(DESTDIR)$(INST_DIR)
+	$(INSTALL_DIR) -p $(DESTDIR)$(SBINDIR)
+	$(INSTALL_PROG) $(IBIN) $(DESTDIR)$(SBINDIR)
 
 clean:
 	rm -f $(OBJS) $(DEPS) $(IBIN) $(LIBS)
