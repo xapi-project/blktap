@@ -50,5 +50,5 @@ tap_ctl_free(const int minor)
 	err = ioctl(fd, BLKTAP2_IOCTL_FREE_TAP, minor);
 	close(fd);
 
-	return err;
+	return err ? -errno : 0;
 }
