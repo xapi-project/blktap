@@ -340,8 +340,8 @@ tap_cli_spawn_usage(FILE *stream)
 static int
 tap_cli_spawn(int argc, char **argv)
 {
-	int c;
-	pid_t task;
+	int c, tty;
+	pid_t pid;
 
 	optind = 0;
 	while ((c = getopt(argc, argv, "h")) != -1) {
@@ -354,13 +354,16 @@ tap_cli_spawn(int argc, char **argv)
 		}
 	}
 
-	task = tap_ctl_spawn();
-	if (task < 0) {
-		printf("spawn failed: %d\n", errno);
-		return task;
-	}
+	pid = tap_ctl_spawn();
+	if (pid < 0)
+		return pid;
 
-	printf("tapdisk spawned with pid %d\n", task);
+	tty = isatty(STDOUT_FILENO);
+	if (tty)
+		printf("tapdisk spawned with pid %d\n", pid);
+	else
+		printf("%d\n", pid);
+
 	return 0;
 
 usage:
