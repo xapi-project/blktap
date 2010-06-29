@@ -31,10 +31,12 @@
 #include <string.h>
 #include <sys/time.h>
 
+#include "tapdisk.h"
 #include "scheduler.h"
 #include "tapdisk-log.h"
 
 #define DBG(_f, _a...)               tlog_write(TLOG_DBG, _f, ##_a)
+#define BUG_ON(_cond)                if (_cond) td_panic()
 
 #define SCHEDULER_MAX_TIMEOUT        600
 #define SCHEDULER_POLL_FD           (SCHEDULER_POLL_READ_FD |	\
@@ -84,7 +86,7 @@ scheduler_prepare_events(scheduler_t *s)
 	gettimeofday(&now, NULL);
 
 	scheduler_for_each_event(s, event) {
-		if (event->masked)
+		if (event->masked || event->dead)
 			continue;
 
 		if (event->mode & SCHEDULER_POLL_READ_FD) {
@@ -126,7 +128,7 @@ scheduler_check_events(scheduler_t *s, int nfds)
 	gettimeofday(&now, NULL);
 
 	scheduler_for_each_event(s, event) {
-		if (event->masked)
+		if (event->dead)
 			continue;
 
 		if ((event->mode & SCHEDULER_POLL_READ_FD) &&
@@ -150,8 +152,10 @@ scheduler_check_events(scheduler_t *s, int nfds)
 			--nfds;
 		}
 
-		if (event->pending)
+		if (event->pending) {
+			BUG_ON(event->masked);
 			continue;
+		}
 
 		if ((event->mode & SCHEDULER_POLL_TIMEOUT) &&
 		    (event->deadline <= now.tv_sec))
@@ -314,12 +318,15 @@ scheduler_wait_for_events(scheduler_t *s)
 		goto out;
 
 	ret = scheduler_check_events(s, ret);
+	BUG_ON(ret);
 
 	s->timeout     = SCHEDULER_MAX_TIMEOUT;
 	s->max_timeout = SCHEDULER_MAX_TIMEOUT;
 
 	scheduler_run_events(s);
-	scheduler_gc_events(s);
+
+	if (s->depth == 1)
+		scheduler_gc_events(s);
 
 out:
 	s->depth--;

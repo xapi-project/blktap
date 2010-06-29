@@ -152,4 +152,6 @@ struct tap_disk {
 	void (*td_debug)             (td_driver_t *);
 };
 
+void td_panic(void);
+
 #endif
