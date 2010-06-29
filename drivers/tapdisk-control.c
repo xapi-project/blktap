@@ -53,12 +53,13 @@ struct tapdisk_control {
 	int                uuid;
 	int                socket;
 	int                event_id;
-	int                running;
+	int                busy;
 };
 
 struct tapdisk_control_connection {
 	int                socket;
 	event_id_t         event_id;
+	int                busy;
 };
 
 static struct tapdisk_control td_control;
@@ -106,21 +107,30 @@ tapdisk_control_allocate_connection(int fd)
 static void
 tapdisk_control_close_connection(struct tapdisk_control_connection *connection)
 {
-	tapdisk_server_unregister_event(connection->event_id);
-	close(connection->socket);
-	free(connection);
+	if (connection->event_id) {
+		tapdisk_server_unregister_event(connection->event_id);
+		connection->event_id = 0;
+	}
+
+	if (connection->socket >= 0) {
+		close(connection->socket);
+		connection->socket = -1;
+	}
+
+	if (!connection->busy)
+		free(connection);
 }
 
 static int
 tapdisk_control_read_message(int fd, tapdisk_message_t *message, int timeout)
 {
+	const int len = sizeof(tapdisk_message_t);
 	fd_set readfds;
-	int ret, len, offset;
+	int ret, offset;
 	struct timeval tv, *t;
 
 	t      = NULL;
 	offset = 0;
-	len    = sizeof(tapdisk_message_t);
 
 	if (timeout) {
 		tv.tv_sec  = timeout;
@@ -155,7 +165,7 @@ tapdisk_control_read_message(int fd, tapdisk_message_t *message, int timeout)
 	DPRINTF("received '%s' message (uuid = %u)\n",
 		tapdisk_message_name(message->type), message->cookie);
 
-	return 0;
+	return offset;
 }
 
 static int
@@ -570,7 +580,8 @@ tapdisk_control_pause_vbd(struct tapdisk_control_connection *connection,
 			break;
 
 		tapdisk_server_iterate();
-	} while (1);
+
+	} while (connection->socket >= 0);
 
 out:
 	response.cookie = request->cookie;
@@ -657,13 +668,13 @@ struct tapdisk_message_info {
 static void
 tapdisk_control_handle_request(event_id_t id, char mode, void *private)
 {
-	int err;
+	int err, len, excl;
 	tapdisk_message_t message, response;
 	struct tapdisk_control_connection *connection = private;
 	struct tapdisk_message_info *info;
 
-	if (tapdisk_control_read_message(connection->socket, &message, 2)) {
-		EPRINTF("failed to read message from %d\n", connection->socket);
+	len = tapdisk_control_read_message(connection->socket, &message, 2);
+	if (len <= 0) {
 		tapdisk_control_close_connection(connection);
 		return;
 	}
@@ -676,21 +687,25 @@ tapdisk_control_handle_request(event_id_t id, char mode, void *private)
 		goto invalid;
 
 	info = &message_infos[message.type];
-	if (!info)
+
+	if (!info->handler)
 		goto invalid;
 
-	if (td_control.running && !(info->flags & TAPDISK_MSG_REENTER))
-		goto busy;
+	excl = !(info->flags & TAPDISK_MSG_REENTER);
 
-	td_control.running++;
+	if (excl) {
+		if (td_control.busy)
+			goto busy;
 
-	tapdisk_server_mask_event(connection->event_id, 1);
+		td_control.busy++;
+	}
+	connection->busy++;
 
 	info->handler(connection, &message);
 
-	tapdisk_server_mask_event(connection->event_id, 0);
-
-	td_control.running--;
+	connection->busy++;
+	if (excl)
+		td_control.busy--;
 
 	return;
 
