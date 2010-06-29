@@ -31,6 +31,7 @@
 #include <string.h>
 #include <unistd.h>
 #include <getopt.h>
+#include <sys/time.h>
 
 #include "tap-ctl.h"
 
@@ -296,22 +297,44 @@ tap_cli_destroy_usage(FILE *stream)
 	fprintf(stream, "usage: destroy <-p pid> <-m minor>\n");
 }
 
+static struct timeval*
+tap_cli_timeout(const char *optarg)
+{
+	static struct timeval tv;
+	struct timeval now;
+
+	tv.tv_sec  = atoi(optarg);
+	tv.tv_usec = 0;
+
+	gettimeofday(&now, NULL);
+	timeradd(&tv, &now, &tv);
+
+	return &tv;
+}
+
 static int
 tap_cli_destroy(int argc, char **argv)
 {
 	int c, pid, minor;
+	struct timeval *timeout;
 
-	pid   = -1;
-	minor = -1;
+	pid     = -1;
+	minor   = -1;
+	timeout = NULL;
 
 	optind = 0;
-	while ((c = getopt(argc, argv, "p:m:h")) != -1) {
+	while ((c = getopt(argc, argv, "p:m:t:h")) != -1) {
 		switch (c) {
 		case 'p':
 			pid = atoi(optarg);
 			break;
 		case 'm':
 			minor = atoi(optarg);
+			break;
+		case 't':
+			timeout = tap_cli_timeout(optarg);
+			if (!timeout)
+				goto usage;
 			break;
 		case '?':
 			goto usage;
@@ -324,7 +347,7 @@ tap_cli_destroy(int argc, char **argv)
 	if (pid == -1 || minor == -1)
 		goto usage;
 
-	return tap_ctl_destroy(pid, minor);
+	return tap_ctl_destroy(pid, minor, 0, timeout);
 
 usage:
 	tap_cli_destroy_usage(stderr);
@@ -463,13 +486,15 @@ static int
 tap_cli_close(int argc, char **argv)
 {
 	int c, pid, minor, force;
+	struct timeval *timeout;
 
-	pid   = -1;
-	minor = -1;
-	force = 0;
+	pid     = -1;
+	minor   = -1;
+	force   = 0;
+	timeout = NULL;
 
 	optind = 0;
-	while ((c = getopt(argc, argv, "p:m:fh")) != -1) {
+	while ((c = getopt(argc, argv, "p:m:ft:h")) != -1) {
 		switch (c) {
 		case 'p':
 			pid = atoi(optarg);
@@ -479,6 +504,11 @@ tap_cli_close(int argc, char **argv)
 			break;
 		case 'f':
 			force = -1;
+			break;
+		case 't':
+			timeout = tap_cli_timeout(optarg);
+			if (!timeout)
+				goto usage;
 			break;
 		case '?':
 			goto usage;
@@ -491,7 +521,7 @@ tap_cli_close(int argc, char **argv)
 	if (pid == -1 || minor == -1)
 		goto usage;
 
-	return tap_ctl_close(pid, minor, force);
+	return tap_ctl_close(pid, minor, force, timeout);
 
 usage:
 	tap_cli_close_usage(stderr);
@@ -508,12 +538,14 @@ static int
 tap_cli_pause(int argc, char **argv)
 {
 	int c, pid, minor;
+	struct timeval *timeout;
 
-	pid   = -1;
-	minor = -1;
+	pid     = -1;
+	minor   = -1;
+	timeout = NULL;
 
 	optind = 0;
-	while ((c = getopt(argc, argv, "p:m:h")) != -1) {
+	while ((c = getopt(argc, argv, "p:m:t:h")) != -1) {
 		switch (c) {
 		case 'p':
 			pid = atoi(optarg);
@@ -521,6 +553,10 @@ tap_cli_pause(int argc, char **argv)
 		case 'm':
 			minor = atoi(optarg);
 			break;
+		case 't':
+			timeout = tap_cli_timeout(optarg);
+			if (!timeout)
+				goto usage;
 		case '?':
 			goto usage;
 		case 'h':
@@ -532,7 +568,7 @@ tap_cli_pause(int argc, char **argv)
 	if (pid == -1 || minor == -1)
 		goto usage;
 
-	return tap_ctl_pause(pid, minor);
+	return tap_ctl_pause(pid, minor, timeout);
 
 usage:
 	tap_cli_pause_usage(stderr);

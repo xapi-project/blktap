@@ -90,7 +90,7 @@ tap_ctl_get_pid(const int id)
 	memset(&message, 0, sizeof(message));
 	message.type = TAPDISK_MESSAGE_PID;
 
-	err = tap_ctl_connect_send_and_receive(id, &message, 2);
+	err = tap_ctl_connect_send_and_receive(id, &message, NULL);
 	if (err)
 		return err;
 

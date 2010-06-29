@@ -27,9 +27,10 @@
  */
 #include <stdio.h>
 #include <errno.h>
-#include <unistd.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
+#include <fcntl.h>
 #include <sys/un.h>
 #include <sys/stat.h>
 #include <sys/types.h>
@@ -41,21 +42,14 @@
 int tap_ctl_debug = 0;
 
 int
-tap_ctl_read_message(int fd, tapdisk_message_t *message, int timeout)
+tap_ctl_read_message(int fd, tapdisk_message_t *message,
+		     struct timeval *timeout)
 {
 	fd_set readfds;
 	int ret, len, offset;
-	struct timeval tv, *t;
 
-	t      = NULL;
 	offset = 0;
 	len    = sizeof(tapdisk_message_t);
-
-	if (timeout) {
-		tv.tv_sec  = timeout;
-		tv.tv_usec = 0;
-		t = &tv;
-	}
 
 	memset(message, 0, sizeof(tapdisk_message_t));
 
@@ -63,7 +57,7 @@ tap_ctl_read_message(int fd, tapdisk_message_t *message, int timeout)
 		FD_ZERO(&readfds);
 		FD_SET(fd, &readfds);
 
-		ret = select(fd + 1, &readfds, NULL, NULL, t);
+		ret = select(fd + 1, &readfds, NULL, NULL, timeout);
 		if (ret == -1)
 			break;
 		else if (FD_ISSET(fd, &readfds)) {
@@ -87,21 +81,13 @@ tap_ctl_read_message(int fd, tapdisk_message_t *message, int timeout)
 }
 
 int
-tap_ctl_write_message(int fd, tapdisk_message_t *message, int timeout)
+tap_ctl_write_message(int fd, tapdisk_message_t *message, struct timeval *timeout)
 {
 	fd_set writefds;
 	int ret, len, offset;
-	struct timeval tv, *t;
 
-	t      = NULL;
 	offset = 0;
 	len    = sizeof(tapdisk_message_t);
-
-	if (timeout) {
-		tv.tv_sec  = timeout;
-		tv.tv_usec = 0;
-		t = &tv;
-	}
 
 	DBG("sending '%s' message (uuid = %u)\n",
 	    tapdisk_message_name(message->type), message->cookie);
@@ -113,7 +99,7 @@ tap_ctl_write_message(int fd, tapdisk_message_t *message, int timeout)
 		/* we don't bother reinitializing tv. at worst, it will wait a
 		 * bit more time than expected. */
 
-		ret = select(fd + 1, NULL, &writefds, NULL, t);
+		ret = select(fd + 1, NULL, &writefds, NULL, timeout);
 		if (ret == -1)
 			break;
 		else if (FD_ISSET(fd, &writefds)) {
@@ -134,7 +120,8 @@ tap_ctl_write_message(int fd, tapdisk_message_t *message, int timeout)
 }
 
 int
-tap_ctl_send_and_receive(int sfd, tapdisk_message_t *message, int timeout)
+tap_ctl_send_and_receive(int sfd, tapdisk_message_t *message,
+			 struct timeval *timeout)
 {
 	int err;
 
@@ -216,13 +203,15 @@ tap_ctl_connect_id(int id, int *sfd)
 	}
 
 	err = tap_ctl_connect(name, sfd);
+
 	free(name);
 
 	return err;
 }
 
 int
-tap_ctl_connect_send_and_receive(int id, tapdisk_message_t *message, int timeout)
+tap_ctl_connect_send_and_receive(int id, tapdisk_message_t *message,
+				 struct timeval *timeout)
 {
 	int err, sfd;
 

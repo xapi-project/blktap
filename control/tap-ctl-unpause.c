@@ -48,7 +48,7 @@ tap_ctl_unpause(const int id, const int minor, const char *params)
 		strncpy(message.u.params.path, params,
 			sizeof(message.u.params.path) - 1);
 
-	err = tap_ctl_connect_send_and_receive(id, &message, 15);
+	err = tap_ctl_connect_send_and_receive(id, &message, NULL);
 	if (err)
 		return err;
 

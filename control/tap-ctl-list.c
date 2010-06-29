@@ -321,6 +321,7 @@ _tap_ctl_list_tapdisk(int id, struct list_head *_list)
 	tapdisk_message_t message;
 	struct list_head list;
 	struct tapdisk_list *tl, *next;
+	struct timeval timeout = { .tv_sec = 10, .tv_usec = 0 };
 	int err, sfd;
 
 	err = tap_ctl_connect_id(id, &sfd);
@@ -331,13 +332,13 @@ _tap_ctl_list_tapdisk(int id, struct list_head *_list)
 	message.type   = TAPDISK_MESSAGE_LIST;
 	message.cookie = -1;
 
-	err = tap_ctl_write_message(sfd, &message, 2);
+	err = tap_ctl_write_message(sfd, &message, &timeout);
 	if (err)
 		return err;
 
 	INIT_LIST_HEAD(&list);
 	do {
-		err = tap_ctl_read_message(sfd, &message, 2);
+		err = tap_ctl_read_message(sfd, &message, &timeout);
 		if (err) {
 			err = -EPROTO;
 			break;

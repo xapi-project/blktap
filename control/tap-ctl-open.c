@@ -54,7 +54,7 @@ tap_ctl_open(const int id, const int minor, const char *params)
 		return ENAMETOOLONG;
 	}
 
-	err = tap_ctl_connect_send_and_receive(id, &message, 5);
+	err = tap_ctl_connect_send_and_receive(id, &message, NULL);
 	if (err)
 		return err;
 

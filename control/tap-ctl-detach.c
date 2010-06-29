@@ -43,7 +43,7 @@ tap_ctl_detach(const int id, const int minor)
 	message.type = TAPDISK_MESSAGE_DETACH;
 	message.cookie = minor;
 
-	err = tap_ctl_connect_send_and_receive(id, &message, 5);
+	err = tap_ctl_connect_send_and_receive(id, &message, NULL);
 	if (err)
 		return err;
 

@@ -34,7 +34,7 @@
 #include "tap-ctl.h"
 
 int
-tap_ctl_pause(const int id, const int minor)
+tap_ctl_pause(const int id, const int minor, struct timeval *timeout)
 {
 	int err;
 	tapdisk_message_t message;
@@ -43,7 +43,7 @@ tap_ctl_pause(const int id, const int minor)
 	message.type = TAPDISK_MESSAGE_PAUSE;
 	message.cookie = minor;
 
-	err = tap_ctl_connect_send_and_receive(id, &message, 5);
+	err = tap_ctl_connect_send_and_receive(id, &message, timeout);
 	if (err)
 		return err;
 

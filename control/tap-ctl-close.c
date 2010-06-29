@@ -34,8 +34,9 @@
 
 #include "tap-ctl.h"
 
-static int
-__tap_ctl_close(const int id, const int minor, const int force)
+int
+tap_ctl_close(const int id, const int minor, const int force,
+	      struct timeval *timeout)
 {
 	int err;
 	tapdisk_message_t message;
@@ -46,7 +47,7 @@ __tap_ctl_close(const int id, const int minor, const int force)
 		message.type = TAPDISK_MESSAGE_FORCE_SHUTDOWN;
 	message.cookie = minor;
 
-	err = tap_ctl_connect_send_and_receive(id, &message, 5);
+	err = tap_ctl_connect_send_and_receive(id, &message, timeout);
 	if (err)
 		return err;
 
@@ -61,27 +62,4 @@ __tap_ctl_close(const int id, const int minor, const int force)
 	}
 
 	return err;
-}
-
-int
-tap_ctl_close(const int id, const int minor, const int force)
-{
-	int i, err;
-
-	for (i = 0; i < 20; i++) {
-		err = __tap_ctl_close(id, minor, force);
-		if (!err)
-			return 0;
-
-		err = (err < 0 ? -err : err);
-		if (err != EAGAIN) {
-			EPRINTF("close failed: %d\n", err);
-			return err;
-		}
-
-		usleep(1000);
-	}
-
-	EPRINTF("close timed out\n");
-	return EIO;
 }
