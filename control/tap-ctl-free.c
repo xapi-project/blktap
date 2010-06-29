@@ -36,20 +36,14 @@
 #include "tap-ctl.h"
 #include "blktap2.h"
 
-static void
-usage(void)
-{
-	printf("usage: free <-m minor>\n");
-}
-
 int
-_tap_ctl_free(const int minor)
+tap_ctl_free(const int minor)
 {
 	int fd, err;
 
 	fd = open(BLKTAP2_CONTROL_DEVICE, O_RDONLY);
 	if (fd == -1) {
-		printf("failed to open control device: %d\n", errno);
+		EPRINTF("failed to open control device: %d\n", errno);
 		return errno;
 	}
 
@@ -57,31 +51,4 @@ _tap_ctl_free(const int minor)
 	close(fd);
 
 	return err;
-}
-
-int
-tap_ctl_free(int argc, char **argv)
-{
-	int c, minor;
-
-	minor = -1;
-
-	optind = 0;
-	while ((c = getopt(argc, argv, "m:h")) != -1) {
-		switch (c) {
-		case 'm':
-			minor = atoi(optarg);
-			break;
-		case 'h':
-			usage();
-			return 0;
-		}
-	}
-
-	if (minor == -1) {
-		usage();
-		return EINVAL;
-	}
-
-	return _tap_ctl_free(minor);
 }

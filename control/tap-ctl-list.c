@@ -36,7 +36,6 @@
 #include "tap-ctl.h"
 #include "blktap2.h"
 #include "list.h"
-#include "tapdisk-disktype.h"
 
 static void
 free_list(tap_list_t *entry)
@@ -187,7 +186,7 @@ _tap_ctl_find_minors(int **_minorv)
 	case GLOB_ABORTED:
 	case GLOB_NOSPACE:
 		err = -errno;
-		fprintf(stderr, "%s: glob failed, err %d", pattern, err);
+		EPRINTF("%s: glob failed, err %d", pattern, err);
 		goto fail;
 	}
 
@@ -260,7 +259,7 @@ _tap_ctl_find_tapdisks(struct tapdisk **_tapv)
 	case GLOB_ABORTED:
 	case GLOB_NOSPACE:
 		err = -errno;
-		fprintf(stderr, "%s: glob failed, err %d", pattern, err);
+		EPRINTF("%s: glob failed, err %d", pattern, err);
 		goto fail;
 	}
 
@@ -280,16 +279,17 @@ _tap_ctl_find_tapdisks(struct tapdisk **_tapv)
 		if (err != 1)
 			continue;
 
-		tap->pid = _tap_ctl_get_pid(tap->id);
+		tap->pid = tap_ctl_get_pid(tap->id);
 		if (tap->pid < 0)
 			continue;
-
-		INIT_LIST_HEAD(&tap->list);
 
 		n_taps++;
 	}
 
 	qsort(tapv, n_taps, sizeof(struct tapdisk), _tap_tapdisk_cmp);
+
+	for (i = 0; i < n_taps; ++i)
+		INIT_LIST_HEAD(&tapv[i].list);
 
 done:
 	*_tapv = tapv;

@@ -25,11 +25,55 @@
  * NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
  * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
+#include <stdio.h>
+#include <errno.h>
+#include <unistd.h>
+#include <string.h>
 
-#ifndef __TAPDISK_CONTROL_H__
-#define __TAPDISK_CONTROL_H__
+#include "tap-ctl.h"
+#include "blktap2.h"
 
-int tapdisk_control_open(char **path);
-void tapdisk_control_close(void);
+int
+tap_ctl_check_blktap(const char **msg)
+{
+	FILE *f;
+	int err = 0, minor;
+	char name[32];
 
-#endif
+	memset(name, 0, sizeof(name));
+
+	f = fopen("/proc/misc", "r");
+	if (!f) {
+		*msg = "failed to open /proc/misc";
+		return -errno;
+	}
+
+	while (fscanf(f, "%d %32s", &minor, name) == 2) {
+		if (!strcmp(name, BLKTAP2_CONTROL_NAME))
+			goto out;
+	}
+
+	err = -ENOSYS;
+	*msg = "blktap kernel module not installed";
+
+out:
+	fclose(f);
+	return err;
+}
+
+int
+tap_ctl_check(const char **msg)
+{
+	int err;
+	uid_t uid;
+
+	err = tap_ctl_check_blktap(msg);
+	if (err)
+		goto out;
+
+	err  = 0;
+	*msg = "ok";
+
+out:
+	return err;
+}

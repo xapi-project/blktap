@@ -36,6 +36,7 @@
 #include <xenctrl.h>
 #include <xen/io/blkif.h>
 
+#ifdef TAPDISK
 #if 1
 #define DPRINTF(_f, _a...) syslog(LOG_INFO, _f, ##_a)
 #else
@@ -44,6 +45,7 @@
 
 #define EPRINTF(_f, _a...) syslog(LOG_ERR, "tap-err:%s: " _f, __func__, ##_a)
 #define PERROR(_f, _a...)  EPRINTF(_f ": %s", ##_a, strerror(errno))
+#endif
 
 #define BLK_RING_SIZE __RING_SIZE((blkif_sring_t *)0, XC_PAGE_SIZE)
 

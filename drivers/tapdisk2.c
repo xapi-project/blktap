@@ -27,6 +27,7 @@
  */
 #include <stdio.h>
 #include <errno.h>
+#include <fcntl.h>
 #include <stdlib.h>
 #include <unistd.h>
 
@@ -38,9 +39,7 @@
 static void
 usage(const char *app, int err)
 {
-	fprintf(stderr,
-		"usage: %s [-h] [-l <syslog>] "
-		"-u <uuid> -c <control socket>\n", app);
+	fprintf(stderr, "usage: %s <-u uuid> <-c control socket>\n", app);
 	exit(err);
 }
 
@@ -48,40 +47,29 @@ int
 main(int argc, char *argv[])
 {
 	char *control;
-	int c, uuid, err, nodaemon;
-	const char *facility;
+	int c, err, nodaemon;
 
-	uuid     = -1;
 	control  = NULL;
-	facility = "daemon";
 	nodaemon = 0;
 
-	while ((c = getopt(argc, argv, "l:u:c:Dh")) != -1) {
+	while ((c = getopt(argc, argv, "Dh")) != -1) {
 		switch (c) {
-		case 'l':
-			facility = optarg;
-			break;
-		case 'u':
-			uuid = atoi(optarg);
-			break;
-		case 'c':
-			control = optarg;
-			break;
 		case 'D':
 			nodaemon = 1;
 			break;
 		case 'h':
 			usage(argv[0], 0);
+			break;
 		default:
 			usage(argv[0], EINVAL);
 		}
 	}
 
-	if (optind != argc || uuid == -1 || !control)
+	if (optind != argc)
 		usage(argv[0], EINVAL);
 
 	chdir("/");
-	tapdisk_start_logging("tapdisk2", facility);
+	tapdisk_start_logging("tapdisk2", NULL);
 
 	err = tapdisk_server_init();
 	if (err) {
@@ -89,17 +77,33 @@ main(int argc, char *argv[])
 		goto out;
 	}
 
-	err = tapdisk_control_open(uuid, control);
+	if (!nodaemon) {
+		err = daemon(0, 1);
+		if (err) {
+			DPRINTF("failed to daemonize: %d\n", errno);
+			goto out;
+		}
+	}
+
+	err = tapdisk_control_open(&control);
 	if (err) {
 		DPRINTF("failed to open control socket: %d\n", err);
 		goto out;
 	}
 
+	fprintf(stdout, "%s\n", control);
+	fflush(stdout);
+
 	if (!nodaemon) {
-		err = daemon(0, 0);
-		if (err) {
-			DPRINTF("failed to daemonize: %d\n", errno);
-			goto out;
+		int fd;
+
+		fd = open("/dev/null", O_RDWR);
+		if (fd != -1) {
+			dup2(fd, STDIN_FILENO);
+			dup2(fd, STDOUT_FILENO);
+			dup2(fd, STDERR_FILENO);
+			if (fd > 2)
+				close(fd);
 		}
 	}
 

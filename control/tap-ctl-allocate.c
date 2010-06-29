@@ -36,15 +36,10 @@
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <sys/ioctl.h>
+#include <linux/major.h>
 
 #include "tap-ctl.h"
 #include "blktap2.h"
-
-static void
-usage(void)
-{
-	printf("usage: allocate [-d device name]>\n");
-}
 
 static int
 tap_ctl_prepare_directory(const char *dir)
@@ -69,9 +64,8 @@ tap_ctl_prepare_directory(const char *dir)
 
 		err = mkdir(name, 0755);
 		if (err && errno != EEXIST) {
+			PERROR("mkdir %s", name);
 			err = errno;
-			fprintf(stderr, "failed to create directory %s: %d\n",
-				name, err);
 			break;
 		}
 
@@ -108,14 +102,13 @@ tap_ctl_make_device(const char *devname, const int major,
 
 	if (!access(devname, F_OK))
 		if (unlink(devname)) {
-			fprintf(stderr, "error unlinking %s: %d\n",
-				devname, errno);
+			PERROR("unlink %s", devname);
 			return errno;
 		}
 
 	err = mknod(devname, perm, makedev(major, minor));
 	if (err) {
-		fprintf(stderr, "mknod %s failed: %d\n", devname, errno);
+		PERROR("mknod %s", devname);
 		return errno;
 	}
 
@@ -140,20 +133,20 @@ tap_ctl_check_environment(void)
 
 	f = fopen("/proc/misc", "r");
 	if (!f) {
-		fprintf(stderr, "failed to open /proc/misc: %d\n", errno);
+		EPRINTF("failed to open /proc/misc: %d\n", errno);
 		return errno;
 	}
 
 	while (fscanf(f, "%d %256s", &minor, name) == 2)
 		if (!strcmp(name, BLKTAP2_CONTROL_NAME)) {
 			err = tap_ctl_make_device(BLKTAP2_CONTROL_DEVICE,
-						  MISC_MAJOR_NUMBER,
+						  MISC_MAJOR,
 						  minor, S_IFCHR | 0600);
 			goto out;
 		}
 
 	err = ENOSYS;
-	fprintf(stderr, "didn't find %s in /proc/misc\n", BLKTAP2_CONTROL_NAME);
+	EPRINTF("didn't find %s in /proc/misc\n", BLKTAP2_CONTROL_NAME);
 
 out:
 	fclose(f);
@@ -173,22 +166,37 @@ tap_ctl_allocate_device(int *minor, char **devname)
 
 	fd = open(BLKTAP2_CONTROL_DEVICE, O_RDONLY);
 	if (fd == -1) {
-		fprintf(stderr, "failed to open control device: %d\n", errno);
+		EPRINTF("failed to open control device: %d\n", errno);
 		return errno;
 	}
 
 	err = ioctl(fd, BLKTAP2_IOCTL_ALLOC_TAP, &handle);
 	close(fd);
 	if (err == -1) {
-		fprintf(stderr, "failed to allocate new device: %d\n", errno);
+		EPRINTF("failed to allocate new device: %d\n", errno);
 		return errno;
+	}
+
+	err = asprintf(&name, "%s%d", BLKTAP2_RING_DEVICE, handle.minor);
+	if (err == -1) {
+		err = ENOMEM;
+		goto fail;
+	}
+
+	err = tap_ctl_make_device(name, handle.ring,
+				  handle.minor, S_IFCHR | 0600);
+	free(name);
+	if (err) {
+		EPRINTF("creating ring device for %d failed: %d\n",
+			handle.minor, err);
+		goto fail;
 	}
 
 	if (*devname)
 		name = *devname;
 	else {
 		err = asprintf(&name, "%s%d",
-			       BLKTAP2_RING_DEVICE, handle.minor);
+			       BLKTAP2_IO_DEVICE, handle.minor);
 		if (err == -1) {
 			err = ENOMEM;
 			goto fail;
@@ -196,25 +204,10 @@ tap_ctl_allocate_device(int *minor, char **devname)
 		*devname = name;
 	}
 
-	err = tap_ctl_make_device(name, handle.ring,
-				  handle.minor, S_IFCHR | 0600);
-	if (err) {
-		fprintf(stderr, "creating ring device for %d failed: %d\n",
-			handle.minor, err);
-		goto fail;
-	}
-
-	err = asprintf(&name, "%s%d", BLKTAP2_IO_DEVICE, handle.minor);
-	if (err == -1) {
-		err = ENOMEM;
-		goto fail;
-	}
-
 	err = tap_ctl_make_device(name, handle.device,
 				  handle.minor, S_IFBLK | 0600);
-	free(name);
 	if (err) {
-		fprintf(stderr, "creating IO device for %d failed: %d\n",
+		EPRINTF("creating IO device for %d failed: %d\n",
 			handle.minor, err);
 		goto fail;
 	}
@@ -226,12 +219,12 @@ tap_ctl_allocate_device(int *minor, char **devname)
 	return 0;
 
 fail:
-	_tap_ctl_free(handle.minor);
+	tap_ctl_free(handle.minor);
 	return err;
 }
 
 int
-_tap_ctl_allocate(int *minor, char **devname)
+tap_ctl_allocate(int *minor, char **devname)
 {
 	int err;
 
@@ -246,31 +239,4 @@ _tap_ctl_allocate(int *minor, char **devname)
 		return err;
 
 	return 0;
-}
-
-int
-tap_ctl_allocate(int argc, char **argv)
-{
-	char *devname;
-	int c, id, err;
-
-	devname = NULL;
-
-	optind = 0;
-	while ((c = getopt(argc, argv, "d:h")) != -1) {
-		switch (c) {
-		case 'd':
-			devname = optarg;
-			break;
-		case 'h':
-			usage();
-			return 0;
-		}
-	}
-
-	err = _tap_ctl_allocate(&id, &devname);
-	if (!err)
-		printf("%s\n", devname);
-
-	return err;
 }

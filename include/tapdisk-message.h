@@ -57,7 +57,6 @@ struct tapdisk_message_params {
 	uint8_t                          storage;
 	uint32_t                         devnum;
 	uint32_t                         domid;
-	uint16_t                         path_len;
 	char                             path[TAPDISK_MESSAGE_MAX_PATH_LENGTH];
 };
 

@@ -8,6 +8,7 @@ CFLAGS            += -Werror
 CFLAGS            += -Wno-unused
 CFLAGS            += -I../include -I../drivers
 CFLAGS            += -D_GNU_SOURCE
+CFLAGS            += -DTAPCTL
 
 # Get gcc to generate the dependencies for us.
 CFLAGS            += -Wp,-MD,.$(@F).d
@@ -27,6 +28,7 @@ CTL_OBJS  += tap-ctl-close.o
 CTL_OBJS  += tap-ctl-pause.o
 CTL_OBJS  += tap-ctl-unpause.o
 CTL_OBJS  += tap-ctl-major.o
+CTL_OBJS  += tap-ctl-check.o
 
 OBJS = $(CTL_OBJS)
 LIBS = libblktapctl.a

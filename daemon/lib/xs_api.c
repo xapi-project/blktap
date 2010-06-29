@@ -40,6 +40,7 @@
 #include <stdarg.h>
 #include <xs.h>
 
+#define TAPDISK
 #include "xs_api.h"
 #include "blktaplib.h"
 

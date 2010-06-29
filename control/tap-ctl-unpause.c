@@ -56,8 +56,8 @@ tap_ctl_unpause(const int id, const int minor, const char *params)
 		err = message.u.response.error;
 	else {
 		err = EINVAL;
-		printf("got unexpected result '%s' from %d\n",
-		       tapdisk_message_name(message.type), id);
+		EPRINTF("got unexpected result '%s' from %d\n",
+			tapdisk_message_name(message.type), id);
 	}
 
 	return err;

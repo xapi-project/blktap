@@ -33,14 +33,8 @@
 
 #include "tap-ctl.h"
 
-static void
-usage(void)
-{
-	printf("usage: attach <-i id> <-m minor>\n");
-}
-
 int
-_tap_ctl_attach(const int id, const int minor)
+tap_ctl_attach(const int id, const int minor)
 {
 	int err;
 	tapdisk_message_t message;
@@ -56,43 +50,12 @@ _tap_ctl_attach(const int id, const int minor)
 	if (message.type == TAPDISK_MESSAGE_ATTACH_RSP) {
 		err = message.u.response.error;
 		if (err)
-			printf("attach failed: %d\n", err);
+			EPRINTF("attach failed: %d\n", err);
 	} else {
-		printf("got unexpected result '%s' from %d\n",
-		       tapdisk_message_name(message.type), id);
+		EPRINTF("got unexpected result '%s' from %d\n",
+			tapdisk_message_name(message.type), id);
 		err = EINVAL;
 	}
 
 	return err;
-}
-
-int
-tap_ctl_attach(int argc, char **argv)
-{
-	int c, id, minor;
-
-	id    = -1;
-	minor = -1;
-
-	optind = 0;
-	while ((c = getopt(argc, argv, "i:m:h")) != -1) {
-		switch (c) {
-		case 'i':
-			id = atoi(optarg);
-			break;
-		case 'm':
-			minor = atoi(optarg);
-			break;
-		case 'h':
-			usage();
-			return 0;
-		}
-	}
-
-	if (id == -1 || minor == -1) {
-		usage();
-		return EINVAL;
-	}
-
-	return _tap_ctl_attach(id, minor);
 }

@@ -35,59 +35,22 @@
 #include "tap-ctl.h"
 #include "blktap2.h"
 
-static void
-usage(void)
-{
-	printf("usage: destroy <-i id> <-m minor>\n");
-}
-
 int
-_tap_ctl_destroy(const int id, const int minor)
+tap_ctl_destroy(const int id, const int minor)
 {
 	int err;
 
-	err = _tap_ctl_close(id, minor, 0);
+	err = tap_ctl_close(id, minor, 0);
 	if (err)
 		return err;
 
-	err = _tap_ctl_detach(id, minor);
+	err = tap_ctl_detach(id, minor);
 	if (err)
 		return err;
 
-	err = _tap_ctl_free(minor);
+	err = tap_ctl_free(minor);
 	if (err)
 		return err;
 
 	return 0;
-}
-
-int
-tap_ctl_destroy(int argc, char **argv)
-{
-	int c, id, minor;
-
-	id    = -1;
-	minor = -1;
-
-	optind = 0;
-	while ((c = getopt(argc, argv, "i:m:h")) != -1) {
-		switch (c) {
-		case 'i':
-			id = atoi(optarg);
-			break;
-		case 'm':
-			minor = atoi(optarg);
-			break;
-		case 'h':
-			usage();
-			return 0;
-		}
-	}
-
-	if (id == -1 || minor == -1) {
-		usage();
-		return EINVAL;
-	}
-
-	return _tap_ctl_destroy(id, minor);
 }

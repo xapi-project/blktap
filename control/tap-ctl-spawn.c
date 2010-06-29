@@ -36,48 +36,53 @@
 #include "tap-ctl.h"
 #include "blktap2.h"
 
-static void
-usage(void)
-{
-	printf("usage: spawn <-i id>\n");
-}
-
 static pid_t
-__tap_ctl_spawn(const int id)
+__tap_ctl_spawn(int *readfd)
 {
-	int err, child;
-	char uuid[12], *control, *tapdisk;
+	int err, child, channel[2];
+	char *tapdisk;
 
-	if ((child = fork()) == -1) {
-		printf("fork failed: %d\n", errno);
+	if (pipe(channel)) {
+		EPRINTF("pipe failed: %d\n", errno);
 		return -errno;
 	}
 
-	if (child)
-		return child;
-
-	err = asprintf(&control, "%s/%s%d",
-		       BLKTAP2_CONTROL_DIR,
-		       BLKTAP2_CONTROL_SOCKET, id);
-	if (err == -1) {
-		printf("fork failed: %d\n", ENOMEM);
-		exit(ENOMEM);
+	if ((child = fork()) == -1) {
+		EPRINTF("fork failed: %d\n", errno);
+		return -errno;
 	}
+
+	if (child) {
+		close(channel[1]);
+		*readfd = channel[0];
+		return child;
+	}
+
+	if (dup2(channel[1], STDOUT_FILENO) == -1) {
+		EPRINTF("dup2 failed: %d\n", errno);
+		exit(errno);
+	}
+
+	if (dup2(channel[1], STDERR_FILENO) == -1) {
+		EPRINTF("dup2 failed: %d\n", errno);
+		exit(errno);
+	}
+
+	close(channel[0]);
+	close(channel[1]);
 
 	tapdisk = getenv("TAPDISK2");
 	if (!tapdisk)
 		tapdisk = "tapdisk2";
 
-	snprintf(uuid, sizeof(uuid) - 1, "%d", id);
+	execlp(tapdisk, tapdisk, NULL);
 
-	execlp(tapdisk, tapdisk, "-u", uuid, "-c", control, NULL);
-
-	printf("exec failed\n");
+	EPRINTF("exec failed\n");
 	exit(1);
 }
 
 pid_t
-_tap_ctl_get_pid(const int id)
+tap_ctl_get_pid(const int id)
 {
 	int err;
 	tapdisk_message_t message;
@@ -93,82 +98,77 @@ _tap_ctl_get_pid(const int id)
 }
 
 static int
-_tap_ctl_wait(pid_t child)
+tap_ctl_wait(pid_t child)
 {
 	pid_t pid;
 	int status;
 
 	pid = waitpid(child, &status, 0);
 	if (pid < 0) {
-		fprintf(stderr, "wait(%d) failed, err %d\n", child, errno);
+		EPRINTF("wait(%d) failed, err %d\n", child, errno);
 		return -errno;
 	}
 
 	if (WIFEXITED(status)) {
 		int code = WEXITSTATUS(status);
 		if (code)
-			fprintf(stderr, "tapdisk2[%d] failed, status %d\n", child, code);
+			EPRINTF("tapdisk2[%d] failed, status %d\n", child, code);
 		return -code;
 	}
 
 	if (WIFSIGNALED(status)) {
 		int signo = WTERMSIG(status);
-		fprintf(stderr, "tapdisk2[%d] killed by signal %d\n", child, signo);
+		EPRINTF("tapdisk2[%d] killed by signal %d\n", child, signo);
 		return -EINTR;
 	}
 
-	fprintf(stderr, "tapdisk2[%d]: unexpected status %#x\n", child, status);
+	EPRINTF("tapdisk2[%d]: unexpected status %#x\n", child, status);
 	return -EAGAIN;
 }
 
-
-int
-_tap_ctl_spawn(const int id)
+static int
+tap_ctl_get_child_id(int readfd)
 {
-	pid_t child, task;
-	int err;
+	int id;
+	FILE *f;
 
-	child = __tap_ctl_spawn(id);
-	if (child < 0)
-		return child;
+	f = fdopen(readfd, "r");
+	if (!f) {
+		EPRINTF("fdopen failed: %d\n", errno);
+		return -1;
+	}
 
-	err = _tap_ctl_wait(child);
-	if (err)
-		return err;
+	errno = 0;
+	if (fscanf(f, BLKTAP2_CONTROL_DIR"/"
+		   BLKTAP2_CONTROL_SOCKET"%d", &id) != 1) {
+		errno = (errno ? : EINVAL);
+		EPRINTF("parsing id failed: %d\n", errno);
+		id = -1;
+	}
 
-	task = _tap_ctl_get_pid(id);
-	if (task < 0)
-		fprintf(stderr, "get_pid(%d) failed, err %d\n", child, errno);
-
-	return task;
+	fclose(f);
+	return id;
 }
 
 int
-tap_ctl_spawn(int argc, char **argv)
+tap_ctl_spawn(void)
 {
-	int c, id;
-	pid_t task;
+	pid_t child;
+	int err, id, readfd;
 
-	id = -1;
+	readfd = -1;
 
-	optind = 0;
-	while ((c = getopt(argc, argv, "i:h")) != -1) {
-		switch (c) {
-		case 'i':
-			id = atoi(optarg);
-			break;
-		case 'h':
-			usage();
-			return 0;
-		}
-	}
+	child = __tap_ctl_spawn(&readfd);
+	if (child < 0)
+		return child;
 
-	if (id == -1) {
-		usage();
-		return EINVAL;
-	}
+	err = tap_ctl_wait(child);
+	if (err)
+		return err;
 
-	task = _tap_ctl_spawn(id);
+	id = tap_ctl_get_child_id(readfd);
+	if (id < 0)
+		EPRINTF("get_id failed, child %d err %d\n", child, errno);
 
-	return task < 0 ? task : 0;
+	return id;
 }

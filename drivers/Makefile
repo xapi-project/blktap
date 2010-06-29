@@ -13,6 +13,7 @@ CFLAGS    += -fno-strict-aliasing
 CFLAGS    += -I../include
 CFLAGS    += -D_GNU_SOURCE
 CFLAGS    += -DUSE_NFS_LOCKS
+CFLAGS    += -DTAPDISK
 
 LIBS      += -lrt
 
@@ -48,6 +49,7 @@ TAP-OBJS  += tapdisk-filter.o
 TAP-OBJS  += tapdisk-logfile.o
 TAP-OBJS  += tapdisk-log.o
 TAP-OBJS  += tapdisk-utils.o
+TAP-OBJS  += tapdisk-disktype.o
 TAP-OBJS  += tapdisk-syslog.o
 TAP-OBJS  += io-optimize.o
 TAP-OBJS  += lock.o

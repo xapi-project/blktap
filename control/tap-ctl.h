@@ -29,11 +29,13 @@
 #define __TAP_CTL_H__
 
 #include <syslog.h>
+#include <errno.h>
 
 #include "tapdisk-message.h"
 
 extern int tap_ctl_debug;
 
+#ifdef TAPCTL
 #define DBG(_f, _a...)				\
 	do {					\
 		if (tap_ctl_debug)		\
@@ -42,14 +44,24 @@ extern int tap_ctl_debug;
 
 #define DPRINTF(_f, _a...) syslog(LOG_INFO, _f, ##_a)
 #define EPRINTF(_f, _a...) syslog(LOG_ERR, "tap-err:%s: " _f, __func__, ##_a)
+#define  PERROR(_f, _a...) syslog(LOG_ERR, "tap-err:%s: " _f ": %s", __func__, ##_a, \
+				  strerror(errno))
+#endif
 
+void tap_ctl_version(int *major, int *minor);
+int tap_ctl_kernel_version(int *major, int *minor);
+
+int tap_ctl_check_blktap(const char **message);
+int tap_ctl_check_version(const char **message);
+int tap_ctl_check(const char **message);
 
 int tap_ctl_connect(const char *path, int *socket);
 int tap_ctl_connect_id(int id, int *socket);
 int tap_ctl_read_message(int fd, tapdisk_message_t *message, int timeout);
 int tap_ctl_write_message(int fd, tapdisk_message_t *message, int timeout);
 int tap_ctl_send_and_receive(int fd, tapdisk_message_t *message, int timeout);
-int tap_ctl_connect_send_and_receive(int id, tapdisk_message_t *message, int timeout);
+int tap_ctl_connect_send_and_receive(int id,
+				     tapdisk_message_t *message, int timeout);
 char *tap_ctl_socket_name(int id);
 
 typedef struct {
@@ -66,36 +78,23 @@ int tap_ctl_get_driver_id(const char *handle);
 int tap_ctl_list(tap_list_t ***list);
 void tap_ctl_free_list(tap_list_t **list);
 
-int tap_ctl_allocate(int argc, char **argv);
-int _tap_ctl_allocate(int *minor, char **devname);
+int tap_ctl_allocate(int *minor, char **devname);
+int tap_ctl_free(const int minor);
 
-int tap_ctl_free(int argc, char **argv);
-int _tap_ctl_free(const int minor);
+int tap_ctl_create(const char *params, char **devname);
+int tap_ctl_destroy(const int id, const int minor);
 
-int tap_ctl_create(int argc, char **argv);
-int _tap_ctl_create(const char *params, char **devname);
+int tap_ctl_spawn(void);
+pid_t tap_ctl_get_pid(const int id);
 
-int tap_ctl_destroy(int argc, char **argv);
-int _tap_ctl_destroy(const int id, const int minor);
-
-int tap_ctl_spawn(int argc, char **argv);
-int _tap_ctl_spawn(const int id);
-pid_t _tap_ctl_get_pid(const int id);
-
-int tap_ctl_attach(int argc, char **argv);
-int _tap_ctl_attach(const int id, const int minor);
-
-int tap_ctl_detach(int argc, char **argv);
-int _tap_ctl_detach(const int id, const int minor);
+int tap_ctl_attach(const int id, const int minor);
+int tap_ctl_detach(const int id, const int minor);
 
 int tap_ctl_open(const int id, const int minor, const char *params);
-
-int tap_ctl_close(int argc, char **argv);
-int _tap_ctl_close(const int id, const int minor, const int force);
+int tap_ctl_close(const int id, const int minor, const int force);
 
 int tap_ctl_pause(const int id, const int minor);
-
-int tap_ctl_unpause(const int id, const int minor, const char *args);
+int tap_ctl_unpause(const int id, const int minor, const char *params);
 
 int tap_ctl_blk_major(void);
 

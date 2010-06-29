@@ -33,12 +33,6 @@
 
 #include "tap-ctl.h"
 
-static void
-usage(void)
-{
-	printf("usage: pause <-i id> <-m minor>\n");
-}
-
 int
 tap_ctl_pause(const int id, const int minor)
 {
@@ -57,8 +51,8 @@ tap_ctl_pause(const int id, const int minor)
 		err = message.u.response.error;
 	else {
 		err = EINVAL;
-		printf("got unexpected result '%s' from %d\n",
-		       tapdisk_message_name(message.type), id);
+		EPRINTF("got unexpected result '%s' from %d\n",
+			tapdisk_message_name(message.type), id);
 	}
 
 	return err;

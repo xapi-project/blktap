@@ -356,7 +356,6 @@ tapdisk_server_signal_handler(int signal)
 		if (xfsz_error_sent)
 			break;
 
-		tapdisk_server_send_error("received SIGXFSZ, closing queues");
 		xfsz_error_sent = 1;
 		break;
 
@@ -370,7 +369,7 @@ tapdisk_server_signal_handler(int signal)
 int
 tapdisk_server_init(void)
 {
-
+	memset(&server, 0, sizeof(server));
 	INIT_LIST_HEAD(&server.vbds);
 
 	scheduler_initialize(&server.scheduler);

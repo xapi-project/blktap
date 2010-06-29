@@ -65,7 +65,6 @@ static struct tapdisk_control td_control;
 static void
 tapdisk_control_initialize(void)
 {
-	td_control.uuid     = -1;
 	td_control.socket   = -1;
 	td_control.event_id = -1;
 
@@ -91,10 +90,11 @@ static struct tapdisk_control_connection *
 tapdisk_control_allocate_connection(int fd)
 {
 	struct tapdisk_control_connection *connection;
+	size_t sz;
 
 	connection = calloc(1, sizeof(*connection));
 	if (!connection) {
-		EPRINTF("failed to allocate new connection\n");
+		EPRINTF("calloc");
 		return NULL;
 	}
 
@@ -515,11 +515,6 @@ tapdisk_control_close_image(struct tapdisk_control_connection *connection,
 		goto out;
 	}
 
-	if (!vbd->name) {
-		err = -EBADF;
-		goto out;
-	}
-
 	if (!list_empty(&vbd->pending_requests)) {
 		err = -EAGAIN;
 		goto out;
@@ -618,30 +613,6 @@ tapdisk_control_resume_vbd(struct tapdisk_control_connection *connection,
 out:
 	response.cookie = request->cookie;
 	response.u.response.error = -err;
-	tapdisk_control_write_message(connection->socket, &response, 2);
-	tapdisk_control_close_connection(connection);
-}
-
-static void
-tapdisk_control_close_vbd(struct tapdisk_control_connection *connection,
-			  tapdisk_message_t *request)
-{
-	int err;
-	td_vbd_t *vbd;
-	tapdisk_message_t response;
-
-	memset(&response, 0, sizeof(response));
-
-	response.type = TAPDISK_MESSAGE_CLOSE_RSP;
-
-	vbd = tapdisk_server_get_vbd(request->cookie);
-	if (!vbd)
-		err = EINVAL;
-	else
-		err = tapdisk_vbd_close(vbd);
-
-	response.cookie = (vbd ? vbd->uuid : -1);
-	response.u.response.error = err;
 	tapdisk_control_write_message(connection->socket, &response, 2);
 	tapdisk_control_close_connection(connection);
 }
@@ -775,7 +746,7 @@ tapdisk_control_mkdir(const char *dir)
 }
 
 static int
-tapdisk_control_create_socket(const int uuid, const char *socket_path)
+tapdisk_control_create_socket(char **socket_path)
 {
 	int err, flags;
 	struct sockaddr_un saddr;
@@ -787,6 +758,20 @@ tapdisk_control_create_socket(const int uuid, const char *socket_path)
 		return err;
 	}
 
+	err = asprintf(&td_control.path, "%s/%s%d",
+		       BLKTAP2_CONTROL_DIR, BLKTAP2_CONTROL_SOCKET, getpid());
+	if (err == -1) {
+		td_control.path = NULL;
+		err = (errno ? : ENOMEM);
+		goto fail;
+	}
+
+	if (unlink(td_control.path) && errno != ENOENT) {
+		err = errno;
+		EPRINTF("failed to unlink %s: %d\n", td_control.path, errno);
+		goto fail;
+	}
+
 	td_control.socket = socket(AF_UNIX, SOCK_STREAM, 0);
 	if (td_control.socket == -1) {
 		err = errno;
@@ -795,14 +780,14 @@ tapdisk_control_create_socket(const int uuid, const char *socket_path)
 	}
 
 	memset(&saddr, 0, sizeof(saddr));
-	strncpy(saddr.sun_path, socket_path, sizeof(saddr.sun_path));
+	strncpy(saddr.sun_path, td_control.path, sizeof(saddr.sun_path));
 	saddr.sun_family = AF_UNIX;
 
 	err = bind(td_control.socket,
 		   (const struct sockaddr *)&saddr, sizeof(saddr));
 	if (err == -1) {
 		err = errno;
-		EPRINTF("failed to bind to %s: %d\n", socket_path, err);
+		EPRINTF("failed to bind to %s: %d\n", saddr.sun_path, err);
 		goto fail;
 	}
 
@@ -813,13 +798,6 @@ tapdisk_control_create_socket(const int uuid, const char *socket_path)
 		goto fail;
 	}
 
-	td_control.path = strdup(saddr.sun_path);
-	if (!td_control.path) {
-		err = errno;
-		EPRINTF("failed to dup socket path: %d\n", err);
-		goto fail_unlink;
-	}
-
 	err = tapdisk_server_register_event(SCHEDULER_POLL_READ_FD,
 					    td_control.socket, 0,
 					    tapdisk_control_accept, NULL);
@@ -828,26 +806,22 @@ tapdisk_control_create_socket(const int uuid, const char *socket_path)
 		goto fail;
 	}
 
-	td_control.uuid     = uuid;
 	td_control.event_id = err;
+	*socket_path = td_control.path;
 
 	return 0;
 
 fail:
 	tapdisk_control_close();
 	return err;
-
-fail_unlink:
-	unlink(saddr.sun_path);
-	goto fail;
 }
 
 int
-tapdisk_control_open(const int uuid, const char *control)
+tapdisk_control_open(char **path)
 {
 	int err;
 
 	tapdisk_control_initialize();
 
-	return tapdisk_control_create_socket(uuid, control);
+	return tapdisk_control_create_socket(path);
 }

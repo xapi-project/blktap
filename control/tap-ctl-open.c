@@ -36,7 +36,7 @@
 #include "blktaplib.h"
 
 int
-tap_ctl_open(const int id, const int minor, const char *args)
+tap_ctl_open(const int id, const int minor, const char *params)
 {
 	int err;
 	tapdisk_message_t message;
@@ -48,9 +48,9 @@ tap_ctl_open(const int id, const int minor, const char *args)
 	message.u.params.devnum = minor;
 
 	err = snprintf(message.u.params.path,
-		       sizeof(message.u.params.path) - 1, "%s", args);
+		       sizeof(message.u.params.path) - 1, "%s", params);
 	if (err >= sizeof(message.u.params.path)) {
-		printf("name too long\n");
+		EPRINTF("name too long\n");
 		return ENAMETOOLONG;
 	}
 
@@ -63,11 +63,11 @@ tap_ctl_open(const int id, const int minor, const char *args)
 		break;
 	case TAPDISK_MESSAGE_ERROR:
 		err = -message.u.response.error;
-		fprintf(stderr, "open failed, err %d\n", err);
+		EPRINTF("open failed, err %d\n", err);
 		break;
 	default:
-		printf("got unexpected result '%s' from %d\n",
-		       tapdisk_message_name(message.type), id);
+		EPRINTF("got unexpected result '%s' from %d\n",
+			tapdisk_message_name(message.type), id);
 		err = EINVAL;
 	}
 

@@ -34,12 +34,6 @@
 
 #include "tap-ctl.h"
 
-static void
-usage(void)
-{
-	printf("usage: close <-i id> <-m minor> [-f force]\n");
-}
-
 static int
 __tap_ctl_close(const int id, const int minor, const int force)
 {
@@ -59,10 +53,10 @@ __tap_ctl_close(const int id, const int minor, const int force)
 	if (message.type == TAPDISK_MESSAGE_CLOSE_RSP) {
 		err = message.u.response.error;
 		if (err)
-			printf("close failed: %d\n", err);
+			EPRINTF("close failed: %d\n", err);
 	} else {
-		printf("got unexpected result '%s' from %d\n",
-		       tapdisk_message_name(message.type), id);
+		EPRINTF("got unexpected result '%s' from %d\n",
+			tapdisk_message_name(message.type), id);
 		err = EINVAL;
 	}
 
@@ -70,7 +64,7 @@ __tap_ctl_close(const int id, const int minor, const int force)
 }
 
 int
-_tap_ctl_close(const int id, const int minor, const int force)
+tap_ctl_close(const int id, const int minor, const int force)
 {
 	int i, err;
 
@@ -81,48 +75,13 @@ _tap_ctl_close(const int id, const int minor, const int force)
 
 		err = (err < 0 ? -err : err);
 		if (err != EAGAIN) {
-			printf("close failed: %d\n", err);
+			EPRINTF("close failed: %d\n", err);
 			return err;
 		}
 
 		usleep(1000);
 	}
 
-	printf("close timed out\n");
+	EPRINTF("close timed out\n");
 	return EIO;
-}
-
-int
-tap_ctl_close(int argc, char **argv)
-{
-	int c, id, minor, force;
-
-	id    = -1;
-	minor = -1;
-	force = 0;
-
-	optind = 0;
-	while ((c = getopt(argc, argv, "i:m:fh")) != -1) {
-		switch (c) {
-		case 'i':
-			id = atoi(optarg);
-			break;
-		case 'm':
-			minor = atoi(optarg);
-			break;
-		case 'f':
-			force = -1;
-			break;
-		case 'h':
-			usage();
-			return 0;
-		}
-	}
-
-	if (id == -1 || minor == -1) {
-		usage();
-		return EINVAL;
-	}
-
-	return _tap_ctl_close(id, minor, force);
 }

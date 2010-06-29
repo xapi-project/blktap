@@ -34,74 +34,32 @@
 #include "tap-ctl.h"
 #include "blktap2.h"
 
-static void
-usage(void)
-{
-	printf("usage: create <-a args> [-d device name]\n");
-}
-
 int
-_tap_ctl_create(const char *params, char **devname)
+tap_ctl_create(const char *params, char **devname)
 {
-	int err, id;
+	int err, id, minor;
 
-	err = _tap_ctl_allocate(&id, devname);
+	err = tap_ctl_allocate(&minor, devname);
 	if (err)
 		return err;
 
-	err = _tap_ctl_spawn(id);
-	if (err < 0)
+	id = tap_ctl_spawn();
+	if (id < 0)
 		goto destroy;
 
-	err = _tap_ctl_attach(id, id);
+	err = tap_ctl_attach(id, minor);
 	if (err)
 		goto destroy;
 
-	err = tap_ctl_open(id, id, params);
+	err = tap_ctl_open(id, minor, params);
 	if (err)
 		goto detach;
 
 	return 0;
 
 detach:
-	_tap_ctl_detach(id, id);
+	tap_ctl_detach(id, minor);
 destroy:
-	_tap_ctl_free(id);
-	return err;
-}
-
-int
-tap_ctl_create(int argc, char **argv)
-{
-	int c, err, type;
-	char *args, *devname;
-
-	args    = NULL;
-	devname = NULL;
-
-	optind = 0;
-	while ((c = getopt(argc, argv, "a:d:h")) != -1) {
-		switch (c) {
-		case 'a':
-			args = optarg;
-			break;
-		case 'd':
-			devname = optarg;
-			break;
-		case 'h':
-			usage();
-			return 0;
-		}
-	}
-
-	if (!args) {
-		usage();
-		return EINVAL;
-	}
-
-	err = _tap_ctl_create(args, &devname);
-	if (!err)
-		printf("%s\n", devname);
-
+	tap_ctl_free(minor);
 	return err;
 }

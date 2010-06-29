@@ -76,7 +76,7 @@ tap_ctl_read_message(int fd, tapdisk_message_t *message, int timeout)
 	}
 
 	if (offset != len) {
-		printf("failure reading message\n");
+		EPRINTF("failure reading message\n");
 		return -EIO;
 	}
 
@@ -126,7 +126,7 @@ tap_ctl_write_message(int fd, tapdisk_message_t *message, int timeout)
 	}
 
 	if (offset != len) {
-		printf("failure writing message\n");
+		EPRINTF("failure writing message\n");
 		return -EIO;
 	}
 
@@ -140,15 +140,15 @@ tap_ctl_send_and_receive(int sfd, tapdisk_message_t *message, int timeout)
 
 	err = tap_ctl_write_message(sfd, message, timeout);
 	if (err) {
-		printf("failed to send '%s' message\n",
-		       tapdisk_message_name(message->type));
+		EPRINTF("failed to send '%s' message\n",
+			tapdisk_message_name(message->type));
 		return err;
 	}
 
 	err = tap_ctl_read_message(sfd, message, timeout);
 	if (err) {
-		printf("failed to receive '%s' message\n",
-		       tapdisk_message_name(message->type));
+		EPRINTF("failed to receive '%s' message\n",
+			tapdisk_message_name(message->type));
 		return err;
 	}
 
@@ -177,7 +177,7 @@ tap_ctl_connect(const char *name, int *sfd)
 
 	fd = socket(AF_UNIX, SOCK_STREAM, 0);
 	if (fd == -1) {
-		fprintf(stderr, "couldn't create socket for %s: %d\n", name, errno);
+		EPRINTF("couldn't create socket for %s: %d\n", name, errno);
 		return -errno;
 	}
 
@@ -187,8 +187,7 @@ tap_ctl_connect(const char *name, int *sfd)
 
 	err = connect(fd, (const struct sockaddr *)&saddr, sizeof(saddr));
 	if (err) {
-		//if (errno != ECONNREFUSED)
-			fprintf(stderr, "couldn't connect to %s: %d\n", name, errno);
+		EPRINTF("couldn't connect to %s: %d\n", name, errno);
 		close(fd);
 		return -errno;
 	}
@@ -206,13 +205,13 @@ tap_ctl_connect_id(int id, int *sfd)
 	*sfd = -1;
 
 	if (id < 0) {
-		printf("invalid id %d\n", id);
+		EPRINTF("invalid id %d\n", id);
 		return -EINVAL;
 	}
 
 	name = tap_ctl_socket_name(id);
 	if (!name) {
-		printf("couldn't name socket for %d\n", id);
+		EPRINTF("couldn't name socket for %d\n", id);
 		return -ENOMEM;
 	}
 
