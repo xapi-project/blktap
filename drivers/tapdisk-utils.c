@@ -75,13 +75,15 @@ tapdisk_syslog_facility(const char *arg)
 	int facility;
 	char *endptr;
 
-	facility = strtol(arg, &endptr, 0);
-	if (*endptr == 0)
-		return facility;
+	if (arg) {
+		facility = strtol(arg, &endptr, 0);
+		if (*endptr == 0)
+			return facility;
 
-	facility = tapdisk_syslog_facility_by_name(arg);
-	if (facility >= 0)
-		return facility;
+		facility = tapdisk_syslog_facility_by_name(arg);
+		if (facility >= 0)
+			return facility;
+	}
 
 	return LOG_DAEMON;
 }
