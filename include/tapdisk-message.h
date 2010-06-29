@@ -127,6 +127,8 @@ enum tapdisk_message_id {
 	TAPDISK_MESSAGE_EXIT,
 };
 
+#define TAPDISK_MESSAGE_MAX TAPDISK_MESSAGE_EXIT
+
 static inline char *
 tapdisk_message_name(enum tapdisk_message_id id)
 {

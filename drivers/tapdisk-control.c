@@ -53,6 +53,7 @@ struct tapdisk_control {
 	int                uuid;
 	int                socket;
 	int                event_id;
+	int                running;
 };
 
 struct tapdisk_control_connection {
@@ -617,13 +618,49 @@ out:
 	tapdisk_control_close_connection(connection);
 }
 
+#define TAPDISK_MSG_REENTER     (1<<0) /* non-blocking, idempotent */
+
+struct tapdisk_message_info {
+	void (*handler)(struct tapdisk_control_connection *,
+			tapdisk_message_t *);
+	int flags;
+} message_infos[] = {
+	[TAPDISK_MESSAGE_PID] = {
+		.handler = tapdisk_control_get_pid,
+		.flags   = TAPDISK_MSG_REENTER,
+	},
+	[TAPDISK_MESSAGE_LIST] = {
+		.handler = tapdisk_control_list,
+		.flags   = TAPDISK_MSG_REENTER,
+	},
+	[TAPDISK_MESSAGE_ATTACH] = {
+		.handler = tapdisk_control_attach_vbd,
+	},
+	[TAPDISK_MESSAGE_DETACH] = {
+		.handler = tapdisk_control_detach_vbd,
+	},
+	[TAPDISK_MESSAGE_OPEN] = {
+		.handler = tapdisk_control_open_image,
+	},
+	[TAPDISK_MESSAGE_PAUSE] = {
+		.handler = tapdisk_control_pause_vbd,
+	},
+	[TAPDISK_MESSAGE_RESUME] = {
+		.handler = tapdisk_control_resume_vbd,
+	},
+	[TAPDISK_MESSAGE_CLOSE] = {
+		.handler = tapdisk_control_close_image,
+	},
+};
+
+
 static void
 tapdisk_control_handle_request(event_id_t id, char mode, void *private)
 {
 	int err;
-	tapdisk_message_t message;
-	struct tapdisk_control_connection *connection =
-		(struct tapdisk_control_connection *)private;
+	tapdisk_message_t message, response;
+	struct tapdisk_control_connection *connection = private;
+	struct tapdisk_message_info *info;
 
 	if (tapdisk_control_read_message(connection->socket, &message, 2)) {
 		EPRINTF("failed to read message from %d\n", connection->socket);
@@ -633,44 +670,49 @@ tapdisk_control_handle_request(event_id_t id, char mode, void *private)
 
 	err = tapdisk_control_validate_request(&message);
 	if (err)
-		goto fail;
+		goto invalid;
 
-	switch (message.type) {
-	case TAPDISK_MESSAGE_PID:
-		return tapdisk_control_get_pid(connection, &message);
-	case TAPDISK_MESSAGE_LIST_MINORS:
-		return tapdisk_control_list_minors(connection, &message);
-	case TAPDISK_MESSAGE_LIST:
-		return tapdisk_control_list(connection, &message);
-	case TAPDISK_MESSAGE_ATTACH:
-		return tapdisk_control_attach_vbd(connection, &message);
-	case TAPDISK_MESSAGE_DETACH:
-		return tapdisk_control_detach_vbd(connection, &message);
-	case TAPDISK_MESSAGE_OPEN:
-		return tapdisk_control_open_image(connection, &message);
-	case TAPDISK_MESSAGE_PAUSE:
-		return tapdisk_control_pause_vbd(connection, &message);
-	case TAPDISK_MESSAGE_RESUME:
-		return tapdisk_control_resume_vbd(connection, &message);
-	case TAPDISK_MESSAGE_CLOSE:
-		return tapdisk_control_close_image(connection, &message);
-	default: {
-		tapdisk_message_t response;
-	fail:
+	if (message.type > TAPDISK_MESSAGE_EXIT)
+		goto invalid;
 
-		EPRINTF("received unsupported message '%s'\n",
-			tapdisk_message_name(message.type));
+	info = &message_infos[message.type];
+	if (!info)
+		goto invalid;
 
-		memset(&response, 0, sizeof(response));
+	if (td_control.running && !(info->flags & TAPDISK_MSG_REENTER))
+		goto busy;
 
-		response.type = TAPDISK_MESSAGE_ERROR;
-		response.u.response.error = (err ? -err : EINVAL);
-		tapdisk_control_write_message(connection->socket, &response, 2);
+	td_control.running++;
 
-		tapdisk_control_close_connection(connection);
-		break;
-	}
-	}
+	tapdisk_server_mask_event(connection->event_id, 1);
+
+	info->handler(connection, &message);
+
+	tapdisk_server_mask_event(connection->event_id, 0);
+
+	td_control.running--;
+
+	return;
+
+respond:
+	memset(&response, 0, sizeof(response));
+	response.type = TAPDISK_MESSAGE_ERROR;
+	response.u.response.error = (err ? -err : EINVAL);
+	tapdisk_control_write_message(connection->socket, &response, 2);
+	tapdisk_control_close_connection(connection);
+	return;
+
+busy:
+	err = -EBUSY;
+	EPRINTF("received concurrent control message '%s'\n",
+		tapdisk_message_name(message.type));
+	goto respond;
+
+invalid:
+	err = -EINVAL;
+	EPRINTF("received unsupported message '%s'\n",
+		tapdisk_message_name(message.type));
+	goto respond;
 }
 
 static void
