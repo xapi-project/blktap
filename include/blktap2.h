@@ -44,6 +44,7 @@
 #define BLKTAP2_IOCTL_PAUSE            204
 #define BLKTAP2_IOCTL_REOPEN           205
 #define BLKTAP2_IOCTL_RESUME           206
+#define BLKTAP2_IOCTL_REMOVE_DEVICE    207
 
 #define BLKTAP2_SYSFS_DIR              "/sys/class/blktap2"
 #define BLKTAP2_CONTROL_NAME           "blktap-control"

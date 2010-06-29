@@ -126,7 +126,7 @@ tapdisk_control_read_message(int fd, tapdisk_message_t *message, int timeout)
 {
 	const int len = sizeof(tapdisk_message_t);
 	fd_set readfds;
-	int ret, offset;
+	int ret, offset, err = 0;
 	struct timeval tv, *t;
 
 	t      = NULL;
@@ -156,24 +156,27 @@ tapdisk_control_read_message(int fd, tapdisk_message_t *message, int timeout)
 			break;
 	}
 
-	if (offset != len) {
-		EPRINTF("failure reading message (wanted %d but got %d)\n",
-			len, offset);
-		return -EIO;
-	}
+	if (ret < 0)
+		err = -errno;
+	else if (offset != len)
+		err = -EIO;
+	if (err)
+		EPRINTF("failure reading message at offset %d/%d: %d\n",
+			offset, len, err);
 
-	DPRINTF("received '%s' message (uuid = %u)\n",
-		tapdisk_message_name(message->type), message->cookie);
 
-	return offset;
+	return err;
 }
 
 static int
 tapdisk_control_write_message(int fd, tapdisk_message_t *message, int timeout)
 {
 	fd_set writefds;
-	int ret, len, offset;
+	int ret, len, offset, err = 0;
 	struct timeval tv, *t;
+
+	if (fd < 0)
+		return 0;
 
 	t      = NULL;
 	offset = 0;
@@ -207,12 +210,15 @@ tapdisk_control_write_message(int fd, tapdisk_message_t *message, int timeout)
 			break;
 	}
 
-	if (offset != len) {
-		EPRINTF("failure writing message\n");
-		return -EIO;
-	}
+	if (ret < 0)
+		err = -errno;
+	else if (offset != len)
+		err = -EIO;
+	if (err)
+		EPRINTF("failure writing message at offset %d/%d: %d\n",
+			offset, len, err);
 
-	return 0;
+	return err;
 }
 
 static int
@@ -522,14 +528,35 @@ tapdisk_control_close_image(struct tapdisk_control_connection *connection,
 
 	vbd = tapdisk_server_get_vbd(request->cookie);
 	if (!vbd) {
-		err = -EINVAL;
+		err = -ENODEV;
 		goto out;
 	}
 
-	if (!list_empty(&vbd->pending_requests)) {
-		err = -EAGAIN;
-		goto out;
+	do {
+		err = ioctl(vbd->ring.fd, BLKTAP2_IOCTL_REMOVE_DEVICE);
+
+		if (!err || errno != EBUSY)
+			break;
+
+		tapdisk_server_iterate();
+
+	} while (connection->socket >= 0);
+
+	if (err) {
+		err = -errno;
+		DPRINTF("failure closing image: %d\n", err);
 	}
+
+	if (err == -ENOTTY) {
+
+		while (!list_empty(&vbd->pending_requests))
+			tapdisk_server_iterate();
+
+		err = 0;
+	}
+
+	if (err)
+		goto out;
 
 	tapdisk_vbd_close_vdi(vbd);
 
@@ -544,7 +571,6 @@ tapdisk_control_close_image(struct tapdisk_control_connection *connection,
 		free(vbd);
 	}
 
-	err = 0;
 out:
 	memset(&response, 0, sizeof(response));
 	response.type = TAPDISK_MESSAGE_CLOSE_RSP;
@@ -629,7 +655,8 @@ out:
 	tapdisk_control_close_connection(connection);
 }
 
-#define TAPDISK_MSG_REENTER     (1<<0) /* non-blocking, idempotent */
+#define TAPDISK_MSG_REENTER    (1<<0) /* non-blocking, idempotent */
+#define TAPDISK_MSG_VERBOSE    (1<<1) /* tell syslog about it */
 
 struct tapdisk_message_info {
 	void (*handler)(struct tapdisk_control_connection *,
@@ -646,21 +673,27 @@ struct tapdisk_message_info {
 	},
 	[TAPDISK_MESSAGE_ATTACH] = {
 		.handler = tapdisk_control_attach_vbd,
+		.flags   = TAPDISK_MSG_VERBOSE,
 	},
 	[TAPDISK_MESSAGE_DETACH] = {
 		.handler = tapdisk_control_detach_vbd,
+		.flags   = TAPDISK_MSG_VERBOSE,
 	},
 	[TAPDISK_MESSAGE_OPEN] = {
 		.handler = tapdisk_control_open_image,
+		.flags   = TAPDISK_MSG_VERBOSE,
 	},
 	[TAPDISK_MESSAGE_PAUSE] = {
 		.handler = tapdisk_control_pause_vbd,
+		.flags   = TAPDISK_MSG_VERBOSE,
 	},
 	[TAPDISK_MESSAGE_RESUME] = {
 		.handler = tapdisk_control_resume_vbd,
+		.flags   = TAPDISK_MSG_VERBOSE,
 	},
 	[TAPDISK_MESSAGE_CLOSE] = {
 		.handler = tapdisk_control_close_image,
+		.flags   = TAPDISK_MSG_VERBOSE,
 	},
 };
 
@@ -673,8 +706,8 @@ tapdisk_control_handle_request(event_id_t id, char mode, void *private)
 	struct tapdisk_control_connection *connection = private;
 	struct tapdisk_message_info *info;
 
-	len = tapdisk_control_read_message(connection->socket, &message, 2);
-	if (len <= 0) {
+	err = tapdisk_control_read_message(connection->socket, &message, 2);
+	if (err) {
 		tapdisk_control_close_connection(connection);
 		return;
 	}
@@ -691,8 +724,11 @@ tapdisk_control_handle_request(event_id_t id, char mode, void *private)
 	if (!info->handler)
 		goto invalid;
 
-	excl = !(info->flags & TAPDISK_MSG_REENTER);
+	if (info->flags & TAPDISK_MSG_VERBOSE)
+		DPRINTF("received '%s' message (uuid = %u)\n",
+			tapdisk_message_name(message.type), message.cookie);
 
+	excl = !(info->flags & TAPDISK_MSG_REENTER);
 	if (excl) {
 		if (td_control.busy)
 			goto busy;
@@ -719,13 +755,13 @@ respond:
 
 busy:
 	err = -EBUSY;
-	EPRINTF("received concurrent control message '%s'\n",
+	EPRINTF("rejecting message '%s' while busy\n",
 		tapdisk_message_name(message.type));
 	goto respond;
 
 invalid:
 	err = -EINVAL;
-	EPRINTF("received unsupported message '%s'\n",
+	EPRINTF("rejecting unsupported message '%s'\n",
 		tapdisk_message_name(message.type));
 	goto respond;
 }
@@ -850,7 +886,7 @@ tapdisk_control_create_socket(char **socket_path)
 		goto fail;
 	}
 
-	err = listen(td_control.socket, 10);
+	err = listen(td_control.socket, 32);
 	if (err == -1) {
 		err = errno;
 		EPRINTF("failed to listen: %d\n", err);
