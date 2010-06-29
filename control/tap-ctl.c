@@ -62,7 +62,7 @@ tap_ctl_list_row(tap_list_t *entry)
 		sprintf(minor_str, "%d", entry->minor);
 
 	if (entry->state != -1)
-		sprintf(state_str, "%x", entry->state);
+		sprintf(state_str, "%#x", entry->state);
 
 	printf("%8s %2s %4s %10s %s\n",
 	       pid_str, minor_str, state_str,
@@ -86,7 +86,7 @@ tap_ctl_list_dict(tap_list_t *entry)
 
 	if (entry->state != -1) {
 		if (d) putc(' ', stdout);
-		d = printf("state=%d", entry->state);
+		d = printf("state=%#x", entry->state);
 	}
 
 	if (entry->type && entry->path) {
