@@ -1137,7 +1137,7 @@ tapdisk_vbd_close_and_reopen_image(td_vbd_t *vbd, td_image_t *image)
 	}
 
 	if (err)
-		td_flag_set(vbd->state, TD_VBD_CLOSED);
+		td_flag_set(vbd->state, TD_VBD_CLOSED | TD_VBD_DEAD);
 
 	return err;
 }
@@ -1757,9 +1757,6 @@ tapdisk_vbd_issue_requests(td_vbd_t *vbd)
 
 	if (td_flag_test(vbd->state, TD_VBD_DEAD))
 		return tapdisk_vbd_kill_requests(vbd);
-
-	if (!tapdisk_vbd_queue_ready(vbd))
-		return -EAGAIN;
 
 	err = tapdisk_vbd_reissue_failed_requests(vbd);
 	if (err)
