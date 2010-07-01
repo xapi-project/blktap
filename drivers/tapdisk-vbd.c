@@ -1060,7 +1060,7 @@ tapdisk_vbd_queue_ready(td_vbd_t *vbd)
 int
 tapdisk_vbd_retry_needed(td_vbd_t *vbd)
 {
-	return td_flag_test(vbd->state, TD_VBD_RETRY_NEEDED);
+	return !list_empty(&vbd->failed_requests);
 }
 
 int
@@ -1708,11 +1708,6 @@ tapdisk_vbd_reissue_failed_requests(td_vbd_t *vbd)
 		if (err)
 			break;
 	}
-
-	if (list_empty(&vbd->failed_requests))
-		td_flag_clear(vbd->state, TD_VBD_RETRY_NEEDED);
-	else
-		td_flag_set(vbd->state, TD_VBD_RETRY_NEEDED);
 
 	return err;
 }

@@ -49,8 +49,7 @@
 #define TD_VBD_PAUSED               0x0020
 #define TD_VBD_SHUTDOWN_REQUESTED   0x0040
 #define TD_VBD_LOCKING              0x0080
-#define TD_VBD_RETRY_NEEDED         0x0100
-#define TD_VBD_LOG_DROPPED          0x0200
+#define TD_VBD_LOG_DROPPED          0x0100
 
 typedef struct td_ring              td_ring_t;
 typedef struct td_vbd_request       td_vbd_request_t;
