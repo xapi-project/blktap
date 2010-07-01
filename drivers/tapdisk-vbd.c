@@ -1641,14 +1641,14 @@ tapdisk_vbd_issue_request(td_vbd_t *vbd, td_vbd_request_t *vreq)
 			treq_started = 1;
 		}
 
+		DBG(TLOG_DBG, "%s: req %d seg %d sec 0x%08llx secs 0x%04x "
+		    "buf %p op %d\n", image->name, id, i, treq.sec, treq.secs,
+		    treq.buf, (int)req->operation);
+
 		if (i == req->nr_segments - 1) {
 			tapdisk_vbd_submit_request(image, req, treq);
 			treq_started = 0;
 		}
-
-		DBG(TLOG_DBG, "%s: req %d seg %d sec 0x%08llx secs 0x%04x "
-		    "buf %p op %d\n", image->name, id, i, treq.sec, treq.secs,
-		    treq.buf, (int)req->operation);
 
 		vreq->secs_pending += nsects;
 		vbd->secs_pending  += nsects;
