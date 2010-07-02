@@ -42,7 +42,7 @@ vhd_util_query(int argc, char **argv)
 	char *name;
 	vhd_context_t vhd;
 	off64_t currsize;
-	int ret, err, c, size, physize, parent, fields, depth, fastresize;
+	int ret, err, c, size, physize, parent, fields, depth, fastresize, marker;
 
 	name       = NULL;
 	size       = 0;
@@ -51,6 +51,7 @@ vhd_util_query(int argc, char **argv)
 	fields     = 0;
 	depth      = 0;
 	fastresize = 0;
+	marker     = 0;
 
 	if (!argc || !argv) {
 		err = -EINVAL;
@@ -58,7 +59,7 @@ vhd_util_query(int argc, char **argv)
 	}
 
 	optind = 0;
-	while ((c = getopt(argc, argv, "n:vspfdSh")) != -1) {
+	while ((c = getopt(argc, argv, "n:vspfdSmh")) != -1) {
 		switch (c) {
 		case 'n':
 			name = optarg;
@@ -80,6 +81,9 @@ vhd_util_query(int argc, char **argv)
 			break;
 		case 'S':
 			fastresize = 1;
+			break;
+		case 'm':
+			marker = 1;
 			break;
 		case 'h':
 			err = 0;
@@ -144,6 +148,18 @@ vhd_util_query(int argc, char **argv)
 		err = (err ? : ret);
 	}
 
+	if (marker) {
+		char marker;
+
+		ret = vhd_marker(&vhd, &marker);
+		if (ret)
+			printf("error checking 'marker' field: %d\n", ret);
+		else
+			printf("marker: %d\n", marker);
+
+		err = (err ? : ret);
+	}
+
 	if (depth) {
 		int length;
 
@@ -169,7 +185,7 @@ vhd_util_query(int argc, char **argv)
 usage:
 	printf("options: <-n name> [-v print virtual size (in MB)] "
 	       "[-s print physical utilization (bytes)] [-p print parent] "
-	       "[-f print fields] [-d print chain depth] "
+	       "[-f print fields] [-m print marker] [-d print chain depth] "
 	       "[-S print max virtual size (MB) for fast resize] [-h help]\n");
 	return err;
 }

@@ -38,12 +38,186 @@
 #include <inttypes.h>
 #include <sys/stat.h>
 
+#include "list.h"
 #include "libvhd.h"
 #include "vhd-util.h"
 
 // allow the VHD timestamp to be at most this many seconds into the future to 
 // account for time skew with NFS servers
 #define TIMESTAMP_MAX_SLACK 1800
+
+struct vhd_util_check_options {
+	char                             ignore_footer;
+	char                             ignore_parent_uuid;
+	char                             ignore_timestamps;
+	char                             check_data;
+	char                             collect_stats;
+};
+
+struct vhd_util_check_stats {
+	char                            *name;
+	char                            *bitmap;
+	uint64_t                         secs_total;
+	uint64_t                         secs_allocated;
+	uint64_t                         secs_written;
+	struct list_head                 next;
+};
+
+struct vhd_util_check_ctx {
+	struct vhd_util_check_options    opts;
+	struct list_head                 stats;
+	int                              primary_footer_missing;
+};
+
+#define ctx_cur_stats(ctx) \
+	list_entry((ctx)->stats.next, struct vhd_util_check_stats, next)
+
+static inline int
+test_bit_u64(volatile char *addr, uint64_t nr)
+{
+	return ((addr[nr >> 3] << (nr & 7)) & 0x80) != 0;
+}
+
+static inline void
+set_bit_u64(volatile char *addr, uint64_t nr)
+{
+	addr[nr >> 3] |= (0x80 >> (nr & 7));
+}
+
+static void
+vhd_util_check_stats_init(struct vhd_util_check_ctx *ctx)
+{
+	memset(&ctx->stats, 0, sizeof(ctx->stats));
+	INIT_LIST_HEAD(&ctx->stats);
+}
+
+static void
+vhd_util_check_stats_free_one(struct vhd_util_check_stats *stats)
+{
+	if (stats) {
+		free(stats->name);
+		free(stats->bitmap);
+		free(stats);
+	}
+}
+
+static int
+vhd_util_check_stats_alloc_one(struct vhd_util_check_ctx *ctx,
+			       vhd_context_t *vhd)
+{
+	int size;
+	struct vhd_util_check_stats *stats;
+
+	stats = calloc(1, sizeof(*stats));
+	if (!stats)
+		goto fail;
+
+	stats->name = strdup(vhd->file);
+	if (!stats->name)
+		goto fail;
+
+	stats->secs_total = (uint64_t)vhd->spb * vhd->header.max_bat_size;
+	size = (stats->secs_total + 7) >> 3;
+	stats->bitmap = calloc(1, size);
+	if (!stats->bitmap)
+		goto fail;
+
+	INIT_LIST_HEAD(&stats->next);
+	list_add(&stats->next, &ctx->stats);
+
+	return 0;
+
+fail:
+	vhd_util_check_stats_free_one(stats);
+	printf("failed to allocate stats for %s\n", vhd->file);
+	return -ENOMEM;
+}
+
+static void
+vhd_util_check_stats_free(struct vhd_util_check_ctx *ctx)
+{
+	struct vhd_util_check_stats *stats, *tmp;
+
+	list_for_each_entry_safe(stats, tmp, &ctx->stats, next) {
+		list_del_init(&stats->next);
+		vhd_util_check_stats_free_one(stats);
+	}
+}
+
+static inline float
+pct(uint64_t num, uint64_t den)
+{
+	return (!den ? 0.0 : (((float)num / (float)den)) * 100.0);
+}
+
+static inline char *
+name(const char *path)
+{
+	char *p = strrchr(path, '/');
+	if (p && (p - path) == strlen(path))
+		p = strrchr(--p, '/');
+	return (char *)(p ? ++p : path);
+}
+
+static void
+vhd_util_check_stats_print(struct vhd_util_check_ctx *ctx)
+{
+	char *bitmap;
+	uint64_t secs;
+	struct vhd_util_check_stats *head, *cur, *prev;
+
+	if (list_empty(&ctx->stats))
+		return;
+
+	head = list_entry(ctx->stats.next, struct vhd_util_check_stats, next);
+	printf("%s: secs allocated: 0x%llx secs written: 0x%llx (%.2f%%)\n",
+	       name(head->name), head->secs_allocated, head->secs_written,
+	       pct(head->secs_written, head->secs_allocated));
+
+	if (list_is_last(&head->next, &ctx->stats))
+		return;
+
+	secs = head->secs_total;
+
+	bitmap = malloc((secs + 7) >> 3);
+	if (!bitmap) {
+		printf("failed to allocate bitmap\n");
+		return;
+	}
+	memcpy(bitmap, head->bitmap, ((secs + 7) >> 3));
+
+	cur = prev = head;
+	while (!list_is_last(&cur->next, &ctx->stats)) {
+		uint64_t i, up = 0, uc = 0;
+
+		cur = list_entry(cur->next.next,
+				 struct vhd_util_check_stats, next);
+
+		for (i = 0; i < secs; i++) {
+			if (test_bit_u64(cur->bitmap, i)) {
+				if (!test_bit_u64(prev->bitmap, i))
+					up++; /* sector is unique wrt parent */
+
+				if (!test_bit_u64(bitmap, i))
+					uc++; /* sector is unique wrt chain */
+
+				set_bit_u64(bitmap, i);
+			}
+		}
+
+		printf("%s: secs allocated: 0x%llx secs written: 0x%llx "
+		       "(%.2f%%) secs not in parent: 0x%llx (%.2f%%) "
+		       "secs not in ancestors: 0x%llx (%.2f%%)\n",
+		       name(cur->name), cur->secs_allocated, cur->secs_written,
+		       pct(cur->secs_written, cur->secs_allocated),
+		       up, pct(up, cur->secs_written),
+		       uc, pct(uc, cur->secs_written));
+
+		prev = cur;
+	}
+
+	free(bitmap);
+}
 
 static int
 vhd_util_check_zeros(void *buf, size_t size)
@@ -59,27 +233,12 @@ vhd_util_check_zeros(void *buf, size_t size)
 	return 0;
 }
 
-static int
-vhd_util_check_footer_opened(vhd_footer_t *footer)
-{
-	int i, n;
-	uint32_t *buf;
-
-	buf = (uint32_t *)footer;
-	n = sizeof(*footer) / sizeof(uint32_t);
-
-	for (i = 0; i < n; i++)
-		if (buf[i] != 0xc7c7c7c7)
-			return 0;
-
-	return 1;
-}
-
 static char *
-vhd_util_check_validate_footer(vhd_footer_t *footer)
+vhd_util_check_validate_footer(struct vhd_util_check_ctx *ctx,
+			       vhd_footer_t *footer)
 {
 	int size;
-	uint32_t checksum, now;
+	uint32_t checksum;
 
 	size = sizeof(footer->cookie);
 	if (memcmp(footer->cookie, HD_COOKIE, size))
@@ -118,9 +277,11 @@ ok:
 	    footer->data_offset != ~(0ULL))
 		return "invalid data offset";
 
-	now = vhd_time(time(NULL));
-	if (footer->timestamp > now + TIMESTAMP_MAX_SLACK)
-		return "creation time in future";
+	if (!ctx->opts.ignore_timestamps) {
+		uint32_t now = vhd_time(time(NULL));
+		if (footer->timestamp > now + TIMESTAMP_MAX_SLACK)
+			return "creation time in future";
+	}
 
 	if (!strncmp(footer->crtr_app, "tap", 3) &&
 	    footer->crtr_ver > VHD_CURRENT_VERSION)
@@ -196,7 +357,8 @@ vhd_util_check_validate_header(int fd, vhd_header_t *header)
 }
 
 static char *
-vhd_util_check_validate_differencing_header(vhd_context_t *vhd)
+vhd_util_check_validate_differencing_header(struct vhd_util_check_ctx *ctx,
+					    vhd_context_t *vhd)
 {
 	vhd_header_t *header;
 
@@ -204,11 +366,12 @@ vhd_util_check_validate_differencing_header(vhd_context_t *vhd)
 
 	if (vhd->footer.type == HD_TYPE_DIFF) {
 		char *parent;
-		uint32_t now;
 
-		now = vhd_time(time(NULL));
-		if (header->prt_ts > now + TIMESTAMP_MAX_SLACK)
-			return "parent creation time in future";
+		if (!ctx->opts.ignore_timestamps) {
+			uint32_t now = vhd_time(time(NULL));
+			if (header->prt_ts > now + TIMESTAMP_MAX_SLACK)
+				return "parent creation time in future";
+		}
 
 		if (vhd_header_decode_parent(vhd, header, &parent))
 			return "invalid parent name";
@@ -313,7 +476,8 @@ vhd_util_check_validate_parent_locator(vhd_context_t *vhd,
 }
 
 static char *
-vhd_util_check_validate_parent(vhd_context_t *vhd, const char *ppath)
+vhd_util_check_validate_parent(struct vhd_util_check_ctx *ctx,
+			       vhd_context_t *vhd, const char *ppath)
 {
 	char *msg;
 	vhd_context_t parent;
@@ -321,6 +485,9 @@ vhd_util_check_validate_parent(vhd_context_t *vhd, const char *ppath)
 	msg = NULL;
 
 	if (vhd_parent_raw(vhd))
+		return msg;
+
+	if (ctx->opts.ignore_parent_uuid)
 		return msg;
 
 	if (vhd_open(&parent, ppath,
@@ -338,10 +505,11 @@ out:
 }
 
 static int
-vhd_util_check_footer(int fd, vhd_footer_t *footer, int ignore)
+vhd_util_check_footer(struct vhd_util_check_ctx *ctx,
+		      int fd, vhd_footer_t *footer)
 {
+	int err;
 	size_t size;
-	int err, opened;
 	char *msg, *buf;
 	off64_t eof, off;
 	vhd_footer_t primary, backup;
@@ -380,12 +548,13 @@ vhd_util_check_footer(int fd, vhd_footer_t *footer, int ignore)
 	}
 
 	memcpy(&primary, buf, sizeof(primary));
-	opened = vhd_util_check_footer_opened(&primary);
 	vhd_footer_in(&primary);
 
-	msg = vhd_util_check_validate_footer(&primary);
+	msg = vhd_util_check_validate_footer(ctx, &primary);
 	if (msg) {
-		if (opened && ignore)
+		ctx->primary_footer_missing = 1;
+
+		if (ctx->opts.ignore_footer)
 			goto check_backup;
 
 		err = -EINVAL;
@@ -419,7 +588,7 @@ check_backup:
 	memcpy(&backup, buf, sizeof(backup));
 	vhd_footer_in(&backup);
 
-	msg = vhd_util_check_validate_footer(&backup);
+	msg = vhd_util_check_validate_footer(ctx, &backup);
 	if (msg) {
 		err = -EINVAL;
 		printf("backup footer invalid: %s\n", msg);
@@ -427,7 +596,7 @@ check_backup:
 	}
 
 	if (memcmp(&primary, &backup, sizeof(primary))) {
-		if (opened && ignore) {
+		if (ctx->opts.ignore_footer) {
 			memcpy(&primary, &backup, sizeof(primary));
 			goto ok;
 		}
@@ -505,11 +674,12 @@ out:
 }
 
 static int
-vhd_util_check_differencing_header(vhd_context_t *vhd)
+vhd_util_check_differencing_header(struct vhd_util_check_ctx *ctx,
+				   vhd_context_t *vhd)
 {
 	char *msg;
 
-	msg = vhd_util_check_validate_differencing_header(vhd);
+	msg = vhd_util_check_validate_differencing_header(ctx, vhd);
 	if (msg) {
 		printf("differencing header is invalid: %s\n", msg);
 		return -EINVAL;
@@ -519,11 +689,69 @@ vhd_util_check_differencing_header(vhd_context_t *vhd)
 }
 
 static int
-vhd_util_check_bat(vhd_context_t *vhd)
+vhd_util_check_bitmap(struct vhd_util_check_ctx *ctx,
+		      vhd_context_t *vhd, uint32_t block)
 {
-	uint32_t vhd_blks;
+	int err, i;
+	uint64_t sector;
+	char *bitmap, *data;
+
+	data   = NULL;
+	bitmap = NULL;
+	sector = (uint64_t)block * vhd->spb;
+
+	err = vhd_read_bitmap(vhd, block, &bitmap);
+	if (err) {
+		printf("error reading bitmap 0x%x\n", block);
+		goto out;
+	}
+
+	if (ctx->opts.check_data) {
+		err = vhd_read_block(vhd, block, &data);
+		if (err) {
+			printf("error reading data block 0x%x\n", block);
+			goto out;
+		}
+	}
+
+	for (i = 0; i < vhd->spb; i++) {
+		if (ctx->opts.collect_stats &&
+		    vhd_bitmap_test(vhd, bitmap, i)) {
+			ctx_cur_stats(ctx)->secs_written++;
+			set_bit_u64(ctx_cur_stats(ctx)->bitmap, sector + i);
+		}
+
+		if (ctx->opts.check_data) {
+			char *buf = data + (i << VHD_SECTOR_SHIFT);
+			int set   = vhd_util_check_zeros(buf, VHD_SECTOR_SIZE);
+			int map   = vhd_bitmap_test(vhd, bitmap, i);
+
+			if (set && !map) {
+				printf("sector 0x%x of block 0x%x has data "
+				       "where bitmap is clear\n", i, block);
+				err = -EINVAL;
+			}
+		}
+	}
+
+out:
+	free(data);
+	free(bitmap);
+	return err;
+}
+
+static int
+vhd_util_check_bat(struct vhd_util_check_ctx *ctx, vhd_context_t *vhd)
+{
 	off64_t eof, eoh;
+	uint64_t vhd_blks;
 	int i, j, err, block_size;
+
+	if (ctx->opts.collect_stats) {
+		err = vhd_util_check_stats_alloc_one(ctx, vhd);
+		if (err)
+			return err;
+	}
 
 	err = vhd_seek(vhd, 0, SEEK_END);
 	if (err) {
@@ -566,7 +794,7 @@ vhd_util_check_bat(vhd_context_t *vhd)
 
 	vhd_blks = vhd->footer.curr_size >> VHD_BLOCK_SHIFT;
 	if (vhd_blks > vhd->header.max_bat_size) {
-		printf("VHD size (%u blocks) exceeds BAT size (%u)\n",
+		printf("VHD size (%llu blocks) exceeds BAT size (%u)\n",
 		       vhd_blks, vhd->header.max_bat_size);
 		return -EINVAL;
 	}
@@ -583,9 +811,13 @@ vhd_util_check_bat(vhd_context_t *vhd)
 		}
 
 		if (off + block_size > eof) {
-			printf("block %d (offset 0x%x) clobbers footer\n",
-			       i, off);
-			return -EINVAL;
+			if (!(ctx->primary_footer_missing &&
+			      ctx->opts.ignore_footer     &&
+			      off + block_size == eof + 1)) {
+				printf("block %d (offset 0x%x) clobbers "
+				       "footer\n", i, off);
+				return -EINVAL;
+			}
 		}
 
 		for (j = 0; j < vhd_blks; j++) {
@@ -613,6 +845,15 @@ vhd_util_check_bat(vhd_context_t *vhd)
 				       i, off, j, joff);
 				return err;
 			}
+		}
+
+		if (ctx->opts.check_data || ctx->opts.collect_stats) {
+			if (ctx->opts.collect_stats)
+				ctx_cur_stats(ctx)->secs_allocated += vhd->spb;
+
+			err = vhd_util_check_bitmap(ctx, vhd, i);
+			if (err)
+				return err;
 		}
 	}
 
@@ -657,7 +898,8 @@ vhd_util_check_batmap(vhd_context_t *vhd)
 }
 
 static int
-vhd_util_check_parent_locators(vhd_context_t *vhd)
+vhd_util_check_parent_locators(struct vhd_util_check_ctx *ctx,
+			       vhd_context_t *vhd)
 {
 	int i, n, err;
 	vhd_parent_locator_t *loc;
@@ -767,7 +1009,7 @@ vhd_util_check_parent_locators(vhd_context_t *vhd)
 			goto out;
 		}
 
-		msg = vhd_util_check_validate_parent(vhd, location);
+		msg = vhd_util_check_validate_parent(ctx, vhd, location);
 		if (msg) {
 			err = -EINVAL;
 			printf("invalid parent %s: %s\n", location, msg);
@@ -815,7 +1057,7 @@ vhd_util_dump_headers(const char *name)
 }
 
 static int
-vhd_util_check_vhd(const char *name, int ignore)
+vhd_util_check_vhd(struct vhd_util_check_ctx *ctx, const char *name)
 {
 	int fd, err;
 	vhd_context_t vhd;
@@ -842,7 +1084,7 @@ vhd_util_check_vhd(const char *name, int ignore)
 		return -errno;
 	}
 
-	err = vhd_util_check_footer(fd, &footer, ignore);
+	err = vhd_util_check_footer(ctx, fd, &footer);
 	if (err)
 		goto out;
 
@@ -857,11 +1099,11 @@ vhd_util_check_vhd(const char *name, int ignore)
 	if (err)
 		goto out;
 
-	err = vhd_util_check_differencing_header(&vhd);
+	err = vhd_util_check_differencing_header(ctx, &vhd);
 	if (err)
 		goto out;
 
-	err = vhd_util_check_bat(&vhd);
+	err = vhd_util_check_bat(ctx, &vhd);
 	if (err)
 		goto out;
 
@@ -872,13 +1114,15 @@ vhd_util_check_vhd(const char *name, int ignore)
 	}
 
 	if (vhd.footer.type == HD_TYPE_DIFF) {
-		err = vhd_util_check_parent_locators(&vhd);
+		err = vhd_util_check_parent_locators(ctx, &vhd);
 		if (err)
 			goto out;
 	}
 
 	err = 0;
-	printf("%s is valid\n", name);
+
+	if (!ctx->opts.collect_stats)
+		printf("%s is valid\n", name);
 
 out:
 	if (err)
@@ -890,7 +1134,7 @@ out:
 }
 
 static int
-vhd_util_check_parents(const char *name, int ignore)
+vhd_util_check_parents(struct vhd_util_check_ctx *ctx, const char *name)
 {
 	int err;
 	vhd_context_t vhd;
@@ -921,7 +1165,7 @@ vhd_util_check_parents(const char *name, int ignore)
 			free(cur);
 		cur = parent;
 
-		err = vhd_util_check_vhd(cur, ignore);
+		err = vhd_util_check_vhd(ctx, cur);
 		if (err)
 			goto out;
 	}
@@ -939,28 +1183,42 @@ vhd_util_check(int argc, char **argv)
 {
 	char *name;
 	vhd_context_t vhd;
-	int c, err, ignore, parents;
+	int c, err, parents;
+	struct vhd_util_check_ctx ctx;
 
 	if (!argc || !argv) {
 		err = -EINVAL;
 		goto usage;
 	}
 
-	ignore  = 0;
-	parents = 0;
 	name    = NULL;
+	parents = 0;
+	memset(&ctx, 0, sizeof(ctx));
+	vhd_util_check_stats_init(&ctx);
 
 	optind = 0;
-	while ((c = getopt(argc, argv, "n:iph")) != -1) {
+	while ((c = getopt(argc, argv, "n:iItpbsh")) != -1) {
 		switch (c) {
 		case 'n':
 			name = optarg;
 			break;
 		case 'i':
-			ignore = 1;
+			ctx.opts.ignore_footer = 1;
+			break;
+		case 'I':
+			ctx.opts.ignore_parent_uuid = 1;
+			break;
+		case 't':
+			ctx.opts.ignore_timestamps = 1;
 			break;
 		case 'p':
 			parents = 1;
+			break;
+		case 'b':
+			ctx.opts.check_data = 1;
+			break;
+		case 's':
+			ctx.opts.collect_stats = 1;
 			break;
 		case 'h':
 			err = 0;
@@ -976,18 +1234,24 @@ vhd_util_check(int argc, char **argv)
 		goto usage;
 	}
 
-	err = vhd_util_check_vhd(name, ignore);
+	err = vhd_util_check_vhd(&ctx, name);
 	if (err)
 		goto out;
 
 	if (parents)
-		err = vhd_util_check_parents(name, ignore);
+		err = vhd_util_check_parents(&ctx, name);
+
+	if (ctx.opts.collect_stats)
+		vhd_util_check_stats_print(&ctx);
+
+	vhd_util_check_stats_free(&ctx);
 
 out:
 	return err;
 
 usage:
 	printf("options: -n <file> [-i ignore missing primary footers] "
-	       "[-p check parents] [-h help]\n");
+	       "[-I ignore parent uuids] [-t ignore timestamps] "
+	       "[-p check parents] [-b check bitmaps] [-s stats] [-h help]\n");
 	return err;
 }

@@ -100,7 +100,7 @@ tapdisk_syslog_ident(const char *name)
 	len  = 0;
 
 	len  = snprintf(NULL, 0, "[%d]", pid);
-	len  = snprintf(ident, size - len, name);
+	len  = snprintf(ident, size - len, "%s", name);
 	len += snprintf(ident + len, size - len, "[%d]", pid);
 
 	return strdup(ident);

@@ -26,7 +26,8 @@ tapdisk tapdisk2 td-util tapdisk-stream tapdisk-diff: LIBS += -L$(LIBVHDDIR) -lv
 ifneq ($(USE_SYSTEM_LIBRARIES),y)
 LIBAIO_DIR = $(XEN_ROOT)/tools/libaio/src
 tapdisk tapdisk2 tapdisk-stream tapdisk-diff: AIOLIBS := $(LIBAIO_DIR)/libaio.a
-tapdisk tapdisk-client tapdisk-stream tapdisk-diff: CFLAGS  += -I$(LIBAIO_DIR) -I$(XEN_LIBXC)
+tapdisk tapdisk2 tapdisk-client tapdisk-stream tapdisk-diff: CFLAGS  += -I$(LIBAIO_DIR) -I$(XEN_LIBXC)
+tapdisk tapdisk2 tapdisk-client tapdisk-stream tapdisk-diff block-log: CFLAGS += -I$(XEN_ROOT)/tools/include
 else
 tapdisk tapdisk2 tapdisk-stream tapdisk-diff: AIOLIBS := -laio
 endif

@@ -80,7 +80,7 @@ vhd_util_set_field(int argc, char **argv)
 		goto usage;
 	}
 
-	if (strcmp(field, "hidden")) {
+	if (strcmp(field, "hidden") && strcmp(field, "marker")) {
 		printf("invalid field %s\n", field);
 		goto usage;
 	}
@@ -96,13 +96,16 @@ vhd_util_set_field(int argc, char **argv)
 		return err;
 	}
 
-	vhd.footer.hidden = (char)value;
-
-	err = vhd_write_footer(&vhd, &vhd.footer);
-	if (err == -ENOSPC && vhd_type_dynamic(&vhd) && value)
-		/* if no space to write the primary footer, at least write the 
-		 * backup footer so that it's possible to delete the VDI */
-		err = vhd_write_footer_at(&vhd, &vhd.footer, 0);
+	if (!strcmp(field, "hidden")) {
+		vhd.footer.hidden = (char)value;
+		err = vhd_write_footer(&vhd, &vhd.footer);
+		if (err == -ENOSPC && vhd_type_dynamic(&vhd) && value)
+			/* if no space to write the primary footer, at least write the 
+			 * backup footer so that it's possible to delete the VDI */
+			err = vhd_write_footer_at(&vhd, &vhd.footer, 0);
+	} else {
+		err = vhd_set_marker(&vhd, (char)value);
+	}
 		
  done:
 	vhd_close(&vhd);

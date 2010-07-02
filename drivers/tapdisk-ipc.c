@@ -181,7 +181,8 @@ tapdisk_ipc_write_error(td_ipc_t *ipc, const char *text)
 	memset(&message, 0, sizeof(message));
 	message.type   = TAPDISK_MESSAGE_RUNTIME_ERROR;
 	message.cookie = ipc->uuid;
-	snprintf(message.u.string.text, sizeof(message.u.string.text), "%s", text);
+	snprintf(message.u.string.text,
+		 sizeof(message.u.string.text), "%s", text);
 
 	return tapdisk_ipc_write_message(ipc->wfd, &message, 2);
 }

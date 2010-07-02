@@ -738,7 +738,7 @@ usage(FILE *stream)
 int
 main(int argc, char *argv[])
 {
-	int err;
+	int err, gcc;
 	const char *facility;
 
 	program  = basename(argv[0]);
@@ -763,7 +763,7 @@ main(int argc, char *argv[])
 		}
 	} while (1);
 
-	daemon(0, 0);
+	gcc = daemon(0, 0);
 
 #define CORE_DUMP
 #if defined(CORE_DUMP)

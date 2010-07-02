@@ -13,6 +13,7 @@ LIBVHD-BUILD    := $(LIBVHD) $(LIBVHDIO)
 
 INST-DIR         = /usr/lib
 
+CFLAGS          += -Werror
 CFLAGS          += -Wno-unused
 CFLAGS          += -I../../include
 CFLAGS          += -D_GNU_SOURCE
@@ -55,7 +56,7 @@ LIBVHD-IO-LIBS  := -ldl -L./ -lvhd
 LIBVHD-IO-OBJS  := libvhdio.o $(BLKTAP_ROOT)/part/partition.o
 LIBVHD-IO        = libvhdio.a libvhdio.so.$(LIBVHD-MAJOR).$(LIBVHD-MINOR)
 LIBVHD-IO-SONAME = libvhdio.so.$(LIBVHD-MAJOR)
- 
+
 all: build
 
 build: $(LIBVHD-BUILD)

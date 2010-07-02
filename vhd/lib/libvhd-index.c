@@ -654,8 +654,9 @@ vhdi_append_block(vhdi_context_t *ctx, vhdi_block_t *block, uint32_t *sector)
 	err     = 0;
 	*sector = off >> VHD_SECTOR_SHIFT;
 out:
-	if (err)
-		ftruncate(ctx->fd, off);
+	if (err) {
+		int gcc = ftruncate(ctx->fd, off);
+	}
 	free(entries);
 	return err;
 }
@@ -1179,8 +1180,9 @@ vhdi_file_table_add(const char *name, const char *file, vhdi_file_id_t *_fid)
 	*_fid = fid;
 
 out:
-	if (err && off)
-		ftruncate(fd, off);
+	if (err && off) {
+		int gcc = ftruncate(fd, off);
+	}
 	close(fd);
 
 	return err;

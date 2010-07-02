@@ -92,7 +92,7 @@ next_node(char **path, int *err)
 				return NULL;
 			}
 
-			ret = snprintf(node, size, start);
+			ret = snprintf(node, size, "%s", start);
 			if (ret < 0) {
 				free(node);
 				*err = -EINVAL;

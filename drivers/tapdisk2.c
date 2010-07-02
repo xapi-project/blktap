@@ -68,7 +68,10 @@ main(int argc, char *argv[])
 	if (optind != argc)
 		usage(argv[0], EINVAL);
 
-	chdir("/");
+	if (!nodaemon) {
+		int gcc = chdir("/");
+		setsid();
+	}
 	tapdisk_start_logging("tapdisk2", NULL);
 
 	err = tapdisk_server_init();

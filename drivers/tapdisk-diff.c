@@ -184,9 +184,9 @@ tapdisk_stream_poll_close(struct tapdisk_stream_poll *p)
 static inline void
 tapdisk_stream_poll_clear(struct tapdisk_stream_poll *p)
 {
-	int dummy;
+	int gcc, dummy;
 
-	read(p->pipe[POLL_READ], &dummy, sizeof(dummy));
+	gcc = read(p->pipe[POLL_READ], &dummy, sizeof(dummy));
 	p->set = 0;
 }
 
@@ -196,7 +196,7 @@ tapdisk_stream_poll_set(struct tapdisk_stream_poll *p)
 	int dummy = 0;
 
 	if (!p->set) {
-		write(p->pipe[POLL_WRITE], &dummy, sizeof(dummy));
+		int gcc = write(p->pipe[POLL_WRITE], &dummy, sizeof(dummy));
 		p->set = 1;
 	}
 }

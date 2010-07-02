@@ -1,22 +1,21 @@
 BLKTAP_ROOT := ..
 include $(BLKTAP_ROOT)/Rules.mk
 
+LIBVHDDIR      := vhd
+LIBVHD_HEADERS := vhd.h libvhd.h libvhd-index.h libvhd-journal.h list.h
+
+BLKTAPDIR      := blktap
+BLKTAP_HEADERS := blktap2.h blktaplib.h tapdisk-message.h
+
 .PHONY: all
 all:
 
 .PHONY: install
 install:
-	$(INSTALL_DIR) -p $(DESTDIR)/usr/include/blktap
-	$(INSTALL_DATA) blktaplib.h $(DESTDIR)/usr/include/blktap
-	$(INSTALL_DATA) tapdisk-message.h $(DESTDIR)/usr/include/blktap
-
-	$(INSTALL_DIR) -p $(DESTDIR)/usr/include/vhd
-	$(INSTALL_DATA) vhd.h $(DESTDIR)/usr/include/vhd
-	$(INSTALL_DATA) vhd-util.h $(DESTDIR)/usr/include/vhd
-	$(INSTALL_DATA) libvhd.h $(DESTDIR)/usr/include/vhd
-	$(INSTALL_DATA) libvhd-index.h $(DESTDIR)/usr/include/vhd
-	$(INSTALL_DATA) libvhd-journal.h $(DESTDIR)/usr/include/vhd
-	$(INSTALL_DATA) list.h $(DESTDIR)/usr/include/vhd
+	$(INSTALL_DIR) -p $(DESTDIR)/usr/include/$(BLKTAPDIR)
+	$(INSTALL_DATA) $(BLKTAP_HEADERS) $(DESTDIR)/usr/include/$(BLKTAPDIR)
+	$(INSTALL_DIR) -p $(DESTDIR)/usr/include/$(LIBVHDDIR)
+	$(INSTALL_DATA) $(LIBVHD_HEADERS) $(DESTDIR)/usr/include/$(LIBVHDDIR)
 
 .PHONY: clean
 clean:

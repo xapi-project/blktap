@@ -33,9 +33,9 @@
 
 #include <inttypes.h>
 
-#include <xen/io/ring.h>
 /* for wmb et al */
 #include <xenctrl.h>
+#include <xen/io/ring.h>
 
 #define LOGCMD_SHMP  "shmp"
 #define LOGCMD_PEEK  "peek"
