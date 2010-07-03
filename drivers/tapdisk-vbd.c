@@ -1060,8 +1060,7 @@ tapdisk_vbd_queue_ready(td_vbd_t *vbd)
 int
 tapdisk_vbd_retry_needed(td_vbd_t *vbd)
 {
-	return !(list_empty(&vbd->failed_requests) ||
-		 list_empty(&vbd->new_requests));
+	return !list_empty(&vbd->failed_requests);
 }
 
 int
@@ -1426,33 +1425,14 @@ tapdisk_vbd_check_queue(td_vbd_t *vbd)
 	return 0;
 }
 
-static int
-tapdisk_vbd_request_should_retry(td_vbd_t *vbd, td_vbd_request_t *vreq)
-{
-	if (td_flag_test(vbd->state, TD_VBD_DEAD) ||
-	    td_flag_test(vbd->state, TD_VBD_SHUTDOWN_REQUESTED))
-		return 0;
-
-	switch (abs(vreq->error)) {
-	case EPERM:
-	case ENOSYS:
-	case ESTALE:
-	case ENOSPC:
-		return 0;
-	}
-
-	if (tapdisk_vbd_request_timeout(vreq))
-		return 0;
-
-	return 1;
-}
-
 static void
 tapdisk_vbd_complete_vbd_request(td_vbd_t *vbd, td_vbd_request_t *vreq)
 {
 	if (!vreq->submitting && !vreq->secs_pending) {
 		if (vreq->status == BLKIF_RSP_ERROR &&
-		    tapdisk_vbd_request_should_retry(vbd, vreq))
+		    !tapdisk_vbd_request_timeout(vreq) &&
+		    !td_flag_test(vbd->state, TD_VBD_DEAD) &&
+		    !td_flag_test(vbd->state, TD_VBD_SHUTDOWN_REQUESTED))
 			tapdisk_vbd_move_request(vreq, &vbd->failed_requests);
 		else
 			tapdisk_vbd_move_request(vreq, &vbd->completed_requests);
@@ -1625,16 +1605,12 @@ tapdisk_vbd_issue_request(td_vbd_t *vbd, td_vbd_request_t *vreq)
 	tapdisk_vbd_move_request(vreq, &vbd->pending_requests);
 
 	err = tapdisk_vbd_check_queue(vbd);
-	if (err) {
-		vreq->error = err;
+	if (err)
 		goto fail;
-	}
 
 	err = tapdisk_image_check_ring_request(image, req);
-	if (err) {
-		vreq->error = err;
+	if (err)
 		goto fail;
-	}
 
 	memset(&treq, 0, sizeof(td_request_t));
 	for (i = 0; i < req->nr_segments; i++) {
@@ -1697,12 +1673,6 @@ fail:
 }
 
 static int
-tapdisk_vbd_request_completed(td_vbd_t *vbd, td_vbd_request_t *vreq)
-{
-	return vreq->list_head == &vbd->completed_requests;
-}
-
-static int
 tapdisk_vbd_reissue_failed_requests(td_vbd_t *vbd)
 {
 	int err;
@@ -1735,15 +1705,11 @@ tapdisk_vbd_reissue_failed_requests(td_vbd_t *vbd)
 		    vreq->req.nr_segments);
 
 		err = tapdisk_vbd_issue_request(vbd, vreq);
-		/*
-		 * if this request failed, but was not completed,
-		 * we'll back off for a while.
-		 */
-		if (err && !tapdisk_vbd_request_completed(vbd, vreq))
+		if (err)
 			break;
 	}
 
-	return 0;
+	return err;
 }
 
 static int
@@ -1754,11 +1720,7 @@ tapdisk_vbd_issue_new_requests(td_vbd_t *vbd)
 
 	tapdisk_vbd_for_each_request(vreq, tmp, &vbd->new_requests) {
 		err = tapdisk_vbd_issue_request(vbd, vreq);
-		/*
-		 * if this request failed, but was not completed,
-		 * we'll back off for a while.
-		 */
-		if (err && !tapdisk_vbd_request_completed(vbd, vreq))
+		if (err)
 			return err;
 	}
 

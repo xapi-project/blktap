@@ -77,11 +77,9 @@ tapdisk_image_free(td_image_t *image)
 int
 tapdisk_image_check_td_request(td_image_t *image, td_request_t treq)
 {
-	int rdonly, err;
+	int rdonly;
 	td_driver_t *driver;
 	td_disk_info_t *info;
-
-	err = -EINVAL;
 
 	driver = image->driver;
 	if (!driver)
@@ -93,10 +91,8 @@ tapdisk_image_check_td_request(td_image_t *image, td_request_t treq)
 	if (treq.op != TD_OP_READ && treq.op != TD_OP_WRITE)
 		goto fail;
 
-	if (treq.op == TD_OP_WRITE && rdonly) {
-		err = -EPERM;
+	if (treq.op == TD_OP_WRITE && rdonly)
 		goto fail;
-	}
 
 	if (treq.secs <= 0 || treq.sec + treq.secs > info->size)
 		goto fail;
@@ -104,10 +100,10 @@ tapdisk_image_check_td_request(td_image_t *image, td_request_t treq)
 	return 0;
 
 fail:
-	ERR(err, "bad td request on %s (%s, %llu): %d at %llu",
+	ERR(-EINVAL, "bad td request on %s (%s, %llu): %d at %llu",
 	    image->name, (rdonly ? "ro" : "rw"), info->size, treq.op,
 	    treq.sec + treq.secs);
-	return err;
+	return -EINVAL;
 
 }
 
@@ -116,14 +112,13 @@ tapdisk_image_check_ring_request(td_image_t *image, blkif_request_t *req)
 {
 	td_driver_t *driver;
 	td_disk_info_t *info;
+	int i, psize, rdonly;
 	uint64_t nsects, total;
-	int i, err, psize, rdonly;
 
 	driver = image->driver;
 	if (!driver)
 		return -ENODEV;
 
-	err    = -EINVAL;
 	nsects = 0;
 	total  = 0;
 	info   = &driver->info;
@@ -134,10 +129,8 @@ tapdisk_image_check_ring_request(td_image_t *image, blkif_request_t *req)
 	    req->operation != BLKIF_OP_WRITE)
 		goto fail;
 
-	if (req->operation == BLKIF_OP_WRITE && rdonly) {
-		err = -EPERM;
+	if (req->operation == BLKIF_OP_WRITE && rdonly)
 		goto fail;
-	}
 
 	if (!req->nr_segments || req->nr_segments > MAX_SEGMENTS_PER_REQ)
 		goto fail;
@@ -160,8 +153,8 @@ tapdisk_image_check_ring_request(td_image_t *image, blkif_request_t *req)
 	return 0;
 
 fail:
-	ERR(err, "bad request on %s (%s, %llu): id: %llu: %d at %llu",
+	ERR(-EINVAL, "bad request on %s (%s, %llu): id: %llu: %d at %llu",
 	    image->name, (rdonly ? "ro" : "rw"), info->size, req->id,
 	    req->operation, req->sector_number + total);
-	return err;
+	return -EINVAL;
 }

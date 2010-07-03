@@ -77,7 +77,6 @@ struct td_vbd_request {
 
 	td_vbd_t                   *vbd;
 	struct list_head            next;
-	struct list_head           *list_head;
 };
 
 struct td_vbd_handle {
@@ -138,7 +137,6 @@ tapdisk_vbd_move_request(td_vbd_request_t *vreq, struct list_head *dest)
 	list_del(&vreq->next);
 	INIT_LIST_HEAD(&vreq->next);
 	list_add_tail(&vreq->next, dest);
-	vreq->list_head = dest;
 }
 
 static inline void
