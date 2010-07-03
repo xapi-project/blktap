@@ -43,11 +43,37 @@ usage(const char *app, int err)
 	exit(err);
 }
 
+static FILE *
+fdup(FILE *stream, const char *mode)
+{
+	int fd, err;
+	FILE *f;
+
+	fd = dup(STDOUT_FILENO);
+	if (fd < 0)
+		goto fail;
+
+	f = fdopen(fd, mode);
+	if (!f)
+		goto fail;
+
+	return f;
+
+fail:
+	err = -errno;
+	if (fd >= 0)
+		close(fd);
+	errno = -err;
+
+	return NULL;
+}
+
 int
 main(int argc, char *argv[])
 {
 	char *control;
-	int c, err, nodaemon;
+	int c, err, nodaemon, fd;
+	FILE *out;
 
 	control  = NULL;
 	nodaemon = 0;
@@ -68,46 +94,33 @@ main(int argc, char *argv[])
 	if (optind != argc)
 		usage(argv[0], EINVAL);
 
-	if (!nodaemon) {
-		int gcc = chdir("/");
-		setsid();
-	}
-	tapdisk_start_logging("tapdisk2", NULL);
-
 	err = tapdisk_server_init();
 	if (err) {
 		DPRINTF("failed to initialize server: %d\n", err);
 		goto out;
 	}
 
+	out = fdup(stdout, "w");
+	if (!out) {
+		err = -errno;
+		DPRINTF("failed to dup stdout: %d\n", err);
+		goto out;
+	}
+
 	if (!nodaemon) {
-		err = daemon(0, 1);
+		err = daemon(0, 0);
 		if (err) {
 			DPRINTF("failed to daemonize: %d\n", errno);
 			goto out;
 		}
 	}
 
+	tapdisk_start_logging("tapdisk", NULL);
+
 	err = tapdisk_control_open(&control);
 	if (err) {
 		DPRINTF("failed to open control socket: %d\n", err);
 		goto out;
-	}
-
-	fprintf(stdout, "%s\n", control);
-	fflush(stdout);
-
-	if (!nodaemon) {
-		int fd;
-
-		fd = open("/dev/null", O_RDWR);
-		if (fd != -1) {
-			dup2(fd, STDIN_FILENO);
-			dup2(fd, STDOUT_FILENO);
-			dup2(fd, STDERR_FILENO);
-			if (fd > 2)
-				close(fd);
-		}
 	}
 
 	err = tapdisk_server_complete();
@@ -116,10 +129,13 @@ main(int argc, char *argv[])
 		goto out;
 	}
 
+	fprintf(out, "%s\n", control);
+	fclose(out);
+
 	err = tapdisk_server_run();
 
 out:
 	tapdisk_control_close();
 	tapdisk_stop_logging();
-	return err;
+	return -err;
 }
