@@ -101,9 +101,10 @@ tap_cli_list_dict(tap_list_t *entry)
 int
 tap_cli_list(int argc, char **argv)
 {
-	tap_list_t **list, **_entry;
+	struct list_head list = LIST_HEAD_INIT(list);
 	int c, minor, tty, err;
 	const char *type, *file;
+	tap_list_t *entry;
 	pid_t pid;
 
 	err = tap_ctl_list(&list);
@@ -139,9 +140,7 @@ tap_cli_list(int argc, char **argv)
 
 	tty = isatty(STDOUT_FILENO);
 
-	for (_entry = list; *_entry != NULL; ++_entry) {
-		tap_list_t *entry  = *_entry;
-
+	tap_list_for_each_entry(entry, &list) {
 		if (minor >= 0 && entry->minor != minor)
 			continue;
 
@@ -160,7 +159,7 @@ tap_cli_list(int argc, char **argv)
 			tap_cli_list_dict(entry);
 	}
 
-	tap_ctl_free_list(list);
+	tap_ctl_list_free(&list);
 
 	return 0;
 

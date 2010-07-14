@@ -65,6 +65,19 @@ static inline void list_del_init(struct list_head *entry)
 	INIT_LIST_HEAD(entry);
 }
 
+static inline void list_move(struct list_head *list, struct list_head *head)
+{
+	__list_del(list->prev, list->next);
+	list_add(list, head);
+}
+
+static inline void list_move_tail(struct list_head *list,
+				  struct list_head *head)
+{
+	__list_del(list->prev, list->next);
+	list_add_tail(list, head);
+}
+
 static inline int list_empty(const struct list_head *head)
 {
 	return head->next == head;
@@ -95,6 +108,13 @@ static inline void list_splice(const struct list_head *list,
 {
 	if (!list_empty(list))
 		__list_splice(list, head, head->next);
+}
+
+static inline void list_splice_tail(struct list_head *list,
+				    struct list_head *head)
+{
+	if (!list_empty(list))
+		__list_splice(list, head->prev, head);
 }
 
 #define list_entry(ptr, type, member)                                   \

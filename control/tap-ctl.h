@@ -31,6 +31,7 @@
 #include <syslog.h>
 #include <errno.h>
 #include <tapdisk-message.h>
+#include <list.h>
 
 extern int tap_ctl_debug;
 
@@ -68,16 +69,24 @@ int tap_ctl_connect_send_and_receive(int id,
 char *tap_ctl_socket_name(int id);
 
 typedef struct {
-	int         id;
 	pid_t       pid;
 	int         minor;
 	int         state;
 	char       *type;
 	char       *path;
+
+	struct list_head entry;
 } tap_list_t;
 
-int tap_ctl_list(tap_list_t ***list);
-void tap_ctl_free_list(tap_list_t **list);
+#define tap_list_for_each_entry(_pos, _head) \
+	list_for_each_entry(_pos, _head, entry)
+
+#define tap_list_for_each_entry_safe(_pos, _n, _head) \
+	list_for_each_entry_safe(_pos, _n, _head, entry)
+
+int tap_ctl_list(struct list_head *list);
+void tap_ctl_list_free(struct list_head *list);
+
 int tap_ctl_find_minor(const char *type, const char *path);
 
 int tap_ctl_allocate(int *minor, char **devname);

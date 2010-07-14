@@ -37,20 +37,43 @@
 #include "blktap2.h"
 #include "list.h"
 
-static void
-free_list(tap_list_t *entry)
+static tap_list_t*
+_tap_list_alloc(void)
 {
-	if (entry->type) {
-		free(entry->type);
-		entry->type = NULL;
+	const size_t sz = sizeof(tap_list_t);
+	tap_list_t *tl;
+
+	tl = malloc(sz);
+	if (!tl)
+		return NULL;
+
+	tl->pid   = -1;
+	tl->minor = -1;
+	tl->state = -1;
+	tl->type  = NULL;
+	tl->path  = NULL;
+
+	INIT_LIST_HEAD(&tl->entry);
+
+	return tl;
+}
+
+static void
+_tap_list_free(tap_list_t *tl)
+{
+	list_del_init(&tl->entry);
+
+	if (tl->type) {
+		free(tl->type);
+		tl->type = NULL;
 	}
 
-	if (entry->path) {
-		free(entry->path);
-		entry->path = NULL;
+	if (tl->path) {
+		free(tl->path);
+		tl->path = NULL;
 	}
 
-	free(entry);
+	free(tl);
 }
 
 int
@@ -81,102 +104,27 @@ _parse_params(const char *params, char **type, char **path)
 	return 0;
 }
 
-static int
-init_list(tap_list_t *entry,
-	  int tap_id, pid_t tap_pid, int vbd_minor, int vbd_state,
-	  const char *params)
-{
-	int err = 0;
-
-	entry->id     = tap_id;
-	entry->pid    = tap_pid;
-	entry->minor  = vbd_minor;
-	entry->state  = vbd_state;
-
-	if (params)
-		err = _parse_params(params, &entry->type, &entry->path);
-
-	return err;
-}
-
 void
-tap_ctl_free_list(tap_list_t **list)
+tap_ctl_list_free(struct list_head *list)
 {
-	tap_list_t **_entry;
+	tap_list_t *tl, *n;
 
-	for (_entry = list; *_entry != NULL; ++_entry)
-		free_list(*_entry);
-
-	free(list);
-}
-
-static tap_list_t**
-tap_ctl_alloc_list(int n)
-{
-	tap_list_t **list, *entry;
-	size_t size;
-	int i;
-
-	size = sizeof(tap_list_t*) * (n+1);
-	list = malloc(size);
-	if (!list)
-		goto fail;
-
-	memset(list, 0, size);
-
-	for (i = 0; i < n; ++i) {
-		tap_list_t *entry;
-
-		entry = malloc(sizeof(tap_list_t));
-		if (!entry)
-			goto fail;
-
-		memset(entry, 0, sizeof(tap_list_t));
-
-		list[i] = entry;
-	}
-
-	return list;
-
-fail:
-	if (list)
-		tap_ctl_free_list(list);
-
-	return NULL;
+	tap_list_for_each_entry_safe(tl, n, list)
+		_tap_list_free(tl);
 }
 
 static int
-tap_ctl_list_length(const tap_list_t **list)
+_tap_ctl_find_minors(struct list_head *list)
 {
-	const tap_list_t **_entry;
-	int n;
-
-	n = 0;
-	for (_entry = list; *_entry != NULL; ++_entry)
-		n++;
-
-	return n;
-}
-
-static int
-_tap_minor_cmp(const void *a, const void *b)
-{
-	return *(int*)a - *(int*)b;
-}
-
-int
-_tap_ctl_find_minors(int **_minorv)
-{
-	glob_t glbuf = { 0 };
 	const char *pattern, *format;
-	int *minorv = NULL, n_minors = 0;
-	int err, i;
+	glob_t glbuf = { 0 };
+	tap_list_t *tl;
+	int i, err;
+
+	INIT_LIST_HEAD(list);
 
 	pattern = BLKTAP2_SYSFS_DIR"/blktap*";
 	format  = BLKTAP2_SYSFS_DIR"/blktap%d";
-
-	n_minors = 0;
-	minorv   = NULL;
 
 	err = glob(pattern, 0, NULL, &glbuf);
 	switch (err) {
@@ -190,66 +138,48 @@ _tap_ctl_find_minors(int **_minorv)
 		goto fail;
 	}
 
-	minorv = malloc(sizeof(int) * glbuf.gl_pathc);
-	if (!minorv) {
-		err = -errno;
-		goto fail;
-	}
-
 	for (i = 0; i < glbuf.gl_pathc; ++i) {
 		int n;
 
-		n = sscanf(glbuf.gl_pathv[i], format, &minorv[n_minors]);
-		if (n != 1)
-			continue;
+		tl = _tap_list_alloc();
+		if (!tl) {
+			err = -ENOMEM;
+			goto fail;
+		}
 
-		n_minors++;
+		n = sscanf(glbuf.gl_pathv[i], format, &tl->minor);
+		if (n != 1) {
+			_tap_list_free(tl);
+			continue;
+		}
+
+		list_add_tail(&tl->entry, list);
 	}
 
-	qsort(minorv, n_minors, sizeof(int), _tap_minor_cmp);
-
 done:
-	*_minorv = minorv;
 	err = 0;
-
 out:
 	if (glbuf.gl_pathv)
 		globfree(&glbuf);
 
-	return err ? : n_minors;
+	return err;
 
 fail:
-	if (minorv)
-		free(minorv);
-
+	tap_ctl_list_free(list);
 	goto out;
 }
 
-struct tapdisk {
-	int    id;
-	pid_t  pid;
-	struct list_head list;
-};
-
-static int
-_tap_tapdisk_cmp(const void *a, const void *b)
-{
-	return ((struct tapdisk*)a)->id - ((struct tapdisk*)b)->id;
-}
-
 int
-_tap_ctl_find_tapdisks(struct tapdisk **_tapv)
+_tap_ctl_find_tapdisks(struct list_head *list)
 {
-	glob_t glbuf = { 0 };
 	const char *pattern, *format;
-	struct tapdisk *tapv = NULL;
+	glob_t glbuf = { 0 };
 	int err, i, n_taps = 0;
 
 	pattern = BLKTAP2_CONTROL_DIR"/"BLKTAP2_CONTROL_SOCKET"*";
 	format  = BLKTAP2_CONTROL_DIR"/"BLKTAP2_CONTROL_SOCKET"%d";
 
-	n_taps = 0;
-	tapv   = NULL;
+	INIT_LIST_HEAD(list);
 
 	err = glob(pattern, 0, NULL, &glbuf);
 	switch (err) {
@@ -263,38 +193,34 @@ _tap_ctl_find_tapdisks(struct tapdisk **_tapv)
 		goto fail;
 	}
 
-	tapv = malloc(sizeof(struct tapdisk) * glbuf.gl_pathc);
-	if (!tapv) {
-		err = -errno;
-		goto fail;
-	}
-
 	for (i = 0; i < glbuf.gl_pathc; ++i) {
-		struct tapdisk *tap;
+		tap_list_t *tl;
 		int n;
 
-		tap = &tapv[n_taps];
+		tl = _tap_list_alloc();
+		if (!tl) {
+			err = -ENOMEM;
+			goto fail;
+		}
 
-		err = sscanf(glbuf.gl_pathv[i], format, &tap->id);
-		if (err != 1)
-			continue;
+		n = sscanf(glbuf.gl_pathv[i], format, &tl->pid);
+		if (n != 1)
+			goto skip;
 
-		tap->pid = tap_ctl_get_pid(tap->id);
-		if (tap->pid < 0)
-			continue;
+		tl->pid = tap_ctl_get_pid(tl->pid);
+		if (tl->pid < 0)
+			goto skip;
 
+		list_add_tail(&tl->entry, list);
 		n_taps++;
+		continue;
+
+skip:
+		_tap_list_free(tl);
 	}
 
-	qsort(tapv, n_taps, sizeof(struct tapdisk), _tap_tapdisk_cmp);
-
-	for (i = 0; i < n_taps; ++i)
-		INIT_LIST_HEAD(&tapv[i].list);
-
 done:
-	*_tapv = tapv;
 	err = 0;
-
 out:
 	if (glbuf.gl_pathv)
 		globfree(&glbuf);
@@ -302,29 +228,19 @@ out:
 	return err ? : n_taps;
 
 fail:
-	if (tapv)
-		free(tapv);
-
+	tap_ctl_list_free(list);
 	goto out;
 }
 
-struct tapdisk_list {
-	int  minor;
-	int  state;
-	char *params;
-	struct list_head entry;
-};
-
 int
-_tap_ctl_list_tapdisk(int id, struct list_head *_list)
+_tap_ctl_list_tapdisk(pid_t pid, struct list_head *list)
 {
-	tapdisk_message_t message;
-	struct list_head list;
-	struct tapdisk_list *tl, *next;
 	struct timeval timeout = { .tv_sec = 10, .tv_usec = 0 };
+	tapdisk_message_t message;
+	tap_list_t *tl;
 	int err, sfd;
 
-	err = tap_ctl_connect_id(id, &sfd);
+	err = tap_ctl_connect_id(pid, &sfd);
 	if (err)
 		return err;
 
@@ -336,172 +252,106 @@ _tap_ctl_list_tapdisk(int id, struct list_head *_list)
 	if (err)
 		return err;
 
-	INIT_LIST_HEAD(&list);
+	INIT_LIST_HEAD(list);
+
 	do {
 		err = tap_ctl_read_message(sfd, &message, &timeout);
 		if (err) {
 			err = -EPROTO;
-			break;
+			goto fail;
 		}
 
 		if (message.u.list.count == 0)
 			break;
 
-		tl = malloc(sizeof(struct tapdisk_list));
+		tl = _tap_list_alloc();
 		if (!tl) {
 			err = -ENOMEM;
-			break;
+			goto fail;
 		}
 
+		tl->pid    = pid;
 		tl->minor  = message.u.list.minor;
 		tl->state  = message.u.list.state;
-		if (message.u.list.path[0] != 0) {
-			tl->params = strndup(message.u.list.path,
-					     sizeof(message.u.list.path));
-			if (!tl->params) {
-				err = -errno;
-				break;
-			}
-		} else
-			tl->params = NULL;
 
-		list_add(&tl->entry, &list);
+		if (message.u.list.path[0] != 0) {
+			err = _parse_params(message.u.list.path,
+					    &tl->type, &tl->path);
+			if (err) {
+				_tap_list_free(tl);
+				goto fail;
+			}
+		}
+
+		list_add(&tl->entry, list);
 	} while (1);
 
-	if (err)
-		list_for_each_entry_safe(tl, next, &list, entry) {
-			list_del(&tl->entry);
-			free(tl->params);
-			free(tl);
-		}
-
+	err = 0;
+out:
 	close(sfd);
-	list_splice(&list, _list);
-	return err;
-}
+	return 0;
 
-void
-_tap_ctl_free_tapdisks(struct tapdisk *tapv, int n_taps)
-{
-	struct tapdisk *tap;
-
-	for (tap = tapv; tap < &tapv[n_taps]; ++tap) {
-		struct tapdisk_list *tl;
-
-		list_for_each_entry(tl, &tap->list, entry) {
-			free(tl->params);
-			free(tl);
-		}
-	}
-
-	free(tapv);
+fail:
+	tap_ctl_list_free(list);
+	goto out;
 }
 
 int
-_tap_list_join3(int n_minors, int *minorv, int n_taps, struct tapdisk *tapv,
-		tap_list_t ***_list)
+tap_ctl_list(struct list_head *list)
 {
-	tap_list_t **list, **_entry, *entry;
-	int i, _m, err;
+	struct list_head minors, tapdisks, vbds;
+	tap_list_t *t, *next_t, *v, *next_v, *m, *next_m;
+	int err;
 
-	list = tap_ctl_alloc_list(n_minors + n_taps);
-	if (!list) {
-		err = -ENOMEM;
+	/*
+	 * Find all minors, find all tapdisks, then list all minors
+	 * they attached to. Output is a 3-way outer join.
+	 */
+
+	err = _tap_ctl_find_minors(&minors);
+	if (err < 0)
 		goto fail;
-	}
 
-	_entry = list;
+	err = _tap_ctl_find_tapdisks(&tapdisks);
+	if (err < 0)
+		goto fail;
 
-	for (i = 0; i < n_taps; ++i) {
-		struct tapdisk *tap = &tapv[i];
-		struct tapdisk_list *tl;
+	INIT_LIST_HEAD(list);
 
-		/* orphaned tapdisk */
-		if (list_empty(&tap->list)) {
-			err = init_list(*_entry++, tap->id, tap->pid, -1, -1, NULL);
-			if (err)
-				goto fail;
+	tap_list_for_each_entry_safe(t, next_t, &tapdisks) {
+
+		err = _tap_ctl_list_tapdisk(t->pid, &vbds);
+
+		if (err || list_empty(&vbds)) {
+			list_move_tail(&t->entry, list);
 			continue;
 		}
 
-		list_for_each_entry(tl, &tap->list, entry) {
+		tap_list_for_each_entry_safe(v, next_v, &vbds) {
 
-			err = init_list(*_entry++,
-					tap->id, tap->pid,
-					tl->minor, tl->state, tl->params);
-			if (err)
-				goto fail;
-
-			if (tl->minor >= 0) {
-				/* clear minor */
-				for (_m = 0; _m < n_minors; ++_m) {
-					if (minorv[_m] == tl->minor) {
-						minorv[_m] = -1;
-						break;
-					}
+			tap_list_for_each_entry_safe(m, next_m, &minors)
+				if (m->minor == v->minor) {
+					_tap_list_free(m);
+					break;
 				}
-			}
+
+			list_move_tail(&v->entry, list);
 		}
+
+		_tap_list_free(t);
 	}
 
 	/* orphaned minors */
-	for (_m = 0; _m < n_minors; ++_m) {
-		int minor = minorv[_m];
-		if (minor >= 0) {
-			err = init_list(*_entry++, -1, -1, minor, -1, NULL);
-			if (err)
-				goto fail;
-		}
-	}
-
-	/* free extraneous list entries */
-	for (; *_entry != NULL; ++entry) {
-		free_list(*_entry);
-		*_entry = NULL;
-	}
-
-	*_list = list;
+	list_splice_tail(&minors, list);
 
 	return 0;
 
 fail:
-	if (list)
-		tap_ctl_free_list(list);
+	tap_ctl_list_free(list);
 
-	return err;
-}
-
-int
-tap_ctl_list(tap_list_t ***list)
-{
-	int n_taps, n_minors, err, *minorv;
-	struct tapdisk *tapv, *tap;
-
-	n_taps   = -1;
-	n_minors = -1;
-
-	err = n_minors = _tap_ctl_find_minors(&minorv);
-	if (err < 0)
-		goto out;
-
-	err = n_taps = _tap_ctl_find_tapdisks(&tapv);
-	if (err < 0)
-		goto out;
-
-	for (tap = tapv; tap < &tapv[n_taps]; ++tap) {
-		err = _tap_ctl_list_tapdisk(tap->id, &tap->list);
-		if (err)
-			goto out;
-	}
-
-	err = _tap_list_join3(n_minors, minorv, n_taps, tapv, list);
-
-out:
-	if (n_taps > 0)
-		_tap_ctl_free_tapdisks(tapv, n_taps);
-
-	if (n_minors > 0)
-		free(minorv);
+	tap_ctl_list_free(&vbds);
+	tap_ctl_list_free(&tapdisks);
+	tap_ctl_list_free(&minors);
 
 	return err;
 }
@@ -509,7 +359,8 @@ out:
 int
 tap_ctl_find_minor(const char *type, const char *path)
 {
-	tap_list_t **list, **_entry;
+	struct list_head list = LIST_HEAD_INIT(list);
+	tap_list_t *entry;
 	int minor, err;
 
 	err = tap_ctl_list(&list);
@@ -518,8 +369,7 @@ tap_ctl_find_minor(const char *type, const char *path)
 
 	minor = -1;
 
-	for (_entry = list; *_entry != NULL; ++_entry) {
-		tap_list_t *entry  = *_entry;
+	tap_list_for_each_entry(entry, &list) {
 
 		if (type && (!entry->type || strcmp(entry->type, type)))
 			continue;
@@ -531,7 +381,7 @@ tap_ctl_find_minor(const char *type, const char *path)
 		break;
 	}
 
-	tap_ctl_free_list(list);
+	tap_ctl_list_free(&list);
 
 	return minor >= 0 ? minor : -ENOENT;
 }
