@@ -357,6 +357,30 @@ fail:
 }
 
 int
+tap_ctl_list_pid(pid_t pid, struct list_head *list)
+{
+	tap_list_t *t;
+	int err;
+
+	t = _tap_list_alloc();
+	if (!t)
+		return -ENOMEM;
+
+	t->pid = tap_ctl_get_pid(pid);
+	if (t->pid < 0) {
+		_tap_list_free(t);
+		return 0;
+	}
+
+	err = _tap_ctl_list_tapdisk(t->pid, list);
+
+	if (err || list_empty(list))
+		list_add_tail(&t->entry, list);
+
+	return 0;
+}
+
+int
 tap_ctl_find_minor(const char *type, const char *path)
 {
 	struct list_head list = LIST_HEAD_INIT(list);

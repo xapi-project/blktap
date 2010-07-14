@@ -107,10 +107,6 @@ tap_cli_list(int argc, char **argv)
 	tap_list_t *entry;
 	pid_t pid;
 
-	err = tap_ctl_list(&list);
-	if (err)
-		return -err;
-
 	pid   = -1;
 	minor = -1;
 	type  = NULL;
@@ -137,6 +133,13 @@ tap_cli_list(int argc, char **argv)
 			return 0;
 		}
 	}
+
+	if (pid != -1)
+		err = tap_ctl_list_pid(pid, &list);
+	else
+		err = tap_ctl_list(&list);
+	if (err)
+		return -err;
 
 	tty = isatty(STDOUT_FILENO);
 

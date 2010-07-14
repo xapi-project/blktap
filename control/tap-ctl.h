@@ -85,6 +85,7 @@ typedef struct {
 	list_for_each_entry_safe(_pos, _n, _head, entry)
 
 int tap_ctl_list(struct list_head *list);
+int tap_ctl_list_pid(pid_t pid, struct list_head *list);
 void tap_ctl_list_free(struct list_head *list);
 
 int tap_ctl_find_minor(const char *type, const char *path);
