@@ -50,7 +50,7 @@ tap_cli_list_usage(FILE *stream)
 }
 
 static void
-tap_ctl_list_row(tap_list_t *entry)
+tap_cli_list_row(tap_list_t *entry)
 {
 	char minor_str[10] = "-";
 	char state_str[10] = "-";
@@ -65,13 +65,13 @@ tap_ctl_list_row(tap_list_t *entry)
 	if (entry->state != -1)
 		sprintf(state_str, "%#x", entry->state);
 
-	printf("%8s %2s %4s %10s %s\n",
+	printf("%8s %4s %4s %10s %s\n",
 	       pid_str, minor_str, state_str,
 	       entry->type ? : "-", entry->path ? : "-");
 }
 
 static void
-tap_ctl_list_dict(tap_list_t *entry)
+tap_cli_list_dict(tap_list_t *entry)
 {
 	int d = 0;
 
@@ -155,9 +155,9 @@ tap_cli_list(int argc, char **argv)
 			continue;
 
 		if (tty)
-			tap_ctl_list_row(entry);
+			tap_cli_list_row(entry);
 		else
-			tap_ctl_list_dict(entry);
+			tap_cli_list_dict(entry);
 	}
 
 	tap_ctl_free_list(list);

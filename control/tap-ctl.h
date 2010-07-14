@@ -76,8 +76,6 @@ typedef struct {
 	char       *path;
 } tap_list_t;
 
-int tap_ctl_get_driver_id(const char *handle);
-
 int tap_ctl_list(tap_list_t ***list);
 void tap_ctl_free_list(tap_list_t **list);
 int tap_ctl_find_minor(const char *type, const char *path);
