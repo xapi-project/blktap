@@ -25,6 +25,7 @@ CHANGELOG_MESSAGE := - Build blktap.
 
 SOURCES = $(RPM_SOURCESDIR)/blktap-$(BLKTAP_VERSION).tar.bz2 \
           $(RPM_SOURCESDIR)/blktap-development.patch \
+          $(RPM_SOURCESDIR)/blktap-udev-ignore-tapdevs.patch \
           $(RPM_SPECSDIR)/blktap.spec
 
 .PHONY: build
@@ -85,6 +86,9 @@ $(RPM_SOURCESDIR)/blktap-development.patch: $(MY_OBJ_DIR)/proprietary.code.check
 	    mv $@ $@.tainted ; \
 	    /bin/false ; \
 	fi
+
+$(RPM_SOURCESDIR)/%.patch: %.patch
+	cp $< $@
 
 $(RPM_SPECSDIR)/blktap.spec: blktap.spec.in $(RPM_SPECSDIR)/.dirstamp
 # Use a temporary file because sed in rhel3 doesn't understand "\n"

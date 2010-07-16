@@ -55,6 +55,8 @@ install: $(IBIN) $(LIBS)
 	$(INSTALL_PROG) $(IBIN) $(DESTDIR)$(SBINDIR)
 	$(INSTALL_DIR) -p $(DESTDIR)$(LIBDIR)
 	$(INSTALL_PROG) $(LIBS) $(DESTDIR)$(LIBDIR)
+	$(INSTALL_DIR) -p $(DESTDIR)$(SYSCONFDIR)/udev/rules.d
+	$(INSTALL_DATA) blktap.rules $(DESTDIR)$(SYSCONFDIR)/udev/rules.d/
 
 clean:
 	rm -f $(OBJS) $(PICS) $(DEPS) $(IBIN) $(LIBS)

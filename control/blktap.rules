@@ -1,0 +1,3 @@
+SUBSYSTEM=="misc",	KERNEL=="blktap-control",	NAME="blktap/control"
+SUBSYSTEM=="blktap2",	KERNEL=="blktap[0-9]*",		NAME="blktap/%k"
+SUBSYSTEM=="block",	KERNEL=="td[a-z]*",		NAME="%k"
