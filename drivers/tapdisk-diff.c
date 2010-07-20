@@ -573,7 +573,7 @@ tapdisk_stream_open_image(struct tapdisk_stream *s, const char *path, int type)
 
 	err = tapdisk_vbd_open_vdi(s->vbd, type, path,
 				   TAPDISK_STORAGE_TYPE_DEFAULT,
-				   TD_OPEN_RDONLY);
+				   TD_OPEN_RDONLY, -1, -1, NULL);
 	if (err)
 		goto out;
 

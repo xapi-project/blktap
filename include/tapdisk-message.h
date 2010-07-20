@@ -36,14 +36,18 @@
 #define TAPDISK_MESSAGE_MAX_MINORS \
 	((TAPDISK_MESSAGE_MAX_PATH_LENGTH / sizeof(int)) - 1)
 
-#define TAPDISK_MESSAGE_FLAG_SHARED      0x01
-#define TAPDISK_MESSAGE_FLAG_RDONLY      0x02
-#define TAPDISK_MESSAGE_FLAG_ADD_CACHE   0x04
-#define TAPDISK_MESSAGE_FLAG_VHD_INDEX   0x08
-#define TAPDISK_MESSAGE_FLAG_LOG_DIRTY   0x10
+#define TAPDISK_MESSAGE_FLAG_SHARED      0x001
+#define TAPDISK_MESSAGE_FLAG_RDONLY      0x002
+#define TAPDISK_MESSAGE_FLAG_ADD_CACHE   0x004
+#define TAPDISK_MESSAGE_FLAG_VHD_INDEX   0x008
+#define TAPDISK_MESSAGE_FLAG_LOG_DIRTY   0x010
+#define TAPDISK_MESSAGE_FLAG_ADD_LCACHE  0x020
+#define TAPDISK_MESSAGE_FLAG_REUSE_PRT   0x040
+#define TAPDISK_MESSAGE_FLAG_SECONDARY   0x080
+#define TAPDISK_MESSAGE_FLAG_STANDBY     0x100
 
 typedef struct tapdisk_message           tapdisk_message_t;
-typedef uint8_t                          tapdisk_message_flag_t;
+typedef uint32_t                         tapdisk_message_flag_t;
 typedef struct tapdisk_message_image     tapdisk_message_image_t;
 typedef struct tapdisk_message_params    tapdisk_message_params_t;
 typedef struct tapdisk_message_string    tapdisk_message_string_t;
@@ -58,6 +62,8 @@ struct tapdisk_message_params {
 	uint32_t                         devnum;
 	uint32_t                         domid;
 	char                             path[TAPDISK_MESSAGE_MAX_PATH_LENGTH];
+	uint32_t                         prt_devnum;
+	char                             secondary[TAPDISK_MESSAGE_MAX_PATH_LENGTH];
 };
 
 struct tapdisk_message_image {

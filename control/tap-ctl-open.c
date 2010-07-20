@@ -36,7 +36,8 @@
 #include "blktaplib.h"
 
 int
-tap_ctl_open(const int id, const int minor, const char *params)
+tap_ctl_open(const int id, const int minor, const char *params, int flags,
+		const int prt_minor, const char *secondary)
 {
 	int err;
 	tapdisk_message_t message;
@@ -46,12 +47,24 @@ tap_ctl_open(const int id, const int minor, const char *params)
 	message.cookie = minor;
 	message.u.params.storage = TAPDISK_STORAGE_TYPE_DEFAULT;
 	message.u.params.devnum = minor;
+	message.u.params.prt_devnum = prt_minor;
+	message.u.params.flags = flags;
 
 	err = snprintf(message.u.params.path,
 		       sizeof(message.u.params.path) - 1, "%s", params);
 	if (err >= sizeof(message.u.params.path)) {
 		EPRINTF("name too long\n");
 		return ENAMETOOLONG;
+	}
+
+	if (secondary) {
+		err = snprintf(message.u.params.secondary,
+			       sizeof(message.u.params.secondary) - 1, "%s",
+			       secondary);
+		if (err >= sizeof(message.u.params.secondary)) {
+			EPRINTF("secondary image name too long\n");
+			return ENAMETOOLONG;
+		}
 	}
 
 	err = tap_ctl_connect_send_and_receive(id, &message, NULL);

@@ -109,19 +109,20 @@ int
 vhd_util_snapshot(int argc, char **argv)
 {
 	vhd_flag_creat_t flags;
-	int c, err, prt_raw, limit;
+	int c, err, prt_raw, limit, empty_check;
 	char *name, *pname, *ppath, *backing;
 	uint64_t size, msize;
 	vhd_context_t vhd;
 
-	name    = NULL;
-	pname   = NULL;
-	ppath   = NULL;
-	backing = NULL;
-	size    = 0;
-	msize   = 0;
-	flags   = 0;
-	limit   = 0;
+	name        = NULL;
+	pname       = NULL;
+	ppath       = NULL;
+	backing     = NULL;
+	size        = 0;
+	msize       = 0;
+	flags       = 0;
+	limit       = 0;
+	empty_check = 1;
 
 	if (!argc || !argv) {
 		err = -EINVAL;
@@ -129,7 +130,8 @@ vhd_util_snapshot(int argc, char **argv)
 	}
 
 	optind = 0;
-	while ((c = getopt(argc, argv, "n:p:S:l:mh")) != -1) {
+	while ((c = getopt(argc, argv, "n:p:S:l:meh")) != -1) {
+
 		switch (c) {
 		case 'n':
 			name = optarg;
@@ -144,6 +146,9 @@ vhd_util_snapshot(int argc, char **argv)
 			break;
 		case 'm':
 			vhd_flag_set(flags, VHD_FLAG_CREAT_PARENT_RAW);
+			break;
+		case 'e':
+			empty_check = 0;
 			break;
 		case 'h':
 			err = 0;
@@ -163,7 +168,7 @@ vhd_util_snapshot(int argc, char **argv)
 	if (!ppath)
 		return -errno;
 
-	if (vhd_flag_test(flags, VHD_FLAG_CREAT_PARENT_RAW)) {
+	if (vhd_flag_test(flags, VHD_FLAG_CREAT_PARENT_RAW) || !empty_check) {
 		backing = strdup(ppath);
 		if (!backing) {
 			err = -ENOMEM;
@@ -219,6 +224,7 @@ out:
 usage:
 	printf("options: <-n name> <-p parent name> [-l snapshot depth limit]"
 	       " [-m parent_is_raw] [-S size (MB) for metadata preallocation "
-	       "(see vhd-util resize)] [-h help]\n");
+	       "(see vhd-util resize)] [-e link to supplied parent name even "
+	       "if it's empty] [-h help]\n");
 	return err;
 }

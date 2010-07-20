@@ -63,6 +63,7 @@ BLK-OBJS  += block-cache.o
 BLK-OBJS  += block-vhd.o
 BLK-OBJS  += block-vindex.o
 BLK-OBJS  += block-log.o
+BLK-OBJS  += block-lcache.o
 
 all: $(IBIN) lock-util
 

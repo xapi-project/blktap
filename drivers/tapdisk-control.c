@@ -426,13 +426,13 @@ static void
 tapdisk_control_open_image(struct tapdisk_control_connection *connection,
 			   tapdisk_message_t *request)
 {
-	int err, type;
+	int err, type, secondary_type;
 	image_t image;
 	td_vbd_t *vbd;
 	td_flag_t flags;
 	tapdisk_message_t response;
 	struct blktap2_params params;
-	const char *path;
+	const char *path, *secondary_path;
 
 	vbd = tapdisk_server_get_vbd(request->cookie);
 	if (!vbd) {
@@ -451,6 +451,8 @@ tapdisk_control_open_image(struct tapdisk_control_connection *connection,
 	}
 
 	flags = 0;
+	secondary_type = 0;
+	secondary_path = NULL;
 	if (request->u.params.flags & TAPDISK_MESSAGE_FLAG_RDONLY)
 		flags |= TD_OPEN_RDONLY;
 	if (request->u.params.flags & TAPDISK_MESSAGE_FLAG_SHARED)
@@ -461,6 +463,21 @@ tapdisk_control_open_image(struct tapdisk_control_connection *connection,
 		flags |= TD_OPEN_VHD_INDEX;
 	if (request->u.params.flags & TAPDISK_MESSAGE_FLAG_LOG_DIRTY)
 		flags |= TD_OPEN_LOG_DIRTY;
+	if (request->u.params.flags & TAPDISK_MESSAGE_FLAG_ADD_LCACHE)
+		flags |= TD_OPEN_LOCAL_CACHE;
+	if (request->u.params.flags & TAPDISK_MESSAGE_FLAG_REUSE_PRT)
+		flags |= TD_OPEN_REUSE_PARENT;
+	if (request->u.params.flags & TAPDISK_MESSAGE_FLAG_STANDBY)
+		flags |= TD_OPEN_STANDBY;
+	if (request->u.params.flags & TAPDISK_MESSAGE_FLAG_SECONDARY) {
+		flags |= TD_OPEN_SECONDARY;
+		secondary_type = tapdisk_disktype_parse_params(
+				request->u.params.secondary, &secondary_path);
+		if (secondary_type < 0) {
+			err = secondary_type;
+			goto out;
+		}
+	}
 
 	type = tapdisk_disktype_parse_params(request->u.params.path, &path);
 	if (type < 0) {
@@ -471,7 +488,8 @@ tapdisk_control_open_image(struct tapdisk_control_connection *connection,
 	err = tapdisk_vbd_open_vdi(vbd,
 				   type, path,
 				   request->u.params.storage,
-				   flags);
+				   flags, request->u.params.prt_devnum,
+				   secondary_type, secondary_path);
 	if (err)
 		goto out;
 

@@ -93,6 +93,13 @@ static const disk_info_t log_disk = {
 	0,
 };
 
+static const disk_info_t local_cache_disk = {
+       "lc",
+       "local cache image (lc)",
+       0,
+};
+
+
 const disk_info_t *tapdisk_disk_types[] = {
 	[DISK_TYPE_AIO]	= &aio_disk,
 	[DISK_TYPE_SYNC]	= &sync_disk,
@@ -121,6 +128,7 @@ extern struct tap_disk tapdisk_qcow;
 extern struct tap_disk tapdisk_block_cache;
 extern struct tap_disk tapdisk_vhd_index;
 extern struct tap_disk tapdisk_log;
+extern struct tap_disk tapdisk_local_cache;
 
 const struct tap_disk *tapdisk_disk_drivers[] = {
 	[DISK_TYPE_AIO]         = &tapdisk_aio,
@@ -137,6 +145,7 @@ const struct tap_disk *tapdisk_disk_drivers[] = {
 	[DISK_TYPE_BLOCK_CACHE] = &tapdisk_block_cache,
 	[DISK_TYPE_VINDEX]      = &tapdisk_vhd_index,
 	[DISK_TYPE_LOG]         = &tapdisk_log,
+	[DISK_TYPE_LOCAL_CACHE] = &tapdisk_local_cache,
 	0,
 };
 

@@ -51,6 +51,10 @@
 #define TD_VBD_LOCKING              0x0080
 #define TD_VBD_LOG_DROPPED          0x0100
 
+#define TD_VBD_SECONDARY_DISABLED   0 
+#define TD_VBD_SECONDARY_MIRROR     1
+#define TD_VBD_SECONDARY_STANDBY    2
+
 typedef struct td_ring              td_ring_t;
 typedef struct td_vbd_request       td_vbd_request_t;
 typedef struct td_vbd_handle        td_vbd_t;
@@ -96,6 +100,12 @@ struct td_vbd_handle {
 	td_ipc_t                    ipc;
 
 	struct list_head            images;
+
+	int                         parent_devnum;
+	char                       *secondary_name;
+	int                         secondary_type;
+	td_image_t                 *secondary;
+	uint8_t                     secondary_mode;
 
 	struct list_head            new_requests;
 	struct list_head            pending_requests;
@@ -176,7 +186,8 @@ int tapdisk_vbd_open(td_vbd_t *, int, const char *,
 		     uint16_t, int, const char *, td_flag_t);
 int tapdisk_vbd_close(td_vbd_t *);
 
-int tapdisk_vbd_open_vdi(td_vbd_t *, int, const char *, uint16_t, td_flag_t);
+int tapdisk_vbd_open_vdi(td_vbd_t *, int, const char *, uint16_t, td_flag_t,
+		int, int, const char *);
 void tapdisk_vbd_close_vdi(td_vbd_t *);
 
 int tapdisk_vbd_attach(td_vbd_t *, const char *, int);

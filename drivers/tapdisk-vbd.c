@@ -190,6 +190,14 @@ tapdisk_vbd_close_vdi(td_vbd_t *vbd)
 		tapdisk_image_free(image);
 	}
 
+	if (vbd->secondary && vbd->secondary_mode != TD_VBD_SECONDARY_MIRROR) {
+		/* in mirror mode the image will have been closed as part of 
+		 * the chain */
+		td_close(vbd->secondary);
+		tapdisk_image_free(vbd->secondary);
+		DPRINTF("Secondary image closed\n");
+	}
+
 	INIT_LIST_HEAD(&vbd->images);
 	td_flag_set(vbd->state, TD_VBD_CLOSED);
 }
@@ -257,6 +265,148 @@ done:
 	/* insert cache before image */
 	list_add(&cache->next, target->next.prev);
 	return 0;
+}
+
+static int
+tapdisk_vbd_add_local_cache(td_vbd_t *vbd)
+{
+	int err;
+	td_driver_t *driver;
+	td_image_t *cache, *parent;
+
+	parent = tapdisk_vbd_first_image(vbd);
+	if (tapdisk_vbd_is_last_image(vbd, parent)) {
+		DPRINTF("Single-image chain, nothing to cache");
+		return 0;
+	}
+
+	cache = tapdisk_image_allocate(parent->name,
+			DISK_TYPE_LOCAL_CACHE,
+			parent->storage,
+			parent->flags,
+			parent->private);
+
+	if (!cache)
+		return -ENOMEM;
+
+	/* try to load existing cache */
+	err = td_load(cache);
+	if (!err)
+		goto done;
+
+	cache->driver = tapdisk_driver_allocate(cache->type,
+			cache->name,
+			cache->flags,
+			cache->storage);
+
+	if (!cache->driver) {
+		err = -ENOMEM;
+		goto fail;
+	}
+
+	cache->driver->info = parent->driver->info;
+
+	/* try to open new cache */
+	err = td_open(cache);
+	if (!err)
+		goto done;
+
+fail:
+	tapdisk_image_free(cache);
+	return err;
+
+done:
+	/* insert cache right above leaf image */
+	list_add(&cache->next, &parent->next);
+
+	DPRINTF("Added local_cache driver\n");
+	return 0;
+}
+
+static int
+tapdisk_vbd_add_secondary(td_vbd_t *vbd)
+{
+	int err;
+	td_driver_t *driver;
+	td_image_t *leaf, *second;
+
+	DPRINTF("Adding secondary image: %s\n", vbd->secondary_name);
+
+	leaf = tapdisk_vbd_first_image(vbd);
+	second = tapdisk_image_allocate(vbd->secondary_name,
+			vbd->secondary_type,
+			leaf->storage,
+			leaf->flags,
+			leaf->private);
+
+	if (!second)
+		return -ENOMEM;
+
+	second->driver = tapdisk_driver_allocate(second->type,
+			second->name,
+			second->flags,
+			second->storage);
+
+	if (!second->driver) {
+		err = -ENOMEM;
+		goto fail;
+	}
+
+	second->driver->info = leaf->driver->info;
+
+	/* try to open the secondary image */
+	err = td_open(second);
+	if (err)
+		goto fail;
+
+	if (second->info.size != leaf->info.size) {
+		EPRINTF("Secondary image size %lld != image size %lld\n",
+				second->info.size, leaf->info.size);
+		err = -EINVAL;
+		goto fail;
+	}
+
+	goto done;
+
+fail:
+	tapdisk_image_free(second);
+	return err;
+
+done:
+	vbd->secondary = second;
+	if (td_flag_test(vbd->flags, TD_OPEN_STANDBY)) {
+		DPRINTF("In standby mode\n");
+		vbd->secondary_mode = TD_VBD_SECONDARY_STANDBY;
+	} else {
+		DPRINTF("In mirror mode\n");
+		vbd->secondary_mode = TD_VBD_SECONDARY_MIRROR;
+		/* we actually need this image to also be part of the chain, 
+		 * since it may already contain data */
+		list_add(&vbd->secondary->next, &leaf->next);
+	}
+
+	DPRINTF("Added secondary image\n");
+	return 0;
+}
+
+static void signal_enospc(td_vbd_t *vbd)
+{
+	int fd, err;
+	char *fn;
+
+	err = asprintf(&fn, BLKTAP2_ENOSPC_SIGNAL_FILE"%d", vbd->minor);
+	if (err == -1) {
+		EPRINTF("Failed to signal ENOSPC condition\n");
+		return;
+	}
+
+	fd = open(fn, O_WRONLY | O_CREAT | O_NONBLOCK);
+	if (fd == -1)
+		EPRINTF("Failed to open file to signal ENOSPC condition\n");
+	else
+		close(fd);
+
+	free(fn);
 }
 
 static int
@@ -692,6 +842,16 @@ __tapdisk_vbd_open_vdi(td_vbd_t *vbd, td_flag_t extra_flags)
 
 		file   = id.name;
 		type   = id.drivertype;
+		if (flags & TD_OPEN_REUSE_PARENT) {
+			free(file);
+			err = asprintf(&file, "%s%d", BLKTAP2_IO_DEVICE,
+					vbd->parent_devnum);
+			if (err == -1) {
+				err = ENOMEM;
+				goto fail;
+			}
+			type = DISK_TYPE_AIO;
+		}
 		flags |= (TD_OPEN_RDONLY | TD_OPEN_SHAREABLE);
 	}
 
@@ -707,9 +867,21 @@ __tapdisk_vbd_open_vdi(td_vbd_t *vbd, td_flag_t extra_flags)
 			goto fail;
 	}		
 
+	if (td_flag_test(vbd->flags, TD_OPEN_LOCAL_CACHE)) {
+		err = tapdisk_vbd_add_local_cache(vbd);
+		if (err)
+			goto fail;
+	}		
+
 	err = tapdisk_vbd_validate_chain(vbd);
 	if (err)
 		goto fail;
+
+	if (td_flag_test(vbd->flags, TD_OPEN_SECONDARY)) {
+		err = tapdisk_vbd_add_secondary(vbd);
+		if (err)
+			goto fail;
+	}
 
 	td_flag_clear(vbd->state, TD_VBD_CLOSED);
 
@@ -726,7 +898,8 @@ fail:
 
 int
 tapdisk_vbd_open_vdi(td_vbd_t *vbd, int type, const char *path,
-		     uint16_t storage, td_flag_t flags)
+		     uint16_t storage, td_flag_t flags, int prt_devnum,
+		     int secondary_type, const char *secondary_name)
 {
 	const disk_info_t *info;
 	int i, err;
@@ -741,6 +914,16 @@ tapdisk_vbd_open_vdi(td_vbd_t *vbd, int type, const char *path,
 	err = tapdisk_namedup(&vbd->name, path);
 	if (err)
 		return err;
+
+	if (flags & TD_OPEN_REUSE_PARENT)
+		vbd->parent_devnum = prt_devnum;
+
+	if (flags & TD_OPEN_SECONDARY) {
+		vbd->secondary_type = secondary_type;
+		err = tapdisk_namedup(&vbd->secondary_name, secondary_name);
+		if (err)
+			return err;
+	}
 
 	vbd->flags   = flags;
 	vbd->storage = storage;
@@ -886,7 +1069,8 @@ tapdisk_vbd_open(td_vbd_t *vbd, int type, const char *path,
 {
 	int err;
 
-	err = tapdisk_vbd_open_vdi(vbd, type, path, storage, flags);
+	err = tapdisk_vbd_open_vdi(vbd, type, path, storage, flags, -1, -1,
+			NULL);
 	if (err)
 		goto out;
 
@@ -1420,6 +1604,16 @@ tapdisk_vbd_check_queue(td_vbd_t *vbd)
 			DPRINTF("reopening disks succeeded\n");
 			vbd->reopened = 1;
 		}
+
+		if (vbd->secondary) {
+			td_flag_set(vbd->secondary->flags, TD_OPEN_STRICT);
+			if (tapdisk_vbd_close_and_reopen_image(vbd,
+						vbd->secondary)) {
+				EPRINTF("reopening secondary image failed\n");
+				vbd->reopened = 0;
+			} else
+				DPRINTF("reopening secondary image succeeded\n");
+		}
 	}
 
 	return 0;
@@ -1544,7 +1738,7 @@ static void
 tapdisk_vbd_complete_td_request(td_request_t treq, int res)
 {
 	td_vbd_t *vbd;
-	td_image_t *image;
+	td_image_t *image, *leaf;
 	td_vbd_request_t *vreq;
 
 	image = treq.image;
@@ -1552,6 +1746,19 @@ tapdisk_vbd_complete_td_request(td_request_t treq, int res)
 	vreq  = (td_vbd_request_t *)treq.private;
 
 	tapdisk_vbd_mark_progress(vbd);
+
+	if (abs(res) == ENOSPC && image != vbd->secondary &&
+			vbd->secondary_mode != TD_VBD_SECONDARY_DISABLED) {
+		leaf = tapdisk_vbd_first_image(vbd);
+		list_add(&vbd->secondary->next, leaf->next.prev);
+		vbd->secondary = NULL;
+		vbd->secondary_mode = TD_VBD_SECONDARY_DISABLED;
+		signal_enospc(vbd);
+		if (vbd->secondary_mode == TD_VBD_SECONDARY_MIRROR)
+			DPRINTF("Mirroring disabled\n");
+		else if (vbd->secondary_mode == TD_VBD_SECONDARY_STANDBY)
+			DPRINTF("Failed over to secondary image\n");
+	}
 
 	DBG(TLOG_DBG, "%s: req %d seg %d sec 0x%08llx "
 	    "secs 0x%04x buf %p op %d res %d\n", image->name,
@@ -1562,18 +1769,27 @@ tapdisk_vbd_complete_td_request(td_request_t treq, int res)
 }
 
 static inline void
-tapdisk_vbd_submit_request(td_image_t *image, blkif_request_t *req,
+queue_mirror_req(td_vbd_t *vbd, td_request_t clone)
+{
+	clone.image = vbd->secondary;
+	td_queue_write(vbd->secondary, clone);
+}
+
+static inline void
+tapdisk_vbd_submit_request(td_vbd_t *vbd, blkif_request_t *req,
 		td_request_t treq)
 {
 	switch (req->operation)	{
 	case BLKIF_OP_WRITE:
 		treq.op = TD_OP_WRITE;
-		td_queue_write(image, treq);
+		td_queue_write(treq.image, treq);
+		if (vbd->secondary_mode == TD_VBD_SECONDARY_MIRROR)
+			queue_mirror_req(vbd, treq);
 		break;
 
 	case BLKIF_OP_READ:
 		treq.op = TD_OP_READ;
-		td_queue_read(image, treq);
+		td_queue_read(treq.image, treq);
 		break;
 	}
 }
@@ -1623,7 +1839,7 @@ tapdisk_vbd_issue_request(td_vbd_t *vbd, td_vbd_request_t *vreq)
 			if (page == treq.buf + (treq.secs << SECTOR_SHIFT)) {
 				treq.secs += nsects;
 			} else {
-				tapdisk_vbd_submit_request(image, req, treq);
+				tapdisk_vbd_submit_request(vbd, req, treq);
 				treq_started = 0;
 			}
 		}
@@ -1646,12 +1862,17 @@ tapdisk_vbd_issue_request(td_vbd_t *vbd, td_vbd_request_t *vreq)
 		    treq.buf, (int)req->operation);
 
 		if (i == req->nr_segments - 1) {
-			tapdisk_vbd_submit_request(image, req, treq);
+			tapdisk_vbd_submit_request(vbd, req, treq);
 			treq_started = 0;
 		}
 
 		vreq->secs_pending += nsects;
 		vbd->secs_pending  += nsects;
+		if (vbd->secondary_mode == TD_VBD_SECONDARY_MIRROR &&
+				req->operation == BLKIF_OP_WRITE) {
+			vreq->secs_pending += nsects;
+			vbd->secs_pending  += nsects;
+		}
 
 		sector_nr += nsects;
 	}

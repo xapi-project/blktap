@@ -35,7 +35,8 @@
 #include "blktap2.h"
 
 int
-tap_ctl_create(const char *params, char **devname)
+tap_ctl_create(const char *params, char **devname, int flags, int parent_minor,
+		char *secondary)
 {
 	int err, id, minor;
 
@@ -51,7 +52,7 @@ tap_ctl_create(const char *params, char **devname)
 	if (err)
 		goto destroy;
 
-	err = tap_ctl_open(id, minor, params);
+	err = tap_ctl_open(id, minor, params, flags, parent_minor, secondary);
 	if (err)
 		goto detach;
 

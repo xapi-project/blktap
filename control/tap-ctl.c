@@ -250,26 +250,47 @@ usage:
 static void
 tap_cli_create_usage(FILE *stream)
 {
-	fprintf(stream, "usage: create <-a args> [-d device name]\n");
+	fprintf(stream, "usage: create <-a args> [-d device name] [-e <minor> "
+			"stack on existing tapdisk for the parent chain] "
+			"[-r turn on read caching into leaf node] [-2 <path> "
+			"use secondary image (in mirror mode if no -s)] [-s "
+			"fail over to the secondary image on ENOSPC]\n");
 }
 
 static int
 tap_cli_create(int argc, char **argv)
 {
-	int c, err;
-	char *args, *devname;
+	int c, err, flags, prt_minor;
+	char *args, *devname, *secondary;
 
-	args    = NULL;
-	devname = NULL;
+	args      = NULL;
+	devname   = NULL;
+	secondary = NULL;
+	prt_minor = -1;
+	flags     = 0;
 
 	optind = 0;
-	while ((c = getopt(argc, argv, "a:d:h")) != -1) {
+	while ((c = getopt(argc, argv, "a:d:e:r2:sh")) != -1) {
 		switch (c) {
 		case 'a':
 			args = optarg;
 			break;
 		case 'd':
 			devname = optarg;
+			break;
+		case 'r':
+			flags |= TAPDISK_MESSAGE_FLAG_ADD_LCACHE;
+			break;
+		case 'e':
+			flags |= TAPDISK_MESSAGE_FLAG_REUSE_PRT;
+			prt_minor = atoi(optarg);
+			break;
+		case '2':
+			flags |= TAPDISK_MESSAGE_FLAG_SECONDARY;
+			secondary = optarg;
+			break;
+		case 's':
+			flags |= TAPDISK_MESSAGE_FLAG_STANDBY;
 			break;
 		case '?':
 			goto usage;
@@ -282,7 +303,7 @@ tap_cli_create(int argc, char **argv)
 	if (!args)
 		goto usage;
 
-	err = tap_ctl_create(args, &devname);
+	err = tap_ctl_create(args, &devname, flags, prt_minor, secondary);
 	if (!err)
 		printf("%s\n", devname);
 
@@ -674,21 +695,28 @@ usage:
 static void
 tap_cli_open_usage(FILE *stream)
 {
-	fprintf(stream, "usage: open <-p pid> <-m minor> <-a args>\n");
+	fprintf(stream, "usage: open <-p pid> <-m minor> <-a args> [-e <minor> "
+			"stack on existing tapdisk for the parent chain] "
+			"[-r turn on read caching into leaf node] [-2 <path> "
+			"use secondary image (in mirror mode if no -s)] [-s "
+			"fail over to the secondary image on ENOSPC]\n");
 }
 
 static int
 tap_cli_open(int argc, char **argv)
 {
-	const char *args;
-	int c, pid, minor;
+	const char *args, *secondary;
+	int c, pid, minor, flags, prt_minor;
 
-	pid   = -1;
-	minor = -1;
-	args  = NULL;
+	flags     = 0;
+	pid       = -1;
+	minor     = -1;
+	prt_minor = -1;
+	args      = NULL;
+	secondary = NULL;
 
 	optind = 0;
-	while ((c = getopt(argc, argv, "a:m:p:h")) != -1) {
+	while ((c = getopt(argc, argv, "a:m:p:e:r2:sh")) != -1) {
 		switch (c) {
 		case 'p':
 			pid = atoi(optarg);
@@ -698,6 +726,20 @@ tap_cli_open(int argc, char **argv)
 			break;
 		case 'a':
 			args = optarg;
+			break;
+		case 'r':
+			flags |= TAPDISK_MESSAGE_FLAG_ADD_LCACHE;
+			break;
+		case 'e':
+			flags |= TAPDISK_MESSAGE_FLAG_REUSE_PRT;
+			prt_minor = atoi(optarg);
+			break;
+		case '2':
+			flags |= TAPDISK_MESSAGE_FLAG_SECONDARY;
+			secondary = optarg;
+			break;
+		case 's':
+			flags |= TAPDISK_MESSAGE_FLAG_STANDBY;
 			break;
 		case '?':
 			goto usage;
@@ -710,7 +752,7 @@ tap_cli_open(int argc, char **argv)
 	if (pid == -1 || minor == -1 || !args)
 		goto usage;
 
-	return tap_ctl_open(pid, minor, args);
+	return tap_ctl_open(pid, minor, args, flags, prt_minor, secondary);
 
 usage:
 	tap_cli_open_usage(stderr);
