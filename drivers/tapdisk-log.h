@@ -35,9 +35,13 @@
 
 #define TLOG_DIR "/var/log/blktap"
 
+#include <stdarg.h>
+
 int  tlog_open(const char *, int, int);
 void tlog_close(void);
 void tlog_precious(void);
+void tlog_vsyslog(int, const char *, va_list);
+void tlog_syslog(int, const char *, ...);
 
 void __tlog_write(int, const char *, ...)
 	__attribute__((format(printf, 2, 3)));

@@ -60,9 +60,6 @@ struct tlog {
 
 static struct tlog tapdisk_log;
 
-static void  tlog_syslog(int prio, const char *fmt, ...);
-static void tlog_vsyslog(int prio, const char *fmt, va_list ap);
-
 static void
 tlog_logfile_vprint(const char *fmt, va_list ap)
 {
@@ -176,7 +173,7 @@ tlog_syslog_open(const char *ident, int facility)
 	return err;
 }
 
-static void
+void
 tlog_vsyslog(int prio, const char *fmt, va_list ap)
 {
 	td_syslog_t *syslog = &tapdisk_log.syslog;
@@ -184,7 +181,7 @@ tlog_vsyslog(int prio, const char *fmt, va_list ap)
 	tapdisk_vsyslog(syslog, prio, fmt, ap);
 }
 
-static void
+void
 tlog_syslog(int prio, const char *fmt, ...)
 {
 	va_list ap;
