@@ -31,6 +31,7 @@
 #include <string.h>
 #include <unistd.h>
 #include <getopt.h>
+#include <signal.h>
 #include <sys/time.h>
 
 #include "tap-ctl.h"
@@ -854,6 +855,8 @@ main(int argc, char *argv[])
 	if (setrlimit(RLIMIT_CORE, &rlim) < 0)
 		PERROR("setrlimit failed");
 #endif
+
+	signal(SIGPIPE, SIG_IGN);
 
 	ret = 0;
 
