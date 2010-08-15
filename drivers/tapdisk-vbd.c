@@ -1749,15 +1749,15 @@ tapdisk_vbd_complete_td_request(td_request_t treq, int res)
 
 	if (abs(res) == ENOSPC && image != vbd->secondary &&
 			vbd->secondary_mode != TD_VBD_SECONDARY_DISABLED) {
+		if (vbd->secondary_mode == TD_VBD_SECONDARY_MIRROR)
+			DPRINTF("ENOSPC: disabling mirroring\n");
+		else if (vbd->secondary_mode == TD_VBD_SECONDARY_STANDBY)
+			DPRINTF("ENOSPC: failing over to secondary image\n");
 		leaf = tapdisk_vbd_first_image(vbd);
 		list_add(&vbd->secondary->next, leaf->next.prev);
 		vbd->secondary = NULL;
 		vbd->secondary_mode = TD_VBD_SECONDARY_DISABLED;
 		signal_enospc(vbd);
-		if (vbd->secondary_mode == TD_VBD_SECONDARY_MIRROR)
-			DPRINTF("Mirroring disabled\n");
-		else if (vbd->secondary_mode == TD_VBD_SECONDARY_STANDBY)
-			DPRINTF("Failed over to secondary image\n");
 	}
 
 	DBG(TLOG_DBG, "%s: req %d seg %d sec 0x%08llx "
