@@ -107,6 +107,13 @@ struct td_vbd_handle {
 	td_image_t                 *secondary;
 	uint8_t                     secondary_mode;
 
+	/* when we encounter ENOSPC on the primary leaf image in mirror mode, 
+	 * we need to remove it from the VBD chain so that writes start going 
+	 * on the secondary leaf. However, we cannot free the image at that 
+	 * time since it might still have in-flight treqs referencing it.  
+	 * Therefore, we move it into 'retired' until shutdown. */
+	td_image_t                 *retired;
+
 	struct list_head            new_requests;
 	struct list_head            pending_requests;
 	struct list_head            failed_requests;

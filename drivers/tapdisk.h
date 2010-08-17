@@ -91,6 +91,7 @@
 #define TD_OPEN_REUSE_PARENT         0x00200
 #define TD_OPEN_SECONDARY            0x00400
 #define TD_OPEN_STANDBY              0x00800
+#define TD_IGNORE_ENOSPC             0x01000
 
 #define TD_CREATE_SPARSE             0x00001
 #define TD_CREATE_MULTITYPE          0x00002

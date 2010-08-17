@@ -199,6 +199,12 @@ tapdisk_vbd_close_vdi(td_vbd_t *vbd)
 		DPRINTF("Secondary image closed\n");
 	}
 
+	if (vbd->retired) {
+		td_close(vbd->retired);
+		tapdisk_image_free(vbd->retired);
+		DPRINTF("Retired mirror image closed\n");
+	}
+
 	INIT_LIST_HEAD(&vbd->images);
 	td_flag_set(vbd->state, TD_VBD_CLOSED);
 }
@@ -375,6 +381,7 @@ fail:
 
 done:
 	vbd->secondary = second;
+	leaf->flags |= TD_IGNORE_ENOSPC;
 	if (td_flag_test(vbd->flags, TD_OPEN_STANDBY)) {
 		DPRINTF("In standby mode\n");
 		vbd->secondary_mode = TD_VBD_SECONDARY_STANDBY;
@@ -1748,17 +1755,23 @@ tapdisk_vbd_complete_td_request(td_request_t treq, int res)
 
 	tapdisk_vbd_mark_progress(vbd);
 
-	if (abs(res) == ENOSPC && image != vbd->secondary &&
-			vbd->secondary_mode != TD_VBD_SECONDARY_DISABLED) {
-		if (vbd->secondary_mode == TD_VBD_SECONDARY_MIRROR)
-			DPRINTF("ENOSPC: disabling mirroring\n");
-		else if (vbd->secondary_mode == TD_VBD_SECONDARY_STANDBY)
-			DPRINTF("ENOSPC: failing over to secondary image\n");
+	if (abs(res) == ENOSPC && td_flag_test(image->flags,
+				TD_IGNORE_ENOSPC)) {
+		res = 0;
 		leaf = tapdisk_vbd_first_image(vbd);
-		list_add(&vbd->secondary->next, leaf->next.prev);
-		vbd->secondary = NULL;
-		vbd->secondary_mode = TD_VBD_SECONDARY_DISABLED;
-		signal_enospc(vbd);
+		if (vbd->secondary_mode == TD_VBD_SECONDARY_MIRROR) {
+			DPRINTF("ENOSPC: disabling mirroring\n");
+			list_del_init(&leaf->next);
+			vbd->retired = leaf;
+		} else if (vbd->secondary_mode == TD_VBD_SECONDARY_STANDBY) {
+			DPRINTF("ENOSPC: failing over to secondary image\n");
+			list_add(&vbd->secondary->next, leaf->next.prev);
+		}
+		if (vbd->secondary_mode != TD_VBD_SECONDARY_DISABLED) {
+			vbd->secondary = NULL;
+			vbd->secondary_mode = TD_VBD_SECONDARY_DISABLED;
+			signal_enospc(vbd);
+		}
 	}
 
 	DBG(TLOG_DBG, "%s: req %d seg %d sec 0x%08llx "
@@ -1783,9 +1796,15 @@ tapdisk_vbd_submit_request(td_vbd_t *vbd, blkif_request_t *req,
 	switch (req->operation)	{
 	case BLKIF_OP_WRITE:
 		treq.op = TD_OP_WRITE;
-		td_queue_write(treq.image, treq);
+		/* it's important to queue the mirror request before queuing 
+		 * the main one. If the main image runs into ENOSPC, the 
+		 * mirroring could be disabled before td_queue_write returns, 
+		 * so if the mirror request was queued after (which would then 
+		 * not happen), we'd lose that write and cause the process to 
+		 * hang with unacknowledged writes */
 		if (vbd->secondary_mode == TD_VBD_SECONDARY_MIRROR)
 			queue_mirror_req(vbd, treq);
+		td_queue_write(treq.image, treq);
 		break;
 
 	case BLKIF_OP_READ:
@@ -1862,17 +1881,17 @@ tapdisk_vbd_issue_request(td_vbd_t *vbd, td_vbd_request_t *vreq)
 		    "buf %p op %d\n", image->name, id, i, treq.sec, treq.secs,
 		    treq.buf, (int)req->operation);
 
-		if (i == req->nr_segments - 1) {
-			tapdisk_vbd_submit_request(vbd, req, treq);
-			treq_started = 0;
-		}
-
 		vreq->secs_pending += nsects;
 		vbd->secs_pending  += nsects;
 		if (vbd->secondary_mode == TD_VBD_SECONDARY_MIRROR &&
 				req->operation == BLKIF_OP_WRITE) {
 			vreq->secs_pending += nsects;
 			vbd->secs_pending  += nsects;
+		}
+
+		if (i == req->nr_segments - 1) {
+			tapdisk_vbd_submit_request(vbd, req, treq);
+			treq_started = 0;
 		}
 
 		sector_nr += nsects;
