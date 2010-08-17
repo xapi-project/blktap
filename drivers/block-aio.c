@@ -260,6 +260,19 @@ int tdaio_validate_parent(td_driver_t *driver,
 	return -EINVAL;
 }
 
+void tdaio_stats(td_driver_t *driver, td_stats_t *st)
+{
+	struct tdaio_state *prv = (struct tdaio_state *)driver->data;
+	int n_pending;
+
+	n_pending = MAX_AIO_REQS - prv->aio_free_count;
+
+	tapdisk_stats_field(st, "reqs", "{");
+	tapdisk_stats_field(st, "max", "lu", MAX_AIO_REQS);
+	tapdisk_stats_field(st, "pending", "d", n_pending);
+	tapdisk_stats_leave(st, '}');
+}
+
 struct tap_disk tapdisk_aio = {
 	.disk_type          = "tapdisk_aio",
 	.flags              = 0,
@@ -271,4 +284,5 @@ struct tap_disk tapdisk_aio = {
 	.td_get_parent_id   = tdaio_get_parent_id,
 	.td_validate_parent = tdaio_validate_parent,
 	.td_debug           = NULL,
+	.td_stats           = tdaio_stats,
 };

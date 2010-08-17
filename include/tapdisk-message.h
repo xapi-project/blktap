@@ -54,6 +54,7 @@ typedef struct tapdisk_message_string    tapdisk_message_string_t;
 typedef struct tapdisk_message_response  tapdisk_message_response_t;
 typedef struct tapdisk_message_minors    tapdisk_message_minors_t;
 typedef struct tapdisk_message_list      tapdisk_message_list_t;
+typedef struct tapdisk_message_stat      tapdisk_message_stat_t;
 
 struct tapdisk_message_params {
 	tapdisk_message_flag_t           flags;
@@ -93,6 +94,13 @@ struct tapdisk_message_list {
 	char                             path[TAPDISK_MESSAGE_MAX_PATH_LENGTH];
 };
 
+struct tapdisk_message_stat {
+	uint16_t                         type;
+	uint16_t                         cookie;
+	size_t                           length;
+};
+
+
 struct tapdisk_message {
 	uint16_t                         type;
 	uint16_t                         cookie;
@@ -105,6 +113,7 @@ struct tapdisk_message {
 		tapdisk_message_minors_t minors;
 		tapdisk_message_response_t response;
 		tapdisk_message_list_t   list;
+		tapdisk_message_stat_t   info;
 	} u;
 };
 
@@ -129,6 +138,8 @@ enum tapdisk_message_id {
 	TAPDISK_MESSAGE_LIST_MINORS_RSP,
 	TAPDISK_MESSAGE_LIST,
 	TAPDISK_MESSAGE_LIST_RSP,
+	TAPDISK_MESSAGE_STATS,
+	TAPDISK_MESSAGE_STATS_RSP,
 	TAPDISK_MESSAGE_FORCE_SHUTDOWN,
 	TAPDISK_MESSAGE_EXIT,
 };
@@ -198,6 +209,12 @@ tapdisk_message_name(enum tapdisk_message_id id)
 
 	case TAPDISK_MESSAGE_LIST_RSP:
 		return "list response";
+
+	case TAPDISK_MESSAGE_STATS:
+		return "stats";
+
+	case TAPDISK_MESSAGE_STATS_RSP:
+		return "stats response";
 
 	case TAPDISK_MESSAGE_EXIT:
 		return "exit";

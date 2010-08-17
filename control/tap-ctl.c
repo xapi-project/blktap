@@ -761,6 +761,54 @@ usage:
 }
 
 static void
+tap_cli_stats_usage(FILE *stream)
+{
+	fprintf(stream, "usage: info <-p pid> <-m minor>\n");
+}
+
+static int
+tap_cli_stats(int argc, char **argv)
+{
+	pid_t pid;
+	int c, minor, err;
+
+	pid     = -1;
+	minor   = -1;
+
+	optind = 0;
+	while ((c = getopt(argc, argv, "p:m:h")) != -1) {
+		switch (c) {
+		case 'p':
+			pid = atoi(optarg);
+			break;
+		case 'm':
+			minor = atoi(optarg);
+			break;
+		case '?':
+			goto usage;
+		case 'h':
+			tap_cli_stats_usage(stdout);
+			return 0;
+		}
+	}
+
+	if (pid == -1 || minor == -1)
+		goto usage;
+
+	err = tap_ctl_stats_fwrite(pid, minor, stdout);
+	if (err)
+		return err;
+
+	fprintf(stdout, "\n");
+
+	return 0;
+
+usage:
+	tap_cli_stats_usage(stderr);
+	return EINVAL;
+}
+
+static void
 tap_cli_check_usage(FILE *stream)
 {
 	fprintf(stream, "usage: check\n"
@@ -799,6 +847,7 @@ struct command commands[] = {
 	{ .name = "close",        .func = tap_cli_close         },
 	{ .name = "pause",        .func = tap_cli_pause         },
 	{ .name = "unpause",      .func = tap_cli_unpause       },
+	{ .name = "stats",        .func = tap_cli_stats         },
 	{ .name = "major",        .func = tap_cli_major         },
 	{ .name = "check",        .func = tap_cli_check         },
 };

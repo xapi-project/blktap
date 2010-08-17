@@ -28,10 +28,12 @@
 #include <errno.h>
 #include <unistd.h>
 #include <stdlib.h>
+#include <stdio.h>
 
 #include "tapdisk-image.h"
 #include "tapdisk-driver.h"
 #include "tapdisk-server.h"
+#include "tapdisk-stats.h"
 
 #define ERR(_err, _f, _a...) tlog_error(_err, _f, ##_a)
 
@@ -157,4 +159,17 @@ fail:
 	    image->name, (rdonly ? "ro" : "rw"), info->size, req->id,
 	    req->operation, req->sector_number + total);
 	return -EINVAL;
+}
+
+void
+tapdisk_image_stats(td_image_t *image, td_stats_t *st)
+{
+	tapdisk_stats_enter(st, '{');
+	tapdisk_stats_field(st, "name", "s", image->name);
+
+	tapdisk_stats_field(st, "driver", "{");
+	tapdisk_driver_stats(image->driver, st);
+	tapdisk_stats_leave(st, '}');
+
+	tapdisk_stats_leave(st, '}');
 }

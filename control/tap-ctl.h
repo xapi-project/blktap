@@ -57,6 +57,7 @@ int tap_ctl_check(const char **message);
 
 int tap_ctl_connect(const char *path, int *socket);
 int tap_ctl_connect_id(int id, int *socket);
+int tap_ctl_read_raw(int fd, void *buf, size_t sz, struct timeval *timeout);
 int tap_ctl_read_message(int fd, tapdisk_message_t *message,
 			 struct timeval *timeout);
 int tap_ctl_write_message(int fd, tapdisk_message_t *message,
@@ -111,6 +112,9 @@ int tap_ctl_close(const int id, const int minor, const int force,
 
 int tap_ctl_pause(const int id, const int minor, struct timeval *timeout);
 int tap_ctl_unpause(const int id, const int minor, const char *params);
+
+ssize_t tap_ctl_stats(pid_t pid, int minor, char *buf, size_t size);
+int tap_ctl_stats_fwrite(pid_t pid, int minor, FILE *out);
 
 int tap_ctl_blk_major(void);
 

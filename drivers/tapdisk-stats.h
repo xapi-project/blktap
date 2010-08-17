@@ -1,5 +1,6 @@
-/* 
- * Copyright (c) 2008, XenSource Inc.
+/*
+ * Copyright (c) 2010, Citrix Systems, Inc.
+ *
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -25,32 +26,44 @@
  * NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
  * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
-#ifndef _TAPDISK_IMAGE_H_
-#define _TAPDISK_IMAGE_H_
 
-#include "tapdisk.h"
-#include <xen/io/blkif.h>
+#ifndef _TAPDISK_STATS_H_
+#define _TAPDISK_STATS_H_
 
-struct td_image_handle {
-	int                          type;
-	char                        *name;
+#include <string.h>
 
-	td_flag_t                    flags;
-	int                          storage;
+#define TD_INFO_MAX_DEPTH 8
 
-	td_driver_t                 *driver;
-	td_disk_info_t               info;
+struct tapdisk_stats_ctx {
+	void           *pos;
 
-	void                        *private;
+	void           *buf;
+	size_t          size;
 
-	struct list_head             next;
+	int             n_elem[TD_INFO_MAX_DEPTH];
+	int             depth;
 };
 
-td_image_t *tapdisk_image_allocate(char *, int, int, td_flag_t, void *);
-void tapdisk_image_free(td_image_t *);
+typedef struct tapdisk_stats_ctx td_stats_t;
 
-int tapdisk_image_check_td_request(td_image_t *, td_request_t);
-int tapdisk_image_check_ring_request(td_image_t *, blkif_request_t *);
-void tapdisk_image_stats(td_image_t *, td_stats_t *);
+static inline void
+tapdisk_stats_init(td_stats_t *st, char *buf, size_t size)
+{
+	memset(st, 0, sizeof(*st));
 
-#endif
+	st->pos  = buf;
+	st->buf  = buf;
+	st->size = size;
+}
+
+static inline size_t
+tapdisk_stats_length(td_stats_t *st)
+{
+	return st->pos - st->buf;
+}
+
+void tapdisk_stats_enter(td_stats_t *st, char t);
+void tapdisk_stats_leave(td_stats_t *st, char t);
+void tapdisk_stats_field(td_stats_t *st, const char *key, const char *conv, ...);
+
+#endif /* _TAPDISK_STATS_H_ */

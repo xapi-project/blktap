@@ -25,11 +25,14 @@
  * NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
  * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
+
 #include <stdlib.h>
+#include <stdio.h>
 
 #include "tapdisk-driver.h"
 #include "tapdisk-server.h"
 #include "tapdisk-disktype.h"
+#include "tapdisk-stats.h"
 
 td_driver_t *
 tapdisk_driver_allocate(int type, char *name, td_flag_t flags, int storage)
@@ -98,4 +101,18 @@ tapdisk_driver_debug(td_driver_t *driver)
 {
 	if (driver->ops->td_debug)
 		driver->ops->td_debug(driver);
+}
+
+void
+tapdisk_driver_stats(td_driver_t *driver, td_stats_t *st)
+{
+	tapdisk_stats_field(st, "type", "d", driver->type);
+
+	if (driver->ops->td_stats) {
+		tapdisk_stats_field(st, "status", "{");
+		driver->ops->td_stats(driver, st);
+		tapdisk_stats_leave(st, '}');
+	} else
+		tapdisk_stats_field(st, "status", NULL);
+
 }

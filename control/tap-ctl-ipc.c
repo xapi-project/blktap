@@ -42,18 +42,13 @@
 int tap_ctl_debug = 0;
 
 int
-tap_ctl_read_message(int fd, tapdisk_message_t *message,
-		     struct timeval *timeout)
+tap_ctl_read_raw(int fd, void *buf, size_t size, struct timeval *timeout)
 {
 	fd_set readfds;
-	int ret, len, offset;
+	size_t offset = 0;
+	int ret;
 
-	offset = 0;
-	len    = sizeof(tapdisk_message_t);
-
-	memset(message, 0, sizeof(tapdisk_message_t));
-
-	while (offset < len) {
+	while (offset < size) {
 		FD_ZERO(&readfds);
 		FD_SET(fd, &readfds);
 
@@ -61,7 +56,7 @@ tap_ctl_read_message(int fd, tapdisk_message_t *message,
 		if (ret == -1)
 			break;
 		else if (FD_ISSET(fd, &readfds)) {
-			ret = read(fd, message + offset, len - offset);
+			ret = read(fd, buf + offset, size - offset);
 			if (ret <= 0)
 				break;
 			offset += ret;
@@ -69,10 +64,24 @@ tap_ctl_read_message(int fd, tapdisk_message_t *message,
 			break;
 	}
 
-	if (offset != len) {
-		EPRINTF("failure reading message\n");
+	if (offset != size) {
+		EPRINTF("failure reading data %zd/%zd\n", offset, size);
 		return -EIO;
 	}
+
+	return 0;
+}
+
+int
+tap_ctl_read_message(int fd, tapdisk_message_t *message,
+		     struct timeval *timeout)
+{
+	size_t size = sizeof(tapdisk_message_t);
+	int err;
+
+	err = tap_ctl_read_raw(fd, message, size, timeout);
+	if (err)
+		return err;
 
 	DBG("received '%s' message (uuid = %u)\n",
 	    tapdisk_message_name(message->type), message->cookie);

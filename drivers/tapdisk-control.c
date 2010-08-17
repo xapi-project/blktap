@@ -48,6 +48,7 @@
 #include "tapdisk-server.h"
 #include "tapdisk-message.h"
 #include "tapdisk-disktype.h"
+#include "tapdisk-stats.h"
 #include "tapdisk-control.h"
 
 #define TD_CTL_MAX_CONNECTIONS  10
@@ -90,13 +91,13 @@ struct tapdisk_ctl_conn {
 		int             busy;
 	} in;
 
-	struct tapdisk_message_info *info;
+	struct tapdisk_control_info *info;
 };
 
 #define TAPDISK_MSG_REENTER    (1<<0) /* non-blocking, idempotent */
 #define TAPDISK_MSG_VERBOSE    (1<<1) /* tell syslog about it */
 
-struct tapdisk_message_info {
+struct tapdisk_control_info {
 	void (*handler)(struct tapdisk_ctl_conn *, tapdisk_message_t *);
 	int flags;
 };
@@ -905,7 +906,53 @@ out:
 	tapdisk_control_write_message(conn, &response);
 }
 
-struct tapdisk_message_info message_infos[] = {
+static void
+tapdisk_control_stats(struct tapdisk_ctl_conn *conn,
+		      tapdisk_message_t *request)
+{
+	tapdisk_message_t response;
+	td_stats_t _st, *st = &_st;
+	td_vbd_t *vbd;
+	size_t rv;
+
+	tapdisk_stats_init(st,
+			   conn->out.buf + sizeof(response),
+			   conn->out.bufsz - sizeof(response));
+
+	if (request->cookie != (uint16_t)-1) {
+
+		vbd = tapdisk_server_get_vbd(request->cookie);
+		if (!vbd) {
+			rv = -ENODEV;
+			goto out;
+		}
+
+		tapdisk_vbd_stats(vbd, st);
+
+	} else {
+		struct list_head *list = tapdisk_server_get_all_vbds();
+
+		tapdisk_stats_enter(st, '[');
+
+		list_for_each_entry(vbd, list, next)
+			tapdisk_vbd_stats(vbd, st);
+
+		tapdisk_stats_leave(st, ']');
+	}
+
+	rv = tapdisk_stats_length(st);
+out:
+	memset(&response, 0, sizeof(response));
+	response.type = TAPDISK_MESSAGE_STATS_RSP;
+	response.cookie = request->cookie;
+	response.u.info.length = rv;
+
+	tapdisk_control_write_message(conn, &response);
+	if (rv > 0)
+		conn->out.prod += rv;
+}
+
+struct tapdisk_control_info message_infos[] = {
 	[TAPDISK_MESSAGE_PID] = {
 		.handler = tapdisk_control_get_pid,
 		.flags   = TAPDISK_MSG_REENTER,
@@ -938,6 +985,10 @@ struct tapdisk_message_info message_infos[] = {
 		.handler = tapdisk_control_close_image,
 		.flags   = TAPDISK_MSG_VERBOSE,
 	},
+	[TAPDISK_MESSAGE_STATS] = {
+		.handler = tapdisk_control_stats,
+		.flags   = TAPDISK_MSG_VERBOSE,
+	},
 };
 
 
@@ -947,7 +998,7 @@ tapdisk_control_handle_request(event_id_t id, char mode, void *private)
 	int err, len, excl;
 	tapdisk_message_t message, response;
 	struct tapdisk_ctl_conn *conn = private;
-	struct tapdisk_message_info *info;
+	struct tapdisk_control_info *info;
 
 	err = tapdisk_control_read_message(conn->fd, &message, 2);
 	if (err)

@@ -59,4 +59,6 @@ void tapdisk_driver_queue_tiocb(td_driver_t *, struct tiocb *);
 
 void tapdisk_driver_debug(td_driver_t *);
 
+void tapdisk_driver_stats(td_driver_t *, td_stats_t *);
+
 #endif

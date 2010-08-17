@@ -28,6 +28,7 @@ CTL_OBJS  += tap-ctl-pause.o
 CTL_OBJS  += tap-ctl-unpause.o
 CTL_OBJS  += tap-ctl-major.o
 CTL_OBJS  += tap-ctl-check.o
+CTL_OBJS  += tap-ctl-stats.o
 
 CTL_PICS  = $(patsubst %.o,%.opic,$(CTL_OBJS))
 

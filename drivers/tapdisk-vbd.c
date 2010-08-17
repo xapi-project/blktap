@@ -45,6 +45,7 @@
 #include "tapdisk-vbd.h"
 #include "tapdisk-disktype.h"
 #include "tapdisk-interface.h"
+#include "tapdisk-stats.h"
 
 #include "blktap2.h"
 
@@ -2159,4 +2160,23 @@ tapdisk_vbd_ring_event(event_id_t id, char mode, void *private)
 
 	/* vbd may be destroyed after this call */
 	tapdisk_vbd_check_ring_message(vbd);
+}
+
+void
+tapdisk_vbd_stats(td_vbd_t *vbd, td_stats_t *st)
+{
+	td_image_t *image, *next;
+
+	tapdisk_stats_enter(st, '{');
+	tapdisk_stats_field(st, "name", "s", vbd->name);
+	tapdisk_stats_field(st, "minor", "d", vbd->minor);
+
+	tapdisk_stats_field(st, "image", "[");
+
+	tapdisk_vbd_for_each_image(vbd, image, next)
+		tapdisk_image_stats(image, st);
+
+	tapdisk_stats_leave(st, ']');
+
+	tapdisk_stats_leave(st, '}');
 }

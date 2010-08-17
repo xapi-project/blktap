@@ -63,6 +63,7 @@
 #include "blktaplib.h"
 #include "tapdisk-log.h"
 #include "tapdisk-utils.h"
+#include "tapdisk-stats.h"
 
 #define MAX_SEGMENTS_PER_REQ         11
 #define SECTOR_SHIFT                 9
@@ -154,6 +155,7 @@ struct tap_disk {
 	void (*td_queue_read)        (td_driver_t *, td_request_t);
 	void (*td_queue_write)       (td_driver_t *, td_request_t);
 	void (*td_debug)             (td_driver_t *);
+	void (*td_stats)             (td_driver_t *, td_stats_t *);
 };
 
 void td_panic(void);
