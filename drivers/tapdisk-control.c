@@ -89,6 +89,16 @@ struct tapdisk_ctl_conn {
 		int             event_id;
 		int             busy;
 	} in;
+
+	struct tapdisk_message_info *info;
+};
+
+#define TAPDISK_MSG_REENTER    (1<<0) /* non-blocking, idempotent */
+#define TAPDISK_MSG_VERBOSE    (1<<1) /* tell syslog about it */
+
+struct tapdisk_message_info {
+	void (*handler)(struct tapdisk_ctl_conn *, tapdisk_message_t *);
+	int flags;
 };
 
 struct tapdisk_control {
@@ -445,8 +455,9 @@ tapdisk_control_write_message(struct tapdisk_ctl_conn *conn,
 {
 	size_t size = sizeof(*message), count;
 
-	DBG("sending '%s' message (uuid = %u)\n",
-	    tapdisk_message_name(message->type), message->cookie);
+	if (conn->info->flags & TAPDISK_MSG_VERBOSE)
+		DBG("sending '%s' message (uuid = %u)\n",
+		    tapdisk_message_name(message->type), message->cookie);
 
 	count = tapdisk_ctl_conn_write(conn, message, size);
 	WARN_ON(count != size);
@@ -894,14 +905,7 @@ out:
 	tapdisk_control_write_message(conn, &response);
 }
 
-#define TAPDISK_MSG_REENTER    (1<<0) /* non-blocking, idempotent */
-#define TAPDISK_MSG_VERBOSE    (1<<1) /* tell syslog about it */
-
-struct tapdisk_message_info {
-	void (*handler)(struct tapdisk_ctl_conn *,
-			tapdisk_message_t *);
-	int flags;
-} message_infos[] = {
+struct tapdisk_message_info message_infos[] = {
 	[TAPDISK_MESSAGE_PID] = {
 		.handler = tapdisk_control_get_pid,
 		.flags   = TAPDISK_MSG_REENTER,
@@ -976,6 +980,7 @@ tapdisk_control_handle_request(event_id_t id, char mode, void *private)
 		td_control.busy = 1;
 	}
 	conn->in.busy = 1;
+	conn->info    = info;
 
 	info->handler(conn, &message);
 
