@@ -835,8 +835,7 @@ tapdisk_control_accept(event_id_t id, char mode, void *private)
 					    tapdisk_control_handle_request,
 					    connection);
 	if (err == -1) {
-		close(fd);
-		free(connection);
+		tapdisk_control_close_connection(connection);
 		ERR(err, "failed to register new control event\n");
 		return;
 	}
