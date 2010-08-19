@@ -194,10 +194,10 @@ tapdisk_ctl_conn_unmask_out(struct tapdisk_ctl_conn *conn)
 	tapdisk_server_mask_event(conn->out.event_id, 0);
 }
 
-static size_t
+static ssize_t
 tapdisk_ctl_conn_send_buf(struct tapdisk_ctl_conn *conn)
 {
-	size_t size;
+	ssize_t size;
 
 	size = conn->out.prod - conn->out.cons;
 	if (!size)
@@ -339,11 +339,12 @@ tapdisk_control_initialize(void)
 
 	signal(SIGPIPE, SIG_IGN);
 
-	for (i = TD_CTL_MAX_CONNECTIONS - 1; i >= 0; i--) {
+	for (i = 0; i < TD_CTL_MAX_CONNECTIONS; i++) {
 		conn = &td_control.__conn[i];
 		tapdisk_ctl_conn_init(conn, TD_CTL_SEND_BUFSZ);
-		td_control.conn[td_control.n_conn] = conn;
+		td_control.conn[i] = conn;
 	}
+
 	td_control.n_conn = 0;
 
 	DPRINTF("tapdisk-control: init, %d x %zuk buffers\n",
