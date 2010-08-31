@@ -111,6 +111,7 @@ const disk_info_t *tapdisk_disk_types[] = {
 	[DISK_TYPE_BLOCK_CACHE] = &block_cache_disk,
 	[DISK_TYPE_VINDEX]	= &vhd_index_disk,
 	[DISK_TYPE_LOG]	= &log_disk,
+	[DISK_TYPE_LOCAL_CACHE] = &local_cache_disk,
 	0,
 };
 
