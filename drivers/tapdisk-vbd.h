@@ -137,6 +137,7 @@ struct td_vbd_handle {
 	uint64_t                    secs_pending;
 	uint64_t                    retries;
 	uint64_t                    errors;
+	td_sector_count_t           secs;
 
 	uint64_t                    kicks_in;
 	uint64_t                    kicks_out;

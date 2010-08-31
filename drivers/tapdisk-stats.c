@@ -30,56 +30,103 @@
 #include <stdio.h>
 #include <stdarg.h>
 
+#include "tapdisk.h"
 #include "tapdisk-stats.h"
 
+#define BUG_ON(_cond) if (_cond) { td_panic(); }
+
 static void
-tapdisk_stats_vsprintf(td_stats_t *st,
+__stats_vsprintf(td_stats_t *st,
 		      const char *fmt, va_list ap)
 {
-	st->pos += vsnprintf(st->pos, st->buf + st->size - st->pos, fmt, ap);
+	size_t size = st->buf + st->size - st->pos;
+	st->pos += vsnprintf(st->pos, size, fmt, ap);
 }
 
 static void __attribute__((format (printf, 2, 3)))
-tapdisk_stats_sprintf(td_stats_t *st,
+__stats_sprintf(td_stats_t *st,
 		     const char *fmt, ...)
 {
 	va_list ap;
 
 	va_start(ap, fmt);
-	tapdisk_stats_vsprintf(st, fmt, ap);
+	__stats_vsprintf(st, fmt, ap);
 	va_end(ap);
 }
 
-
-static inline void
-__tapdisk_stats_enter(td_stats_t *st, char t)
+static void
+__stats_enter(td_stats_t *st)
 {
-	tapdisk_stats_sprintf(st, "%c ", t);
-
 	st->depth++;
+	BUG_ON(st->depth > TD_STATS_MAX_DEPTH);
 	st->n_elem[st->depth] = 0;
 }
 
-void
-tapdisk_stats_enter(td_stats_t *st, char t)
+static void
+__stats_leave(td_stats_t *st)
+{
+	st->depth--;
+}
+
+static void
+__stats_next(td_stats_t *st)
 {
 	int n_elem;
 
 	n_elem = st->n_elem[st->depth];
 	if (n_elem > 0)
-		tapdisk_stats_sprintf(st, ", ");
+		__stats_sprintf(st, ", ");
 	st->n_elem[st->depth]++;
-
-	__tapdisk_stats_enter(st, t);
 }
 
+static void
+__tapdisk_stats_enter(td_stats_t *st, char t)
+{
+	__stats_sprintf(st, "%c ", t);
+	__stats_enter(st);
+}
+
+void
+tapdisk_stats_enter(td_stats_t *st, char t)
+{
+	__stats_next(st);
+	__tapdisk_stats_enter(st, t);
+}
 
 void
 tapdisk_stats_leave(td_stats_t *st, char t)
 {
-	st->depth--;
+	__stats_leave(st);
+	__stats_sprintf(st, " %c", t);
+}
 
-	tapdisk_stats_sprintf(st, " %c", t);
+static void
+tapdisk_stats_vval(td_stats_t *st, const char *conv, va_list ap)
+{
+	char t = conv[0], fmt[32];
+
+	__stats_next(st);
+
+	switch (t) {
+	case 's':
+		__stats_vsprintf(st, "\"%s\"", ap);
+		break;
+
+	default:
+		sprintf(fmt, "%%%s", conv);
+		__stats_vsprintf(st, fmt, ap);
+		break;
+	}
+}
+
+void
+tapdisk_stats_val(td_stats_t *st, const char *conv, ...)
+{
+	va_list ap;
+
+	va_start(ap, conv);
+	tapdisk_stats_vval(st, conv, ap);
+	va_end(ap);
 }
 
 void
@@ -87,38 +134,30 @@ tapdisk_stats_field(td_stats_t *st, const char *key, const char *conv, ...)
 {
 	va_list ap;
 	int n_elem;
-	char fmt[32], t;
+	char t;
 
 	n_elem = st->n_elem[st->depth]++;
 	if (n_elem > 0)
-		tapdisk_stats_sprintf(st, ", ");
+		__stats_sprintf(st, ", ");
 
-	tapdisk_stats_sprintf(st, "\"%s\": ", key);
+	__stats_sprintf(st, "\"%s\": ", key);
 
 	if (!conv) {
-		tapdisk_stats_sprintf(st, "null");
+		__stats_sprintf(st, "null");
 		return;
 	}
 
 	t = conv[0];
 	switch (t) {
-	case 's':
-		va_start(ap, conv);
-		tapdisk_stats_vsprintf(st, "\"%s\"", ap);
-		va_end(ap);
-		break;
-
 	case '[':
 	case '{':
 		__tapdisk_stats_enter(st, t);
 		break;
-
 	default:
-		sprintf(fmt, "%%%s", conv);
-
 		va_start(ap, conv);
-		tapdisk_stats_vsprintf(st, fmt, ap);
+		__stats_enter(st);
+		tapdisk_stats_vval(st, conv, ap);
+		__stats_leave(st);
 		va_end(ap);
-		break;
 	}
 }

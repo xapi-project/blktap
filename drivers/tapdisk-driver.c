@@ -106,7 +106,12 @@ tapdisk_driver_debug(td_driver_t *driver)
 void
 tapdisk_driver_stats(td_driver_t *driver, td_stats_t *st)
 {
+	const disk_info_t *info;
+
 	tapdisk_stats_field(st, "type", "d", driver->type);
+
+	info = tapdisk_disk_types[driver->type];
+	tapdisk_stats_field(st, "name", "s", info->name);
 
 	if (driver->ops->td_stats) {
 		tapdisk_stats_field(st, "status", "{");

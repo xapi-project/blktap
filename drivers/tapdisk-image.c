@@ -167,6 +167,16 @@ tapdisk_image_stats(td_image_t *image, td_stats_t *st)
 	tapdisk_stats_enter(st, '{');
 	tapdisk_stats_field(st, "name", "s", image->name);
 
+	tapdisk_stats_field(st, "hits", "[");
+	tapdisk_stats_val(st, "llu", image->stats.hits.rd);
+	tapdisk_stats_val(st, "llu", image->stats.hits.wr);
+	tapdisk_stats_leave(st, ']');
+
+	tapdisk_stats_field(st, "fail", "[");
+	tapdisk_stats_val(st, "llu", image->stats.fail.rd);
+	tapdisk_stats_val(st, "llu", image->stats.fail.wr);
+	tapdisk_stats_leave(st, ']');
+
 	tapdisk_stats_field(st, "driver", "{");
 	tapdisk_driver_stats(image->driver, st);
 	tapdisk_stats_leave(st, '}');

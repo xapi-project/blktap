@@ -108,6 +108,7 @@ typedef struct td_disk_info          td_disk_info_t;
 typedef struct td_request            td_request_t;
 typedef struct td_driver_handle      td_driver_t;
 typedef struct td_image_handle       td_image_t;
+typedef struct td_sector_count       td_sector_count_t;
 
 /* 
  * Prototype of the callback to activate as requests complete.
@@ -158,6 +159,20 @@ struct tap_disk {
 	void (*td_debug)             (td_driver_t *);
 	void (*td_stats)             (td_driver_t *, td_stats_t *);
 };
+
+struct td_sector_count {
+	td_sector_t rd;
+	td_sector_t wr;
+};
+
+static inline void
+td_sector_count_add(td_sector_count_t *s, td_sector_t v, int write)
+{
+	if (write)
+		s->wr += v;
+	else
+		s->rd += v;
+}
 
 void td_panic(void);
 

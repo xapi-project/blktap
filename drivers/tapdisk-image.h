@@ -44,6 +44,25 @@ struct td_image_handle {
 	void                        *private;
 
 	struct list_head             next;
+
+	/*
+	 * Basic datapath statistics, in sectors read/written.
+	 *
+	 * hits:  requests completed by this image.
+	 * fail:  requests completed with failure by this image.
+	 *
+	 * Not that we do not count e.g.
+	 * miss:  requests forwarded.
+	 * total: requests processed by this image.
+	 *
+	 * This is because we'd have to compensate for restarts due to
+	 * -EBUSY conditions. Those can be extrapolated by following
+	 * the chain instead: sum(image[i].hits, i=0..) == vbd.secs;
+	 */
+	struct {
+		td_sector_count_t    hits;
+		td_sector_count_t    fail;
+	} stats;
 };
 
 td_image_t *tapdisk_image_allocate(char *, int, int, td_flag_t, void *);

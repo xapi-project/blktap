@@ -32,7 +32,7 @@
 
 #include <string.h>
 
-#define TD_INFO_MAX_DEPTH 8
+#define TD_STATS_MAX_DEPTH 8
 
 struct tapdisk_stats_ctx {
 	void           *pos;
@@ -40,7 +40,7 @@ struct tapdisk_stats_ctx {
 	void           *buf;
 	size_t          size;
 
-	int             n_elem[TD_INFO_MAX_DEPTH];
+	int             n_elem[TD_STATS_MAX_DEPTH];
 	int             depth;
 };
 
@@ -65,5 +65,6 @@ tapdisk_stats_length(td_stats_t *st)
 void tapdisk_stats_enter(td_stats_t *st, char t);
 void tapdisk_stats_leave(td_stats_t *st, char t);
 void tapdisk_stats_field(td_stats_t *st, const char *key, const char *conv, ...);
+void tapdisk_stats_val(td_stats_t *st, const char *conv, ...);
 
 #endif /* _TAPDISK_STATS_H_ */

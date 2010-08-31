@@ -1645,11 +1645,20 @@ static void
 __tapdisk_vbd_complete_td_request(td_vbd_t *vbd, td_vbd_request_t *vreq,
 				  td_request_t treq, int res)
 {
+	td_image_t *image = treq.image, *prev, *tmp;
 	int err;
 
 	err = (res <= 0 ? res : -res);
 	vbd->secs_pending  -= treq.secs;
 	vreq->secs_pending -= treq.secs;
+
+	if (err != -EBUSY) {
+		int write = treq.op == TD_OP_WRITE;
+		td_sector_count_add(&image->stats.hits, treq.secs, write);
+		if (err)
+			td_sector_count_add(&image->stats.fail,
+					    treq.secs, write);
+	}
 
 	if (err) {
 		vreq->status = BLKIF_RSP_ERROR;
@@ -1953,6 +1962,21 @@ tapdisk_vbd_reissue_failed_requests(td_vbd_t *vbd)
 	return err;
 }
 
+static void
+tapdisk_vbd_count_new_request(td_vbd_t *vbd, td_vbd_request_t *vreq)
+{
+	blkif_request_t *req = &vreq->req;
+	struct blkif_request_segment *seg;
+	int write;
+
+	write = req->operation == BLKIF_OP_WRITE;
+
+	for (seg = &req->seg[0]; seg < &req->seg[req->nr_segments]; seg++) {
+		int secs = seg->last_sect - seg->first_sect + 1;
+		td_sector_count_add(&vbd->secs, secs, write);
+	}
+}
+
 static int
 tapdisk_vbd_issue_new_requests(td_vbd_t *vbd)
 {
@@ -1963,6 +1987,8 @@ tapdisk_vbd_issue_new_requests(td_vbd_t *vbd)
 		err = tapdisk_vbd_issue_request(vbd, vreq);
 		if (err)
 			return err;
+
+		tapdisk_vbd_count_new_request(vbd, vreq);
 	}
 
 	return 0;
@@ -2190,11 +2216,14 @@ tapdisk_vbd_stats(td_vbd_t *vbd, td_stats_t *st)
 	tapdisk_stats_field(st, "name", "s", vbd->name);
 	tapdisk_stats_field(st, "minor", "d", vbd->minor);
 
-	tapdisk_stats_field(st, "image", "[");
+	tapdisk_stats_field(st, "secs", "[");
+	tapdisk_stats_val(st, "llu", vbd->secs.rd);
+	tapdisk_stats_val(st, "llu", vbd->secs.wr);
+	tapdisk_stats_leave(st, ']');
 
+	tapdisk_stats_field(st, "images", "[");
 	tapdisk_vbd_for_each_image(vbd, image, next)
 		tapdisk_image_stats(image, st);
-
 	tapdisk_stats_leave(st, ']');
 
 	tapdisk_stats_leave(st, '}');
