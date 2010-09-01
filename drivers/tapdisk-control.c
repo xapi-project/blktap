@@ -988,7 +988,7 @@ struct tapdisk_control_info message_infos[] = {
 	},
 	[TAPDISK_MESSAGE_STATS] = {
 		.handler = tapdisk_control_stats,
-		.flags   = TAPDISK_MSG_VERBOSE,
+		.flags   = TAPDISK_MSG_REENTER,
 	},
 };
 
