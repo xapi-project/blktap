@@ -177,6 +177,7 @@ local_cache_populate_cache(td_request_t clone, int err)
 
 	clone.sec = lreq->treq.sec;
 	clone.secs = lreq->treq.secs;
+	clone.buf = lreq->treq.buf;
 
 out:
 	td_complete_request(lreq->treq, lreq->err); // TODO: check err
