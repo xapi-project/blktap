@@ -216,7 +216,7 @@ static void
 tapdisk_ctl_conn_send_event(event_id_t id, char mode, void *private)
 {
 	struct tapdisk_ctl_conn *conn = private;
-	size_t rv;
+	ssize_t rv;
 
 	do {
 		rv = tapdisk_ctl_conn_send_buf(conn);
