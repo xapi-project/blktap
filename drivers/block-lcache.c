@@ -158,22 +158,18 @@ local_cache_complete_read(local_cache_t *cache, local_cache_request_t *lreq)
 {
 	td_vbd_t *vbd = lreq->treq.image->private;
 	td_request_t clone;
-	int i;
 
-
-	if (lreq->err) {
-		td_complete_request(lreq->treq, lreq->err);
-		local_cache_put_request(cache, lreq);
-		return;
-	}
-
-	for (i = 0; i < lreq->treq.secs; i++) {
-		off_t off = i << VHD_SECTOR_SHIFT;
-		//DPRINTF(">>> populating sec 0x%08llx\n", lreq->treq.sec + i);
-		memcpy(lreq->treq.buf + off, lreq->buf + off, VHD_SECTOR_SIZE);
+	if (!lreq->err) {
+		size_t sz = lreq->treq.secs << SECTOR_SHIFT;
+		memcpy(lreq->treq.buf, lreq->buf, sz);
 	}
 
 	td_complete_request(lreq->treq, lreq->err);
+
+	if (lreq->err) {
+		local_cache_put_request(cache, lreq);
+		return;
+	}
 
 	lreq->phase   = LC_WRITE;
 	lreq->secs    = lreq->treq.secs;
