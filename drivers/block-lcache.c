@@ -49,6 +49,8 @@
 #endif
 
 #define WARN(_f, _a...) tlog_write(TLOG_WARN, _f, ##_a)
+#define BUG()           td_panic()
+#define BUG_ON(_cond)   if (_cond) { td_panic(); }
 
 #define LOCAL_CACHE_REQUESTS            (TAPDISK_DATA_REQUESTS << 3)
 
@@ -57,9 +59,10 @@ typedef struct local_cache              local_cache_t;
 struct local_cache_request {
 	int                             err;
 	char                           *buf;
-	uint64_t                        secs;
+	int                             secs;
 	td_request_t                    treq;
 	local_cache_t                  *cache;
+	enum { LC_READ = 1, LC_WRITE }  phase;
 };
 typedef struct local_cache_request      local_cache_request_t;
 
@@ -71,6 +74,7 @@ struct local_cache {
 	int                             requests_free;
 };
 
+static void local_cache_complete_req(td_request_t, int);
 
 static inline local_cache_request_t *
 local_cache_get_request(local_cache_t *cache)
@@ -120,54 +124,18 @@ local_cache_close(td_driver_t *driver)
 }
 
 static void
-local_cache_write_complete(td_request_t clone, int err)
+local_cache_complete_read(local_cache_t *cache, local_cache_request_t *lreq)
 {
-	local_cache_request_t *lreq;
-
-	lreq        = (local_cache_request_t *)clone.cb_data;
-#ifdef DEBUG_VERBOSE
-	DPRINTF(">>>> Cache-write for sector %lld complete (%d)\n", clone.sec, clone.secs);
-#endif // DEBUG_VERBOSE
-	local_cache_put_request(lreq->cache, lreq);
-}
-
-static void
-local_cache_submit_write(td_request_t treq, int err)
-{
-	td_vbd_t *vbd;
-	td_image_t *target;
-
-	vbd   = (td_vbd_t *)treq.image->private;
-	target = tapdisk_vbd_first_image(vbd);
-	treq.image = target;
-
-	//DPRINTF(">>>> Cache-write for sector %lld: submitting\n", treq.sec);
-	treq.op = TD_OP_WRITE;
-	treq.cb = local_cache_write_complete;
-	td_queue_write(target, treq);
-}
-
-
-static void
-local_cache_populate_cache(td_request_t clone, int err)
-{
+	td_vbd_t *vbd = lreq->treq.image->private;
+	td_request_t clone;
 	int i;
-	local_cache_t *cache;
-	local_cache_request_t *lreq;
 
-	lreq        = (local_cache_request_t *)clone.cb_data;
-	cache       = lreq->cache;
-	lreq->secs -= clone.secs;
-	lreq->err   = (lreq->err ? lreq->err : err);
 
-	//DPRINTF("Local cache: read request COMPLETE! %lld (%d secs), 
-	//remaining: %lld [%d]\n", clone.sec, clone.secs, lreq->secs, 
-	//lreq->err);
-	if (lreq->secs)
+	if (lreq->err) {
+		td_complete_request(lreq->treq, lreq->err);
+		local_cache_put_request(cache, lreq);
 		return;
-
-	if (lreq->err)
-		goto out;
+	}
 
 	for (i = 0; i < lreq->treq.secs; i++) {
 		off_t off = i << VHD_SECTOR_SHIFT;
@@ -175,16 +143,55 @@ local_cache_populate_cache(td_request_t clone, int err)
 		memcpy(lreq->treq.buf + off, lreq->buf + off, VHD_SECTOR_SIZE);
 	}
 
-	clone.sec = lreq->treq.sec;
-	clone.secs = lreq->treq.secs;
-	clone.buf = lreq->buf;
+	td_complete_request(lreq->treq, lreq->err);
 
-out:
-	td_complete_request(lreq->treq, lreq->err); // TODO: check err
-	if (lreq->err)
-		local_cache_put_request(cache, lreq);
-	else
-		local_cache_submit_write(clone, err);
+	lreq->phase   = LC_WRITE;
+	lreq->secs    = lreq->treq.secs;
+	lreq->err     = 0;
+
+	clone         = lreq->treq;
+	clone.op      = TD_OP_WRITE;
+	clone.buf     = lreq->buf;
+	clone.cb      = local_cache_complete_req;
+	clone.cb_data = lreq;
+	clone.image   = tapdisk_vbd_first_image(vbd);
+
+	td_queue_write(clone.image, clone);
+}
+
+static void
+local_cache_complete_write(local_cache_t *cache, local_cache_request_t *lreq)
+{
+	local_cache_put_request(cache, lreq);
+}
+
+static void
+local_cache_complete_req(td_request_t treq, int err)
+{
+	local_cache_request_t *lreq = treq.cb_data;
+	local_cache_t *cache = lreq->cache;
+
+	BUG_ON(lreq->secs == 0);
+	BUG_ON(lreq->secs < treq.secs);
+
+	lreq->secs -= treq.secs;
+	lreq->err   = lreq->err ? : err;
+
+	if (lreq->secs)
+		return;
+
+	switch (lreq->phase) {
+	case LC_READ:
+		local_cache_complete_read(cache, lreq);
+		break;
+
+	case LC_WRITE:
+		local_cache_complete_write(cache, lreq);
+		break;
+
+	default:
+		BUG();
+	}
 }
 
 static void
@@ -219,13 +226,15 @@ local_cache_queue_read(td_driver_t *driver, td_request_t treq)
 	}
 
 	lreq->treq    = treq;
-	lreq->secs    = treq.secs;
-	lreq->err     = 0;
-	lreq->buf     = buf;
 	lreq->cache   = cache;
+	lreq->buf     = buf;
+
+	lreq->phase   = LC_READ;
+	lreq->secs    = lreq->treq.secs;
+	lreq->err     = 0;
 
 	clone.buf     = buf;
-	clone.cb      = local_cache_populate_cache;
+	clone.cb      = local_cache_complete_req;
 	clone.cb_data = lreq;
 
 out:
