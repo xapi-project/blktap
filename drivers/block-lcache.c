@@ -72,6 +72,9 @@ struct local_cache {
 	local_cache_request_t           requests[LOCAL_CACHE_REQUESTS];
 	local_cache_request_t          *request_free_list[LOCAL_CACHE_REQUESTS];
 	int                             requests_free;
+
+	char                           *buf;
+	size_t                          bufsz;
 };
 
 static void local_cache_complete_req(td_request_t, int);
@@ -88,39 +91,66 @@ local_cache_get_request(local_cache_t *cache)
 static inline void
 local_cache_put_request(local_cache_t *cache, local_cache_request_t *lreq)
 {
-	free(lreq->buf);
-	memset(lreq, 0, sizeof(local_cache_request_t));
 	cache->request_free_list[cache->requests_free++] = lreq;
-}
-
-static int
-local_cache_open(td_driver_t *driver, const char *name, td_flag_t flags)
-{
-	int i, err; 
-	local_cache_t *cache;
-
-	cache = (local_cache_t *)driver->data;
-	err   = tapdisk_namedup(&cache->name, (char *)name);
-	if (err)
-		return -ENOMEM;
-	cache->requests_free = LOCAL_CACHE_REQUESTS;
-	for (i = 0; i < LOCAL_CACHE_REQUESTS; i++)
-		cache->request_free_list[i] = cache->requests + i;
-
-	DPRINTF("Opening local cache for %s\n", cache->name);
-	return 0;
 }
 
 static int
 local_cache_close(td_driver_t *driver)
 {
-	local_cache_t *cache;
+	local_cache_t *cache = driver->data;
 
-	cache = (local_cache_t *)driver->data;
 	DPRINTF("Closing local cache for %s\n", cache->name);
+
+	if (cache->buf)
+		munmap(cache->buf, cache->bufsz);
 
 	free(cache->name);
 	return 0;
+}
+
+static int
+local_cache_open(td_driver_t *driver, const char *name, td_flag_t flags)
+{
+	local_cache_t *cache = driver->data;
+	int i, err;
+	int prot, _flags;
+	size_t lreq_bufsz;
+
+	err   = tapdisk_namedup(&cache->name, (char *)name);
+	if (err)
+		goto fail;
+
+	lreq_bufsz   = BLKIF_MAX_SEGMENTS_PER_REQUEST * sysconf(_SC_PAGE_SIZE);
+	cache->bufsz = LOCAL_CACHE_REQUESTS * lreq_bufsz;
+
+	prot   = PROT_READ|PROT_WRITE;
+	_flags = MAP_ANONYMOUS|MAP_PRIVATE;
+	cache->buf = mmap(NULL, cache->bufsz, prot, _flags, -1, 0);
+	if (cache->buf == MAP_FAILED) {
+		cache->buf == NULL;
+		err = -errno;
+		goto fail;
+	}
+
+	err = mlock(cache->buf, cache->bufsz);
+	if (err) {
+		err = -errno;
+		goto fail;
+	}
+
+	cache->requests_free = LOCAL_CACHE_REQUESTS;
+	for (i = 0; i < LOCAL_CACHE_REQUESTS; i++) {
+		local_cache_request_t *lreq = &cache->requests[i];
+		lreq->buf = cache->buf + i * lreq_bufsz;
+		cache->request_free_list[i] = lreq;
+	}
+
+	DPRINTF("Opening local cache for %s\n", cache->name);
+	return 0;
+
+fail:
+	local_cache_close(driver);
+	return err;
 }
 
 static void
@@ -197,43 +227,30 @@ local_cache_complete_req(td_request_t treq, int err)
 static void
 local_cache_queue_read(td_driver_t *driver, td_request_t treq)
 {
+	local_cache_t *cache = driver->data;
 	int err;
-	char *buf;
 	size_t size;
 	td_request_t clone;
 	local_cache_request_t *lreq;
-	local_cache_t *cache;
 
 	//DPRINTF("LocalCache: read request! %lld (%d secs)\n", treq.sec, 
 	//treq.secs);
 
-	cache = (local_cache_t *)driver->data;
-
-	clone = treq;
-	size  = treq.secs << VHD_SECTOR_SHIFT;
-
 	lreq = local_cache_get_request(cache);
 	if (!lreq) {
-		//EPRINTF("FAILED TO get lreq! %lld\n", treq.sec);
-		goto out;
-	}
-
-	err = posix_memalign((void **)&buf, 4096, size);
-	if (err) {
-		EPRINTF("FAILED TO posix_memalign! %d\n", err);
-		local_cache_put_request(cache, lreq);
-		goto out;
+		td_forward_request(treq);
+		return;
 	}
 
 	lreq->treq    = treq;
 	lreq->cache   = cache;
-	lreq->buf     = buf;
 
 	lreq->phase   = LC_READ;
 	lreq->secs    = lreq->treq.secs;
 	lreq->err     = 0;
 
-	clone.buf     = buf;
+	clone         = treq;
+	clone.buf     = lreq->buf;
 	clone.cb      = local_cache_complete_req;
 	clone.cb_data = lreq;
 
