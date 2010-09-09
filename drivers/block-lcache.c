@@ -52,7 +52,7 @@
 #define BUG()           td_panic()
 #define BUG_ON(_cond)   if (_cond) { td_panic(); }
 
-#define LOCAL_CACHE_REQUESTS            (TAPDISK_DATA_REQUESTS << 3)
+#define LOCAL_CACHE_REQUESTS            (BLK_RING_SIZE*2)
 
 typedef struct local_cache              local_cache_t;
 
