@@ -205,7 +205,7 @@ tapdisk_ctl_conn_send_buf(struct tapdisk_ctl_conn *conn)
 
 	size = send(conn->fd, conn->out.cons, size, MSG_DONTWAIT);
 	if (size < 0)
-		return size;
+		return -errno;
 
 	conn->out.cons += size;
 
