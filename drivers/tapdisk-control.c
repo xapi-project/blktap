@@ -176,10 +176,10 @@ tapdisk_ctl_conn_close(struct tapdisk_ctl_conn *conn)
 	if (conn->fd >= 0) {
 		close(conn->fd);
 		conn->fd = -1;
-	}
 
-	td_control.conn[--td_control.n_conn] = conn;
-	tapdisk_server_mask_event(td_control.event_id, 0);
+		td_control.conn[--td_control.n_conn] = conn;
+		tapdisk_server_mask_event(td_control.event_id, 0);
+	}
 }
 
 static void
@@ -251,7 +251,7 @@ tapdisk_ctl_conn_drain(struct tapdisk_ctl_conn *conn)
 	int n, mode;
 
 	ASSERT(conn->out.done);
-	WARN_ON(conn->fd < 0);
+	ASSERT(conn->fd >= 0);
 
 	while (tapdisk_ctl_conn_connected(conn)) {
 		FD_ZERO(&wfds);
