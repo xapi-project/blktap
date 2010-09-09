@@ -400,6 +400,10 @@ tapdisk_control_close_connection(struct tapdisk_ctl_conn *conn)
 {
 	tapdisk_control_release_connection(conn);
 
+	if (tapdisk_ctl_conn_connected(conn))
+		/* NB. best effort for write/close sequences. */
+		tapdisk_ctl_conn_send_buf(conn);
+
 	tapdisk_ctl_conn_close(conn);
 }
 
