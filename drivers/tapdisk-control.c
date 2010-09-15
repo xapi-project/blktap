@@ -166,6 +166,24 @@ tapdisk_ctl_conn_connected(struct tapdisk_ctl_conn *conn)
 }
 
 static void
+tapdisk_ctl_conn_free(struct tapdisk_ctl_conn *conn)
+{
+	struct tapdisk_ctl_conn *prev, *next;
+	int i;
+
+	i = --td_control.n_conn;
+	/* NB. bubble the freed connection off the active list. */
+	prev = conn;
+	do {
+		ASSERT(i >= 0);
+		next = td_control.conn[i];
+		td_control.conn[i] = prev;
+		prev = next;
+		i--;
+	} while (next != conn);
+}
+
+static void
 tapdisk_ctl_conn_close(struct tapdisk_ctl_conn *conn)
 {
 	if (conn->out.event_id >= 0) {
@@ -177,7 +195,7 @@ tapdisk_ctl_conn_close(struct tapdisk_ctl_conn *conn)
 		close(conn->fd);
 		conn->fd = -1;
 
-		td_control.conn[--td_control.n_conn] = conn;
+		tapdisk_ctl_conn_free(conn);
 		tapdisk_server_mask_event(td_control.event_id, 0);
 	}
 }
