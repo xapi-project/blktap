@@ -1472,6 +1472,7 @@ allocate_block(struct vhd_state *s, uint32_t blk)
 	int err, gap;
 	uint64_t offset, size;
 	struct vhd_bitmap *bm;
+	ssize_t count;
 
 	ASSERT(bat_entry(s, blk) == DD_BLK_UNUSED);
 
@@ -1502,11 +1503,12 @@ allocate_block(struct vhd_state *s, uint32_t blk)
 		return -errno;
 	}
 
-	size = vhd_sectors_to_bytes(s->spb + s->bm_secs + gap);
-	err  = write(s->vhd.fd, vhd_zeros(size), size);
-	if (err != size) {
-		err = (err == -1 ? -errno : -EIO);
-		ERR(err, "write failed");
+	size  = vhd_sectors_to_bytes(s->spb + s->bm_secs + gap);
+	count = write(s->vhd.fd, vhd_zeros(size), size);
+	if (count != size) {
+		err = count < 0 ? -errno : -ENOSPC;
+		ERR(errno,
+		    "write failed (%zd, offset %"PRIu64")\n", count, offset);
 		return err;
 	}
 
