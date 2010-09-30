@@ -36,6 +36,7 @@
 #include <inttypes.h>
 
 #include "io-optimize.h"
+#include "tapdisk-queue.h"
 #include "tapdisk-log.h"
 
 #if (!defined(TEST) && defined(DEBUG))
@@ -207,10 +208,16 @@ merge_tail(struct opioctx *ctx, struct iocb *head, struct iocb *io)
 static int
 merge(struct opioctx *ctx, struct iocb *head, struct iocb *io)
 {
+	struct tiocb *tiocb = head->data;
+	size_t limit = tiocb->merge_limit;
+
 	if (head->aio_lio_opcode != io->aio_lio_opcode)
 		return -EINVAL;
 
 	if (!contiguous_iocbs(head, io))
+		return -EINVAL;
+
+	if (head->u.c.nbytes + io->u.c.nbytes > limit)
 		return -EINVAL;
 
 	return merge_tail(ctx, head, io);		

@@ -627,7 +627,8 @@ vhd_index_schedule_meta_read(vhd_index_t *index, uint32_t blk)
 	req->treq.sec  = blk * index->vhdi.spb;
 	req->treq.secs = block->table_size >> VHD_SECTOR_SHIFT;
 
-	td_prep_read(&req->tiocb, index->vhdi.fd,
+	td_prep_read(index->driver,
+		     &req->tiocb, index->vhdi.fd,
 		     (char *)block->vhdi_block.table, block->table_size,
 		     offset, vhd_index_complete_meta_read, req);
 	td_queue_tiocb(index->driver, &req->tiocb);
@@ -677,7 +678,8 @@ vhd_index_schedule_data_read(vhd_index_t *index, td_request_t treq)
 	req->index = index;
 	req->off   = offset;
 
-	td_prep_read(&req->tiocb, file->fd, treq.buf, size, offset,
+	td_prep_read(index->driver,
+		     &req->tiocb, file->fd, treq.buf, size, offset,
 		     vhd_index_complete_data_read, req);
 	td_queue_tiocb(index->driver, &req->tiocb);
 

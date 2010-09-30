@@ -1278,7 +1278,7 @@ aio_read(struct vhd_state *s, struct vhd_request *req, uint64_t offset)
 {
 	struct tiocb *tiocb = &req->tiocb;
 
-	td_prep_read(tiocb, s->vhd.fd, req->treq.buf,
+	td_prep_read(s->driver, tiocb, s->vhd.fd, req->treq.buf,
 		     vhd_sectors_to_bytes(req->treq.secs),
 		     offset, vhd_complete, req);
 	td_queue_tiocb(s->driver, tiocb);
@@ -1294,7 +1294,7 @@ aio_write(struct vhd_state *s, struct vhd_request *req, uint64_t offset)
 {
 	struct tiocb *tiocb = &req->tiocb;
 
-	td_prep_write(tiocb, s->vhd.fd, req->treq.buf,
+	td_prep_write(s->driver, tiocb, s->vhd.fd, req->treq.buf,
 		      vhd_sectors_to_bytes(req->treq.secs),
 		      offset, vhd_complete, req);
 	td_queue_tiocb(s->driver, tiocb);

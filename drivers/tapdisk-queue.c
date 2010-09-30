@@ -44,6 +44,8 @@
 #include "tapdisk-utils.h"
 
 #include "libaio-compat.h"
+#include "blktap2.h"
+#include "tapdisk-storage.h"
 #include "atomicio.h"
 
 #define WARN(_f, _a...) tlog_write(TLOG_WARN, _f, ##_a)
@@ -755,7 +757,7 @@ tapdisk_debug_queue(struct tqueue *queue)
 
 void
 tapdisk_prep_tiocb(struct tiocb *tiocb, int fd, int rw, char *buf, size_t size,
-		   long long offset, td_queue_callback_t cb, void *arg)
+		   long long offset, int storage, td_queue_callback_t cb, void *arg)
 {
 	struct iocb *iocb = &tiocb->iocb;
 
@@ -767,6 +769,14 @@ tapdisk_prep_tiocb(struct tiocb *tiocb, int fd, int rw, char *buf, size_t size,
 	iocb->data  = tiocb;
 	tiocb->cb   = cb;
 	tiocb->arg  = arg;
+
+	if (storage == TAPDISK_STORAGE_TYPE_EXT) {
+		size_t block_size = 4<<10; /* should query the fs */
+		tiocb->merge_limit = BLKTAP2_BIO_POOL_SIZE * block_size;
+	} else
+		/* contiguous storage:
+		   BLKTAP2_BIO_POOL_SIZE * BIO_MAX_PAGES * PAGE_SIZE */
+		tiocb->merge_limit = SIZE_MAX;
 }
 
 void

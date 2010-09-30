@@ -40,6 +40,7 @@
 #include "tapdisk.h"
 #include "tapdisk-driver.h"
 #include "tapdisk-interface.h"
+#include "tapdisk-storage.h"
 
 #define MAX_AIO_REQS         TAPDISK_DATA_REQUESTS
 
@@ -169,6 +170,8 @@ int tdaio_open(td_driver_t *driver, const char *name, td_flag_t flags)
 		goto done;
 	}
 
+	driver->storage = tapdisk_storage_type(name);
+
         prv->fd = fd;
 
 done:
@@ -202,7 +205,7 @@ void tdaio_queue_read(td_driver_t *driver, td_request_t treq)
 	aio->treq  = treq;
 	aio->state = prv;
 
-	td_prep_read(&aio->tiocb, prv->fd, treq.buf,
+	td_prep_read(driver, &aio->tiocb, prv->fd, treq.buf,
 		     size, offset, tdaio_complete, aio);
 	td_queue_tiocb(driver, &aio->tiocb);
 
@@ -230,7 +233,7 @@ void tdaio_queue_write(td_driver_t *driver, td_request_t treq)
 	aio->treq  = treq;
 	aio->state = prv;
 
-	td_prep_write(&aio->tiocb, prv->fd, treq.buf,
+	td_prep_write(driver, &aio->tiocb, prv->fd, treq.buf,
 		      size, offset, tdaio_complete, aio);
 	td_queue_tiocb(driver, &aio->tiocb);
 

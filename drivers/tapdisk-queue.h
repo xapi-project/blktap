@@ -21,6 +21,8 @@ struct tiocb {
 	void                 *arg;
 
 	struct iocb           iocb;
+	size_t                merge_limit;
+
 	struct list_head      entry;
 };
 
@@ -84,6 +86,6 @@ void tapdisk_submit_all_tiocbs(struct tqueue *);
 int tapdisk_cancel_tiocbs(struct tqueue *);
 int tapdisk_cancel_all_tiocbs(struct tqueue *);
 void tapdisk_prep_tiocb(struct tiocb *, int, int, char *, size_t,
-			long long, td_queue_callback_t, void *);
+			long long, int, td_queue_callback_t, void *);
 
 #endif

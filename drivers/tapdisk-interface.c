@@ -235,17 +235,21 @@ td_queue_tiocb(td_driver_t *driver, struct tiocb *tiocb)
 }
 
 void
-td_prep_read(struct tiocb *tiocb, int fd, char *buf, size_t bytes,
+td_prep_read(td_driver_t *driver,
+	     struct tiocb *tiocb, int fd, char *buf, size_t bytes,
 	     long long offset, td_queue_callback_t cb, void *arg)
 {
-	tapdisk_prep_tiocb(tiocb, fd, 0, buf, bytes, offset, cb, arg);
+	tapdisk_prep_tiocb(tiocb, fd, 0, buf, bytes, offset, driver->storage,
+			   cb, arg);
 }
 
 void
-td_prep_write(struct tiocb *tiocb, int fd, char *buf, size_t bytes,
+td_prep_write(td_driver_t *driver,
+	      struct tiocb *tiocb, int fd, char *buf, size_t bytes,
 	      long long offset, td_queue_callback_t cb, void *arg)
 {
-	tapdisk_prep_tiocb(tiocb, fd, 1, buf, bytes, offset, cb, arg);
+	tapdisk_prep_tiocb(tiocb, fd, 1, buf, bytes, offset, driver->storage,
+			   cb, arg);
 }
 
 void

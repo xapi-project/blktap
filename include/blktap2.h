@@ -56,6 +56,8 @@
 #define BLKTAP2_IO_DEVICE              BLKTAP2_DIRECTORY"/tapdev"
 #define BLKTAP2_ENOSPC_SIGNAL_FILE     "/var/run/tapdisk-enospc"
 
+#define BLKTAP2_BIO_POOL_SIZE          12
+
 struct blktap2_handle {
 	unsigned int                   ring;
 	unsigned int                   device;
