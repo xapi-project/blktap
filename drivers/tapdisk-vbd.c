@@ -502,283 +502,6 @@ fail:
 	return err;
 }
 
-/*
- * LVHD hack: have to rescan LVM metadata on pool
- * slaves to register lvchanges made on master.  FIXME.
- */
-static int
-tapdisk_vbd_reactivate_volume(const char *name)
-{
-	int err;
-	char *cmd;
-
-	DPRINTF("refreshing %s\n", name);
-
-	err = asprintf(&cmd, "lvchange -ay --refresh %s", name);
-	if (err == - 1) {
-		EPRINTF("failed to activate %s\n", name);
-		return -errno;
-	}
-
-	err = system(cmd);
-	if (err)
-		EPRINTF("%s failed: %d\n", cmd, err);
-	free(cmd);
-	return err;
-}
-
-static int
-__tapdisk_vbd_reactivate_volumes(td_vbd_t *vbd, int resume)
-{
-	int i, cnt, err;
-	char *name, *new;
-	vhd_context_t vhd;
-	vhd_parent_locator_t *loc;
-	uuid_t prt_uuid;
-
-	new  = NULL;
-	name = NULL;
-
-	if (vbd->storage != TAPDISK_STORAGE_TYPE_LVM)
-		return 0;
-
-	if (!resume && vbd->reactivated)
-		return 0;
-
-	name = strdup(vbd->name);
-	if (!name) {
-		EPRINTF("%s: nomem\n", vbd->name);
-		return -ENOMEM;
-	}
-
-	for (cnt = 0; 1; cnt++) {
-
-		err = tapdisk_vbd_reactivate_volume(name);
-		if (err)
-			goto fail;
-
-		if (!strstr(name, "VHD"))
-			break;
-
-		for (i = 0; i < TD_VBD_EIO_RETRIES; i++) {
-			err = vhd_open(&vhd, name, VHD_OPEN_RDONLY);
-			if (!err && cnt > 0) {
-				err = uuid_compare(vhd.footer.uuid, prt_uuid);
-				if (err) {
-					EPRINTF("child/parent uuid mismatch");
-					vhd_close(&vhd);
-					err = -EAGAIN;
-					break;
-				}
-			}
-			if (!err)
-				break;
-
-			libvhd_set_log_level(1);
-			sleep(TD_VBD_EIO_SLEEP);
-		}
-		libvhd_set_log_level(0);
-		if (err)
-			goto fail;
-
-		if (vhd.footer.type != HD_TYPE_DIFF) {
-			vhd_close(&vhd);
-			break;
-		}
-
-		uuid_copy(prt_uuid, vhd.header.prt_uuid);
-
-		loc = NULL;
-		for (i = 0; i < 8; i++)
-			if (vhd.header.loc[i].code == PLAT_CODE_MACX) {
-				loc = vhd.header.loc + i;
-				break;
-			}
-
-		if (!loc) {
-			EPRINTF("failed to find parent locator");
-			vhd_close(&vhd);
-			err = -EINVAL;
-			goto fail;
-		}
-
-		free(name);
-		err = vhd_parent_locator_read(&vhd, loc, &name);
-		vhd_close(&vhd);
-
-		if (err) {
-			EPRINTF("failed to read parent locator");
-			name = NULL;
-			goto fail;
-		}
-
-		/*
-		 * vhd_parent_locator_read returns path relative to child:
-		 * ./VG_XenStorage--<sr-uuid>-VHD--<vdi-uuid>
-		 * we have to convert this to absolute path for lvm
-		 */
-		err = asprintf(&new, "/dev/mapper/%s", name + 2);
-		if (err == -1) {
-			err  = -errno;
-			goto fail;
-		}
-
-		free(name);
-		name = new;
-	}
-
-	err = 0;
-	vbd->reactivated = 1;
-
-out:
-	free(name);
-	return err;
-
-fail:
-	EPRINTF("failed to reactivate %s: %d\n", vbd->name, err);
-	goto out;
-}
-
-static int
-tapdisk_vbd_reactivate_volumes(td_vbd_t *vbd, int resume)
-{
-	int i, err;
-
-	for (i = 0; i < TD_VBD_EIO_RETRIES; i++) {
-		err = __tapdisk_vbd_reactivate_volumes(vbd, resume);
-		/*
-		 * CA-41048: prt_uuid mismatch when racing against
-		 * vhd_change_parent(), which relinks parent uuid and
-		 * locators sequentially. Restart from the leaf node.
-		 */
-		if (err != -EAGAIN)
-			break;
-		sleep(1);
-	}
-
-	return err;
-}
-
-
-/*
- * LVHD hack: 
- * raw volumes are named /dev/<sr-vg-name>-<sr-uuid>/LV-<sr-uuid>
- * vhd volumes are named /dev/<sr-vg-name>-<sr-uuid>/VHD-<sr-uuid>
- *
- * a live snapshot of a raw volume will result in the writeable volume's
- * name changing from the raw to vhd format, but this change will not be
- * reflected by xenstore.  hence this mess.
- */
-static int
-tapdisk_vbd_check_file(td_vbd_t *vbd)
-{
-	int i, err;
-	regex_t re;
-	size_t len, max;
-	regmatch_t matches[4];
-	char *new, *src, *dst, error[256];
-
-	if (vbd->storage != TAPDISK_STORAGE_TYPE_LVM)
-		return 0;
-
-	err = tapdisk_vbd_reactivate_volume(vbd->name);
-	if (!err)
-		return 0;
-	else
-		DPRINTF("reactivating %s failed\n", vbd->name);
-
-#define HEX   "[A-Za-z0-9]"
-#define UUID  HEX"\\{8\\}-"HEX"\\{4\\}-"HEX"\\{4\\}-"HEX"\\{4\\}-"HEX"\\{12\\}"
-#define VG    "VG_"HEX"\\+"
-#define TYPE  "\\(LV\\|VHD\\)"
-#define RE    "\\(/dev/"VG"-"UUID"/\\)"TYPE"\\(-"UUID"\\)"
-
-	err = regcomp(&re, RE, 0);
-	if (err)
-		goto regerr;
-
-#undef HEX
-#undef UUID
-#undef VG
-#undef TYPE
-#undef RE
-
-	err = regexec(&re, vbd->name, 4, matches, 0);
-	if (err)
-		goto regerr;
-
-	max = strlen("VHD") + 1;
-	for (i = 1; i < 4; i++) {
-		if (matches[i].rm_so == -1 || matches[i].rm_eo == -1) {
-			EPRINTF("%s: failed to tokenize name\n", vbd->name);
-			err = -EINVAL;
-			goto out;
-		}
-
-		max += matches[i].rm_eo - matches[i].rm_so;
-	}
-
-	new = malloc(max);
-	if (!new) {
-		EPRINTF("%s: failed to allocate new name\n", vbd->name);
-		err = -ENOMEM;
-		goto out;
-	}
-
-	src = new;
-	for (i = 1; i < 4; i++) {
-		dst = vbd->name + matches[i].rm_so;
-		len = matches[i].rm_eo - matches[i].rm_so;
-
-		if (i == 2) {
-			if (memcmp(dst, "LV", len)) {
-				EPRINTF("%s: bad name format\n", vbd->name);
-				free(new);
-				err = -EINVAL;
-				goto out;
-			}
-
-			src += sprintf(src, "VHD");
-			continue;
-		}
-
-		memcpy(src, dst, len + 1);
-		src += len;
-	}
-
-	*src = '\0';
-
-	err = tapdisk_vbd_reactivate_volume(new);
-	if (err)
-		DPRINTF("reactivating %s failed\n", new);
-
-	err = access(new, F_OK);
-	if (err == -1) {
-		EPRINTF("neither %s nor %s accessible\n",
-			vbd->name, new);
-		err = -errno;
-		free(new);
-		goto out;
-	}
-
-	DPRINTF("couldn't find %s, trying %s\n", vbd->name, new);
-
-	err = 0;
-	free(vbd->name);
-	vbd->name = new;
-	vbd->type = DISK_TYPE_VHD;
-
-out:
-	regfree(&re);
-	return err;
-
-regerr:
-	regerror(err, &re, error, sizeof(error));
-	EPRINTF("%s: regex failed: %s\n", vbd->name, error);
-	err = -EINVAL;
-	goto out;
-}
-
 static int
 __tapdisk_vbd_open_vdi(td_vbd_t *vbd, td_flag_t extra_flags)
 {
@@ -788,10 +511,6 @@ __tapdisk_vbd_open_vdi(td_vbd_t *vbd, td_flag_t extra_flags)
 	td_disk_id_t id;
 	td_image_t *image, *tmp;
 	struct tfilter *filter = NULL;
-
-	err = tapdisk_vbd_reactivate_volumes(vbd, 0);
-	if (err)
-		return err;
 
 	flags = (vbd->flags & ~TD_OPEN_SHAREABLE) | extra_flags;
 	file  = vbd->name;
@@ -937,13 +656,7 @@ tapdisk_vbd_open_vdi(td_vbd_t *vbd, int type, const char *path,
 	vbd->storage = storage;
 	vbd->type    = type;
 
-	for (i = 0; i < TD_VBD_EIO_RETRIES; i++) {
-		err = __tapdisk_vbd_open_vdi(vbd, 0);
-		if (err != -EIO)
-			break;
-
-		sleep(TD_VBD_EIO_SLEEP);
-	}
+	err = __tapdisk_vbd_open_vdi(vbd, 0);
 	if (err)
 		goto fail;
 
@@ -1383,22 +1096,10 @@ tapdisk_vbd_resume(td_vbd_t *vbd, int type, const char *path)
 	}
 
 	for (i = 0; i < TD_VBD_EIO_RETRIES; i++) {
-		err = tapdisk_vbd_check_file(vbd);
-		if (err)
-			goto sleep;
-
-		err = tapdisk_vbd_reactivate_volumes(vbd, 1);
-		if (err) {
-			EPRINTF("failed to reactivate %s: %d\n",
-				vbd->name, err);
-			goto sleep;
-		}
-
 		err = __tapdisk_vbd_open_vdi(vbd, TD_OPEN_STRICT);
 		if (!err)
 			break;
 
-	sleep:
 		sleep(TD_VBD_EIO_SLEEP);
 	}
 
@@ -2105,21 +1806,7 @@ tapdisk_vbd_resume_ring(td_vbd_t *vbd)
 	vbd->type = type;
 
 	tapdisk_vbd_start_queue(vbd);
-
-	err = tapdisk_vbd_reactivate_volumes(vbd, 1);
-	if (err) {
-		EPRINTF("failed to reactivate %s, %d\n", vbd->name, err);
-		goto out;
-	}
-
-	for (i = 0; i < TD_VBD_EIO_RETRIES; i++) {
-		err = __tapdisk_vbd_open_vdi(vbd, TD_OPEN_STRICT);
-		if (err != -EIO)
-			break;
-
-		sleep(TD_VBD_EIO_SLEEP);
-	}
-
+	err = __tapdisk_vbd_open_vdi(vbd, TD_OPEN_STRICT);
 out:
 	if (!err) {
 		image_t image;
@@ -2135,7 +1822,6 @@ out:
 		ioctl(vbd->ring.fd, BLKTAP2_IOCTL_SET_PARAMS, &params);
 		td_flag_clear(vbd->state, TD_VBD_PAUSED);
 	}
-
 	ioctl(vbd->ring.fd, BLKTAP2_IOCTL_RESUME, err);
 	return err;
 }
