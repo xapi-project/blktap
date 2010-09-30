@@ -6,6 +6,7 @@
 #define TAPDISK_QUEUE_H
 
 #include <libaio.h>
+#include <pthread.h>
 
 #include "io-optimize.h"
 #include "scheduler.h"
@@ -15,18 +16,12 @@ struct tfilter;
 
 typedef void (*td_queue_callback_t)(void *arg, struct tiocb *, int err);
 
-
 struct tiocb {
 	td_queue_callback_t   cb;
 	void                 *arg;
 
 	struct iocb           iocb;
-	struct tiocb         *next;
-};
-
-struct tlist {
-	struct tiocb         *head;
-	struct tiocb         *tail;
+	struct list_head      entry;
 };
 
 struct tqueue {
@@ -37,27 +32,24 @@ struct tqueue {
 
 	struct opioctx        opioctx;
 
-	int                   queued;
 	struct iocb         **iocbs;
+	int                   queued;
 
-	/* number of iocbs pending in the aio layer */
+	struct list_head      waiting; /* tiocbs deferred */
+	struct list_head      pending; /* tiocbs submitted */
+
+	/* iocbs <= tiocbs pending, due to coalescing */
 	int                   iocbs_pending;
-
-	/* number of tiocbs pending in the queue -- 
-	 * this is likely to be larger than iocbs_pending 
-	 * due to request coalescing */
 	int                   tiocbs_pending;
-
-	/* iocbs may be deferred if the aio ring is full.
-	 * tapdisk_queue_complete will ensure deferred
-	 * iocbs are queued as slots become available. */
-	struct tlist          deferred;
-	int                   tiocbs_deferred;
 
 	/* optional tapdisk filter */
 	struct tfilter       *filter;
 
-	uint64_t              deferrals;
+	/* tio_submit thread */
+	pthread_t             thread;
+	pthread_cond_t        cond;
+	pthread_mutex_t       mutex;
+	int                   closing;
 };
 
 struct tio {
@@ -83,16 +75,12 @@ enum {
  * The *_all_tiocbs variants will handle the first two cases;
  * be sure to call submit after calling complete in the third case.
  */
-#define tapdisk_queue_count(q) ((q)->queued)
-#define tapdisk_queue_empty(q) ((q)->queued == 0)
-#define tapdisk_queue_full(q)  \
-	(((q)->tiocbs_pending + (q)->queued) >= (q)->size)
 int tapdisk_init_queue(struct tqueue *, int size, int drv, struct tfilter *);
 void tapdisk_free_queue(struct tqueue *);
 void tapdisk_debug_queue(struct tqueue *);
 void tapdisk_queue_tiocb(struct tqueue *, struct tiocb *);
 int tapdisk_submit_tiocbs(struct tqueue *);
-int tapdisk_submit_all_tiocbs(struct tqueue *);
+void tapdisk_submit_all_tiocbs(struct tqueue *);
 int tapdisk_cancel_tiocbs(struct tqueue *);
 int tapdisk_cancel_all_tiocbs(struct tqueue *);
 void tapdisk_prep_tiocb(struct tiocb *, int, int, char *, size_t,
