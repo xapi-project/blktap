@@ -7,7 +7,6 @@ SUBDIRS-y += lvm
 SUBDIRS-y += part
 SUBDIRS-y += vhd
 SUBDIRS-y += drivers
-SUBDIRS-y += daemon
 SUBDIRS-y += control
 
 .PHONY: all
