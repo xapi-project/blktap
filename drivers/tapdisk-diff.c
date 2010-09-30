@@ -577,8 +577,6 @@ tapdisk_stream_open_image(struct tapdisk_stream *s, const char *path, int type)
 	if (err)
 		goto out;
 
-	s->vbd->reopened = 1;
-
 	err = tapdisk_vbd_get_image_info(s->vbd, &image);
 	if (err) {
 		fprintf(stderr, "failed getting image size: %d\n", err);

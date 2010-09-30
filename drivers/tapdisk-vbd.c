@@ -1596,34 +1596,6 @@ tapdisk_vbd_check_queue(td_vbd_t *vbd)
 	if (!tapdisk_vbd_queue_ready(vbd))
 		return -EAGAIN;
 
-	if (!vbd->reopened) {
-		if (td_flag_test(vbd->state, TD_VBD_LOCKING)) {
-			err = tapdisk_vbd_lock(vbd);
-			if (err)
-				return err;
-		}
-
-		image = tapdisk_vbd_first_image(vbd);
-		td_flag_set(image->flags, TD_OPEN_STRICT);
-
-		if (tapdisk_vbd_close_and_reopen_image(vbd, image))
-			EPRINTF("reopening disks failed\n");
-		else {
-			DPRINTF("reopening disks succeeded\n");
-			vbd->reopened = 1;
-		}
-
-		if (vbd->secondary) {
-			td_flag_set(vbd->secondary->flags, TD_OPEN_STRICT);
-			if (tapdisk_vbd_close_and_reopen_image(vbd,
-						vbd->secondary)) {
-				EPRINTF("reopening secondary image failed\n");
-				vbd->reopened = 0;
-			} else
-				DPRINTF("reopening secondary image succeeded\n");
-		}
-	}
-
 	return 0;
 }
 

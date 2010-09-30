@@ -92,7 +92,6 @@ struct td_vbd_handle {
 
 	int                         storage;
 
-	uint8_t                     reopened;
 	uint8_t                     reactivated;
 	td_flag_t                   flags;
 	td_flag_t                   state;
