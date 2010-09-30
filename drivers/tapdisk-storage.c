@@ -1,5 +1,6 @@
-/* 
- * Copyright (c) 2008, XenSource Inc.
+/*
+ * Copyright (c) 2010, Citrix Systems, Inc.
+ *
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -25,40 +26,92 @@
  * NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
  * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
-#ifndef _TAPDISK_DRIVER_H_
-#define _TAPDISK_DRIVER_H_
 
-#include "tapdisk.h"
-#include "scheduler.h"
-#include "tapdisk-queue.h"
+#include <errno.h>
+#include <limits.h>
+#include <stdlib.h>
+#include <sys/stat.h>
+#include <sys/vfs.h>
 
-#define TD_DRIVER_OPEN               0x0001
-#define TD_DRIVER_RDONLY             0x0002
+#include "tapdisk-storage.h"
 
-struct td_driver_handle {
-	int                          type;
-	char                        *name;
-
-	int                          storage;
-
-	int                          refcnt;
-	td_flag_t                    state;
-
-	td_disk_info_t               info;
-
-	void                        *data;
-	const struct tap_disk       *ops;
-
-	struct list_head             next;
-};
-
-td_driver_t *tapdisk_driver_allocate(int, char *, td_flag_t);
-void tapdisk_driver_free(td_driver_t *);
-
-void tapdisk_driver_queue_tiocb(td_driver_t *, struct tiocb *);
-
-void tapdisk_driver_debug(td_driver_t *);
-
-void tapdisk_driver_stats(td_driver_t *, td_stats_t *);
-
+#ifndef NFS_SUPER_MAGIC
+#define NFS_SUPER_MAGIC 0x6969
 #endif
+
+static int
+__tapdisk_fs_storage_type(const char *rpath)
+{
+	struct statfs fst;
+	int type, err;
+
+	err = statfs(rpath, &fst);
+	if (err)
+		return -errno;
+
+	switch (fst.f_type) {
+	case NFS_SUPER_MAGIC:
+		type = TAPDISK_STORAGE_TYPE_NFS;
+		break;
+	default:
+		type = TAPDISK_STORAGE_TYPE_EXT;
+		break;
+	}
+
+	return type;
+}
+
+static int
+__tapdisk_blk_storage_type(const char *rpath)
+{
+	return TAPDISK_STORAGE_TYPE_LVM;
+}
+
+int
+tapdisk_storage_type(const char *path)
+{
+	char rpath[PATH_MAX], *p;
+	struct stat st;
+	int err, rv;
+
+	p = realpath(path, rpath);
+	if (!p)
+		return -errno;
+
+	err = stat(rpath, &st);
+	if (err)
+		return -errno;
+
+	switch (st.st_mode & S_IFMT) {
+	case S_IFBLK:
+		rv = __tapdisk_blk_storage_type(rpath);
+		break;
+	case S_IFREG:
+		rv = __tapdisk_fs_storage_type(rpath);
+		break;
+	default:
+		rv = -EINVAL;
+		break;
+	}
+
+	return rv;
+}
+
+const char *
+tapdisk_storage_name(int type)
+{
+	const char *name;
+
+	switch (type) {
+	case TAPDISK_STORAGE_TYPE_NFS:
+		return "nfs";
+	case TAPDISK_STORAGE_TYPE_EXT:
+		return "ext";
+	case TAPDISK_STORAGE_TYPE_LVM:
+		return "lvm";
+	case -1:
+		return "n/a";
+	default:
+		return "<unknown-type>";
+	}
+}

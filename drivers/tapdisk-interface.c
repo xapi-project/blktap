@@ -72,8 +72,7 @@ __td_open(td_image_t *image, td_disk_info_t *info)
 	if (!driver) {
 		driver = tapdisk_driver_allocate(image->type,
 						 image->name,
-						 image->flags,
-						 image->storage);
+						 image->flags);
 		if (!driver)
 			return -ENOMEM;
 

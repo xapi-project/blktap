@@ -45,7 +45,6 @@ tap_ctl_open(const int id, const int minor, const char *params, int flags,
 	memset(&message, 0, sizeof(message));
 	message.type = TAPDISK_MESSAGE_OPEN;
 	message.cookie = minor;
-	message.u.params.storage = TAPDISK_STORAGE_TYPE_DEFAULT;
 	message.u.params.devnum = minor;
 	message.u.params.prt_devnum = prt_minor;
 	message.u.params.flags = flags;

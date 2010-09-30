@@ -35,7 +35,7 @@
 #include "tapdisk-stats.h"
 
 td_driver_t *
-tapdisk_driver_allocate(int type, char *name, td_flag_t flags, int storage)
+tapdisk_driver_allocate(int type, char *name, td_flag_t flags)
 {
 	int err;
 	td_driver_t *driver;
@@ -55,7 +55,7 @@ tapdisk_driver_allocate(int type, char *name, td_flag_t flags, int storage)
 
 	driver->ops     = ops;
 	driver->type    = type;
-	driver->storage = storage;
+	driver->storage = -1;
 	driver->data    = calloc(1, ops->private_data_size);
 	if (!driver->data)
 		goto fail;

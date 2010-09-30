@@ -46,6 +46,7 @@
 #include "tapdisk-disktype.h"
 #include "tapdisk-interface.h"
 #include "tapdisk-stats.h"
+#include "tapdisk-storage.h"
 
 #include "blktap2.h"
 
@@ -167,7 +168,12 @@ tapdisk_vbd_validate_chain(td_vbd_t *vbd)
 	DPRINTF("VBD CHAIN:\n");
 
 	tapdisk_vbd_for_each_image(vbd, image, tmp) {
-		DPRINTF("%s: %d\n", image->name, image->type);
+		DPRINTF("%s: type:%s(%d) storage:%s(%d)\n",
+			image->name,
+			tapdisk_disk_types[image->type]->name,
+			image->type,
+			tapdisk_storage_name(image->driver->storage),
+			image->driver->storage);
 
 		if (tapdisk_vbd_is_last_image(vbd, image))
 			break;
@@ -230,7 +236,6 @@ tapdisk_vbd_add_block_cache(td_vbd_t *vbd)
 
 	cache = tapdisk_image_allocate(target->name,
 				       DISK_TYPE_BLOCK_CACHE,
-				       target->storage,
 				       target->flags,
 				       target->private);
 	if (!cache)
@@ -249,8 +254,7 @@ tapdisk_vbd_add_block_cache(td_vbd_t *vbd)
 
 	cache->driver = tapdisk_driver_allocate(cache->type,
 						cache->name,
-						cache->flags,
-						cache->storage);
+						cache->flags);
 	if (!cache->driver) {
 		err = -ENOMEM;
 		goto fail;
@@ -289,7 +293,6 @@ tapdisk_vbd_add_local_cache(td_vbd_t *vbd)
 
 	cache = tapdisk_image_allocate(parent->name,
 			DISK_TYPE_LOCAL_CACHE,
-			parent->storage,
 			parent->flags,
 			parent->private);
 
@@ -302,9 +305,8 @@ tapdisk_vbd_add_local_cache(td_vbd_t *vbd)
 		goto done;
 
 	cache->driver = tapdisk_driver_allocate(cache->type,
-			cache->name,
-			cache->flags,
-			cache->storage);
+						cache->name,
+						cache->flags);
 
 	if (!cache->driver) {
 		err = -ENOMEM;
@@ -341,18 +343,16 @@ tapdisk_vbd_add_secondary(td_vbd_t *vbd)
 
 	leaf = tapdisk_vbd_first_image(vbd);
 	second = tapdisk_image_allocate(vbd->secondary_name,
-			vbd->secondary_type,
-			leaf->storage,
-			leaf->flags,
-			leaf->private);
+					vbd->secondary_type,
+					leaf->flags,
+					leaf->private);
 
 	if (!second)
 		return -ENOMEM;
 
 	second->driver = tapdisk_driver_allocate(second->type,
-			second->name,
-			second->flags,
-			second->storage);
+						 second->name,
+						 second->flags);
 
 	if (!second->driver) {
 		err = -ENOMEM;
@@ -437,8 +437,7 @@ tapdisk_vbd_open_index(td_vbd_t *vbd)
 	}
 
 	flags = vbd->flags | TD_OPEN_RDONLY | TD_OPEN_SHAREABLE;
-	image = tapdisk_image_allocate(path, DISK_TYPE_VINDEX,
-				       vbd->storage, flags, vbd);
+	image = tapdisk_image_allocate(path, DISK_TYPE_VINDEX, flags, vbd);
 	if (!image) {
 		err = -ENOMEM;
 		goto fail;
@@ -472,7 +471,6 @@ tapdisk_vbd_add_dirty_log(td_vbd_t *vbd)
 
 	log    = tapdisk_image_allocate(parent->name,
 					DISK_TYPE_LOG,
-					parent->storage,
 					parent->flags,
 					vbd);
 	if (!log)
@@ -480,8 +478,7 @@ tapdisk_vbd_add_dirty_log(td_vbd_t *vbd)
 
 	driver = tapdisk_driver_allocate(log->type,
 					 log->name,
-					 log->flags,
-					 log->storage);
+					 log->flags);
 	if (!driver) {
 		err = -ENOMEM;
 		goto fail;
@@ -518,8 +515,7 @@ __tapdisk_vbd_open_vdi(td_vbd_t *vbd, td_flag_t extra_flags)
 
 	for (;;) {
 		err   = -ENOMEM;
-		image = tapdisk_image_allocate(file, type,
-					       vbd->storage, flags, vbd);
+		image = tapdisk_image_allocate(file, type, flags, vbd);
 
 		if (file != vbd->name) {
 			free(file);
@@ -557,9 +553,6 @@ __tapdisk_vbd_open_vdi(td_vbd_t *vbd, td_flag_t extra_flags)
 			td_close(image);
 			goto fail;
 		}
-
-		if (!image->storage)
-			image->storage = vbd->storage;
 
 		tapdisk_vbd_add_image(vbd, image);
 		image = NULL;
@@ -625,7 +618,7 @@ fail:
 
 int
 tapdisk_vbd_open_vdi(td_vbd_t *vbd, int type, const char *path,
-		     uint16_t storage, td_flag_t flags, int prt_devnum,
+		     td_flag_t flags, int prt_devnum,
 		     int secondary_type, const char *secondary_name)
 {
 	const disk_info_t *info;
@@ -653,7 +646,6 @@ tapdisk_vbd_open_vdi(td_vbd_t *vbd, int type, const char *path,
 	}
 
 	vbd->flags   = flags;
-	vbd->storage = storage;
 	vbd->type    = type;
 
 	err = __tapdisk_vbd_open_vdi(vbd, 0);
@@ -786,12 +778,11 @@ fail:
 
 int
 tapdisk_vbd_open(td_vbd_t *vbd, int type, const char *path,
-		 uint16_t storage, int minor, const char *ring, td_flag_t flags)
+		 int minor, const char *ring, td_flag_t flags)
 {
 	int err;
 
-	err = tapdisk_vbd_open_vdi(vbd, type, path, storage, flags, -1, -1,
-			NULL);
+	err = tapdisk_vbd_open_vdi(vbd, type, path, flags, -1, -1, NULL);
 	if (err)
 		goto out;
 

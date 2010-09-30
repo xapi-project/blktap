@@ -68,6 +68,7 @@
 #include "tapdisk-driver.h"
 #include "tapdisk-interface.h"
 #include "tapdisk-disktype.h"
+#include "tapdisk-storage.h"
 
 unsigned int SPB;
 
@@ -727,6 +728,8 @@ _vhd_open(td_driver_t *driver, const char *name, td_flag_t flags)
 			      VHD_FLAG_OPEN_NO_CACHE);
 
 	/* pre-allocate for all but NFS and LVM storage */
+	driver->storage = tapdisk_storage_type(name);
+
 	if (driver->storage != TAPDISK_STORAGE_TYPE_NFS &&
 	    driver->storage != TAPDISK_STORAGE_TYPE_LVM)
 		vhd_flags |= VHD_FLAG_OPEN_PREALLOCATE;

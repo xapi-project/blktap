@@ -53,6 +53,7 @@ TAP-OBJS  += tapdisk-utils.o
 TAP-OBJS  += tapdisk-disktype.o
 TAP-OBJS  += tapdisk-syslog.o
 TAP-OBJS  += tapdisk-stats.o
+TAP-OBJS  += tapdisk-storage.o
 TAP-OBJS  += io-optimize.o
 TAP-OBJS  += lock.o
 

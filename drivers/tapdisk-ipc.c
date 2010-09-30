@@ -309,7 +309,6 @@ tapdisk_ipc_read(td_ipc_t *ipc)
 
 		err   = tapdisk_vbd_open(vbd,
 					 type, path,
-					 message.u.params.storage,
 					 message.u.params.devnum,
 					 devname, flags);
 		free(devname);

@@ -59,7 +59,6 @@ typedef struct tapdisk_message_stat      tapdisk_message_stat_t;
 struct tapdisk_message_params {
 	tapdisk_message_flag_t           flags;
 
-	uint8_t                          storage;
 	uint32_t                         devnum;
 	uint32_t                         domid;
 	char                             path[TAPDISK_MESSAGE_MAX_PATH_LENGTH];

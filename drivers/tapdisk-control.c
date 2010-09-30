@@ -747,7 +747,6 @@ tapdisk_control_open_image(struct tapdisk_ctl_conn *conn,
 
 	err = tapdisk_vbd_open_vdi(vbd,
 				   type, path,
-				   request->u.params.storage,
 				   flags, request->u.params.prt_devnum,
 				   secondary_type, secondary_path);
 	if (err)

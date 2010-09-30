@@ -36,7 +36,6 @@ struct td_image_handle {
 	char                        *name;
 
 	td_flag_t                    flags;
-	int                          storage;
 
 	td_driver_t                 *driver;
 	td_disk_info_t               info;
@@ -65,7 +64,7 @@ struct td_image_handle {
 	} stats;
 };
 
-td_image_t *tapdisk_image_allocate(char *, int, int, td_flag_t, void *);
+td_image_t *tapdisk_image_allocate(char *, int, td_flag_t, void *);
 void tapdisk_image_free(td_image_t *);
 
 int tapdisk_image_check_td_request(td_image_t *, td_request_t);
