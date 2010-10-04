@@ -38,12 +38,39 @@
 
 TEST_FAIL_EXTERN_VARS;
 
+static int
+vhd_util_zero_bat(vhd_context_t *vhd)
+{
+	int err, map_bytes;
+	uint64_t i;
+
+	err = vhd_get_bat(vhd);
+	if (err)
+		return err;
+
+	if (vhd_has_batmap(vhd)) {
+		err = vhd_get_batmap(vhd);
+		if (err)
+			return err;
+	}
+
+	for (i = 0; i < vhd->header.max_bat_size; i++)
+		vhd->bat.bat[i] = DD_BLK_UNUSED;
+	err = vhd_write_bat(vhd, &vhd->bat);
+	if (err)
+		return err;
+
+	map_bytes = vhd_sectors_to_bytes(vhd->batmap.header.batmap_size);
+	memset(vhd->batmap.map, 0, map_bytes);
+	return vhd_write_batmap(vhd, &vhd->batmap);
+}
+
 int
 vhd_util_modify(int argc, char **argv)
 {
 	char *name;
 	vhd_context_t vhd;
-	int err, c, size, parent, parent_raw;
+	int err, c, size, parent, parent_raw, kill_data;
 	off64_t newsize = 0;
 	char *newparent = NULL;
 
@@ -51,9 +78,10 @@ vhd_util_modify(int argc, char **argv)
 	size       = 0;
 	parent     = 0;
 	parent_raw = 0;
+	kill_data  = 0;
 
 	optind = 0;
-	while ((c = getopt(argc, argv, "n:s:p:mh")) != -1) {
+	while ((c = getopt(argc, argv, "n:s:p:mzh")) != -1) {
 		switch (c) {
 		case 'n':
 			name = optarg;
@@ -74,7 +102,9 @@ vhd_util_modify(int argc, char **argv)
 		case 'm':
 			parent_raw = 1;
 			break;
-
+		case 'z':
+			kill_data = 1;
+			break;
 		case 'h':
 		default:
 			goto usage;
@@ -88,6 +118,24 @@ vhd_util_modify(int argc, char **argv)
 	if (err) {
 		printf("error opening %s: %d\n", name, err);
 		return err;
+	}
+
+	if (kill_data) {
+		if (vhd_type_dynamic(&vhd))
+			err = vhd_util_zero_bat(&vhd);
+		else
+			err = -ENOSYS;
+
+		if (!err) {
+			err = vhd_end_of_headers(&vhd, &newsize);
+			newsize += sizeof(vhd_footer_t);
+		}
+
+		if (!err)
+			err = vhd_set_phys_size(&vhd, newsize);
+
+		if (err)
+			printf("failed to zero VHD: %d\n", err);
 	}
 
 	if (size) {
@@ -115,6 +163,7 @@ done:
 usage:
 	printf("*** Dangerous operations, use with care ***\n");
 	printf("options: <-n name> [-p NEW_PARENT set parent [-m raw]] "
-			"[-s NEW_SIZE set size] [-h help]\n");
+			"[-s NEW_SIZE set size] [-z zero (kill data)] "
+			"[-h help]\n");
 	return -EINVAL;
 }
