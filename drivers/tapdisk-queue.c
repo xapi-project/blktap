@@ -627,6 +627,7 @@ out:
 static int
 tapdisk_queue_thread_start(struct tqueue *queue)
 {
+	pthread_attr_t attr;
 	int err;
 
 	err = pthread_mutex_init(&queue->mutex, NULL);
@@ -639,7 +640,10 @@ tapdisk_queue_thread_start(struct tqueue *queue)
 
 	queue->closing = 0;
 
-	err = pthread_create(&queue->thread, NULL,
+	pthread_attr_init(&attr);
+	pthread_attr_setstacksize(&attr, 32<<10);
+
+	err = pthread_create(&queue->thread, &attr,
 			     tapdisk_queue_thread_run, queue);
 	if (err)
 		return -err;
