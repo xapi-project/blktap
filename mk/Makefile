@@ -67,4 +67,4 @@ $(RPM_BUILD_COOKIE): $(RPM_DIRECTORIES) $(SOURCES)
 	@touch $@
 
 $(MY_SOURCES)/MANIFEST: $(MY_SOURCES_DIRSTAMP)
-	echo "blktap gpl+bsd+proprietary file $(MY_OUTPUT_DIR)/SRPMS/blktap-$(BLKTAP_VERSION)-$(BLKTAP_RELEASE).src.rpm" >$@
+	echo "blktap gpl+bsd file $(MY_OUTPUT_DIR)/SRPMS/blktap-$(BLKTAP_VERSION)-$(BLKTAP_RELEASE).src.rpm" >$@
