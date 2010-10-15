@@ -103,6 +103,9 @@ struct td_vbd_handle {
 	td_image_t                 *secondary;
 	uint8_t                     secondary_mode;
 
+	int                         FIXME_enospc_redirect_count_enabled;
+	uint64_t                    FIXME_enospc_redirect_count;
+
 	/* when we encounter ENOSPC on the primary leaf image in mirror mode, 
 	 * we need to remove it from the VBD chain so that writes start going 
 	 * on the secondary leaf. However, we cannot free the image at that 

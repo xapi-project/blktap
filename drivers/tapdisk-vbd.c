@@ -1306,6 +1306,16 @@ tapdisk_vbd_complete_vbd_request(td_vbd_t *vbd, td_vbd_request_t *vreq)
 }
 
 static void
+FIXME_maybe_count_enospc_redirect(td_vbd_t *vbd, td_request_t treq)
+{
+	int write = treq.op == TD_OP_WRITE;
+	if (write &&
+	    treq.image == tapdisk_vbd_first_image(vbd) &&
+	    vbd->FIXME_enospc_redirect_count_enabled)
+		vbd->FIXME_enospc_redirect_count += treq.secs;
+}
+
+static void
 __tapdisk_vbd_complete_td_request(td_vbd_t *vbd, td_vbd_request_t *vreq,
 				  td_request_t treq, int res)
 {
@@ -1322,6 +1332,8 @@ __tapdisk_vbd_complete_td_request(td_vbd_t *vbd, td_vbd_request_t *vreq,
 		if (err)
 			td_sector_count_add(&image->stats.fail,
 					    treq.secs, write);
+
+		FIXME_maybe_count_enospc_redirect(vbd, treq);
 	}
 
 	if (err) {
@@ -1439,6 +1451,7 @@ tapdisk_vbd_complete_td_request(td_request_t treq, int res)
 		} else if (vbd->secondary_mode == TD_VBD_SECONDARY_STANDBY) {
 			DPRINTF("ENOSPC: failing over to secondary image\n");
 			list_add(&vbd->secondary->next, leaf->next.prev);
+			vbd->FIXME_enospc_redirect_count_enabled = 1;
 		}
 		if (vbd->secondary_mode != TD_VBD_SECONDARY_DISABLED) {
 			vbd->secondary = NULL;
@@ -1874,6 +1887,10 @@ tapdisk_vbd_stats(td_vbd_t *vbd, td_stats_t *st)
 	tapdisk_vbd_for_each_image(vbd, image, next)
 		tapdisk_image_stats(image, st);
 	tapdisk_stats_leave(st, ']');
+
+	tapdisk_stats_field(st,
+			    "FIXME_enospc_redirect_count",
+			    "llu", vbd->FIXME_enospc_redirect_count);
 
 	tapdisk_stats_leave(st, '}');
 }
