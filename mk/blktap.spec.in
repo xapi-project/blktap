@@ -9,7 +9,7 @@ Source0: %{name}-%{version}.tar.bz2
 Patch1: %{name}-udev-ignore-tapdevs.patch
 BuildRoot: %{_tmppath}/%{name}-%{version}-%{release}-buildroot
 Obsoletes: xen-blktap
-
+BuildRequires: e2fsprogs-devel, xen-devel
 %description
 This package contains the blktap userspace utilities
 
