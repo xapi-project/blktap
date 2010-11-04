@@ -262,10 +262,6 @@ __tlog_error(const char *fmt, ...)
 	va_list ap;
 
 	va_start(ap, fmt);
-	tlog_logfile_vprint(fmt, ap);
-	va_end(ap);
-
-	va_start(ap, fmt);
 	tlog_vsyslog(LOG_ERR, fmt, ap);
 	va_end(ap);
 
