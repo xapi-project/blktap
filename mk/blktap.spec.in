@@ -42,7 +42,6 @@ rm -rf $RPM_BUILD_ROOT
 %{_libdir}/libvhd.so*
 %{_libdir}/libvhdio.so*
 %{_libdir}/libblktapctl.so*
-%{_sbindir}/tapdisk
 %{_sbindir}/tapdisk2
 %{_sbindir}/tap-ctl
 %{_sbindir}/td-util

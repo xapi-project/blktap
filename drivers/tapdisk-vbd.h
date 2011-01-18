@@ -34,7 +34,6 @@
 
 #include "tapdisk.h"
 #include "scheduler.h"
-#include "tapdisk-ipc.h"
 #include "tapdisk-image.h"
 
 #define TD_VBD_REQUEST_TIMEOUT      120
@@ -92,8 +91,6 @@ struct td_vbd_handle {
 
 	td_flag_t                   flags;
 	td_flag_t                   state;
-
-	td_ipc_t                    ipc;
 
 	struct list_head            images;
 

@@ -45,7 +45,6 @@
 
 typedef struct tapdisk_server {
 	int                          run;
-	td_ipc_t                     ipc;
 	struct list_head             vbds;
 	scheduler_t                  scheduler;
 	struct tqueue                aio_queue;
@@ -226,27 +225,6 @@ tapdisk_server_stop_vbds(void)
 		tapdisk_vbd_kill_queue(vbd);
 }
 
-static void
-tapdisk_server_send_error(const char *message)
-{
-	td_vbd_t *vbd, *tmp;
-
-	tapdisk_server_for_each_vbd(vbd, tmp)
-		tapdisk_ipc_write_error(&vbd->ipc, message);
-}
-
-static int
-tapdisk_server_init_ipc(const char *read, const char *write)
-{
-	return tapdisk_ipc_open(&server.ipc, read, write);
-}
-
-static void
-tapdisk_server_close_ipc(void)
-{
-	tapdisk_ipc_close(&server.ipc);
-}
-
 static int
 tapdisk_server_init_aio(void)
 {
@@ -309,7 +287,6 @@ tapdisk_server_close(void)
 {
 	tapdisk_server_close_tlog();
 	tapdisk_server_close_aio();
-	tapdisk_server_close_ipc();
 }
 
 void
@@ -406,10 +383,6 @@ tapdisk_server_initialize(const char *read, const char *write)
 	int err;
 
 	tapdisk_server_init();
-
-	err = tapdisk_server_init_ipc(read, write);
-	if (err)
-		goto fail;
 
 	err = tapdisk_server_complete();
 	if (err)

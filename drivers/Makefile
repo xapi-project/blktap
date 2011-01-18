@@ -3,7 +3,7 @@ include $(BLKTAP_ROOT)/Rules.mk
 
 LIBVHDDIR  = $(BLKTAP_ROOT)/vhd/lib
 
-IBIN       = tapdisk tapdisk2 td-util tapdisk-client tapdisk-stream tapdisk-diff
+IBIN       = tapdisk2 td-util tapdisk-client tapdisk-stream tapdisk-diff
 LOCK_UTIL  = lock-util
 INST_DIR   = /usr/sbin
 
@@ -21,15 +21,15 @@ LIBS      += -lrt
 CFLAGS    += -Wp,-MD,.$(@F).d
 DEPS       = .*.d
 
-tapdisk tapdisk2 td-util tapdisk-stream tapdisk-diff: LIBS += -L$(LIBVHDDIR) -lvhd -luuid
+tapdisk2 td-util tapdisk-stream tapdisk-diff: LIBS += -L$(LIBVHDDIR) -lvhd -luuid
 
 ifneq ($(USE_SYSTEM_LIBRARIES),y)
 LIBAIO_DIR = $(XEN_ROOT)/tools/libaio/src
-tapdisk tapdisk2 tapdisk-stream tapdisk-diff: AIOLIBS := $(LIBAIO_DIR)/libaio.a
-tapdisk tapdisk2 tapdisk-client tapdisk-stream tapdisk-diff: CFLAGS  += -I$(LIBAIO_DIR) -I$(XEN_LIBXC)
-tapdisk tapdisk2 tapdisk-client tapdisk-stream tapdisk-diff block-log: CFLAGS += -I$(XEN_ROOT)/tools/include
+tapdisk2 tapdisk-stream tapdisk-diff: AIOLIBS := $(LIBAIO_DIR)/libaio.a
+tapdisk2 tapdisk-client tapdisk-stream tapdisk-diff: CFLAGS  += -I$(LIBAIO_DIR) -I$(XEN_LIBXC)
+tapdisk2 tapdisk-client tapdisk-stream tapdisk-diff block-log: CFLAGS += -I$(XEN_ROOT)/tools/include
 else
-tapdisk tapdisk2 tapdisk-stream tapdisk-diff: AIOLIBS := -laio
+tapdisk2 tapdisk-stream tapdisk-diff: AIOLIBS := -laio
 endif
 
 ifeq ($(VHD_STATIC),y)
@@ -38,7 +38,6 @@ endif
 
 TAP-OBJS  := scheduler.o
 TAP-OBJS  += tapdisk-control.o
-TAP-OBJS  += tapdisk-ipc.o
 TAP-OBJS  += tapdisk-vbd.o
 TAP-OBJS  += tapdisk-image.o
 TAP-OBJS  += tapdisk-driver.o
@@ -68,9 +67,6 @@ BLK-OBJS  += block-log.o
 BLK-OBJS  += block-lcache.o
 
 all: $(IBIN) lock-util
-
-tapdisk: $(TAP-OBJS) $(BLK-OBJS) $(MISC-OBJS) tapdisk.c
-	$(CC) $(CFLAGS) -o $@ $^ $(LIBS) $(AIOLIBS)
 
 tapdisk2: $(TAP-OBJS) $(BLK-OBJS) $(MISC-OBJS) tapdisk2.c
 	$(CC) $(CFLAGS) -o $@ $^ $(LIBS) $(AIOLIBS)

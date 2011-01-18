@@ -108,9 +108,6 @@ tapdisk_vbd_create(uint16_t uuid)
 
 	vbd->uuid     = uuid;
 	vbd->minor    = -1;
-	vbd->ipc.rfd  = -1;
-	vbd->ipc.wfd  = -1;
-	vbd->ipc.uuid = uuid;
 	vbd->ring.fd  = -1;
 
 	/* default blktap ring completion */
@@ -143,9 +140,6 @@ tapdisk_vbd_initialize(int rfd, int wfd, uint16_t uuid)
 	}
 
 	vbd = tapdisk_vbd_create(uuid);
-
-	vbd->ipc.rfd  = rfd;
-	vbd->ipc.wfd  = wfd;
 
 	tapdisk_server_add_vbd(vbd);
 
@@ -853,7 +847,6 @@ tapdisk_vbd_shutdown(td_vbd_t *vbd)
 		vbd->kicked, vbd->kicks_in, vbd->kicks_out);
 
 	tapdisk_vbd_close_vdi(vbd);
-	tapdisk_ipc_write(&vbd->ipc, TAPDISK_MESSAGE_CLOSE_RSP);
 	tapdisk_vbd_detach(vbd);
 	tapdisk_server_remove_vbd(vbd);
 	free(vbd->name);
@@ -1057,7 +1050,6 @@ tapdisk_vbd_pause(td_vbd_t *vbd)
 
 	td_flag_clear(vbd->state, TD_VBD_PAUSE_REQUESTED);
 	td_flag_set(vbd->state, TD_VBD_PAUSED);
-	tapdisk_ipc_write(&vbd->ipc, TAPDISK_MESSAGE_PAUSE_RSP);
 
 	return 0;
 }
@@ -1071,7 +1063,6 @@ tapdisk_vbd_resume(td_vbd_t *vbd, int type, const char *path)
 
 	if (!td_flag_test(vbd->state, TD_VBD_PAUSED)) {
 		EPRINTF("resume request for unpaused vbd %s\n", vbd->name);
-		tapdisk_ipc_write(&vbd->ipc, TAPDISK_MESSAGE_ERROR);
 		return -EINVAL;
 	}
 
@@ -1080,7 +1071,6 @@ tapdisk_vbd_resume(td_vbd_t *vbd, int type, const char *path)
 		vbd->name = strdup(path);
 		if (!vbd->name) {
 			EPRINTF("copying new vbd %s name failed\n", path);
-			tapdisk_ipc_write(&vbd->ipc, TAPDISK_MESSAGE_ERROR);
 			return -EINVAL;
 		}
 		vbd->type = type;
@@ -1094,17 +1084,14 @@ tapdisk_vbd_resume(td_vbd_t *vbd, int type, const char *path)
 		sleep(TD_VBD_EIO_SLEEP);
 	}
 
-	if (err) {
-		tapdisk_ipc_write(&vbd->ipc, TAPDISK_MESSAGE_ERROR);
+	if (err)
 		return err;
-	}
 
 	DBG(TLOG_DBG, "resume completed\n");
 
 	tapdisk_vbd_start_queue(vbd);
 	td_flag_clear(vbd->state, TD_VBD_PAUSED);
 	td_flag_clear(vbd->state, TD_VBD_PAUSE_REQUESTED);
-	tapdisk_ipc_write(&vbd->ipc, TAPDISK_MESSAGE_RESUME_RSP);
 	tapdisk_vbd_check_state(vbd);
 
 	DBG(TLOG_DBG, "state checked\n");
