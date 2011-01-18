@@ -3,7 +3,7 @@ include $(BLKTAP_ROOT)/Rules.mk
 
 LIBVHDDIR  = $(BLKTAP_ROOT)/vhd/lib
 
-IBIN       = tapdisk2 td-util tapdisk-client tapdisk-stream tapdisk-diff
+IBIN       = tapdisk2 td-util tapdisk-stream tapdisk-diff
 LOCK_UTIL  = lock-util
 INST_DIR   = /usr/sbin
 
@@ -26,7 +26,7 @@ tapdisk2 td-util tapdisk-stream tapdisk-diff: LIBS += -L$(LIBVHDDIR) -lvhd -luui
 ifneq ($(USE_SYSTEM_LIBRARIES),y)
 LIBAIO_DIR = $(XEN_ROOT)/tools/libaio/src
 tapdisk2 tapdisk-stream tapdisk-diff: AIOLIBS := $(LIBAIO_DIR)/libaio.a
-tapdisk2 tapdisk-client tapdisk-stream tapdisk-diff: CFLAGS  += -I$(LIBAIO_DIR) -I$(XEN_LIBXC)
+tapdisk2 tapdisk-stream tapdisk-diff: CFLAGS  += -I$(LIBAIO_DIR) -I$(XEN_LIBXC)
 tapdisk2 tapdisk-client tapdisk-stream tapdisk-diff block-log: CFLAGS += -I$(XEN_ROOT)/tools/include
 else
 tapdisk2 tapdisk-stream tapdisk-diff: AIOLIBS := -laio
@@ -63,7 +63,6 @@ BLK-OBJS  += block-ram.o
 BLK-OBJS  += block-cache.o
 BLK-OBJS  += block-vhd.o
 BLK-OBJS  += block-vindex.o
-BLK-OBJS  += block-log.o
 BLK-OBJS  += block-lcache.o
 
 all: $(IBIN) lock-util
