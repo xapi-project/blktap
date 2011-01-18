@@ -82,7 +82,7 @@ unsigned int SPB;
 	do {								\
 		DBG(TLOG_DBG, "%s: QUEUED: %" PRIu64 ", COMPLETED: %"	\
 		    PRIu64", RETURNED: %" PRIu64 ", DATA_ALLOCATED: "	\
-		    "%lu, BBLK: 0x%04x\n",				\
+		    "%u, BBLK: 0x%04x\n",				\
 		    s->vhd.file, s->queued, s->completed, s->returned,	\
 		    VHD_REQS_DATA - s->vreq_free_count,			\
 		    s->bat.pbw_blk);					\
@@ -2370,7 +2370,7 @@ vhd_debug(td_driver_t *driver)
 	DBG(TLOG_WARN, "READS: 0x%08"PRIx64", AVG_READ_SIZE: %f\n",
 	    s->reads, (s->reads ? ((float)s->read_size / s->reads) : 0.0));
 
-	DBG(TLOG_WARN, "ALLOCATED REQUESTS: (%lu total)\n", VHD_REQS_DATA);
+	DBG(TLOG_WARN, "ALLOCATED REQUESTS: (%u total)\n", VHD_REQS_DATA);
 	for (i = 0; i < VHD_REQS_DATA; i++) {
 		struct vhd_request *r = &s->vreq_list[i];
 		td_request_t *t       = &r->treq;

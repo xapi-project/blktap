@@ -2,6 +2,7 @@ USE_BRANDING := yes
 IMPORT_BRANDING := yes
 include $(B_BASE)/common.mk
 include $(B_BASE)/rpmbuild.mk
+include $(PROJECT_OUTPUTDIR)/kernel-dom0/kernel.inc
 
 REPO_NAME= blktap
 REPO=$(call hg_loc,blktap)
@@ -63,7 +64,9 @@ $(RPM_SPECSDIR)/blktap.spec: blktap.spec.in $(RPM_SPECSDIR)/.dirstamp
 	-rm changelog.tmp
 
 $(RPM_BUILD_COOKIE): $(RPM_DIRECTORIES) $(SOURCES)
-	$(RPMBUILD) --target $(DOMAIN0_ARCH_OPTIMIZED) -ba $(RPM_SPECSDIR)/blktap.spec
+	$(RPMBUILD) --target $(DOMAIN0_ARCH_OPTIMIZED) \
+		    -ba $(RPM_SPECSDIR)/blktap.spec    \
+		    --define "kernel_version $(KERNEL_VERSION)"
 	@touch $@
 
 $(MY_SOURCES)/MANIFEST: $(MY_SOURCES_DIRSTAMP)

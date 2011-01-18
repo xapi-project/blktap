@@ -45,7 +45,6 @@
 #include <syslog.h>
 
 #include "tapdisk.h"
-#include "blktaplib.h"
 #include "tapdisk-log.h"
 #include "tapdisk-utils.h"
 #include "tapdisk-syslog.h"

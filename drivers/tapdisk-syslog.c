@@ -44,7 +44,6 @@
 #include <sys/socket.h>
 #include <sys/un.h>
 
-#include <blktaplib.h>
 #include "tapdisk-server.h"
 #include "tapdisk-syslog.h"
 #include "tapdisk-utils.h"

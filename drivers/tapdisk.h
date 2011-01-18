@@ -60,12 +60,12 @@
 #include <stdint.h>
 
 #include "list.h"
-#include "blktaplib.h"
 #include "tapdisk-log.h"
 #include "tapdisk-utils.h"
 #include "tapdisk-stats.h"
 
 #define MAX_SEGMENTS_PER_REQ         11
+#define MAX_REQUESTS                 32U
 #define SECTOR_SHIFT                 9
 #define DEFAULT_SECTOR_SIZE          512
 

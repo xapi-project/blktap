@@ -29,10 +29,9 @@
 #define _TAPDISK_VBD_H_
 
 #include <sys/time.h>
-#include <xenctrl.h>
-#include <xen/io/blkif.h>
 
 #include "tapdisk.h"
+#include "blktap.h"
 #include "scheduler.h"
 #include "tapdisk-image.h"
 
@@ -198,6 +197,12 @@ int tapdisk_vbd_attach(td_vbd_t *, const char *, int);
 void tapdisk_vbd_detach(td_vbd_t *);
 
 void tapdisk_vbd_forward_request(td_request_t);
+
+typedef struct image {
+	unsigned long long size;
+	unsigned long secsize;
+	unsigned int info;
+} image_t;
 
 int tapdisk_vbd_get_image_info(td_vbd_t *, image_t *);
 int tapdisk_vbd_retry_needed(td_vbd_t *);

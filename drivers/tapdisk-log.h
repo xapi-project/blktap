@@ -43,6 +43,12 @@ void tlog_precious(void);
 void tlog_vsyslog(int, const char *, va_list);
 void tlog_syslog(int, const char *, ...);
 
+#include <syslog.h>
+
+#define EPRINTF(_f, _a...) syslog(LOG_ERR, "tap-err:%s: " _f, __func__, ##_a)
+#define DPRINTF(_f, _a...) syslog(LOG_INFO, _f, ##_a)
+#define PERROR(_f, _a...)  EPRINTF(_f ": %s", ##_a, strerror(errno))
+
 void __tlog_write(int, const char *, ...)
 	__attribute__((format(printf, 2, 3)));
 

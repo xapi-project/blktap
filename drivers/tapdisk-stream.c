@@ -38,6 +38,7 @@
 #include "tapdisk-vbd.h"
 #include "tapdisk-server.h"
 #include "tapdisk-disktype.h"
+#include "blktap.h"
 
 #define POLL_READ                        0
 #define POLL_WRITE                       1

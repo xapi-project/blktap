@@ -35,7 +35,6 @@
 #include <sys/stat.h>
 #include <sys/types.h>
 
-#include "blktaplib.h"
 #include "tapdisk-log.h"
 #include "tapdisk-utils.h"
 #include "tapdisk-logfile.h"

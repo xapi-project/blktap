@@ -29,6 +29,7 @@
 #define _TAPDISK_UTILS_H_
 
 #include <inttypes.h>
+#include <sys/time.h>
 
 #define MAX_NAME_LEN          1000
 #define TD_SYSLOG_IDENT_MAX   32

@@ -40,10 +40,9 @@
 #include <sys/mman.h>
 
 #include "list.h"
-#include "tapdisk.h"
-#include "blktap2.h"
-#include "blktaplib.h"
+#include "blktap.h"
 #include "tapdisk-vbd.h"
+#include "tapdisk.h"
 #include "tapdisk-utils.h"
 #include "tapdisk-server.h"
 #include "tapdisk-message.h"

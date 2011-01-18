@@ -33,7 +33,6 @@
 #include <getopt.h>
 
 #include "tap-ctl.h"
-#include "blktaplib.h"
 
 int
 tap_ctl_open(const int id, const int minor, const char *params, int flags,

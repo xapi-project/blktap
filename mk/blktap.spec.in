@@ -1,3 +1,5 @@
+%define uname %{kernel_version}%{?flavour}
+
 Summary: blktap user space utilities
 Name: blktap
 Version: @BLKTAP_VERSION@
@@ -9,7 +11,7 @@ Source0: %{name}-%{version}.tar.bz2
 Patch1: %{name}-udev-ignore-tapdevs.patch
 BuildRoot: %{_tmppath}/%{name}-%{version}-%{release}-buildroot
 Obsoletes: xen-blktap
-BuildRequires: e2fsprogs-devel, xen-devel
+BuildRequires: e2fsprogs-devel, kernel-xen-devel
 %description
 This package contains the blktap userspace utilities
 
@@ -27,7 +29,7 @@ This package contains the blktap development libraries and header files.
 %patch1 -p1
 
 %build
-%{__make} USE_SYSTEM_LIBRARIES=y
+%{__make} USE_SYSTEM_LIBRARIES=y KBUILD=/lib/modules/%{uname}/build
 
 %install
 rm -rf $RPM_BUILD_ROOT

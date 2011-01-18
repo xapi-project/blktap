@@ -38,6 +38,7 @@
 #include <sys/mman.h>
 #include <sys/ioctl.h>
 
+#include "blktap.h"
 #include "libvhd.h"
 #include "tapdisk-image.h"
 #include "tapdisk-driver.h"
@@ -47,8 +48,6 @@
 #include "tapdisk-interface.h"
 #include "tapdisk-stats.h"
 #include "tapdisk-storage.h"
-
-#include "blktap2.h"
 
 #define DBG(_level, _f, _a...) tlog_write(_level, _f, ##_a)
 #define ERR(_err, _f, _a...) tlog_error(_err, _f, ##_a)
@@ -707,8 +706,6 @@ tapdisk_vbd_map_device(td_vbd_t *vbd, const char *devname)
 
 	ring->vstart =
 		(unsigned long)ring->mem + (BLKTAP_RING_PAGES * psize);
-
-	ioctl(ring->fd, BLKTAP_IOCTL_SETMODE, BLKTAP_MODE_INTERPOSE);
 
 	return 0;
 

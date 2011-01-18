@@ -52,7 +52,7 @@
 #define BUG()           td_panic()
 #define BUG_ON(_cond)   if (_cond) { td_panic(); }
 
-#define LOCAL_CACHE_REQUESTS            (BLK_RING_SIZE*2)
+#define LOCAL_CACHE_REQUESTS            (MAX_REQUESTS*2)
 
 typedef struct local_cache              local_cache_t;
 
