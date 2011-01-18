@@ -22,15 +22,7 @@ CFLAGS    += -Wp,-MD,.$(@F).d
 DEPS       = .*.d
 
 tapdisk2 td-util tapdisk-stream tapdisk-diff: LIBS += -L$(LIBVHDDIR) -lvhd -luuid
-
-ifneq ($(USE_SYSTEM_LIBRARIES),y)
-LIBAIO_DIR = $(XEN_ROOT)/tools/libaio/src
-tapdisk2 tapdisk-stream tapdisk-diff: AIOLIBS := $(LIBAIO_DIR)/libaio.a
-tapdisk2 tapdisk-stream tapdisk-diff: CFLAGS  += -I$(LIBAIO_DIR) -I$(XEN_LIBXC)
-tapdisk2 tapdisk-client tapdisk-stream tapdisk-diff block-log: CFLAGS += -I$(XEN_ROOT)/tools/include
-else
 tapdisk2 tapdisk-stream tapdisk-diff: AIOLIBS := -laio
-endif
 
 ifeq ($(VHD_STATIC),y)
 td-util: CFLAGS += -static

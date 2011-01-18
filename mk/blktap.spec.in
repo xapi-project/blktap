@@ -29,11 +29,11 @@ This package contains the blktap development libraries and header files.
 %patch1 -p1
 
 %build
-%{__make} USE_SYSTEM_LIBRARIES=y KBUILD=/lib/modules/%{uname}/build
+%{__make} KBUILD=/lib/modules/%{uname}/build
 
 %install
 rm -rf $RPM_BUILD_ROOT
-%{__make} install USE_SYSTEM_LIBRARIES=y DESTDIR=$RPM_BUILD_ROOT LIBDIR=%{_libdir} SBINDIR=%{_sbindir} SYSCONFDIR=%{_sysconfdir}
+%{__make} install DESTDIR=$RPM_BUILD_ROOT LIBDIR=%{_libdir} SBINDIR=%{_sbindir} SYSCONFDIR=%{_sysconfdir}
 
 %clean
 rm -rf $RPM_BUILD_ROOT
