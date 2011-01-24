@@ -5,7 +5,7 @@ LIBVHDDIR      := vhd
 LIBVHD_HEADERS := vhd.h libvhd.h libvhd-index.h libvhd-journal.h list.h
 
 BLKTAPDIR      := blktap
-BLKTAP_HEADERS := blktap2.h blktaplib.h tapdisk-message.h
+BLKTAP_HEADERS := blktap2.h blktaplib.h tapdisk-message.h tap-ctl.h
 
 .PHONY: all
 all:
