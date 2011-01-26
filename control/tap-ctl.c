@@ -251,11 +251,11 @@ usage:
 static void
 tap_cli_create_usage(FILE *stream)
 {
-	fprintf(stream, "usage: create <-a args> [-d device name] [-e <minor> "
-			"stack on existing tapdisk for the parent chain] "
-			"[-r turn on read caching into leaf node] [-2 <path> "
-			"use secondary image (in mirror mode if no -s)] [-s "
-			"fail over to the secondary image on ENOSPC]\n");
+	fprintf(stream, "usage: create <-a args> [-d device name] [-R readonly] "
+		"[-e <minor> stack on existing tapdisk for the parent chain] "
+		"[-r turn on read caching into leaf node] [-2 <path> "
+		"use secondary image (in mirror mode if no -s)] [-s "
+		"fail over to the secondary image on ENOSPC]\n");
 }
 
 static int
@@ -271,13 +271,16 @@ tap_cli_create(int argc, char **argv)
 	flags     = 0;
 
 	optind = 0;
-	while ((c = getopt(argc, argv, "a:d:e:r2:sh")) != -1) {
+	while ((c = getopt(argc, argv, "a:Rd:e:r2:sh")) != -1) {
 		switch (c) {
 		case 'a':
 			args = optarg;
 			break;
 		case 'd':
 			devname = optarg;
+			break;
+		case 'R':
+			flags |= TAPDISK_MESSAGE_FLAG_RDONLY;
 			break;
 		case 'r':
 			flags |= TAPDISK_MESSAGE_FLAG_ADD_LCACHE;
@@ -696,11 +699,11 @@ usage:
 static void
 tap_cli_open_usage(FILE *stream)
 {
-	fprintf(stream, "usage: open <-p pid> <-m minor> <-a args> [-e <minor> "
-			"stack on existing tapdisk for the parent chain] "
-			"[-r turn on read caching into leaf node] [-2 <path> "
-			"use secondary image (in mirror mode if no -s)] [-s "
-			"fail over to the secondary image on ENOSPC]\n");
+	fprintf(stream, "usage: open <-p pid> <-m minor> <-a args> [-R readonly] "
+		"[-e <minor> stack on existing tapdisk for the parent chain] "
+		"[-r turn on read caching into leaf node] [-2 <path> "
+		"use secondary image (in mirror mode if no -s)] [-s "
+		"fail over to the secondary image on ENOSPC]\n");
 }
 
 static int
@@ -717,7 +720,7 @@ tap_cli_open(int argc, char **argv)
 	secondary = NULL;
 
 	optind = 0;
-	while ((c = getopt(argc, argv, "a:m:p:e:r2:sh")) != -1) {
+	while ((c = getopt(argc, argv, "a:Rm:p:e:r2:sh")) != -1) {
 		switch (c) {
 		case 'p':
 			pid = atoi(optarg);
@@ -727,6 +730,9 @@ tap_cli_open(int argc, char **argv)
 			break;
 		case 'a':
 			args = optarg;
+			break;
+		case 'R':
+			flags |= TAPDISK_MESSAGE_FLAG_RDONLY;
 			break;
 		case 'r':
 			flags |= TAPDISK_MESSAGE_FLAG_ADD_LCACHE;
