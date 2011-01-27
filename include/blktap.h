@@ -54,10 +54,8 @@ typedef blktap_sring_t     blkif_sring_t;
 typedef blktap_back_ring_t blkif_back_ring_t;
 typedef blktap_ring_req_t  blkif_request_t;
 typedef blktap_ring_rsp_t  blkif_response_t;
-#define blktap2_params blktap_device_info
 
 #define blkif_request_segment blktap_segment
-#define blktap_params blktap_device_info
 
 #define BLKIF_OP_WRITE  BLKTAP_OP_WRITE
 #define BLKIF_OP_READ   BLKTAP_OP_READ

@@ -589,7 +589,6 @@ tapdisk_control_attach_vbd(struct tapdisk_ctl_conn *conn,
 	tapdisk_message_t response;
 	char *devname;
 	td_vbd_t *vbd;
-	struct blktap2_params params;
 	image_t image;
 	int minor, err;
 
@@ -690,7 +689,7 @@ tapdisk_control_open_image(struct tapdisk_ctl_conn *conn,
 	td_vbd_t *vbd;
 	td_flag_t flags;
 	tapdisk_message_t response;
-	struct blktap2_params params;
+	struct blktap_device_info info;
 	const char *path, *secondary_path;
 
 	vbd = tapdisk_server_get_vbd(request->cookie);
@@ -755,12 +754,30 @@ tapdisk_control_open_image(struct tapdisk_ctl_conn *conn,
 	if (err)
 		goto fail_close;
 
-	params.capacity = image.size;
-	params.sector_size = image.secsize;
-	snprintf(params.name, sizeof(params.name) - 1,
-		 "%s", request->u.params.path);
+	memset(&info, 0, sizeof(info));
+	info.capacity = image.size;
+	info.sector_size = image.secsize;
+	info.physical_sector_size = image.secsize;
+	info.flags  = 0;
+	info.flags |= flags & TD_OPEN_RDONLY ? BLKTAP_DEVICE_RO : 0;
 
-	err = ioctl(vbd->ring.fd, BLKTAP2_IOCTL_CREATE_DEVICE, &params);
+	err = ioctl(vbd->ring.fd, BLKTAP2_IOCTL_CREATE_DEVICE, &info);
+#ifdef BLKTAP_IOCTL_COMPAT_CREATE_DEVICE
+#ifndef ENOIOCTLCMD
+#define ENOIOCTLCMD 515
+#endif
+	if (err && (errno == ENOTTY || errno == ENOIOCTLCMD)) {
+		struct blktap2_params params;
+		memset(&params, 0, sizeof(params));
+		params.capacity    = info.capacity;
+		params.sector_size = info.sector_size;
+		err = ioctl(vbd->ring.fd, BLKTAP_IOCTL_COMPAT_CREATE_DEVICE, &params);
+		if (!err && info.flags)
+			EPRINTF("create device: using compat ioctl(%d),"
+				" flags (%#x) dropped.",
+				BLKTAP_IOCTL_COMPAT_CREATE_DEVICE, flags);
+	}
+#endif
 	if (err && errno != EEXIST) {
 		err = -errno;
 		EPRINTF("create device failed: %d\n", err);
