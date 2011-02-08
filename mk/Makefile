@@ -58,6 +58,7 @@ $(RPM_SPECSDIR)/blktap.spec: blktap.spec.in $(RPM_SPECSDIR)/.dirstamp
 	sed -e s\,@REPO_VERSION@,$(REPO_VERSION),g \
 	    -e s\,@BLKTAP_VERSION@,$(BLKTAP_VERSION),g\
 	    -e s\,@BLKTAP_RELEASE@,$(BLKTAP_RELEASE),g\
+	    -e s\,@KERNEL_VERSION@,$(KERNEL_VERSION),g\
 	    -e \\,%changelog,rchangelog.tmp        \
 	    < blktap.spec.in                       \
 	    > $(RPM_SPECSDIR)/blktap.spec
@@ -65,8 +66,7 @@ $(RPM_SPECSDIR)/blktap.spec: blktap.spec.in $(RPM_SPECSDIR)/.dirstamp
 
 $(RPM_BUILD_COOKIE): $(RPM_DIRECTORIES) $(SOURCES)
 	$(RPMBUILD) --target $(DOMAIN0_ARCH_OPTIMIZED) \
-		    -ba $(RPM_SPECSDIR)/blktap.spec    \
-		    --define "kernel_version $(KERNEL_VERSION)"
+		    -ba $(RPM_SPECSDIR)/blktap.spec 
 	@touch $@
 
 $(MY_SOURCES)/MANIFEST: $(MY_SOURCES_DIRSTAMP)
