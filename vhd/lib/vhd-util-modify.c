@@ -54,13 +54,15 @@ vhd_util_zero_bat(vhd_context_t *vhd)
 			return err;
 	}
 
-	for (i = 0; i < vhd->header.max_bat_size; i++)
+	for (i = 0; i < vhd->bat.entries; i++)
 		vhd->bat.bat[i] = DD_BLK_UNUSED;
 	err = vhd_write_bat(vhd, &vhd->bat);
 	if (err)
 		return err;
 
-	map_bytes = vhd_sectors_to_bytes(vhd->batmap.header.batmap_size);
+	map_bytes = ((vhd->footer.curr_size >> VHD_SECTOR_SHIFT) /
+			vhd->spb) >> 3;
+	map_bytes = vhd_sectors_to_bytes(secs_round_up_no_zero(map_bytes));
 	memset(vhd->batmap.map, 0, map_bytes);
 	return vhd_write_batmap(vhd, &vhd->batmap);
 }
