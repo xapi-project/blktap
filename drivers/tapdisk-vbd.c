@@ -1008,27 +1008,6 @@ tapdisk_vbd_open_image(td_vbd_t *vbd, td_image_t *image)
 	return 0;
 }
 
-static int
-tapdisk_vbd_close_and_reopen_image(td_vbd_t *vbd, td_image_t *image)
-{
-	int i, err;
-
-	td_close(image);
-
-	for (i = 0; i < TD_VBD_EIO_RETRIES; i++) {
-		err = tapdisk_vbd_open_image(vbd, image);
-		if (err != -EIO)
-			break;
-
-		sleep(TD_VBD_EIO_SLEEP);
-	}
-
-	if (err)
-		td_flag_set(vbd->state, TD_VBD_CLOSED | TD_VBD_DEAD);
-
-	return err;
-}
-
 int
 tapdisk_vbd_pause(td_vbd_t *vbd)
 {
