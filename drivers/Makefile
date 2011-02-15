@@ -3,7 +3,7 @@ include $(BLKTAP_ROOT)/Rules.mk
 
 LIBVHDDIR  = $(BLKTAP_ROOT)/vhd/lib
 
-IBIN       = tapdisk2 td-util td-rated
+IBIN       = tapdisk2 td-util td-rated tapdisk-stream
 LOCK_UTIL  = lock-util
 INST_DIR   = /usr/sbin
 
