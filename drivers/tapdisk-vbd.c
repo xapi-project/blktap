@@ -1263,6 +1263,17 @@ tapdisk_vbd_issue_new_requests(td_vbd_t *vbd)
 	return 0;
 }
 
+int
+tapdisk_vbd_recheck_state(td_vbd_t *vbd)
+{
+	if (list_empty(&vbd->new_requests))
+		return 0;
+
+	tapdisk_vbd_issue_new_requests(vbd);
+
+	return 1;
+}
+
 static int
 tapdisk_vbd_kill_requests(td_vbd_t *vbd)
 {

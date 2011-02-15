@@ -216,6 +216,18 @@ tapdisk_server_check_vbds(void)
 		tapdisk_vbd_check_state(vbd);
 }
 
+static int
+tapdisk_server_recheck_vbds(void)
+{
+	td_vbd_t *vbd, *tmp;
+	int rv = 0;
+
+	tapdisk_server_for_each_vbd(vbd, tmp)
+		rv += tapdisk_vbd_recheck_state(vbd);
+
+	return rv;
+}
+
 static void
 tapdisk_server_stop_vbds(void)
 {
@@ -303,8 +315,12 @@ tapdisk_server_iterate(void)
 		DBG(TLOG_WARN, "server wait returned %d\n", ret);
 
 	tapdisk_server_check_vbds();
-	tapdisk_server_submit_tiocbs();
-	tapdisk_server_kick_responses();
+	do {
+		tapdisk_server_submit_tiocbs();
+		tapdisk_server_kick_responses();
+
+		ret = tapdisk_server_recheck_vbds();
+	} while (ret);
 }
 
 static void
