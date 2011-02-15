@@ -3,7 +3,7 @@ include $(BLKTAP_ROOT)/Rules.mk
 
 LIBVHDDIR  = $(BLKTAP_ROOT)/vhd/lib
 
-IBIN       = tapdisk2 td-util tapdisk-stream tapdisk-diff
+IBIN       = tapdisk2 td-util td-rated tapdisk-stream tapdisk-diff
 LOCK_UTIL  = lock-util
 INST_DIR   = /usr/sbin
 
@@ -54,6 +54,7 @@ BLK-OBJS  := block-aio.o
 BLK-OBJS  += block-ram.o
 BLK-OBJS  += block-cache.o
 BLK-OBJS  += block-vhd.o
+BLK-OBJS  += block-valve.o
 BLK-OBJS  += block-vindex.o
 BLK-OBJS  += block-lcache.o
 

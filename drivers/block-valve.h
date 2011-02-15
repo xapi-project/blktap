@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2007, 2010, XenSource Inc.
+ * Copyright (c) 2011, Citrix Inc.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -26,38 +26,16 @@
  * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef __DISKTYPES_H__
-#define __DISKTYPES_H__
+#ifndef _TAPDISK_VALVE_H_
+#define _TAPDISK_VALVE_H_
 
-#define DISK_TYPE_AIO         0
-#define DISK_TYPE_SYNC        1
-#define DISK_TYPE_VMDK        2
-#define DISK_TYPE_VHDSYNC     3
-#define DISK_TYPE_VHD         4
-#define DISK_TYPE_RAM         5
-#define DISK_TYPE_QCOW        6
-#define DISK_TYPE_BLOCK_CACHE 7
-#define DISK_TYPE_VINDEX      8
-#define DISK_TYPE_LOG         9
-#define DISK_TYPE_REMUS       10
-#define DISK_TYPE_LOCAL_CACHE 11
-#define DISK_TYPE_VALVE       12
+#define TD_VALVE_SOCKDIR          "/var/run/blktap/ratelimit"
+#define TD_RLB_CONN_MAX           1024
+#define TD_RLB_REQUEST_MAX        (8 << 20)
 
-#define DISK_TYPE_NAME_MAX    32
+struct td_valve_req {
+	unsigned long need;
+	unsigned long done;
+};
 
-typedef struct disk_info {
-	const char     *name; /* driver name, e.g. 'aio' */
-	char           *desc;  /* e.g. "raw image" */
-	unsigned int    flags; 
-} disk_info_t;
-
-extern const disk_info_t     *tapdisk_disk_types[];
-extern const struct tap_disk *tapdisk_disk_drivers[];
-
-/* one single controller for all instances of disk type */
-#define DISK_TYPE_SINGLE_CONTROLLER (1<<0)
-
-int tapdisk_disktype_find(const char *name);
-int tapdisk_disktype_parse_params(const char *params, const char **_path);
-
-#endif
+#endif /* _TAPDISK_VALVE_H_ */

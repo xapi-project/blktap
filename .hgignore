@@ -21,6 +21,7 @@
 ^drivers/tapdisk-client$
 ^drivers/tapdisk-diff$
 ^drivers/tapdisk-stream$
+^drivers/td-rated$
 ^vhd/vhd-index$
 ^vhd/vhd-update$
 ^vhd/vhd-util$
