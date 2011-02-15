@@ -35,7 +35,7 @@
 #include "scheduler.h"
 #include "tapdisk-log.h"
 
-#define DBG(_f, _a...)               tlog_write(TLOG_DBG, _f, ##_a)
+#define DBG(_f, _a...)               if (0) { tlog_syslog(TLOG_DBG, _f, ##_a); }
 #define BUG_ON(_cond)                if (_cond) td_panic()
 
 #define SCHEDULER_MAX_TIMEOUT        600
@@ -117,17 +117,14 @@ scheduler_prepare_events(scheduler_t *s)
 }
 
 static int
-scheduler_check_events(scheduler_t *s, int nfds)
+scheduler_check_fd_events(scheduler_t *s, int nfds)
 {
 	event_t *event;
-	struct timeval now;
-
-	if (nfds <= 0)
-		return nfds;
-
-	gettimeofday(&now, NULL);
 
 	scheduler_for_each_event(s, event) {
+		if (!nfds)
+			break;
+
 		if (event->dead)
 			continue;
 
@@ -151,16 +148,45 @@ scheduler_check_events(scheduler_t *s, int nfds)
 			event->pending |= SCHEDULER_POLL_EXCEPT_FD;
 			--nfds;
 		}
-
-		if (event->pending) {
-			BUG_ON(event->masked);
-			continue;
-		}
-
-		if ((event->mode & SCHEDULER_POLL_TIMEOUT) &&
-		    (event->deadline <= now.tv_sec))
-			event->pending = SCHEDULER_POLL_TIMEOUT;
 	}
+
+	return nfds;
+}
+
+static void
+scheduler_check_timeouts(scheduler_t *s)
+{
+	struct timeval now;
+	event_t *event;
+
+	gettimeofday(&now, NULL);
+
+	scheduler_for_each_event(s, event) {
+		BUG_ON(event->pending && event->masked);
+
+		if (event->dead)
+			continue;
+
+		if (event->pending)
+			continue;
+
+		if (!(event->mode & SCHEDULER_POLL_TIMEOUT))
+			continue;
+
+		if (event->deadline > now.tv_sec)
+			continue;
+
+		event->pending = SCHEDULER_POLL_TIMEOUT;
+	}
+}
+
+static int
+scheduler_check_events(scheduler_t *s, int nfds)
+{
+	if (nfds)
+		nfds = scheduler_check_fd_events(s, nfds);
+
+	scheduler_check_timeouts(s);
 
 	return nfds;
 }
