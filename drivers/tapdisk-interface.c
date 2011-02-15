@@ -89,9 +89,10 @@ __td_open(td_image_t *image, td_disk_info_t *info)
 		}
 
 		td_flag_set(driver->state, TD_DRIVER_OPEN);
-		DPRINTF("opened image %s (%d users, state: 0x%08x, type: %d)\n",
+		DPRINTF("opened image %s (%d users, state: 0x%08x, type: %d, %s)\n",
 			driver->name, driver->refcnt + 1,
-			driver->state, driver->type);
+			driver->state, driver->type,
+			td_flag_test(image->flags, TD_OPEN_RDONLY) ? "ro" : "rw");
 	}
 
 	image->driver = driver;

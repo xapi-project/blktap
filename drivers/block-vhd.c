@@ -879,12 +879,10 @@ vhd_get_parent_id(td_driver_t *driver, td_disk_id_t *id)
 	if (err)
 		return err;
 
-	id->name       = parent;
-	id->drivertype = DISK_TYPE_VHD;
-	if (vhd_parent_raw(&s->vhd)) {
-		DPRINTF("VHD: parent is raw\n");
-		id->drivertype = DISK_TYPE_AIO;
-	}
+	id->name   = parent;
+	id->type   = vhd_parent_raw(&s->vhd) ? DISK_TYPE_AIO : DISK_TYPE_VHD;
+	id->flags |= TD_OPEN_SHAREABLE|TD_OPEN_RDONLY;
+
 	return 0;
 }
 

@@ -118,7 +118,8 @@ typedef void (*td_callback_t)(td_request_t, int);
 
 struct td_disk_id {
 	char                        *name;
-	int                          drivertype;
+	int                          type;
+	int                          flags;
 };
 
 struct td_disk_info {

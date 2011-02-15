@@ -491,24 +491,22 @@ fail:
 static int
 __tapdisk_vbd_open_vdi(td_vbd_t *vbd, td_flag_t extra_flags)
 {
-	char *file;
 	int err, type;
-	td_flag_t flags;
 	td_disk_id_t id;
 	td_image_t *image, *tmp;
 	struct tfilter *filter = NULL;
 
-	flags = (vbd->flags & ~TD_OPEN_SHAREABLE) | extra_flags;
-	file  = vbd->name;
-	type  = vbd->type;
+	id.flags = (vbd->flags & ~TD_OPEN_SHAREABLE) | extra_flags;
+	id.name  = vbd->name;
+	id.type  = vbd->type;
 
 	for (;;) {
 		err   = -ENOMEM;
-		image = tapdisk_image_allocate(file, type, flags);
+		image = tapdisk_image_allocate(id.name, id.type, id.flags);
 
-		if (file != vbd->name) {
-			free(file);
-			file = NULL;
+		if (id.name != vbd->name) {
+			free(id.name);
+			id.name = NULL;
 		}
 
 		if (!image)
@@ -519,8 +517,8 @@ __tapdisk_vbd_open_vdi(td_vbd_t *vbd, td_flag_t extra_flags)
 			if (err != -ENODEV)
 				goto fail;
 
-			if (td_flag_test(flags, TD_OPEN_VHD_INDEX) &&
-			    td_flag_test(flags, TD_OPEN_RDONLY)) {
+			if (td_flag_test(id.flags, TD_OPEN_VHD_INDEX) &&
+			    td_flag_test(id.flags, TD_OPEN_RDONLY)) {
 				err = tapdisk_vbd_open_index(vbd);
 				if (!err) {
 					tapdisk_image_free(image);
@@ -549,19 +547,16 @@ __tapdisk_vbd_open_vdi(td_vbd_t *vbd, td_flag_t extra_flags)
 		if (err == TD_NO_PARENT)
 			break;
 
-		file   = id.name;
-		type   = id.drivertype;
-		if (flags & TD_OPEN_REUSE_PARENT) {
-			free(file);
-			err = asprintf(&file, "%s%d", BLKTAP2_IO_DEVICE,
-					vbd->parent_devnum);
+		if (id.flags & TD_OPEN_REUSE_PARENT) {
+			free(id.name);
+			err = asprintf(&id.name, "%s%d", BLKTAP2_IO_DEVICE,
+				       vbd->parent_devnum);
 			if (err == -1) {
 				err = ENOMEM;
 				goto fail;
 			}
 			type = DISK_TYPE_AIO;
 		}
-		flags |= (TD_OPEN_RDONLY | TD_OPEN_SHAREABLE);
 	}
 
 	if (td_flag_test(vbd->flags, TD_OPEN_LOG_DIRTY)) {
