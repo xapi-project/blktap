@@ -589,7 +589,6 @@ tapdisk_control_attach_vbd(struct tapdisk_ctl_conn *conn,
 	tapdisk_message_t response;
 	char *devname;
 	td_vbd_t *vbd;
-	image_t image;
 	int minor, err;
 
 	/*
@@ -685,7 +684,7 @@ tapdisk_control_open_image(struct tapdisk_ctl_conn *conn,
 			   tapdisk_message_t *request)
 {
 	int err, type, secondary_type;
-	image_t image;
+	td_disk_info_t image;
 	td_vbd_t *vbd;
 	td_flag_t flags;
 	tapdisk_message_t response;
@@ -750,14 +749,14 @@ tapdisk_control_open_image(struct tapdisk_ctl_conn *conn,
 	if (err)
 		goto out;
 
-	err = tapdisk_vbd_get_image_info(vbd, &image);
+	err = tapdisk_vbd_get_disk_info(vbd, &image);
 	if (err)
 		goto fail_close;
 
 	memset(&info, 0, sizeof(info));
 	info.capacity = image.size;
-	info.sector_size = image.secsize;
-	info.physical_sector_size = image.secsize;
+	info.sector_size = image.sector_size;
+	info.physical_sector_size = image.sector_size;
 	info.flags  = 0;
 	info.flags |= flags & TD_OPEN_RDONLY ? BLKTAP_DEVICE_RO : 0;
 
@@ -795,7 +794,7 @@ out:
 		response.u.response.error    = -err;
 	} else {
 		response.u.image.sectors     = image.size;
-		response.u.image.sector_size = image.secsize;
+		response.u.image.sector_size = image.sector_size;
 		response.u.image.info        = image.info;
 		response.type                = TAPDISK_MESSAGE_OPEN_RSP;
 	}

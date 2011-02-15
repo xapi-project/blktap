@@ -908,19 +908,17 @@ tapdisk_vbd_drop_log(td_vbd_t *vbd)
 }
 
 int
-tapdisk_vbd_get_image_info(td_vbd_t *vbd, image_t *img)
+tapdisk_vbd_get_disk_info(td_vbd_t *vbd, td_disk_info_t *img)
 {
 	td_image_t *image;
 
-	memset(img, 0, sizeof(image_t));
+	memset(img, 0, sizeof(*img));
 
 	if (list_empty(&vbd->images))
 		return -EINVAL;
 
 	image        = tapdisk_vbd_first_image(vbd);
-	img->size    = image->info.size;
-	img->secsize = image->info.sector_size;
-	img->info    = image->info.info;
+	*img         = image->info;
 
 	return 0;
 }
@@ -1805,14 +1803,14 @@ tapdisk_vbd_resume_ring(td_vbd_t *vbd)
 	err = __tapdisk_vbd_open_vdi(vbd, TD_OPEN_STRICT);
 out:
 	if (!err) {
-		image_t image;
 		struct blktap2_params params;
+		td_disk_info_t info;
 
 		memset(&params, 0, sizeof(params));
-		tapdisk_vbd_get_image_info(vbd, &image);
+		tapdisk_vbd_get_disk_info(vbd, &info);
 
-		params.sector_size = image.secsize;
-		params.capacity    = image.size;
+		params.sector_size = info.sector_size;
+		params.capacity    = info.size;
 		snprintf(params.name, sizeof(params.name) - 1, "%s", message);
 
 		ioctl(vbd->ring.fd, BLKTAP2_IOCTL_SET_PARAMS, &params);

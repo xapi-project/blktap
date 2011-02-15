@@ -200,13 +200,7 @@ void tapdisk_vbd_detach(td_vbd_t *);
 
 void tapdisk_vbd_forward_request(td_request_t);
 
-typedef struct image {
-	unsigned long long size;
-	unsigned long secsize;
-	unsigned int info;
-} image_t;
-
-int tapdisk_vbd_get_image_info(td_vbd_t *, image_t *);
+int tapdisk_vbd_get_disk_info(td_vbd_t *, td_disk_info_t *);
 int tapdisk_vbd_retry_needed(td_vbd_t *);
 int tapdisk_vbd_quiesce_queue(td_vbd_t *);
 int tapdisk_vbd_start_queue(td_vbd_t *);

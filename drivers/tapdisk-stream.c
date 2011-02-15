@@ -385,20 +385,20 @@ tapdisk_stream_set_position(struct tapdisk_stream *s,
 			    uint64_t count, uint64_t skip)
 {
 	int err;
-	image_t image;
+	td_disk_info_t info;
 
-	err = tapdisk_vbd_get_image_info(s->vbd, &image);
+	err = tapdisk_vbd_get_disk_info(s->vbd, &info);
 	if (err) {
 		fprintf(stderr, "failed getting image size: %d\n", err);
 		return err;
 	}
 
 	if (count == (uint64_t)-1)
-		count = image.size - skip;
+		count = info.size - skip;
 
-	if (count + skip > image.size) {
+	if (count + skip > info.size) {
 		fprintf(stderr, "0x%llx past end of image 0x%llx\n",
-			count + skip, image.size);
+			count + skip, info.size);
 		return -EINVAL;
 	}
 

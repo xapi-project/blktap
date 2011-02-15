@@ -555,7 +555,7 @@ static int
 tapdisk_stream_open_image(struct tapdisk_stream *s, const char *path, int type)
 {
 	int err;
-	image_t image;
+	td_disk_info_t info;
 
 	s->id = tapdisk_stream_count++;
 
@@ -576,7 +576,7 @@ tapdisk_stream_open_image(struct tapdisk_stream *s, const char *path, int type)
 	if (err)
 		goto out;
 
-	err = tapdisk_vbd_get_image_info(s->vbd, &image);
+	err = tapdisk_vbd_get_disk_info(s->vbd, &info);
 	if (err) {
 		fprintf(stderr, "failed getting image size: %d\n", err);
 		return err;
@@ -584,7 +584,7 @@ tapdisk_stream_open_image(struct tapdisk_stream *s, const char *path, int type)
 
 	s->start = 0;
 	s->cur   = s->start;
-	s->end   = image.size;
+	s->end   = info.size;
 
 	err = 0;
 
