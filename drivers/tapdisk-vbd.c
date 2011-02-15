@@ -972,7 +972,7 @@ __tapdisk_vbd_reissue_td_request(td_vbd_t *vbd,
 	td_image_t *parent;
 	td_vbd_request_t *vreq;
 
-	vreq = (td_vbd_request_t *)treq.private;
+	vreq = treq.vreq;
 	gettimeofday(&vreq->last_try, NULL);
 
 	vreq->submitting++;
@@ -1030,7 +1030,7 @@ tapdisk_vbd_forward_request(td_request_t treq)
 	td_vbd_request_t *vreq;
 
 	image = treq.image;
-	vreq  = treq.private;
+	vreq  = treq.vreq;
 	vbd   = vreq->vbd;
 
 	tapdisk_vbd_mark_progress(vbd);
@@ -1049,7 +1049,7 @@ tapdisk_vbd_complete_td_request(td_request_t treq, int res)
 	td_vbd_request_t *vreq;
 
 	image = treq.image;
-	vreq  = treq.private;
+	vreq  = treq.vreq;
 	vbd   = vreq->vbd;
 
 	tapdisk_vbd_mark_progress(vbd);
@@ -1129,7 +1129,7 @@ tapdisk_vbd_issue_request(td_vbd_t *vbd, td_vbd_request_t *vreq)
 		treq.image          = image;
 		treq.cb             = tapdisk_vbd_complete_td_request;
 		treq.cb_data        = NULL;
-		treq.private        = vreq;
+		treq.vreq           = vreq;
 
 
 		vreq->secs_pending += iov->secs;

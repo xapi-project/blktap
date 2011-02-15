@@ -166,8 +166,7 @@ struct td_request {
 	void                        *cb_data;
 
 	int                          sidx;
-	const td_vbd_request_t      *vreq;
-	void                        *private;
+	td_vbd_request_t            *vreq;
 };
 
 /* 

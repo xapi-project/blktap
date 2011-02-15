@@ -160,7 +160,7 @@ local_cache_complete_read(local_cache_t *cache, local_cache_request_t *lreq)
 	td_vbd_t *vbd;
 	td_request_t clone;
 
-	vreq = lreq->treq.private;
+	vreq = lreq->treq.vreq;
 	vbd  = vreq->vbd;
 
 	if (!lreq->err) {
