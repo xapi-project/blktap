@@ -8,6 +8,11 @@
 #ifndef __LIST_H__
 #define __LIST_H__
 
+#include <stddef.h>
+
+#define containerof(_ptr, _type, _memb) \
+	((_type*)((void*)(_ptr) - offsetof(_type, _memb)))
+
 #define LIST_POISON1  ((void *) 0x00100100)
 #define LIST_POISON2  ((void *) 0x00200200)
 
@@ -117,8 +122,7 @@ static inline void list_splice_tail(struct list_head *list,
 		__list_splice(list, head->prev, head);
 }
 
-#define list_entry(ptr, type, member)                                   \
-        ((type *)((char *)(ptr)-(unsigned long)(&((type *)0)->member)))
+#define list_entry(_ptr, _type, _memb) containerof(_ptr, _type, _memb)
 
 #define list_for_each_entry(pos, head, member)                          \
         for (pos = list_entry((head)->next, typeof(*pos), member);      \
