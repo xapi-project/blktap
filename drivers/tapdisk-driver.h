@@ -52,7 +52,7 @@ struct td_driver_handle {
 	struct list_head             next;
 };
 
-td_driver_t *tapdisk_driver_allocate(int, char *, td_flag_t);
+td_driver_t *tapdisk_driver_allocate(int, const char *, td_flag_t);
 void tapdisk_driver_free(td_driver_t *);
 
 void tapdisk_driver_queue_tiocb(td_driver_t *, struct tiocb *);

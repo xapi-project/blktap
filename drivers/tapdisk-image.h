@@ -64,7 +64,7 @@ struct td_image_handle {
 	} stats;
 };
 
-td_image_t *tapdisk_image_allocate(char *, int, td_flag_t, void *);
+td_image_t *tapdisk_image_allocate(const char *, int, td_flag_t, void *);
 void tapdisk_image_free(td_image_t *);
 
 int tapdisk_image_check_td_request(td_image_t *, td_request_t);
