@@ -258,14 +258,6 @@ out:
 	td_forward_request(clone);
 }
 
-
-static void
-local_cache_queue_write(td_driver_t *driver, td_request_t treq)
-{
-	DPRINTF("Local cache: write request! (ERROR)\n");
-	td_complete_request(treq, -EPERM);
-}
-
 static int
 local_cache_get_parent_id(td_driver_t *driver, td_disk_id_t *id)
 {
@@ -299,7 +291,6 @@ struct tap_disk tapdisk_local_cache = {
 	.td_open                    = local_cache_open,
 	.td_close                   = local_cache_close,
 	.td_queue_read              = local_cache_queue_read,
-	.td_queue_write             = local_cache_queue_write,
 	.td_get_parent_id           = local_cache_get_parent_id,
 	.td_validate_parent         = local_cache_validate_parent,
 	.td_debug                   = local_cache_debug,
