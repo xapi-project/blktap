@@ -40,9 +40,9 @@
 #include <sys/mman.h>
 
 #include "list.h"
-#include "blktap.h"
-#include "tapdisk-vbd.h"
 #include "tapdisk.h"
+#include "tapdisk-vbd.h"
+#include "tapdisk-blktap.h"
 #include "tapdisk-utils.h"
 #include "tapdisk-server.h"
 #include "tapdisk-message.h"
@@ -508,14 +508,17 @@ tapdisk_control_list_minors(struct tapdisk_ctl_conn *conn,
 
 	i = 0;
 	memset(&response, 0, sizeof(response));
-
 	response.type = TAPDISK_MESSAGE_LIST_MINORS_RSP;
 	response.cookie = request->cookie;
 
 	head = tapdisk_server_get_all_vbds();
 
 	list_for_each_entry(vbd, head, next) {
-		response.u.minors.list[i++] = vbd->minor;
+		td_blktap_t *tap = vbd->tap;
+		if (!tap)
+			continue;
+
+		response.u.minors.list[i++] = tap->minor;
 		if (i >= TAPDISK_MESSAGE_MAX_MINORS) {
 			response.type = TAPDISK_MESSAGE_ERROR;
 			response.u.response.error = ERANGE;
@@ -547,7 +550,7 @@ tapdisk_control_list(struct tapdisk_ctl_conn *conn, tapdisk_message_t *request)
 
 	list_for_each_entry(vbd, head, next) {
 		response.u.list.count   = count--;
-		response.u.list.minor   = vbd->minor;
+		response.u.list.minor   = vbd->tap ? vbd->tap->minor : -1;
 		response.u.list.state   = vbd->state;
 		response.u.list.path[0] = 0;
 
@@ -618,8 +621,10 @@ tapdisk_control_attach_vbd(struct tapdisk_ctl_conn *conn,
 
 	err = tapdisk_vbd_attach(vbd, devname, minor);
 	free(devname);
-	if (err)
+	if (err) {
+		ERR(err, "failure attaching to %s", devname);
 		goto fail_vbd;
+	}
 
 	tapdisk_server_add_vbd(vbd);
 
@@ -681,11 +686,10 @@ tapdisk_control_open_image(struct tapdisk_ctl_conn *conn,
 			   tapdisk_message_t *request)
 {
 	int err;
-	td_disk_info_t image;
 	td_vbd_t *vbd;
 	td_flag_t flags;
 	tapdisk_message_t response;
-	struct blktap_device_info info;
+	td_disk_info_t info;
 
 	vbd = tapdisk_server_get_vbd(request->cookie);
 	if (!vbd) {
@@ -693,7 +697,7 @@ tapdisk_control_open_image(struct tapdisk_ctl_conn *conn,
 		goto out;
 	}
 
-	if (vbd->minor == -1) {
+	if (!vbd->tap) {
 		err = -EINVAL;
 		goto out;
 	}
@@ -753,35 +757,13 @@ tapdisk_control_open_image(struct tapdisk_ctl_conn *conn,
 	if (err)
 		goto fail_close;
 
-	err = tapdisk_vbd_get_disk_info(vbd, &image);
+	err = tapdisk_vbd_get_disk_info(vbd, &info);
 	if (err)
 		goto fail_close;
 
-	memset(&info, 0, sizeof(info));
-	info.capacity = image.size;
-	info.sector_size = image.sector_size;
-	info.physical_sector_size = image.sector_size;
-	info.flags  = 0;
-	info.flags |= flags & TD_OPEN_RDONLY ? BLKTAP_DEVICE_RO : 0;
-
-	err = ioctl(vbd->ring.fd, BLKTAP2_IOCTL_CREATE_DEVICE, &info);
-#ifdef BLKTAP_IOCTL_CREATE_DEVICE_COMPAT
-#ifndef ENOIOCTLCMD
-#define ENOIOCTLCMD 515
-#endif
-	if (err && (errno == ENOTTY || errno == ENOIOCTLCMD)) {
-		struct blktap2_params params;
-		memset(&params, 0, sizeof(params));
-		params.capacity    = info.capacity;
-		params.sector_size = info.sector_size;
-		err = ioctl(vbd->ring.fd, BLKTAP_IOCTL_CREATE_DEVICE_COMPAT, &params);
-		if (!err && info.flags)
-			EPRINTF("create device: using compat ioctl(%d),"
-				" flags (%#x) dropped.",
-				BLKTAP_IOCTL_CREATE_DEVICE_COMPAT, flags);
-	}
-#endif
-	if (err && errno != EEXIST) {
+	err = tapdisk_blktap_create_device(vbd->tap, &info,
+					   !!(flags & TD_OPEN_RDONLY));
+	if (err && err != -EEXIST) {
 		err = -errno;
 		EPRINTF("create device failed: %d\n", err);
 		goto fail_close;
@@ -797,9 +779,9 @@ out:
 		response.type                = TAPDISK_MESSAGE_ERROR;
 		response.u.response.error    = -err;
 	} else {
-		response.u.image.sectors     = image.size;
-		response.u.image.sector_size = image.sector_size;
-		response.u.image.info        = image.info;
+		response.u.image.sectors     = info.size;
+		response.u.image.sector_size = info.sector_size;
+		response.u.image.info        = info.info;
 		response.type                = TAPDISK_MESSAGE_OPEN_RSP;
 	}
 
@@ -828,19 +810,17 @@ tapdisk_control_close_image(struct tapdisk_ctl_conn *conn,
 	}
 
 	do {
-		err = ioctl(vbd->ring.fd, BLKTAP2_IOCTL_REMOVE_DEVICE);
+		err = tapdisk_blktap_remove_device(vbd->tap);
 
-		if (!err || errno != EBUSY)
+		if (!err || err != -EBUSY)
 			break;
 
 		tapdisk_server_iterate();
 
 	} while (conn->fd >= 0);
 
-	if (err) {
-		err = -errno;
+	if (err)
 		ERR(err, "failure closing image\n");
-	}
 
 	if (err == -ENOTTY) {
 
@@ -861,7 +841,7 @@ tapdisk_control_close_image(struct tapdisk_ctl_conn *conn,
 	free(vbd->name);
 	vbd->name = NULL;
 
-	if (vbd->minor == -1) {
+	if (!vbd->tap) {
 		tapdisk_server_remove_vbd(vbd);
 		free(vbd);
 	}

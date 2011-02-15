@@ -34,6 +34,7 @@
 #include "blktap.h"
 #include "scheduler.h"
 #include "tapdisk-image.h"
+#include "tapdisk-blktap.h"
 
 #define TD_VBD_REQUEST_TIMEOUT      120
 #define TD_VBD_MAX_RETRIES          100
@@ -53,40 +54,12 @@
 #define TD_VBD_SECONDARY_MIRROR     1
 #define TD_VBD_SECONDARY_STANDBY    2
 
-typedef struct td_ring              td_ring_t;
-typedef struct td_vbd_request       td_vbd_request_t;
-typedef struct td_vbd_handle        td_vbd_t;
-typedef void (*td_vbd_cb_t)        (void *, blkif_response_t *);
-
-struct td_ring {
-	int                         fd;
-	char                       *mem;
-	blkif_sring_t              *sring;
-	blkif_back_ring_t           fe_ring;
-	unsigned long               vstart;
-};
-
-struct td_vbd_request {
-	blkif_request_t             req;
-	int16_t                     status;
-
-	int                         error;
-	int                         submitting;
-	int                         secs_pending;
-	int                         num_retries;
-	struct timeval		    ts;
-	struct timeval              last_try;
-
-	td_vbd_t                   *vbd;
-	struct list_head            next;
-	struct list_head           *list_head;
-};
-
 struct td_vbd_handle {
 	char                       *name;
 
+	td_blktap_t                *tap;
+
 	td_uuid_t                   uuid;
-	int                         minor;
 
 	td_flag_t                   flags;
 	td_flag_t                   state;
@@ -112,13 +85,7 @@ struct td_vbd_handle {
 	struct list_head            failed_requests;
 	struct list_head            completed_requests;
 
-	td_vbd_request_t            request_list[MAX_REQUESTS];
-
-	td_ring_t                   ring;
-	event_id_t                  ring_event_id;
-
-	td_vbd_cb_t                 callback;
-	void                       *argument;
+	td_vbd_request_t            request_list[MAX_REQUESTS]; /* XXX */
 
 	struct list_head            next;
 
@@ -131,9 +98,6 @@ struct td_vbd_handle {
 	uint64_t                    retries;
 	uint64_t                    errors;
 	td_sector_count_t           secs;
-
-	uint64_t                    kicks_in;
-	uint64_t                    kicks_out;
 };
 
 #define tapdisk_vbd_for_each_request(vreq, tmp, list)	                \
@@ -189,7 +153,6 @@ tapdisk_vbd_next_image(td_image_t *image)
 
 td_vbd_t *tapdisk_vbd_create(td_uuid_t);
 int tapdisk_vbd_initialize(int, int, td_uuid_t);
-void tapdisk_vbd_set_callback(td_vbd_t *, td_vbd_cb_t, void *);
 int tapdisk_vbd_open(td_vbd_t *, const char *, int, const char *, td_flag_t);
 int tapdisk_vbd_close(td_vbd_t *);
 
@@ -199,6 +162,7 @@ void tapdisk_vbd_close_vdi(td_vbd_t *);
 int tapdisk_vbd_attach(td_vbd_t *, const char *, int);
 void tapdisk_vbd_detach(td_vbd_t *);
 
+int tapdisk_vbd_queue_request(td_vbd_t *, td_vbd_request_t *);
 void tapdisk_vbd_forward_request(td_request_t);
 
 int tapdisk_vbd_get_disk_info(td_vbd_t *, td_disk_info_t *);
@@ -209,7 +173,7 @@ int tapdisk_vbd_issue_requests(td_vbd_t *);
 int tapdisk_vbd_kill_queue(td_vbd_t *);
 int tapdisk_vbd_pause(td_vbd_t *);
 int tapdisk_vbd_resume(td_vbd_t *, const char *);
-int tapdisk_vbd_kick(td_vbd_t *);
+void tapdisk_vbd_kick(td_vbd_t *);
 void tapdisk_vbd_check_state(td_vbd_t *);
 void tapdisk_vbd_check_progress(td_vbd_t *);
 void tapdisk_vbd_debug(td_vbd_t *);

@@ -85,7 +85,7 @@ td_image_t *tapdisk_image_allocate(const char *, int, td_flag_t);
 void tapdisk_image_free(td_image_t *);
 
 int tapdisk_image_check_td_request(td_image_t *, td_request_t);
-int tapdisk_image_check_ring_request(td_image_t *, blkif_request_t *);
+int tapdisk_image_check_request(td_image_t *, struct td_vbd_request *);
 void tapdisk_image_stats(td_image_t *, td_stats_t *);
 
 #endif

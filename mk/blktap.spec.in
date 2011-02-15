@@ -54,8 +54,6 @@ rm -rf $RPM_BUILD_ROOT
 %{_sbindir}/vhd-update
 %{_sbindir}/vhd-util
 %{_sbindir}/vhd-index
-%{_sbindir}/tapdisk-stream
-%{_sbindir}/tapdisk-diff
 %{_sbindir}/part-util
 %{_sbindir}/vhdpartx
 %{_sysconfdir}/udev/rules.d/blktap.rules

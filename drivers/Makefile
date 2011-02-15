@@ -3,7 +3,7 @@ include $(BLKTAP_ROOT)/Rules.mk
 
 LIBVHDDIR  = $(BLKTAP_ROOT)/vhd/lib
 
-IBIN       = tapdisk2 td-util td-rated tapdisk-stream tapdisk-diff
+IBIN       = tapdisk2 td-util td-rated
 LOCK_UTIL  = lock-util
 INST_DIR   = /usr/sbin
 
@@ -31,6 +31,7 @@ endif
 TAP-OBJS  := scheduler.o
 TAP-OBJS  += tapdisk-control.o
 TAP-OBJS  += tapdisk-vbd.o
+TAP-OBJS  += tapdisk-blktap.o
 TAP-OBJS  += tapdisk-image.o
 TAP-OBJS  += tapdisk-driver.o
 TAP-OBJS  += tapdisk-disktype.o

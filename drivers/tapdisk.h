@@ -105,11 +105,14 @@ typedef struct td_request            td_request_t;
 typedef struct td_driver_handle      td_driver_t;
 typedef struct td_image_handle       td_image_t;
 typedef struct td_sector_count       td_sector_count_t;
+typedef struct td_vbd_request        td_vbd_request_t;
+typedef struct td_vbd_handle         td_vbd_t;
 
 /* 
  * Prototype of the callback to activate as requests complete.
  */
 typedef void (*td_callback_t)(td_request_t, int);
+typedef void (*td_vreq_callback_t)(td_vbd_request_t*, int, void*, int);
 
 struct td_disk_id {
 	char                        *name;
@@ -123,9 +126,38 @@ struct td_disk_info {
 	uint32_t                     info;
 };
 
+struct td_iovec {
+	void                       *base;
+	unsigned int                secs;
+};
+
+struct td_vbd_request {
+	int                         op;
+	td_sector_t                 sec;
+	struct td_iovec            *iov;
+	int                         iovcnt;
+
+	td_vreq_callback_t          cb;
+	void                       *token;
+	const char                 *name;
+
+	int                         status;
+	int                         error;
+	int                         submitting;
+	int                         secs_pending;
+	int                         num_retries;
+	struct timeval		    ts;
+	struct timeval              last_try;
+
+	td_vbd_t                   *vbd;
+	struct list_head            next;
+	struct list_head           *list_head;
+};
+
 struct td_request {
 	int                          op;
-	char                        *buf;
+	void                        *buf;
+
 	td_sector_t                  sec;
 	int                          secs;
 
@@ -134,8 +166,8 @@ struct td_request {
 	td_callback_t                cb;
 	void                        *cb_data;
 
-	uint64_t                     id;
 	int                          sidx;
+	const td_vbd_request_t      *vreq;
 	void                        *private;
 };
 

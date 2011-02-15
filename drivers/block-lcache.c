@@ -120,7 +120,7 @@ local_cache_open(td_driver_t *driver, const char *name, td_flag_t flags)
 	if (err)
 		goto fail;
 
-	lreq_bufsz   = BLKIF_MAX_SEGMENTS_PER_REQUEST * sysconf(_SC_PAGE_SIZE);
+	lreq_bufsz   = MAX_SEGMENTS_PER_REQ * sysconf(_SC_PAGE_SIZE);
 	cache->bufsz = LOCAL_CACHE_REQUESTS * lreq_bufsz;
 
 	prot   = PROT_READ|PROT_WRITE;

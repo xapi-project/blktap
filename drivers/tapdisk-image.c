@@ -123,57 +123,54 @@ fail:
 }
 
 int
-tapdisk_image_check_ring_request(td_image_t *image, blkif_request_t *req)
+tapdisk_image_check_request(td_image_t *image, td_vbd_request_t *vreq)
 {
 	td_driver_t *driver;
 	td_disk_info_t *info;
-	uint64_t nsects, total;
-	int i, err, psize, rdonly;
+	int i, rdonly, secs, err;
 
 	driver = image->driver;
 	if (!driver)
 		return -ENODEV;
 
-	err    = -EINVAL;
-	nsects = 0;
-	total  = 0;
 	info   = &driver->info;
-
 	rdonly = td_flag_test(image->flags, TD_OPEN_RDONLY);
 
-	if (req->operation != BLKIF_OP_READ &&
-	    req->operation != BLKIF_OP_WRITE)
-		goto fail;
+	secs = 0;
 
-	if (req->operation == BLKIF_OP_WRITE && rdonly) {
-		err = -EPERM;
+	if (vreq->iovcnt < 0) {
+		err = -EINVAL;
 		goto fail;
 	}
 
-	if (!req->nr_segments || req->nr_segments > MAX_SEGMENTS_PER_REQ)
-		goto fail;
+	for (i = 0; i < vreq->iovcnt; i++)
+		secs += vreq->iov[i].secs;
 
-	total = 0;
-	psize = getpagesize();
-
-	for (i = 0; i < req->nr_segments; i++) {
-		nsects = req->seg[i].last_sect - req->seg[i].first_sect + 1;
-		
-		if (req->seg[i].last_sect >= psize >> 9 || nsects <= 0)
+	switch (vreq->op) {
+	case TD_OP_WRITE:
+		if (rdonly) {
+			err = -EPERM;
 			goto fail;
-
-		total += nsects;
-	}
-
-	if (req->sector_number + nsects > info->size)
+		}
+		/* continue */
+	case TD_OP_READ:
+		if (vreq->sec + secs > info->size) {
+			err = -EINVAL;
+			goto fail;
+		}
+		break;
+	default:
+		err = -EOPNOTSUPP;
 		goto fail;
+	}
 
 	return 0;
 
 fail:
-	ERR(err, "bad request on %s (%s, %llu): id: %llu: %d at %llu",
-	    image->name, (rdonly ? "ro" : "rw"), info->size, req->id,
-	    req->operation, req->sector_number + total);
+	ERR(err, "bad request on %s (%s, %llu): req %s op %d at %llu",
+	    image->name, (rdonly ? "ro" : "rw"), info->size, vreq->name,
+	    vreq->op, vreq->sec + secs);
+
 	return err;
 }
 

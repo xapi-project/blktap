@@ -38,8 +38,8 @@
 #include <sys/mman.h>
 #include <sys/ioctl.h>
 
-#include "blktap.h"
 #include "libvhd.h"
+#include "tapdisk-blktap.h"
 #include "tapdisk-image.h"
 #include "tapdisk-driver.h"
 #include "tapdisk-server.h"
@@ -70,22 +70,13 @@
 #define TD_VBD_EIO_SLEEP            1
 #define TD_VBD_WATCHDOG_TIMEOUT     10
 
-static void tapdisk_vbd_ring_event(event_id_t, char, void *);
 static void tapdisk_vbd_complete_vbd_request(td_vbd_t *, td_vbd_request_t *);
-static void tapdisk_vbd_callback(void *, blkif_response_t *);
 static int  tapdisk_vbd_queue_ready(td_vbd_t *);
 static void tapdisk_vbd_check_queue_state(td_vbd_t *);
 
 /* 
  * initialization
  */
-
-static inline void
-tapdisk_vbd_initialize_vreq(td_vbd_request_t *vreq)
-{
-	memset(vreq, 0, sizeof(td_vbd_request_t));
-	INIT_LIST_HEAD(&vreq->next);
-}
 
 static void
 tapdisk_vbd_mark_progress(td_vbd_t *vbd)
@@ -97,7 +88,6 @@ td_vbd_t*
 tapdisk_vbd_create(uint16_t uuid)
 {
 	td_vbd_t *vbd;
-	int i;
 
 	vbd = calloc(1, sizeof(td_vbd_t));
 	if (!vbd) {
@@ -106,12 +96,6 @@ tapdisk_vbd_create(uint16_t uuid)
 	}
 
 	vbd->uuid     = uuid;
-	vbd->minor    = -1;
-	vbd->ring.fd  = -1;
-
-	/* default blktap ring completion */
-	vbd->callback = tapdisk_vbd_callback;
-	vbd->argument = vbd;
 
 	INIT_LIST_HEAD(&vbd->images);
 	INIT_LIST_HEAD(&vbd->new_requests);
@@ -120,9 +104,6 @@ tapdisk_vbd_create(uint16_t uuid)
 	INIT_LIST_HEAD(&vbd->completed_requests);
 	INIT_LIST_HEAD(&vbd->next);
 	tapdisk_vbd_mark_progress(vbd);
-
-	for (i = 0; i < MAX_REQUESTS; i++)
-		tapdisk_vbd_initialize_vreq(vbd->request_list + i);
 
 	return vbd;
 }
@@ -143,13 +124,6 @@ tapdisk_vbd_initialize(int rfd, int wfd, uint16_t uuid)
 	tapdisk_server_add_vbd(vbd);
 
 	return 0;
-}
-
-void
-tapdisk_vbd_set_callback(td_vbd_t *vbd, td_vbd_cb_t callback, void *argument)
-{
-	vbd->callback = callback;
-	vbd->argument = argument;
 }
 
 int
@@ -348,7 +322,7 @@ static void signal_enospc(td_vbd_t *vbd)
 	int fd, err;
 	char *fn;
 
-	err = asprintf(&fn, BLKTAP2_ENOSPC_SIGNAL_FILE"%d", vbd->minor);
+	err = asprintf(&fn, BLKTAP2_ENOSPC_SIGNAL_FILE"%d", vbd->tap->minor);
 	if (err == -1) {
 		EPRINTF("Failed to signal ENOSPC condition\n");
 		return;
@@ -500,118 +474,25 @@ fail:
 	return err;
 }
 
-static int
-tapdisk_vbd_register_event_watches(td_vbd_t *vbd)
-{
-	event_id_t id;
-
-	id = tapdisk_server_register_event(SCHEDULER_POLL_READ_FD,
-					   vbd->ring.fd, 0,
-					   tapdisk_vbd_ring_event, vbd);
-	if (id < 0)
-		return id;
-
-	vbd->ring_event_id = id;
-
-	return 0;
-}
-
-static void
-tapdisk_vbd_unregister_events(td_vbd_t *vbd)
-{
-	if (vbd->ring_event_id)
-		tapdisk_server_unregister_event(vbd->ring_event_id);
-}
-
-static int
-tapdisk_vbd_map_device(td_vbd_t *vbd, const char *devname)
-{
-	
-	int err, psize;
-	td_ring_t *ring;
-
-	ring  = &vbd->ring;
-	psize = getpagesize();
-
-	ring->fd = open(devname, O_RDWR);
-	if (ring->fd == -1) {
-		err = -errno;
-		EPRINTF("failed to open %s: %d\n", devname, err);
-		goto fail;
-	}
-
-	ring->mem = mmap(0, psize * BLKTAP_MMAP_REGION_SIZE,
-			 PROT_READ | PROT_WRITE, MAP_SHARED, ring->fd, 0);
-	if (ring->mem == MAP_FAILED) {
-		err = -errno;
-		EPRINTF("failed to mmap %s: %d\n", devname, err);
-		goto fail;
-	}
-
-	ring->sring = (blkif_sring_t *)((unsigned long)ring->mem);
-	BACK_RING_INIT(&ring->fe_ring, ring->sring, psize);
-
-	ring->vstart =
-		(unsigned long)ring->mem + (BLKTAP_RING_PAGES * psize);
-
-	return 0;
-
-fail:
-	if (ring->mem && ring->mem != MAP_FAILED)
-		munmap(ring->mem, psize * BLKTAP_MMAP_REGION_SIZE);
-	if (ring->fd != -1)
-		close(ring->fd);
-	ring->fd  = -1;
-	ring->mem = NULL;
-	return err;
-}
-
-static int
-tapdisk_vbd_unmap_device(td_vbd_t *vbd)
-{
-	int psize;
-
-	psize = getpagesize();
-
-	if (vbd->ring.fd != -1)
-		close(vbd->ring.fd);
-	if (vbd->ring.mem > 0)
-		munmap(vbd->ring.mem, psize * BLKTAP_MMAP_REGION_SIZE);
-
-	return 0;
-}
-
 void
 tapdisk_vbd_detach(td_vbd_t *vbd)
 {
-	tapdisk_vbd_unregister_events(vbd);
+	td_blktap_t *tap = vbd->tap;
 
-	tapdisk_vbd_unmap_device(vbd);
-	vbd->minor = -1;
+	if (tap) {
+		tapdisk_blktap_close(tap);
+		vbd->tap = NULL;
+	}
 }
-
 
 int
 tapdisk_vbd_attach(td_vbd_t *vbd, const char *devname, int minor)
 {
-	int err;
 
-	err = tapdisk_vbd_map_device(vbd, devname);
-	if (err)
-		goto fail;
+	if (vbd->tap)
+		return -EALREADY;
 
-	err = tapdisk_vbd_register_event_watches(vbd);
-	if (err)
-		goto fail;
-
-	vbd->minor = minor;
-
-	return 0;
-
-fail:
-	tapdisk_vbd_detach(vbd);
-
-	return err;
+	return tapdisk_blktap_open(devname, vbd, &vbd->tap);
 }
 
 int
@@ -676,7 +557,6 @@ tapdisk_vbd_shutdown(td_vbd_t *vbd)
 	if (!list_empty(&vbd->pending_requests))
 		return -EAGAIN;
 
-	tapdisk_vbd_kick(vbd);
 	tapdisk_vbd_queue_count(vbd, &new, &pending, &failed, &completed);
 
 	DPRINTF("%s: state: 0x%08x, new: 0x%02x, pending: 0x%02x, "
@@ -684,11 +564,10 @@ tapdisk_vbd_shutdown(td_vbd_t *vbd)
 		vbd->name, vbd->state, new, pending, failed, completed);
 	DPRINTF("last activity: %010ld.%06ld, errors: 0x%04"PRIx64", "
 		"retries: 0x%04"PRIx64", received: 0x%08"PRIx64", "
-		"returned: 0x%08"PRIx64", kicked: 0x%08"PRIx64", "
-		"kicks in: 0x%08"PRIx64", out: 0x%08"PRIu64"\n",
+		"returned: 0x%08"PRIx64", kicked: 0x%08"PRIx64"\n",
 		vbd->ts.tv_sec, vbd->ts.tv_usec,
 		vbd->errors, vbd->retries, vbd->received, vbd->returned,
-		vbd->kicked, vbd->kicks_in, vbd->kicks_out);
+		vbd->kicked);
 
 	tapdisk_vbd_close_vdi(vbd);
 	tapdisk_vbd_detach(vbd);
@@ -741,12 +620,10 @@ tapdisk_vbd_debug(td_vbd_t *vbd)
 	DBG(TLOG_WARN, "%s: state: 0x%08x, new: 0x%02x, pending: 0x%02x, "
 	    "failed: 0x%02x, completed: 0x%02x, last activity: %010ld.%06ld, "
 	    "errors: 0x%04llx, retries: 0x%04llx, received: 0x%08llx, "
-	    "returned: 0x%08llx, kicked: 0x%08llx, "
-	    "kicks in: 0x%08"PRIx64", out: 0x%08"PRIx64"\n",
+	    "returned: 0x%08llx, kicked: 0x%08llx\n",
 	    vbd->name, vbd->state, new, pending, failed, completed,
 	    vbd->ts.tv_sec, vbd->ts.tv_usec, vbd->errors, vbd->retries,
-	    vbd->received, vbd->returned, vbd->kicked,
-	    vbd->kicks_in, vbd->kicks_out);
+	    vbd->received, vbd->returned, vbd->kicked);
 
 	tapdisk_vbd_for_each_image(vbd, image, tmp)
 		td_debug(image);
@@ -905,75 +782,6 @@ tapdisk_vbd_resume(td_vbd_t *vbd, const char *name)
 	return 0;
 }
 
-int
-tapdisk_vbd_kick(td_vbd_t *vbd)
-{
-	int n;
-	td_ring_t *ring;
-
-	tapdisk_vbd_check_queue_state(vbd);
-
-	ring = &vbd->ring;
-	if (!ring->sring)
-		return 0;
-
-	n    = (ring->fe_ring.rsp_prod_pvt - ring->fe_ring.sring->rsp_prod);
-	if (!n)
-		return 0;
-
-	vbd->kicks_out++;
-	vbd->kicked += n;
-	RING_PUSH_RESPONSES(&ring->fe_ring);
-	ioctl(ring->fd, BLKTAP_IOCTL_KICK_FE, 0);
-
-	DBG(TLOG_INFO, "kicking %d: rec: 0x%08llx, ret: 0x%08llx, kicked: "
-	    "0x%08llx\n", n, vbd->received, vbd->returned, vbd->kicked);
-
-	return n;
-}
-
-static inline void
-tapdisk_vbd_write_response_to_ring(td_vbd_t *vbd, blkif_response_t *rsp)
-{
-	td_ring_t *ring;
-	blkif_response_t *rspp;
-
-	ring = &vbd->ring;
-	rspp = RING_GET_RESPONSE(&ring->fe_ring, ring->fe_ring.rsp_prod_pvt);
-	memcpy(rspp, rsp, sizeof(blkif_response_t));
-	ring->fe_ring.rsp_prod_pvt++;
-}
-
-static void
-tapdisk_vbd_callback(void *arg, blkif_response_t *rsp)
-{
-	td_vbd_t *vbd = (td_vbd_t *)arg;
-	tapdisk_vbd_write_response_to_ring(vbd, rsp);
-}
-
-static void
-tapdisk_vbd_make_response(td_vbd_t *vbd, td_vbd_request_t *vreq)
-{
-	blkif_request_t tmp;
-	blkif_response_t *rsp;
-
-	tmp = vreq->req;
-	rsp = (blkif_response_t *)&vreq->req;
-
-	rsp->id = tmp.id;
-	rsp->operation = tmp.operation;
-	rsp->status = vreq->status;
-
-	DBG(TLOG_DBG, "writing req %d, sec 0x%08"PRIx64", res %d to ring\n",
-	    (int)tmp.id, tmp.sector_number, vreq->status);
-
-	if (rsp->status != BLKIF_RSP_OKAY)
-		ERR(-vreq->error, "returning BLKIF_RSP %d", rsp->status);
-
-	vbd->returned++;
-	vbd->callback(vbd->argument, rsp);
-}
-
 static int
 tapdisk_vbd_request_ttl(td_vbd_request_t *vreq,
 			const struct timeval *now)
@@ -991,8 +799,8 @@ __tapdisk_vbd_request_timeout(td_vbd_request_t *vreq,
 
 	timeout = tapdisk_vbd_request_ttl(vreq, now) < 0;
 	if (timeout)
-		DBG(TLOG_INFO, "req %"PRIu64" timed out, retried %d times\n",
-		    vreq->req.id, vreq->num_retries);
+		DBG(TLOG_INFO, "req %s timed out, retried %d times\n",
+		    vreq->name, vreq->num_retries);
 
 	return timeout;
 }
@@ -1020,11 +828,6 @@ tapdisk_vbd_check_queue_state(td_vbd_t *vbd)
 	    !list_empty(&vbd->failed_requests))
 		tapdisk_vbd_issue_requests(vbd);
 
-	tapdisk_vbd_for_each_request(vreq, tmp, &vbd->completed_requests) {
-		tapdisk_vbd_make_response(vbd, vreq);
-		list_del(&vreq->next);
-		tapdisk_vbd_initialize_vreq(vreq);
-	}
 }
 
 void
@@ -1109,7 +912,7 @@ static void
 tapdisk_vbd_complete_vbd_request(td_vbd_t *vbd, td_vbd_request_t *vreq)
 {
 	if (!vreq->submitting && !vreq->secs_pending) {
-		if (vreq->status == BLKIF_RSP_ERROR &&
+		if (vreq->status == BLKTAP_RSP_ERROR &&
 		    tapdisk_vbd_request_should_retry(vbd, vreq))
 			tapdisk_vbd_move_request(vreq, &vbd->failed_requests);
 		else
@@ -1149,12 +952,12 @@ __tapdisk_vbd_complete_td_request(td_vbd_t *vbd, td_vbd_request_t *vreq,
 	}
 
 	if (err) {
-		vreq->status = BLKIF_RSP_ERROR;
+		vreq->status = BLKTAP_RSP_ERROR;
 		vreq->error  = (vreq->error ? : err);
 		if (err != -EBUSY) {
 			vbd->errors++;
-			ERR(err, "req %"PRIu64": %s 0x%04x secs to "
-			    "0x%08"PRIx64, vreq->req.id,
+			ERR(err, "req %s: %s 0x%04x secs @ 0x%08"PRIx64,
+			    vreq->name,
 			    (treq.op == TD_OP_WRITE ? "write" : "read"),
 			    treq.secs, treq.sec);
 		}
@@ -1239,7 +1042,7 @@ tapdisk_vbd_forward_request(td_request_t treq)
 		__tapdisk_vbd_complete_td_request(vbd, vreq, treq, -EBUSY);
 }
 
-static void
+void
 tapdisk_vbd_complete_td_request(td_request_t treq, int res)
 {
 	td_vbd_t *vbd;
@@ -1272,10 +1075,10 @@ tapdisk_vbd_complete_td_request(td_request_t treq, int res)
 		}
 	}
 
-	DBG(TLOG_DBG, "%s: req %d seg %d sec 0x%08llx "
+	DBG(TLOG_DBG, "%s: req %s seg %d sec 0x%08llx "
 	    "secs 0x%04x buf %p op %d res %d\n", image->name,
-	    (int)treq.id, treq.sidx, treq.sec, treq.secs,
-	    treq.buf, (int)vreq->req.operation, res);
+	    vreq->name, treq.sidx, treq.sec, treq.secs,
+	    treq.buf, vreq->op, res);
 
 	__tapdisk_vbd_complete_td_request(vbd, vreq, treq, res);
 }
@@ -1287,49 +1090,16 @@ queue_mirror_req(td_vbd_t *vbd, td_request_t clone)
 	td_queue_write(vbd->secondary, clone);
 }
 
-static inline void
-tapdisk_vbd_submit_request(td_vbd_t *vbd, blkif_request_t *req,
-		td_request_t treq)
-{
-	switch (req->operation)	{
-	case BLKIF_OP_WRITE:
-		treq.op = TD_OP_WRITE;
-		/* it's important to queue the mirror request before queuing 
-		 * the main one. If the main image runs into ENOSPC, the 
-		 * mirroring could be disabled before td_queue_write returns, 
-		 * so if the mirror request was queued after (which would then 
-		 * not happen), we'd lose that write and cause the process to 
-		 * hang with unacknowledged writes */
-		if (vbd->secondary_mode == TD_VBD_SECONDARY_MIRROR)
-			queue_mirror_req(vbd, treq);
-		td_queue_write(treq.image, treq);
-		break;
-
-	case BLKIF_OP_READ:
-		treq.op = TD_OP_READ;
-		td_queue_read(treq.image, treq);
-		break;
-	}
-}
-
 static int
 tapdisk_vbd_issue_request(td_vbd_t *vbd, td_vbd_request_t *vreq)
 {
-	char *page;
-	td_ring_t *ring;
 	td_image_t *image;
 	td_request_t treq;
-	uint64_t sector_nr;
-	blkif_request_t *req;
-	int i, err, id, nsects;
-	struct timeval now;
-	int treq_started = 0;
+	td_sector_t sec;
+	int i, err;
 
-	req       = &vreq->req;
-	id        = req->id;
-	ring      = &vbd->ring;
-	sector_nr = req->sector_number;
-	image     = tapdisk_vbd_first_image(vbd);
+	sec    = vreq->sec;
+	image  = tapdisk_vbd_first_image(vbd);
 
 	vreq->submitting = 1;
 
@@ -1344,59 +1114,57 @@ tapdisk_vbd_issue_request(td_vbd_t *vbd, td_vbd_request_t *vreq)
 		goto fail;
 	}
 
-	err = tapdisk_image_check_ring_request(image, req);
+	err = tapdisk_image_check_request(image, vreq);
 	if (err) {
 		vreq->error = err;
 		goto fail;
 	}
 
-	memset(&treq, 0, sizeof(td_request_t));
-	for (i = 0; i < req->nr_segments; i++) {
-		nsects = req->seg[i].last_sect - req->seg[i].first_sect + 1;
-		page   = (char *)MMAP_VADDR(ring->vstart, 
-					   (unsigned long)req->id, i);
-		page  += (req->seg[i].first_sect << SECTOR_SHIFT);
+	for (i = 0; i < vreq->iovcnt; i++) {
+		struct td_iovec *iov = &vreq->iov[i];
 
-		if (treq_started) {
-			if (page == treq.buf + (treq.secs << SECTOR_SHIFT)) {
-				treq.secs += nsects;
-			} else {
-				tapdisk_vbd_submit_request(vbd, req, treq);
-				treq_started = 0;
-			}
-		}
+		treq.sidx           = i;
+		treq.buf            = iov->base;
+		treq.sec            = sec;
+		treq.secs           = iov->secs;
+		treq.image          = image;
+		treq.cb             = tapdisk_vbd_complete_td_request;
+		treq.cb_data        = NULL;
+		treq.private        = vreq;
 
-		if (!treq_started) {
-			treq.id      = id;
-			treq.sidx    = i;
-			treq.buf     = page;
-			treq.sec     = sector_nr;
-			treq.secs    = nsects;
-			treq.image   = image;
-			treq.cb      = tapdisk_vbd_complete_td_request;
-			treq.cb_data = NULL;
-			treq.private = vreq;
-			treq_started = 1;
-		}
 
-		DBG(TLOG_DBG, "%s: req %d seg %d sec 0x%08llx secs 0x%04x "
-		    "buf %p op %d\n", image->name, id, i, treq.sec, treq.secs,
-		    treq.buf, (int)req->operation);
-
-		vreq->secs_pending += nsects;
-		vbd->secs_pending  += nsects;
+		vreq->secs_pending += iov->secs;
+		vbd->secs_pending  += iov->secs;
 		if (vbd->secondary_mode == TD_VBD_SECONDARY_MIRROR &&
-				req->operation == BLKIF_OP_WRITE) {
-			vreq->secs_pending += nsects;
-			vbd->secs_pending  += nsects;
+		    vreq->op == TD_OP_WRITE) {
+			vreq->secs_pending += iov->secs;
+			vbd->secs_pending  += iov->secs;
 		}
 
-		if (i == req->nr_segments - 1) {
-			tapdisk_vbd_submit_request(vbd, req, treq);
-			treq_started = 0;
+		switch (vreq->op) {
+		case TD_OP_WRITE:
+			treq.op = TD_OP_WRITE;
+			/* it's important to queue the mirror request before queuing 
+			 * the main one. If the main image runs into ENOSPC, the 
+			 * mirroring could be disabled before td_queue_write returns, 
+			 * so if the mirror request was queued after (which would then 
+			 * not happen), we'd lose that write and cause the process to 
+			 * hang with unacknowledged writes */
+			if (vbd->secondary_mode == TD_VBD_SECONDARY_MIRROR)
+				queue_mirror_req(vbd, treq);
+			td_queue_write(treq.image, treq);
+			break;
+
+		case TD_OP_READ:
+			treq.op = TD_OP_READ;
+			td_queue_read(treq.image, treq);
+			break;
 		}
 
-		sector_nr += nsects;
+		DBG(TLOG_DBG, "%s: req %s seg %d sec 0x%08llx secs 0x%04x "
+		    "buf %p op %d\n", image->name, vreq->name, i, treq.sec, treq.secs,
+		    treq.buf, vreq->op);
+		sec += iov->secs;
 	}
 
 	err = 0;
@@ -1411,7 +1179,7 @@ out:
 	return err;
 
 fail:
-	vreq->status = BLKIF_RSP_ERROR;
+	vreq->status = BLKTAP_RSP_ERROR;
 	goto out;
 }
 
@@ -1447,11 +1215,10 @@ tapdisk_vbd_reissue_failed_requests(td_vbd_t *vbd)
 		vbd->retries++;
 		vreq->num_retries++;
 		vreq->error  = 0;
-		vreq->status = BLKIF_RSP_OKAY;
-		DBG(TLOG_DBG, "retry #%d of req %"PRIu64", "
-		    "sec 0x%08"PRIx64", nr_segs: %d\n", vreq->num_retries,
-		    vreq->req.id, vreq->req.sector_number,
-		    vreq->req.nr_segments);
+		vreq->status = BLKTAP_RSP_OKAY;
+		DBG(TLOG_DBG, "retry #%d of req %s, "
+		    "sec 0x%08"PRIx64", iovcnt: %d\n", vreq->num_retries,
+		    vreq->name, vreq->sec, vreq->iovcnt);
 
 		err = tapdisk_vbd_issue_request(vbd, vreq);
 		/*
@@ -1468,16 +1235,13 @@ tapdisk_vbd_reissue_failed_requests(td_vbd_t *vbd)
 static void
 tapdisk_vbd_count_new_request(td_vbd_t *vbd, td_vbd_request_t *vreq)
 {
-	blkif_request_t *req = &vreq->req;
-	struct blkif_request_segment *seg;
+	struct td_iovec *iov;
 	int write;
 
-	write = req->operation == BLKIF_OP_WRITE;
+	write = vreq->op == TD_OP_WRITE;
 
-	for (seg = &req->seg[0]; seg < &req->seg[req->nr_segments]; seg++) {
-		int secs = seg->last_sect - seg->first_sect + 1;
-		td_sector_count_add(&vbd->secs, secs, write);
-	}
+	for (iov = &vreq->iov[0]; iov < &vreq->iov[vreq->iovcnt]; iov++)
+		td_sector_count_add(&vbd->secs, iov->secs, write);
 }
 
 static int
@@ -1507,12 +1271,12 @@ tapdisk_vbd_kill_requests(td_vbd_t *vbd)
 	td_vbd_request_t *vreq, *tmp;
 
 	tapdisk_vbd_for_each_request(vreq, tmp, &vbd->new_requests) {
-		vreq->status = BLKIF_RSP_ERROR;
+		vreq->status = BLKTAP_RSP_ERROR;
 		tapdisk_vbd_move_request(vreq, &vbd->completed_requests);
 	}
 
 	tapdisk_vbd_for_each_request(vreq, tmp, &vbd->failed_requests) {
-		vreq->status = BLKIF_RSP_ERROR;
+		vreq->status = BLKTAP_RSP_ERROR;
 		tapdisk_vbd_move_request(vreq, &vbd->completed_requests);
 	}
 
@@ -1534,161 +1298,44 @@ tapdisk_vbd_issue_requests(td_vbd_t *vbd)
 	return tapdisk_vbd_issue_new_requests(vbd);
 }
 
-static void
-tapdisk_vbd_pull_ring_requests(td_vbd_t *vbd)
+int
+tapdisk_vbd_queue_request(td_vbd_t *vbd, td_vbd_request_t *vreq)
 {
-	int idx;
-	RING_IDX rp, rc;
-	td_ring_t *ring;
-	blkif_request_t *req;
-	td_vbd_request_t *vreq;
-	struct timeval now;
+	gettimeofday(&vreq->ts, NULL);
+	vreq->vbd = vbd;
 
-	ring = &vbd->ring;
-	if (!ring->sring)
-		return;
+	list_add_tail(&vreq->next, &vbd->new_requests);
+	vbd->received++;
 
-	gettimeofday(&now, NULL);
-
-	rp   = ring->fe_ring.sring->req_prod;
-	xen_rmb();
-
-	for (rc = ring->fe_ring.req_cons; rc != rp; rc++) {
-		req = RING_GET_REQUEST(&ring->fe_ring, rc);
-		++ring->fe_ring.req_cons;
-
-		idx  = req->id;
-		vreq = &vbd->request_list[idx];
-
-		ASSERT(list_empty(&vreq->next));
-		ASSERT(vreq->secs_pending == 0);
-
-		memcpy(&vreq->req, req, sizeof(blkif_request_t));
-		vbd->received++;
-		vreq->vbd = vbd;
-		vreq->ts  = now;
-
-		tapdisk_vbd_move_request(vreq, &vbd->new_requests);
-
-		DBG(TLOG_DBG, "%s: request %d \n", vbd->name, idx);
-	}
+	return 0;
 }
 
-static int
-tapdisk_vbd_pause_ring(td_vbd_t *vbd)
+void
+tapdisk_vbd_kick(td_vbd_t *vbd)
 {
-	int err;
+	const struct list_head *list = &vbd->completed_requests;
+	td_vbd_request_t *vreq, *prev, *next;
 
-	if (td_flag_test(vbd->state, TD_VBD_PAUSED))
-		return 0;
+	vbd->kicked++;
 
-	td_flag_set(vbd->state, TD_VBD_PAUSE_REQUESTED);
+	while (!list_empty(list)) {
+		prev = list_entry(list->next, td_vbd_request_t, next);
+		list_del(&prev->next);
 
-	err = tapdisk_vbd_quiesce_queue(vbd);
-	if (err) {
-		EPRINTF("%s: ring pause request on active queue\n", vbd->name);
-		return err;
+		tapdisk_vbd_for_each_request(vreq, next, list) {
+			if (vreq->token == prev->token) {
+
+				prev->cb(prev, prev->error, prev->token, 0);
+				vbd->returned++;
+
+				list_del(&vreq->next);
+				prev = vreq;
+			}
+		}
+
+		prev->cb(prev, prev->error, prev->token, 1);
+		vbd->returned++;
 	}
-
-	tapdisk_vbd_close_vdi(vbd);
-
-	err = ioctl(vbd->ring.fd, BLKTAP2_IOCTL_PAUSE, 0);
-	if (err)
-		EPRINTF("%s: pause ioctl failed: %d\n", vbd->name, errno);
-	else {
-		td_flag_clear(vbd->state, TD_VBD_PAUSE_REQUESTED);
-		td_flag_set(vbd->state, TD_VBD_PAUSED);
-	}
-
-	return err;
-}
-
-static int
-tapdisk_vbd_resume_ring(td_vbd_t *vbd)
-{
-	int i, err, type;
-	char message[BLKTAP2_MAX_MESSAGE_LEN];
-	const char *path;
-
-	memset(message, 0, sizeof(message));
-
-	if (!td_flag_test(vbd->state, TD_VBD_PAUSED)) {
-		EPRINTF("%s: resume message for unpaused vbd\n", vbd->name);
-		return -EINVAL;
-	}
-
-	err = ioctl(vbd->ring.fd, BLKTAP2_IOCTL_REOPEN, &message);
-	if (err) {
-		EPRINTF("%s: resume ioctl failed: %d\n", vbd->name, errno);
-		return err;
-	}
-
-	type = tapdisk_disktype_parse_params(message, &path);
-	if (type < 0) {
-		err = type;
-		EPRINTF("%s: invalid resume string %s\n", vbd->name, message);
-		goto out;
-	}
-
-	tapdisk_vbd_start_queue(vbd);
-
-	err = tapdisk_vbd_open_vdi(vbd, path, vbd->flags | TD_OPEN_STRICT, -1);
-out:
-	if (!err) {
-		struct blktap2_params params;
-		td_disk_info_t info;
-
-		memset(&params, 0, sizeof(params));
-		tapdisk_vbd_get_disk_info(vbd, &info);
-
-		params.sector_size = info.sector_size;
-		params.capacity    = info.size;
-		snprintf(params.name, sizeof(params.name) - 1, "%s", message);
-
-		ioctl(vbd->ring.fd, BLKTAP2_IOCTL_SET_PARAMS, &params);
-		td_flag_clear(vbd->state, TD_VBD_PAUSED);
-	}
-	ioctl(vbd->ring.fd, BLKTAP2_IOCTL_RESUME, err);
-	return err;
-}
-
-static int
-tapdisk_vbd_check_ring_message(td_vbd_t *vbd)
-{
-	if (!vbd->ring.sring)
-		return -EINVAL;
-
-	switch (vbd->ring.sring->private.tapif_user.msg) {
-	case 0:
-		return 0;
-
-	case BLKTAP2_RING_MESSAGE_PAUSE:
-		return tapdisk_vbd_pause_ring(vbd);
-
-	case BLKTAP2_RING_MESSAGE_RESUME:
-		return tapdisk_vbd_resume_ring(vbd);
-
-	case BLKTAP2_RING_MESSAGE_CLOSE:
-		return tapdisk_vbd_close(vbd);
-
-	default:
-		return -EINVAL;
-	}
-}
-
-static void
-tapdisk_vbd_ring_event(event_id_t id, char mode, void *private)
-{
-	td_vbd_t *vbd;
-
-	vbd = (td_vbd_t *)private;
-
-	vbd->kicks_in++;
-	tapdisk_vbd_pull_ring_requests(vbd);
-	tapdisk_vbd_issue_requests(vbd);
-
-	/* vbd may be destroyed after this call */
-	tapdisk_vbd_check_ring_message(vbd);
 }
 
 void
@@ -1698,7 +1345,6 @@ tapdisk_vbd_stats(td_vbd_t *vbd, td_stats_t *st)
 
 	tapdisk_stats_enter(st, '{');
 	tapdisk_stats_field(st, "name", "s", vbd->name);
-	tapdisk_stats_field(st, "minor", "d", vbd->minor);
 
 	tapdisk_stats_field(st, "secs", "[");
 	tapdisk_stats_val(st, "llu", vbd->secs.rd);
@@ -1709,6 +1355,12 @@ tapdisk_vbd_stats(td_vbd_t *vbd, td_stats_t *st)
 	tapdisk_vbd_for_each_image(vbd, image, next)
 		tapdisk_image_stats(image, st);
 	tapdisk_stats_leave(st, ']');
+
+	if (vbd->tap) {
+		tapdisk_stats_field(st, "tap", "{");
+		tapdisk_blktap_stats(vbd->tap, st);
+		tapdisk_stats_leave(st, '}');
+	}
 
 	tapdisk_stats_field(st,
 			    "FIXME_enospc_redirect_count",

@@ -2373,9 +2373,9 @@ vhd_debug(td_driver_t *driver)
 		struct vhd_request *r = &s->vreq_list[i];
 		td_request_t *t       = &r->treq;
 		if (t->secs)
-			DBG(TLOG_WARN, "%d: id: 0x%04"PRIx64", err: %d, op: %d,"
+			DBG(TLOG_WARN, "%d: vreq: %s.%d, err: %d, op: %d,"
 			    " lsec: 0x%08"PRIx64", flags: %d, this: %p, "
-			    "next: %p, tx: %p\n", i, t->id, r->error, r->op,
+			    "next: %p, tx: %p\n", i, t->vreq->name, t->sidx, r->error, r->op,
 			    t->sec, r->flags, r, r->next, r->tx);
 	}
 

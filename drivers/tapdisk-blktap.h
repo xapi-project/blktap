@@ -1,5 +1,6 @@
 /*
- * Copyright (c) 2008, XenSource Inc.
+ * Copyright (c) 2010, Citrix Systems, Inc.
+ *
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -26,21 +27,56 @@
  * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef _TD_BLKTAP_H_
-#define _TD_BLKTAP_H_
+#ifndef _TAPDISK_BLKTAP_H_
+#define _TAPDISK_BLKTAP_H_
 
-#include <stdint.h>
-#include <stddef.h>
-#include <linux/blktap.h>
+typedef struct td_blktap td_blktap_t;
+typedef struct td_blktap_req td_blktap_req_t;
 
-#define BLKTAP2_SYSFS_DIR              "/sys/class/blktap2"
-#define BLKTAP2_CONTROL_NAME           "blktap-control"
-#define BLKTAP2_CONTROL_DIR            "/var/run/"BLKTAP2_CONTROL_NAME
-#define BLKTAP2_CONTROL_SOCKET         "ctl"
-#define BLKTAP2_DIRECTORY              "/dev/xen/blktap-2"
-#define BLKTAP2_CONTROL_DEVICE         BLKTAP2_DIRECTORY"/control"
-#define BLKTAP2_RING_DEVICE            BLKTAP2_DIRECTORY"/blktap"
-#define BLKTAP2_IO_DEVICE              BLKTAP2_DIRECTORY"/tapdev"
-#define BLKTAP2_ENOSPC_SIGNAL_FILE     "/var/run/tapdisk-enospc"
+#include "blktap.h"
+#include "tapdisk-vbd.h"
+#include "list.h"
 
-#endif /* _TD_BLKTAP_H_ */
+struct td_blktap_stats {
+	struct {
+		unsigned long long      in;
+		unsigned long long      out;
+	} reqs;
+	struct {
+		unsigned long long      in;
+		unsigned long long      out;
+	} kicks;
+};
+
+struct td_blktap {
+	int                     minor;
+	td_vbd_t               *vbd;
+
+	int                     fd;
+
+	void                   *vma;
+	size_t                  vma_size;
+
+	blktap_back_ring_t      ring;
+	int                     event_id;
+	void                   *vstart;
+
+	int                     n_reqs;
+	td_blktap_req_t        *reqs;
+	int                     n_reqs_free;
+	td_blktap_req_t       **reqs_free;
+
+	struct list_head        entry;
+
+	struct td_blktap_stats  stats;
+};
+
+int tapdisk_blktap_open(const char *, td_vbd_t *, td_blktap_t **);
+void tapdisk_blktap_close(td_blktap_t *);
+
+int tapdisk_blktap_create_device(td_blktap_t *, const td_disk_info_t *, int ro);
+int tapdisk_blktap_remove_device(td_blktap_t *);
+
+void tapdisk_blktap_stats(td_blktap_t *, td_stats_t *);
+
+#endif /* _TAPDISK_BLKTAP_H_ */
