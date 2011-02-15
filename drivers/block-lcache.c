@@ -156,8 +156,12 @@ fail:
 static void
 local_cache_complete_read(local_cache_t *cache, local_cache_request_t *lreq)
 {
-	td_vbd_t *vbd = lreq->treq.image->private;
+	td_vbd_request_t *vreq;
+	td_vbd_t *vbd;
 	td_request_t clone;
+
+	vreq = lreq->treq.private;
+	vbd  = vreq->vbd;
 
 	if (!lreq->err) {
 		size_t sz = lreq->treq.secs << SECTOR_SHIFT;

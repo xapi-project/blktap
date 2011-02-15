@@ -229,8 +229,7 @@ tapdisk_vbd_add_block_cache(td_vbd_t *vbd)
 
 	cache = tapdisk_image_allocate(target->name,
 				       DISK_TYPE_BLOCK_CACHE,
-				       target->flags,
-				       target->private);
+				       target->flags);
 	if (!cache)
 		return -ENOMEM;
 
@@ -285,9 +284,8 @@ tapdisk_vbd_add_local_cache(td_vbd_t *vbd)
 	}
 
 	cache = tapdisk_image_allocate(parent->name,
-			DISK_TYPE_LOCAL_CACHE,
-			parent->flags,
-			parent->private);
+				       DISK_TYPE_LOCAL_CACHE,
+				       parent->flags);
 
 	if (!cache)
 		return -ENOMEM;
@@ -337,8 +335,7 @@ tapdisk_vbd_add_secondary(td_vbd_t *vbd)
 	leaf = tapdisk_vbd_first_image(vbd);
 	second = tapdisk_image_allocate(vbd->secondary_name,
 					vbd->secondary_type,
-					leaf->flags,
-					leaf->private);
+					leaf->flags);
 
 	if (!second)
 		return -ENOMEM;
@@ -430,7 +427,7 @@ tapdisk_vbd_open_index(td_vbd_t *vbd)
 	}
 
 	flags = vbd->flags | TD_OPEN_RDONLY | TD_OPEN_SHAREABLE;
-	image = tapdisk_image_allocate(path, DISK_TYPE_VINDEX, flags, vbd);
+	image = tapdisk_image_allocate(path, DISK_TYPE_VINDEX, flags);
 	if (!image) {
 		err = -ENOMEM;
 		goto fail;
@@ -464,8 +461,7 @@ tapdisk_vbd_add_dirty_log(td_vbd_t *vbd)
 
 	log    = tapdisk_image_allocate(parent->name,
 					DISK_TYPE_LOG,
-					parent->flags,
-					vbd);
+					parent->flags);
 	if (!log)
 		return -ENOMEM;
 
@@ -508,7 +504,7 @@ __tapdisk_vbd_open_vdi(td_vbd_t *vbd, td_flag_t extra_flags)
 
 	for (;;) {
 		err   = -ENOMEM;
-		image = tapdisk_image_allocate(file, type, flags, vbd);
+		image = tapdisk_image_allocate(file, type, flags);
 
 		if (file != vbd->name) {
 			free(file);
@@ -1399,8 +1395,8 @@ tapdisk_vbd_forward_request(td_request_t treq)
 	td_vbd_request_t *vreq;
 
 	image = treq.image;
-	vbd   = (td_vbd_t *)image->private;
-	vreq  = (td_vbd_request_t *)treq.private;
+	vreq  = treq.private;
+	vbd   = vreq->vbd;
 
 	tapdisk_vbd_mark_progress(vbd);
 
@@ -1418,8 +1414,8 @@ tapdisk_vbd_complete_td_request(td_request_t treq, int res)
 	td_vbd_request_t *vreq;
 
 	image = treq.image;
-	vbd   = (td_vbd_t *)image->private;
-	vreq  = (td_vbd_request_t *)treq.private;
+	vreq  = treq.private;
+	vbd   = vreq->vbd;
 
 	tapdisk_vbd_mark_progress(vbd);
 

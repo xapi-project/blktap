@@ -38,7 +38,7 @@
 #define ERR(_err, _f, _a...) tlog_error(_err, _f, ##_a)
 
 td_image_t *
-tapdisk_image_allocate(const char *file, int type, td_flag_t flags, void *private)
+tapdisk_image_allocate(const char *file, int type, td_flag_t flags)
 {
 	int err;
 	td_image_t *image;
@@ -55,7 +55,6 @@ tapdisk_image_allocate(const char *file, int type, td_flag_t flags, void *privat
 
 	image->type    = type;
 	image->flags   = flags;
-	image->private = private;
 	INIT_LIST_HEAD(&image->next);
 
 	return image;
