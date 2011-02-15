@@ -352,7 +352,7 @@ tapdisk_stream_open_image(struct tapdisk_stream *s, const char *path, int type)
 	tapdisk_vbd_set_callback(s->vbd, tapdisk_stream_dequeue, s);
 
 	err = tapdisk_vbd_open_vdi(s->vbd, type, path,
-				   TD_OPEN_RDONLY, -1, -1, NULL);
+				   TD_OPEN_RDONLY, -1);
 	if (err)
 		goto out;
 

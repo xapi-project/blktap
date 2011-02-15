@@ -85,13 +85,8 @@
 #define TD_OPEN_RDONLY               0x00004
 #define TD_OPEN_STRICT               0x00008
 #define TD_OPEN_SHAREABLE            0x00010
-#define TD_OPEN_ADD_CACHE            0x00020
 #define TD_OPEN_VHD_INDEX            0x00040
-#define TD_OPEN_LOG_DIRTY            0x00080
-#define TD_OPEN_LOCAL_CACHE          0x00100
 #define TD_OPEN_REUSE_PARENT         0x00200
-#define TD_OPEN_SECONDARY            0x00400
-#define TD_OPEN_STANDBY              0x00800
 #define TD_IGNORE_ENOSPC             0x01000
 
 #define TD_CREATE_SPARSE             0x00001

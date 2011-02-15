@@ -152,7 +152,7 @@ tapdisk_vbd_set_callback(td_vbd_t *vbd, td_vbd_cb_t callback, void *argument)
 	vbd->argument = argument;
 }
 
-static int
+int
 tapdisk_vbd_validate_chain(td_vbd_t *vbd)
 {
 	int err;
@@ -208,7 +208,7 @@ tapdisk_vbd_close_vdi(td_vbd_t *vbd)
 	td_flag_set(vbd->state, TD_VBD_CLOSED);
 }
 
-static int
+int
 tapdisk_vbd_add_block_cache(td_vbd_t *vbd)
 {
 	int err;
@@ -270,7 +270,7 @@ done:
 	return 0;
 }
 
-static int
+int
 tapdisk_vbd_add_local_cache(td_vbd_t *vbd)
 {
 	int err;
@@ -298,7 +298,6 @@ tapdisk_vbd_add_local_cache(td_vbd_t *vbd)
 	cache->driver = tapdisk_driver_allocate(cache->type,
 						cache->name,
 						cache->flags);
-
 	if (!cache->driver) {
 		err = -ENOMEM;
 		goto fail;
@@ -323,22 +322,30 @@ done:
 	return 0;
 }
 
-static int
-tapdisk_vbd_add_secondary(td_vbd_t *vbd)
+int
+tapdisk_vbd_add_secondary(td_vbd_t *vbd, const char *name, int standby)
 {
-	int err;
-	td_driver_t *driver;
-	td_image_t *leaf, *second;
+	td_image_t *leaf, *second = NULL;
+	const char *path;
+	int type, err;
 
-	DPRINTF("Adding secondary image: %s\n", vbd->secondary_name);
+	DPRINTF("Adding secondary image: %s\n", name);
+
+	type = tapdisk_disktype_parse_params(name, &path);
+	if (type < 0)
+		return type;
 
 	leaf = tapdisk_vbd_first_image(vbd);
-	second = tapdisk_image_allocate(vbd->secondary_name,
-					vbd->secondary_type,
-					leaf->flags);
+	if (!leaf) {
+		err = -EINVAL;
+		goto fail;
+	}
 
-	if (!second)
-		return -ENOMEM;
+	second = tapdisk_image_allocate(path, type, leaf->flags);
+	if (!second) {
+		err = -ENOMEM;
+		goto fail;
+	}
 
 	second->driver = tapdisk_driver_allocate(second->type,
 						 second->name,
@@ -366,13 +373,14 @@ tapdisk_vbd_add_secondary(td_vbd_t *vbd)
 	goto done;
 
 fail:
-	tapdisk_image_free(second);
+	if (second)
+		tapdisk_image_free(second);
 	return err;
 
 done:
 	vbd->secondary = second;
 	leaf->flags |= TD_IGNORE_ENOSPC;
-	if (td_flag_test(vbd->flags, TD_OPEN_STANDBY)) {
+	if (standby) {
 		DPRINTF("In standby mode\n");
 		vbd->secondary_mode = TD_VBD_SECONDARY_STANDBY;
 	} else {
@@ -380,7 +388,7 @@ done:
 		vbd->secondary_mode = TD_VBD_SECONDARY_MIRROR;
 		/* we actually need this image to also be part of the chain, 
 		 * since it may already contain data */
-		list_add(&vbd->secondary->next, &leaf->next);
+		list_add(&second->next, &leaf->next);
 	}
 
 	DPRINTF("Added secondary image\n");
@@ -447,7 +455,7 @@ fail:
 	return err;
 }
 
-static int
+int
 tapdisk_vbd_add_dirty_log(td_vbd_t *vbd)
 {
 	int err;
@@ -559,34 +567,6 @@ __tapdisk_vbd_open_vdi(td_vbd_t *vbd, td_flag_t extra_flags)
 		}
 	}
 
-	if (td_flag_test(vbd->flags, TD_OPEN_LOG_DIRTY)) {
-		err = tapdisk_vbd_add_dirty_log(vbd);
-		if (err)
-			goto fail;
-	}
-
-	if (td_flag_test(vbd->flags, TD_OPEN_ADD_CACHE)) {
-		err = tapdisk_vbd_add_block_cache(vbd);
-		if (err)
-			goto fail;
-	}		
-
-	if (td_flag_test(vbd->flags, TD_OPEN_LOCAL_CACHE)) {
-		err = tapdisk_vbd_add_local_cache(vbd);
-		if (err)
-			goto fail;
-	}		
-
-	err = tapdisk_vbd_validate_chain(vbd);
-	if (err)
-		goto fail;
-
-	if (td_flag_test(vbd->flags, TD_OPEN_SECONDARY)) {
-		err = tapdisk_vbd_add_secondary(vbd);
-		if (err)
-			goto fail;
-	}
-
 	td_flag_clear(vbd->state, TD_VBD_CLOSED);
 
 	return 0;
@@ -602,8 +582,7 @@ fail:
 
 int
 tapdisk_vbd_open_vdi(td_vbd_t *vbd, int type, const char *path,
-		     td_flag_t flags, int prt_devnum,
-		     int secondary_type, const char *secondary_name)
+		     td_flag_t flags, int prt_devnum)
 {
 	const disk_info_t *info;
 	int i, err;
@@ -621,13 +600,6 @@ tapdisk_vbd_open_vdi(td_vbd_t *vbd, int type, const char *path,
 
 	if (flags & TD_OPEN_REUSE_PARENT)
 		vbd->parent_devnum = prt_devnum;
-
-	if (flags & TD_OPEN_SECONDARY) {
-		vbd->secondary_type = secondary_type;
-		err = tapdisk_namedup(&vbd->secondary_name, secondary_name);
-		if (err)
-			return err;
-	}
 
 	vbd->flags   = flags;
 	vbd->type    = type;
@@ -764,7 +736,7 @@ tapdisk_vbd_open(td_vbd_t *vbd, int type, const char *path,
 {
 	int err;
 
-	err = tapdisk_vbd_open_vdi(vbd, type, path, flags, -1, -1, NULL);
+	err = tapdisk_vbd_open_vdi(vbd, type, path, flags, -1);
 	if (err)
 		goto out;
 

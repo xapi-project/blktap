@@ -95,8 +95,6 @@ struct td_vbd_handle {
 	struct list_head            images;
 
 	int                         parent_devnum;
-	char                       *secondary_name;
-	int                         secondary_type;
 	td_image_t                 *secondary;
 	uint8_t                     secondary_mode;
 
@@ -191,8 +189,7 @@ int tapdisk_vbd_open(td_vbd_t *, int, const char *,
 		     int, const char *, td_flag_t);
 int tapdisk_vbd_close(td_vbd_t *);
 
-int tapdisk_vbd_open_vdi(td_vbd_t *, int, const char *, td_flag_t,
-			 int, int, const char *);
+int tapdisk_vbd_open_vdi(td_vbd_t *, int, const char *, td_flag_t, int);
 void tapdisk_vbd_close_vdi(td_vbd_t *);
 
 int tapdisk_vbd_attach(td_vbd_t *, const char *, int);
@@ -213,5 +210,11 @@ void tapdisk_vbd_check_state(td_vbd_t *);
 void tapdisk_vbd_check_progress(td_vbd_t *);
 void tapdisk_vbd_debug(td_vbd_t *);
 void tapdisk_vbd_stats(td_vbd_t *, td_stats_t *);
+
+int tapdisk_vbd_add_dirty_log(td_vbd_t *);
+int tapdisk_vbd_add_block_cache(td_vbd_t *);
+int tapdisk_vbd_add_local_cache(td_vbd_t *);
+int tapdisk_vbd_add_secondary(td_vbd_t *, const char *, int);
+int tapdisk_vbd_validate_chain(td_vbd_t *);
 
 #endif

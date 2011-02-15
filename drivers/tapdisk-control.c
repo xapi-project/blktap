@@ -683,13 +683,13 @@ static void
 tapdisk_control_open_image(struct tapdisk_ctl_conn *conn,
 			   tapdisk_message_t *request)
 {
-	int err, type, secondary_type;
+	int err, type;
 	td_disk_info_t image;
 	td_vbd_t *vbd;
 	td_flag_t flags;
 	tapdisk_message_t response;
 	struct blktap_device_info info;
-	const char *path, *secondary_path;
+	const char *path;
 
 	vbd = tapdisk_server_get_vbd(request->cookie);
 	if (!vbd) {
@@ -708,33 +708,14 @@ tapdisk_control_open_image(struct tapdisk_ctl_conn *conn,
 	}
 
 	flags = 0;
-	secondary_type = 0;
-	secondary_path = NULL;
 	if (request->u.params.flags & TAPDISK_MESSAGE_FLAG_RDONLY)
 		flags |= TD_OPEN_RDONLY;
 	if (request->u.params.flags & TAPDISK_MESSAGE_FLAG_SHARED)
 		flags |= TD_OPEN_SHAREABLE;
-	if (request->u.params.flags & TAPDISK_MESSAGE_FLAG_ADD_CACHE)
-		flags |= TD_OPEN_ADD_CACHE;
 	if (request->u.params.flags & TAPDISK_MESSAGE_FLAG_VHD_INDEX)
 		flags |= TD_OPEN_VHD_INDEX;
-	if (request->u.params.flags & TAPDISK_MESSAGE_FLAG_LOG_DIRTY)
-		flags |= TD_OPEN_LOG_DIRTY;
-	if (request->u.params.flags & TAPDISK_MESSAGE_FLAG_ADD_LCACHE)
-		flags |= TD_OPEN_LOCAL_CACHE;
 	if (request->u.params.flags & TAPDISK_MESSAGE_FLAG_REUSE_PRT)
 		flags |= TD_OPEN_REUSE_PARENT;
-	if (request->u.params.flags & TAPDISK_MESSAGE_FLAG_STANDBY)
-		flags |= TD_OPEN_STANDBY;
-	if (request->u.params.flags & TAPDISK_MESSAGE_FLAG_SECONDARY) {
-		flags |= TD_OPEN_SECONDARY;
-		secondary_type = tapdisk_disktype_parse_params(
-				request->u.params.secondary, &secondary_path);
-		if (secondary_type < 0) {
-			err = secondary_type;
-			goto out;
-		}
-	}
 
 	type = tapdisk_disktype_parse_params(request->u.params.path, &path);
 	if (type < 0) {
@@ -744,10 +725,44 @@ tapdisk_control_open_image(struct tapdisk_ctl_conn *conn,
 
 	err = tapdisk_vbd_open_vdi(vbd,
 				   type, path,
-				   flags, request->u.params.prt_devnum,
-				   secondary_type, secondary_path);
+				   flags, request->u.params.prt_devnum);
 	if (err)
 		goto out;
+
+	if (request->u.params.flags & TAPDISK_MESSAGE_FLAG_LOG_DIRTY) {
+		err = tapdisk_vbd_add_dirty_log(vbd);
+		if (err)
+			goto fail_close;
+	}
+
+	if (request->u.params.flags & TAPDISK_MESSAGE_FLAG_ADD_CACHE) {
+		err = tapdisk_vbd_add_block_cache(vbd);
+		if (err)
+			goto fail_close;
+	}
+
+	if (request->u.params.flags & TAPDISK_MESSAGE_FLAG_ADD_LCACHE) {
+		err = tapdisk_vbd_add_local_cache(vbd);
+		if (err)
+			goto fail_close;
+	}
+
+	if (request->u.params.flags & TAPDISK_MESSAGE_FLAG_SECONDARY) {
+		const char *name;
+		int standby;
+		name     = request->u.params.secondary;
+		standby  = request->u.params.flags;
+		standby &= TAPDISK_MESSAGE_FLAG_STANDBY;
+		standby  = !!standby;
+
+		err = tapdisk_vbd_add_secondary(vbd, name, standby);
+		if (err)
+			goto fail_close;
+	}
+
+	err = tapdisk_vbd_validate_chain(vbd);
+	if (err)
+		goto fail_close;
 
 	err = tapdisk_vbd_get_disk_info(vbd, &image);
 	if (err)
