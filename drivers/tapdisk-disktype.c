@@ -93,6 +93,12 @@ static const disk_info_t log_disk = {
 	DISK_TYPE_FILTER,
 };
 
+static disk_info_t remus_disk = {
+       "remus disk replicator (remus)",
+       "remus",
+       0,
+};
+
 static const disk_info_t local_cache_disk = {
        "lc",
        "local cache image (lc)",
@@ -116,6 +122,7 @@ const disk_info_t *tapdisk_disk_types[] = {
 	[DISK_TYPE_BLOCK_CACHE] = &block_cache_disk,
 	[DISK_TYPE_VINDEX]	= &vhd_index_disk,
 	[DISK_TYPE_LOG]	= &log_disk,
+	[DISK_TYPE_REMUS]	= &remus_disk,
 	[DISK_TYPE_LOCAL_CACHE] = &local_cache_disk,
 	[DISK_TYPE_VALVE]       = &valve_disk,
 	0,
