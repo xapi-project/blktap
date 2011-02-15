@@ -105,6 +105,18 @@ static const disk_info_t lcache_disk = {
        DISK_TYPE_FILTER,
 };
 
+static const disk_info_t llpcache_disk = {
+	"llp",
+	"local leaf cache, persistent (llp)",
+	0,
+};
+
+static const disk_info_t llecache_disk = {
+	"lle",
+	"local leaf cache, ephemeral (lle)",
+	0,
+};
+
 static const disk_info_t valve_disk = {
        "valve",
        "group rate limiting (valve)",
@@ -125,6 +137,8 @@ const disk_info_t *tapdisk_disk_types[] = {
 	[DISK_TYPE_REMUS]	= &remus_disk,
 	[DISK_TYPE_LCACHE]      = &lcache_disk,
 	[DISK_TYPE_VALVE]       = &valve_disk,
+	[DISK_TYPE_LLPCACHE]    = &llpcache_disk,
+	[DISK_TYPE_LLECACHE]    = &llecache_disk,
 	0,
 };
 
@@ -145,6 +159,8 @@ extern struct tap_disk tapdisk_vhd_index;
 extern struct tap_disk tapdisk_log;
 #endif
 extern struct tap_disk tapdisk_lcache;
+extern struct tap_disk tapdisk_llpcache;
+extern struct tap_disk tapdisk_llecache;
 extern struct tap_disk tapdisk_valve;
 
 const struct tap_disk *tapdisk_disk_drivers[] = {
@@ -165,6 +181,8 @@ const struct tap_disk *tapdisk_disk_drivers[] = {
 	[DISK_TYPE_LOG]         = &tapdisk_log,
 #endif
 	[DISK_TYPE_LCACHE]      = &tapdisk_lcache,
+	[DISK_TYPE_LLPCACHE]    = &tapdisk_llpcache,
+	[DISK_TYPE_LLECACHE]    = &tapdisk_llecache,
 	[DISK_TYPE_VALVE]       = &tapdisk_valve,
 	0,
 };
