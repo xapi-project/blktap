@@ -552,11 +552,8 @@ tapdisk_control_list(struct tapdisk_ctl_conn *conn, tapdisk_message_t *request)
 		response.u.list.path[0] = 0;
 
 		if (vbd->name)
-			snprintf(response.u.list.path,
-				 sizeof(response.u.list.path),
-				 "%s:%s",
-				 tapdisk_disk_types[vbd->type]->name,
-				 vbd->name);
+			strncpy(response.u.list.path, vbd->name,
+				sizeof(response.u.list.path));
 
 		tapdisk_control_write_message(conn, &response);
 	}
@@ -683,13 +680,12 @@ static void
 tapdisk_control_open_image(struct tapdisk_ctl_conn *conn,
 			   tapdisk_message_t *request)
 {
-	int err, type;
+	int err;
 	td_disk_info_t image;
 	td_vbd_t *vbd;
 	td_flag_t flags;
 	tapdisk_message_t response;
 	struct blktap_device_info info;
-	const char *path;
 
 	vbd = tapdisk_server_get_vbd(request->cookie);
 	if (!vbd) {
@@ -717,15 +713,8 @@ tapdisk_control_open_image(struct tapdisk_ctl_conn *conn,
 	if (request->u.params.flags & TAPDISK_MESSAGE_FLAG_REUSE_PRT)
 		flags |= TD_OPEN_REUSE_PARENT;
 
-	type = tapdisk_disktype_parse_params(request->u.params.path, &path);
-	if (type < 0) {
-		err = type;
-		goto out;
-	}
-
-	err = tapdisk_vbd_open_vdi(vbd,
-				   type, path,
-				   flags, request->u.params.prt_devnum);
+	 err = tapdisk_vbd_open_vdi(vbd, request->u.params.path, flags,
+				    request->u.params.prt_devnum);
 	if (err)
 		goto out;
 
@@ -927,9 +916,7 @@ tapdisk_control_resume_vbd(struct tapdisk_ctl_conn *conn,
 	int err;
 	td_vbd_t *vbd;
 	tapdisk_message_t response;
-	const char *path = NULL;
-	int type = -1;
-	size_t len;
+	const char *desc = NULL;
 
 	memset(&response, 0, sizeof(response));
 
@@ -941,17 +928,10 @@ tapdisk_control_resume_vbd(struct tapdisk_ctl_conn *conn,
 		goto out;
 	}
 
-	len = strnlen(request->u.params.path, sizeof(request->u.params.path));
-	if (len) {
-		type = tapdisk_disktype_parse_params(request->u.params.path, &path);
-		if (type < 0) {
-			err = type;
-			goto out;
-		}
-	}
+	if (request->u.params.path[0])
+		desc = request->u.params.path;
 
-	err = tapdisk_vbd_resume(vbd, type, path);
-
+	err = tapdisk_vbd_resume(vbd, desc);
 out:
 	response.cookie = request->cookie;
 	response.u.response.error = -err;

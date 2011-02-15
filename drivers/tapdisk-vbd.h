@@ -87,7 +87,6 @@ struct td_vbd_handle {
 
 	td_uuid_t                   uuid;
 	int                         minor;
-	int                         type;
 
 	td_flag_t                   flags;
 	td_flag_t                   state;
@@ -140,8 +139,8 @@ struct td_vbd_handle {
 #define tapdisk_vbd_for_each_request(vreq, tmp, list)	                \
 	list_for_each_entry_safe((vreq), (tmp), (list), next)
 
-#define tapdisk_vbd_for_each_image(vbd, image, tmp)			\
-	list_for_each_entry_safe((image), (tmp), &(vbd)->images, next)
+#define tapdisk_vbd_for_each_image(vbd, image, tmp)	\
+	tapdisk_for_each_image_safe(image, tmp, &vbd->images)
 
 static inline void
 tapdisk_vbd_move_request(td_vbd_request_t *vreq, struct list_head *dest)
@@ -167,13 +166,19 @@ tapdisk_vbd_is_last_image(td_vbd_t *vbd, td_image_t *image)
 static inline td_image_t *
 tapdisk_vbd_first_image(td_vbd_t *vbd)
 {
-	return list_entry(vbd->images.next, td_image_t, next);
+	td_image_t *image = NULL;
+	if (!list_empty(&vbd->images))
+		image = list_entry(vbd->images.next, td_image_t, next);
+	return image;
 }
 
 static inline td_image_t *
 tapdisk_vbd_last_image(td_vbd_t *vbd)
 {
-	return list_entry(vbd->images.prev, td_image_t, next);
+	td_image_t *image = NULL;
+	if (!list_empty(&vbd->images))
+		image = list_entry(vbd->images.prev, td_image_t, next);
+	return image;
 }
 
 static inline td_image_t *
@@ -185,11 +190,10 @@ tapdisk_vbd_next_image(td_image_t *image)
 td_vbd_t *tapdisk_vbd_create(td_uuid_t);
 int tapdisk_vbd_initialize(int, int, td_uuid_t);
 void tapdisk_vbd_set_callback(td_vbd_t *, td_vbd_cb_t, void *);
-int tapdisk_vbd_open(td_vbd_t *, int, const char *,
-		     int, const char *, td_flag_t);
+int tapdisk_vbd_open(td_vbd_t *, const char *, int, const char *, td_flag_t);
 int tapdisk_vbd_close(td_vbd_t *);
 
-int tapdisk_vbd_open_vdi(td_vbd_t *, int, const char *, td_flag_t, int);
+int tapdisk_vbd_open_vdi(td_vbd_t *, const char *, td_flag_t, int);
 void tapdisk_vbd_close_vdi(td_vbd_t *);
 
 int tapdisk_vbd_attach(td_vbd_t *, const char *, int);
@@ -204,7 +208,7 @@ int tapdisk_vbd_start_queue(td_vbd_t *);
 int tapdisk_vbd_issue_requests(td_vbd_t *);
 int tapdisk_vbd_kill_queue(td_vbd_t *);
 int tapdisk_vbd_pause(td_vbd_t *);
-int tapdisk_vbd_resume(td_vbd_t *, int, const char *);
+int tapdisk_vbd_resume(td_vbd_t *, const char *);
 int tapdisk_vbd_kick(td_vbd_t *);
 void tapdisk_vbd_check_state(td_vbd_t *);
 void tapdisk_vbd_check_progress(td_vbd_t *);

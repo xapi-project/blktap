@@ -57,6 +57,9 @@ extern const struct tap_disk *tapdisk_disk_drivers[];
 /* one single controller for all instances of disk type */
 #define DISK_TYPE_SINGLE_CONTROLLER (1<<0)
 
+/* filter driver without physical image data */
+#define DISK_TYPE_FILTER            (1<<1)
+
 int tapdisk_disktype_find(const char *name);
 int tapdisk_disktype_parse_params(const char *params, const char **_path);
 

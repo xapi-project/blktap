@@ -90,19 +90,19 @@ static const disk_info_t vhd_index_disk = {
 static const disk_info_t log_disk = {
 	"log",
 	"write logger (log)",
-	0,
+	DISK_TYPE_FILTER,
 };
 
 static const disk_info_t local_cache_disk = {
        "lc",
        "local cache image (lc)",
-       0,
+       DISK_TYPE_FILTER,
 };
 
 static const disk_info_t valve_disk = {
        "valve",
        "group rate limiting (valve)",
-       0,
+       DISK_TYPE_FILTER,
 };
 
 const disk_info_t *tapdisk_disk_types[] = {
@@ -208,8 +208,7 @@ tapdisk_disktype_parse_params(const char *params, const char **_path)
 
 	type = tapdisk_disktype_find(name);
 
-	if (type >= 0)
-		*_path = params + len + 1;
+	*_path = params + len + 1;
 
 	return type;
 }

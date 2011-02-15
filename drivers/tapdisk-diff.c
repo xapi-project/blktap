@@ -552,7 +552,7 @@ tapdisk_stream_enqueue(event_id_t id, char mode, void *arg)
 }
 
 static int
-tapdisk_stream_open_image(struct tapdisk_stream *s, const char *path, int type)
+tapdisk_stream_open_image(struct tapdisk_stream *s, const char *name)
 {
 	int err;
 	td_disk_info_t info;
@@ -571,8 +571,7 @@ tapdisk_stream_open_image(struct tapdisk_stream *s, const char *path, int type)
 
 	tapdisk_vbd_set_callback(s->vbd, tapdisk_stream_dequeue, s);
 
-	err = tapdisk_vbd_open_vdi(s->vbd, type, path,
-				   TD_OPEN_RDONLY, -1);
+	err = tapdisk_vbd_open_vdi(s->vbd, name, TD_OPEN_RDONLY, -1);
 	if (err)
 		goto out;
 
@@ -590,7 +589,7 @@ tapdisk_stream_open_image(struct tapdisk_stream *s, const char *path, int type)
 
 out:
 	if (err)
-		fprintf(stderr, "failed to open image %s: %d\n", path, err);
+		fprintf(stderr, "failed to open image %s: %d\n", name, err);
 	return err;
 }
 
@@ -685,16 +684,11 @@ tapdisk_stream_initialize(struct tapdisk_stream *s)
 static int
 tapdisk_stream_open(struct tapdisk_stream *s, const char *arg)
 {
-	int err, type;
-	const char *path;
-
-	type = tapdisk_disktype_parse_params(arg, &path);
-	if (type < 0)
-		return type;
+	int err;
 
 	tapdisk_stream_initialize(s);
 
-	err = tapdisk_stream_open_image(s, path, type);
+	err = tapdisk_stream_open_image(s, arg);
 	if (err)
 		return err;
 

@@ -329,7 +329,7 @@ tapdisk_stream_enqueue(event_id_t id, char mode, void *arg)
 }
 
 static int
-tapdisk_stream_open_image(struct tapdisk_stream *s, const char *path, int type)
+tapdisk_stream_open_image(struct tapdisk_stream *s, const char *name)
 {
 	int err;
 
@@ -351,8 +351,7 @@ tapdisk_stream_open_image(struct tapdisk_stream *s, const char *path, int type)
 
 	tapdisk_vbd_set_callback(s->vbd, tapdisk_stream_dequeue, s);
 
-	err = tapdisk_vbd_open_vdi(s->vbd, type, path,
-				   TD_OPEN_RDONLY, -1);
+	err = tapdisk_vbd_open_vdi(s->vbd, name, TD_OPEN_RDONLY, -1);
 	if (err)
 		goto out;
 
@@ -360,7 +359,7 @@ tapdisk_stream_open_image(struct tapdisk_stream *s, const char *path, int type)
 
 out:
 	if (err)
-		fprintf(stderr, "failed to open %s: %d\n", path, err);
+		fprintf(stderr, "failed to open %s: %d\n", name, err);
 	return err;
 }
 
@@ -495,8 +494,8 @@ tapdisk_stream_open_fds(struct tapdisk_stream *s)
 }
 
 static int
-tapdisk_stream_open(struct tapdisk_stream *s, const char *path,
-		    int type, uint64_t count, uint64_t skip)
+tapdisk_stream_open(struct tapdisk_stream *s, const char *name,
+		    uint64_t count, uint64_t skip)
 {
 	int err;
 
@@ -506,7 +505,7 @@ tapdisk_stream_open(struct tapdisk_stream *s, const char *path,
 	if (err)
 		return err;
 
-	err = tapdisk_stream_open_image(s, path, type);
+	err = tapdisk_stream_open_image(s, name);
 	if (err)
 		return err;
 
@@ -544,9 +543,8 @@ tapdisk_stream_run(struct tapdisk_stream *s)
 int
 main(int argc, char *argv[])
 {
-	int c, err, type;
+	int c, err;
 	const char *params;
-	const disk_info_t *info;
 	const char *path;
 	uint64_t count, skip;
 	struct tapdisk_stream stream;
@@ -577,16 +575,9 @@ main(int argc, char *argv[])
 	if (!params)
 		usage(argv[0], EINVAL);
 
-	type = tapdisk_disktype_parse_params(params, &path);
-	if (type < 0) {
-		err = type;
-		fprintf(stderr, "invalid argument %s: %d\n", params, err);
-		return err;
-	}
-
 	tapdisk_start_logging("tapdisk-stream", "daemon");
 
-	err = tapdisk_stream_open(&stream, path, type, count, skip);
+	err = tapdisk_stream_open(&stream, params, count, skip);
 	if (err)
 		goto out;
 

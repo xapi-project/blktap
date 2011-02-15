@@ -155,56 +155,25 @@ tapdisk_vbd_set_callback(td_vbd_t *vbd, td_vbd_cb_t callback, void *argument)
 int
 tapdisk_vbd_validate_chain(td_vbd_t *vbd)
 {
-	int err;
-	td_image_t *image, *parent, *tmp;
-
-	DPRINTF("VBD CHAIN:\n");
-
-	tapdisk_vbd_for_each_image(vbd, image, tmp) {
-		DPRINTF("%s: type:%s(%d) storage:%s(%d)\n",
-			image->name,
-			tapdisk_disk_types[image->type]->name,
-			image->type,
-			tapdisk_storage_name(image->driver->storage),
-			image->driver->storage);
-
-		if (tapdisk_vbd_is_last_image(vbd, image))
-			break;
-
-		parent = tapdisk_vbd_next_image(image);
-		err    = td_validate_parent(image, parent);
-		if (err)
-			return err;
-	}
-
-	return 0;
+	return tapdisk_image_validate_chain(&vbd->images);
 }
 
 void
 tapdisk_vbd_close_vdi(td_vbd_t *vbd)
 {
-	td_image_t *image, *tmp;
+	tapdisk_image_close_chain(&vbd->images);
 
-	tapdisk_vbd_for_each_image(vbd, image, tmp) {
-		td_close(image);
-		tapdisk_image_free(image);
-	}
-
-	if (vbd->secondary && vbd->secondary_mode != TD_VBD_SECONDARY_MIRROR) {
-		/* in mirror mode the image will have been closed as part of 
-		 * the chain */
-		td_close(vbd->secondary);
-		tapdisk_image_free(vbd->secondary);
-		DPRINTF("Secondary image closed\n");
+	if (vbd->secondary &&
+	    vbd->secondary_mode != TD_VBD_SECONDARY_MIRROR) {
+		tapdisk_image_close(vbd->secondary);
+		vbd->secondary = NULL;
 	}
 
 	if (vbd->retired) {
-		td_close(vbd->retired);
-		tapdisk_image_free(vbd->retired);
-		DPRINTF("Retired mirror image closed\n");
+		tapdisk_image_close(vbd->retired);
+		vbd->retired = NULL;
 	}
 
-	INIT_LIST_HEAD(&vbd->images);
 	td_flag_set(vbd->state, TD_VBD_CLOSED);
 }
 
@@ -341,43 +310,17 @@ tapdisk_vbd_add_secondary(td_vbd_t *vbd, const char *name, int standby)
 		goto fail;
 	}
 
-	second = tapdisk_image_allocate(path, type, leaf->flags);
-	if (!second) {
-		err = -ENOMEM;
-		goto fail;
-	}
-
-	second->driver = tapdisk_driver_allocate(second->type,
-						 second->name,
-						 second->flags);
-
-	if (!second->driver) {
-		err = -ENOMEM;
-		goto fail;
-	}
-
-	second->driver->info = leaf->driver->info;
-
-	/* try to open the secondary image */
-	err = td_open(second);
+	err = tapdisk_image_open(type, path, leaf->flags, &second);
 	if (err)
 		goto fail;
 
 	if (second->info.size != leaf->info.size) {
 		EPRINTF("Secondary image size %lld != image size %lld\n",
-				second->info.size, leaf->info.size);
+			second->info.size, leaf->info.size);
 		err = -EINVAL;
 		goto fail;
 	}
 
-	goto done;
-
-fail:
-	if (second)
-		tapdisk_image_free(second);
-	return err;
-
-done:
 	vbd->secondary = second;
 	leaf->flags |= TD_IGNORE_ENOSPC;
 	if (standby) {
@@ -393,6 +336,11 @@ done:
 
 	DPRINTF("Added secondary image\n");
 	return 0;
+
+fail:
+	if (second)
+		tapdisk_image_close(second);
+	return err;
 }
 
 static void signal_enospc(td_vbd_t *vbd)
@@ -415,6 +363,7 @@ static void signal_enospc(td_vbd_t *vbd)
 	free(fn);
 }
 
+#if 0
 static int
 tapdisk_vbd_open_index(td_vbd_t *vbd)
 {
@@ -454,6 +403,7 @@ fail:
 	free(path);
 	return err;
 }
+#endif
 
 int
 tapdisk_vbd_add_dirty_log(td_vbd_t *vbd)
@@ -496,123 +446,57 @@ fail:
 	return err;
 }
 
-static int
-__tapdisk_vbd_open_vdi(td_vbd_t *vbd, td_flag_t extra_flags)
+int
+tapdisk_vbd_open_vdi(td_vbd_t *vbd, const char *name, td_flag_t flags, int prt_devnum)
 {
-	int err, type;
-	td_disk_id_t id;
-	td_image_t *image, *tmp;
-	struct tfilter *filter = NULL;
+	td_image_t *image = NULL;
+	char *tmp = vbd->name;
+	int err;
 
-	id.flags = (vbd->flags & ~TD_OPEN_SHAREABLE) | extra_flags;
-	id.name  = vbd->name;
-	id.type  = vbd->type;
+	if (!list_empty(&vbd->images)) {
+		err = -EBUSY;
+		goto fail;
+	}
 
-	for (;;) {
-		err   = -ENOMEM;
-		image = tapdisk_image_allocate(id.name, id.type, id.flags);
+	if (!name && !vbd->name) {
+		err = -EINVAL;
+		goto fail;
+	}
 
-		if (id.name != vbd->name) {
-			free(id.name);
-			id.name = NULL;
-		}
-
-		if (!image)
+	if (name) {
+		vbd->name = strdup(name);
+		if (!vbd->name) {
+			err = -errno;
 			goto fail;
-
-		err = td_load(image);
-		if (err) {
-			if (err != -ENODEV)
-				goto fail;
-
-			if (td_flag_test(id.flags, TD_OPEN_VHD_INDEX) &&
-			    td_flag_test(id.flags, TD_OPEN_RDONLY)) {
-				err = tapdisk_vbd_open_index(vbd);
-				if (!err) {
-					tapdisk_image_free(image);
-					image = NULL;
-					break;
-				}
-
-				if (err != -ENOENT)
-					goto fail;
-			}
-
-			err = td_open(image);
-			if (err)
-				goto fail;
-		}
-
-		err = td_get_parent_id(image, &id);
-		if (err && err != TD_NO_PARENT) {
-			td_close(image);
-			goto fail;
-		}
-
-		tapdisk_vbd_add_image(vbd, image);
-		image = NULL;
-
-		if (err == TD_NO_PARENT)
-			break;
-
-		if (id.flags & TD_OPEN_REUSE_PARENT) {
-			free(id.name);
-			err = asprintf(&id.name, "%s%d", BLKTAP2_IO_DEVICE,
-				       vbd->parent_devnum);
-			if (err == -1) {
-				err = ENOMEM;
-				goto fail;
-			}
-			type = DISK_TYPE_AIO;
 		}
 	}
 
-	td_flag_clear(vbd->state, TD_VBD_CLOSED);
-
-	return 0;
-
-fail:
-	if (image)
-		tapdisk_image_free(image);
-
-	tapdisk_vbd_close_vdi(vbd);
-
-	return err;
-}
-
-int
-tapdisk_vbd_open_vdi(td_vbd_t *vbd, int type, const char *path,
-		     td_flag_t flags, int prt_devnum)
-{
-	const disk_info_t *info;
-	int i, err;
-
-	info = tapdisk_disk_types[type];
-	if (!info)
-		return -EINVAL;
-
-	DPRINTF("Loading driver '%s' for vbd %u %s 0x%08x\n",
-		info->name, vbd->uuid, path, flags);
-
-	err = tapdisk_namedup(&vbd->name, path);
-	if (err)
-		return err;
-
-	if (flags & TD_OPEN_REUSE_PARENT)
-		vbd->parent_devnum = prt_devnum;
-
-	vbd->flags   = flags;
-	vbd->type    = type;
-
-	err = __tapdisk_vbd_open_vdi(vbd, 0);
+	err = tapdisk_image_open_chain(vbd->name, flags, prt_devnum, &vbd->images);
 	if (err)
 		goto fail;
 
-	return 0;
+	td_flag_clear(vbd->state, TD_VBD_CLOSED);
+
+	vbd->flags = flags;
+
+	if (tmp != vbd->name)
+		free(tmp);
+
+	return err;
 
 fail:
-	free(vbd->name);
-	vbd->name = NULL;
+	if (vbd->name != tmp) {
+		free(vbd->name);
+		vbd->name = tmp;
+	}
+
+	if (image) {
+		list_del_init(&vbd->images);
+		tapdisk_image_close(image);
+	}
+
+	vbd->flags = 0;
+
 	return err;
 }
 
@@ -731,12 +615,12 @@ fail:
 }
 
 int
-tapdisk_vbd_open(td_vbd_t *vbd, int type, const char *path,
+tapdisk_vbd_open(td_vbd_t *vbd, const char *name,
 		 int minor, const char *ring, td_flag_t flags)
 {
 	int err;
 
-	err = tapdisk_vbd_open_vdi(vbd, type, path, flags, -1);
+	err = tapdisk_vbd_open_vdi(vbd, name, flags, -1);
 	if (err)
 		goto out;
 
@@ -880,18 +764,12 @@ tapdisk_vbd_drop_log(td_vbd_t *vbd)
 }
 
 int
-tapdisk_vbd_get_disk_info(td_vbd_t *vbd, td_disk_info_t *img)
+tapdisk_vbd_get_disk_info(td_vbd_t *vbd, td_disk_info_t *info)
 {
-	td_image_t *image;
-
-	memset(img, 0, sizeof(*img));
-
 	if (list_empty(&vbd->images))
 		return -EINVAL;
 
-	image        = tapdisk_vbd_first_image(vbd);
-	*img         = image->info;
-
+	*info = tapdisk_vbd_first_image(vbd)->info;
 	return 0;
 }
 
@@ -993,7 +871,7 @@ tapdisk_vbd_pause(td_vbd_t *vbd)
 }
 
 int
-tapdisk_vbd_resume(td_vbd_t *vbd, int type, const char *path)
+tapdisk_vbd_resume(td_vbd_t *vbd, const char *name)
 {
 	int i, err;
 
@@ -1004,18 +882,8 @@ tapdisk_vbd_resume(td_vbd_t *vbd, int type, const char *path)
 		return -EINVAL;
 	}
 
-	if (path) {
-		free(vbd->name);
-		vbd->name = strdup(path);
-		if (!vbd->name) {
-			EPRINTF("copying new vbd %s name failed\n", path);
-			return -EINVAL;
-		}
-		vbd->type = type;
-	}
-
 	for (i = 0; i < TD_VBD_EIO_RETRIES; i++) {
-		err = __tapdisk_vbd_open_vdi(vbd, TD_OPEN_STRICT);
+		err = tapdisk_vbd_open_vdi(vbd, name, vbd->flags | TD_OPEN_STRICT, -1);
 		if (!err)
 			break;
 
@@ -1762,17 +1630,9 @@ tapdisk_vbd_resume_ring(td_vbd_t *vbd)
 		goto out;
 	}
 
-	free(vbd->name);
-	vbd->name = strdup(path);
-	if (!vbd->name) {
-		EPRINTF("resume malloc failed\n");
-		err = -ENOMEM;
-		goto out;
-	}
-	vbd->type = type;
-
 	tapdisk_vbd_start_queue(vbd);
-	err = __tapdisk_vbd_open_vdi(vbd, TD_OPEN_STRICT);
+
+	err = tapdisk_vbd_open_vdi(vbd, path, vbd->flags | TD_OPEN_STRICT, -1);
 out:
 	if (!err) {
 		struct blktap2_params params;

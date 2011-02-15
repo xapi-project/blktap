@@ -62,6 +62,25 @@ struct td_image_handle {
 	} stats;
 };
 
+#define tapdisk_for_each_image(_image, _head)			\
+	list_for_each_entry(_image, _head, next)
+
+#define tapdisk_for_each_image_safe(_image, _next, _head)	\
+	list_for_each_entry_safe(_image, _next, _head, next)
+
+#define tapdisk_for_each_image_reverse(_image, _head)		\
+	list_for_each_entry_reverse(_image, _head, next)
+
+#define tapdisk_image_entry(_head)		\
+	list_entry(_head, td_image_t, next)
+
+int tapdisk_image_open(int, const char *, int, td_image_t **);
+void tapdisk_image_close(td_image_t *);
+
+int tapdisk_image_open_chain(const char *, int, int, struct list_head *);
+void tapdisk_image_close_chain(struct list_head *);
+int tapdisk_image_validate_chain(struct list_head *);
+
 td_image_t *tapdisk_image_allocate(const char *, int, td_flag_t);
 void tapdisk_image_free(td_image_t *);
 
