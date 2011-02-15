@@ -178,11 +178,17 @@ td_queue_write(td_image_t *image, td_request_t treq)
 		goto fail;
 	}
 
+	if (!driver->ops->td_queue_write) {
+		err = -EOPNOTSUPP;
+		goto fail;
+	}
+
 	err = tapdisk_image_check_td_request(image, treq);
 	if (err)
 		goto fail;
 
 	driver->ops->td_queue_write(driver, treq);
+
 	return;
 
 fail:
@@ -206,11 +212,17 @@ td_queue_read(td_image_t *image, td_request_t treq)
 		goto fail;
 	}
 
+	if (!driver->ops->td_queue_read) {
+		err = -EOPNOTSUPP;
+		goto fail;
+	}
+
 	err = tapdisk_image_check_td_request(image, treq);
 	if (err)
 		goto fail;
 
 	driver->ops->td_queue_read(driver, treq);
+
 	return;
 
 fail:
