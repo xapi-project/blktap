@@ -61,12 +61,16 @@ typedef struct lcache                   td_lcache_t;
 typedef struct lcache_request           td_lcache_req_t;
 
 struct lcache_request {
-	int                             err;
 	char                           *buf;
-	int                             secs;
+	int                             err;
+
 	td_request_t                    treq;
+	int                             secs;
+
+	td_vbd_request_t                vreq;
+	struct td_iovec                 iov;
+
 	td_lcache_t                    *cache;
-	enum { LC_READ = 1, LC_WRITE }  phase;
 };
 
 struct lcache {
@@ -79,8 +83,6 @@ struct lcache {
 	char                           *buf;
 	size_t                          bufsz;
 };
-
-static void lcache_complete_req(td_request_t, int);
 
 static td_lcache_req_t *
 lcache_alloc_request(td_lcache_t *cache)
@@ -179,12 +181,23 @@ fail:
 	return err;
 }
 
+void
+__lcache_write_cb(td_vbd_request_t *vreq, int error,
+		  void *token, int final)
+{
+	td_lcache_req_t *req = containerof(vreq, td_lcache_req_t, vreq);
+	td_lcache_t *cache = token;
+
+	lcache_free_request(cache, req);
+}
+
 static void
 lcache_complete_read(td_lcache_t *cache, td_lcache_req_t *req)
 {
 	td_vbd_request_t *vreq;
+	struct td_iovec *iov;
 	td_vbd_t *vbd;
-	td_request_t clone;
+	int err;
 
 	vreq = req->treq.vreq;
 	vbd  = vreq->vbd;
@@ -201,53 +214,36 @@ lcache_complete_read(td_lcache_t *cache, td_lcache_req_t *req)
 		return;
 	}
 
-	req->phase   = LC_WRITE;
-	req->secs    = req->treq.secs;
-	req->err     = 0;
+	iov          = &req->iov;
+	iov->base    = req->buf;
+	iov->secs    = req->treq.secs;
 
-	clone         = req->treq;
-	clone.op      = TD_OP_WRITE;
-	clone.buf     = req->buf;
-	clone.cb      = lcache_complete_req;
-	clone.cb_data = req;
-	clone.image   = tapdisk_vbd_first_image(vbd);
+	vreq         = &req->vreq;
+	vreq->op     = TD_OP_WRITE;
+	vreq->sec    = req->treq.sec;
+	vreq->iov    = iov;
+	vreq->iovcnt = 1;
+	vreq->cb     = __lcache_write_cb;
+	vreq->token  = cache;
 
-	td_queue_write(clone.image, clone);
+	vbd = req->treq.vreq->vbd;
+
+	err = tapdisk_vbd_queue_request(vbd, vreq);
+	BUG_ON(err);
 }
 
 static void
-lcache_complete_write(td_lcache_t *cache, td_lcache_req_t *req)
-{
-	lcache_free_request(cache, req);
-}
-
-static void
-lcache_complete_req(td_request_t treq, int err)
+__lcache_read_cb(td_request_t treq, int err)
 {
 	td_lcache_req_t *req = treq.cb_data;
 	td_lcache_t *cache = req->cache;
 
-	BUG_ON(req->secs == 0);
 	BUG_ON(req->secs < treq.secs);
-
 	req->secs -= treq.secs;
 	req->err   = req->err ? : err;
 
-	if (req->secs)
-		return;
-
-	switch (req->phase) {
-	case LC_READ:
+	if (!req->secs)
 		lcache_complete_read(cache, req);
-		break;
-
-	case LC_WRITE:
-		lcache_complete_write(cache, req);
-		break;
-
-	default:
-		BUG();
-	}
 }
 
 static void
@@ -259,25 +255,21 @@ lcache_queue_read(td_driver_t *driver, td_request_t treq)
 	td_request_t clone;
 	td_lcache_req_t *req;
 
-	//DPRINTF("LocalCache: read request! %lld (%d secs)\n", treq.sec, 
-	//treq.secs);
-
 	req = lcache_alloc_request(cache);
 	if (!req) {
-		td_forward_request(treq);
+		td_complete_request(treq, -EBUSY);
 		return;
 	}
 
 	req->treq    = treq;
 	req->cache   = cache;
 
-	req->phase   = LC_READ;
 	req->secs    = req->treq.secs;
 	req->err     = 0;
 
 	clone         = treq;
 	clone.buf     = req->buf;
-	clone.cb      = lcache_complete_req;
+	clone.cb      = __lcache_read_cb;
 	clone.cb_data = req;
 
 out:
