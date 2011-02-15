@@ -1,4 +1,4 @@
-/* 
+/*
  * Copyright (c) 2010, XenSource Inc.
  * All rights reserved.
  *
@@ -50,7 +50,7 @@
 
 #define WARN(_f, _a...) tlog_write(TLOG_WARN, _f, ##_a)
 #define BUG()           td_panic()
-#define BUG_ON(_cond)   if (_cond) { td_panic(); }
+#define BUG_ON(_cond)   if (unlikely(_cond)) { td_panic(); }
 
 #define TD_LCACHE_MAX_REQ               (MAX_REQUESTS*2)
 #define TD_LCACHE_BUFSZ                 (MAX_SEGMENTS_PER_REQ * \
@@ -100,17 +100,59 @@ lcache_free_request(td_lcache_t *cache, td_lcache_req_t *req)
 	cache->free[cache->n_free++] = req;
 }
 
+static void
+lcache_destroy_buffers(td_lcache_t *cache)
+{
+	td_lcache_req_t *req;
+
+	do {
+		req = lcache_alloc_request(cache);
+		if (req)
+			munmap(req->buf, TD_LCACHE_BUFSZ);
+	} while (req);
+}
+
+static int
+lcache_create_buffers(td_lcache_t *cache)
+{
+	int prot, flags, i, err;
+	size_t bufsz;
+
+	prot  = PROT_READ|PROT_WRITE;
+	flags = MAP_ANONYMOUS|MAP_PRIVATE|MAP_LOCKED;
+
+	cache->n_free = 0;
+
+	for (i = 0; i < TD_LCACHE_MAX_REQ; i++) {
+		td_lcache_req_t *req = &cache->reqv[i];
+
+		req->buf = mmap(NULL, TD_LCACHE_BUFSZ, prot, flags, -1, 0);
+		if (req->buf == MAP_FAILED) {
+			req->buf = NULL;
+			err = -errno;
+			goto fail;
+		}
+
+		lcache_free_request(cache, req);
+	}
+
+	return 0;
+
+fail:
+	EPRINTF("Buffer init failure: %d", err);
+	lcache_destroy_buffers(cache);
+	return err;
+}
+
 static int
 lcache_close(td_driver_t *driver)
 {
 	td_lcache_t *cache = driver->data;
 
-	DPRINTF("Closing local cache for %s\n", cache->name);
-
-	if (cache->buf)
-		munmap(cache->buf, cache->bufsz);
+	lcache_destroy_buffers(cache);
 
 	free(cache->name);
+
 	return 0;
 }
 
@@ -122,36 +164,14 @@ lcache_open(td_driver_t *driver, const char *name, td_flag_t flags)
 	int prot, _flags;
 	size_t lreq_bufsz;
 
-	err   = tapdisk_namedup(&cache->name, (char *)name);
+	err  = tapdisk_namedup(&cache->name, (char *)name);
 	if (err)
 		goto fail;
 
-	lreq_bufsz   = MAX_SEGMENTS_PER_REQ * sysconf(_SC_PAGE_SIZE);
-	cache->bufsz = TD_LCACHE_MAX_REQ * lreq_bufsz;
-
-	prot   = PROT_READ|PROT_WRITE;
-	_flags = MAP_ANONYMOUS|MAP_PRIVATE;
-	cache->buf = mmap(NULL, cache->bufsz, prot, _flags, -1, 0);
-	if (cache->buf == MAP_FAILED) {
-		cache->buf == NULL;
-		err = -errno;
+	err = lcache_create_buffers(cache);
+	if (err)
 		goto fail;
-	}
 
-	err = mlock(cache->buf, cache->bufsz);
-	if (err) {
-		err = -errno;
-		goto fail;
-	}
-
-	cache->n_free = TD_LCACHE_MAX_REQ;
-	for (i = 0; i < TD_LCACHE_MAX_REQ; i++) {
-		td_lcache_req_t *req = &cache->reqv[i];
-		req->buf = cache->buf + i * lreq_bufsz;
-		cache->free[i] = req;
-	}
-
-	DPRINTF("Opening local cache for %s\n", cache->name);
 	return 0;
 
 fail:
