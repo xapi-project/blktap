@@ -300,14 +300,6 @@ lcache_validate_parent(td_driver_t *driver,
 	return 0;
 }
 
-static void
-lcache_debug(td_driver_t *driver)
-{
-	td_lcache_t *cache = driver->data;
-
-	WARN("LOCAL CACHE %s\n", cache->name);
-}
-
 struct tap_disk tapdisk_lcache = {
 	.disk_type                  = "tapdisk_lcache",
 	.flags                      = 0,
@@ -317,5 +309,4 @@ struct tap_disk tapdisk_lcache = {
 	.td_queue_read              = lcache_queue_read,
 	.td_get_parent_id           = lcache_get_parent_id,
 	.td_validate_parent         = lcache_validate_parent,
-	.td_debug                   = lcache_debug,
 };
