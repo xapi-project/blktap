@@ -200,7 +200,8 @@ scheduler_event_callback(event_t *event, char mode)
 		event->deadline = now.tv_sec + event->timeout;
 	}
 
-	event->cb(event->id, mode, event->private);
+	if (!event->masked)
+		event->cb(event->id, mode, event->private);
 }
 
 static int
