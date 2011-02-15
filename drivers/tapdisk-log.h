@@ -36,12 +36,13 @@
 #define TLOG_DIR "/var/log/blktap"
 
 #include <stdarg.h>
+#include "compiler.h"
 
 int  tlog_open(const char *, int, int);
 void tlog_close(void);
 void tlog_precious(void);
 void tlog_vsyslog(int, const char *, va_list);
-void tlog_syslog(int, const char *, ...);
+void tlog_syslog(int, const char *, ...) __printf(2, 3);
 
 #include <syslog.h>
 
@@ -49,11 +50,8 @@ void tlog_syslog(int, const char *, ...);
 #define DPRINTF(_f, _a...) syslog(LOG_INFO, _f, ##_a)
 #define PERROR(_f, _a...)  EPRINTF(_f ": %s", ##_a, strerror(errno))
 
-void __tlog_write(int, const char *, ...)
-	__attribute__((format(printf, 2, 3)));
-
-void __tlog_error(const char *fmt, ...)
-	__attribute__((format(printf, 1, 2)));
+void __tlog_write(int, const char *, ...) __printf(2, 3);
+void __tlog_error(const char *fmt, ...) __printf(1, 2);
 
 #define tlog_write(_level, _f, _a...)			\
 	__tlog_write(_level, "%s: " _f,  __func__, ##_a)

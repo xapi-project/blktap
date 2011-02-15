@@ -65,8 +65,7 @@ tlog_logfile_vprint(const char *fmt, va_list ap)
 	tapdisk_logfile_vprintf(&tapdisk_log.logfile, fmt, ap);
 }
 
-static void
-__attribute__((format(printf, 1, 2)))
+static void __printf(1, 2)
 tlog_logfile_print(const char *fmt, ...)
 {
 	va_list ap;

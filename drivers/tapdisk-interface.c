@@ -261,7 +261,7 @@ td_debug(td_image_t *image)
 	tapdisk_driver_debug(driver);
 }
 
-void
+__noreturn void
 td_panic(void)
 {
 	tlog_precious();

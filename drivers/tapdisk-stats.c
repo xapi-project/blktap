@@ -43,7 +43,7 @@ __stats_vsprintf(td_stats_t *st,
 	st->pos += vsnprintf(st->pos, size, fmt, ap);
 }
 
-static void __attribute__((format (printf, 2, 3)))
+static void __printf(2, 3)
 __stats_sprintf(td_stats_t *st,
 		     const char *fmt, ...)
 {
