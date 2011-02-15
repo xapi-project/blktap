@@ -99,9 +99,9 @@ static disk_info_t remus_disk = {
        0,
 };
 
-static const disk_info_t local_cache_disk = {
+static const disk_info_t lcache_disk = {
        "lc",
-       "local cache image (lc)",
+       "local parent cache (lc)",
        DISK_TYPE_FILTER,
 };
 
@@ -123,7 +123,7 @@ const disk_info_t *tapdisk_disk_types[] = {
 	[DISK_TYPE_VINDEX]	= &vhd_index_disk,
 	[DISK_TYPE_LOG]	= &log_disk,
 	[DISK_TYPE_REMUS]	= &remus_disk,
-	[DISK_TYPE_LOCAL_CACHE] = &local_cache_disk,
+	[DISK_TYPE_LCACHE]      = &lcache_disk,
 	[DISK_TYPE_VALVE]       = &valve_disk,
 	0,
 };
@@ -144,7 +144,7 @@ extern struct tap_disk tapdisk_vhd_index;
 #if 0
 extern struct tap_disk tapdisk_log;
 #endif
-extern struct tap_disk tapdisk_local_cache;
+extern struct tap_disk tapdisk_lcache;
 extern struct tap_disk tapdisk_valve;
 
 const struct tap_disk *tapdisk_disk_drivers[] = {
@@ -164,7 +164,7 @@ const struct tap_disk *tapdisk_disk_drivers[] = {
 #if 0
 	[DISK_TYPE_LOG]         = &tapdisk_log,
 #endif
-	[DISK_TYPE_LOCAL_CACHE] = &tapdisk_local_cache,
+	[DISK_TYPE_LCACHE]      = &tapdisk_lcache,
 	[DISK_TYPE_VALVE]       = &tapdisk_valve,
 	0,
 };

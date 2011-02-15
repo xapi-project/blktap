@@ -227,7 +227,7 @@ tapdisk_vbd_add_local_cache(td_vbd_t *vbd)
 	}
 
 	cache = tapdisk_image_allocate(parent->name,
-				       DISK_TYPE_LOCAL_CACHE,
+				       DISK_TYPE_LCACHE,
 				       parent->flags);
 
 	if (!cache)

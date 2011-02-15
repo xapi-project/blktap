@@ -52,52 +52,58 @@
 #define BUG()           td_panic()
 #define BUG_ON(_cond)   if (_cond) { td_panic(); }
 
-#define LOCAL_CACHE_REQUESTS            (MAX_REQUESTS*2)
+#define TD_LCACHE_MAX_REQ               (MAX_REQUESTS*2)
+#define TD_LCACHE_BUFSZ                 (MAX_SEGMENTS_PER_REQ * \
+					 sysconf(_SC_PAGE_SIZE))
 
-typedef struct local_cache              local_cache_t;
 
-struct local_cache_request {
+typedef struct lcache                   td_lcache_t;
+typedef struct lcache_request           td_lcache_req_t;
+
+struct lcache_request {
 	int                             err;
 	char                           *buf;
 	int                             secs;
 	td_request_t                    treq;
-	local_cache_t                  *cache;
+	td_lcache_t                    *cache;
 	enum { LC_READ = 1, LC_WRITE }  phase;
 };
-typedef struct local_cache_request      local_cache_request_t;
 
-struct local_cache {
+struct lcache {
 	char                           *name;
 
-	local_cache_request_t           requests[LOCAL_CACHE_REQUESTS];
-	local_cache_request_t          *request_free_list[LOCAL_CACHE_REQUESTS];
-	int                             requests_free;
+	td_lcache_req_t                 reqv[TD_LCACHE_MAX_REQ];
+	td_lcache_req_t                *free[TD_LCACHE_MAX_REQ];
+	int                             n_free;
 
 	char                           *buf;
 	size_t                          bufsz;
 };
 
-static void local_cache_complete_req(td_request_t, int);
+static void lcache_complete_req(td_request_t, int);
 
-static inline local_cache_request_t *
-local_cache_get_request(local_cache_t *cache)
+static td_lcache_req_t *
+lcache_alloc_request(td_lcache_t *cache)
 {
-	if (!cache->requests_free)
-		return NULL;
+	td_lcache_req_t *req = NULL;
 
-	return cache->request_free_list[--cache->requests_free];
+	if (likely(cache->n_free))
+		req = cache->free[--cache->n_free];
+
+	return req;
 }
 
-static inline void
-local_cache_put_request(local_cache_t *cache, local_cache_request_t *lreq)
+static void
+lcache_free_request(td_lcache_t *cache, td_lcache_req_t *req)
 {
-	cache->request_free_list[cache->requests_free++] = lreq;
+	BUG_ON(cache->n_free >= TD_LCACHE_MAX_REQ);
+	cache->free[cache->n_free++] = req;
 }
 
 static int
-local_cache_close(td_driver_t *driver)
+lcache_close(td_driver_t *driver)
 {
-	local_cache_t *cache = driver->data;
+	td_lcache_t *cache = driver->data;
 
 	DPRINTF("Closing local cache for %s\n", cache->name);
 
@@ -109,9 +115,9 @@ local_cache_close(td_driver_t *driver)
 }
 
 static int
-local_cache_open(td_driver_t *driver, const char *name, td_flag_t flags)
+lcache_open(td_driver_t *driver, const char *name, td_flag_t flags)
 {
-	local_cache_t *cache = driver->data;
+	td_lcache_t *cache = driver->data;
 	int i, err;
 	int prot, _flags;
 	size_t lreq_bufsz;
@@ -121,7 +127,7 @@ local_cache_open(td_driver_t *driver, const char *name, td_flag_t flags)
 		goto fail;
 
 	lreq_bufsz   = MAX_SEGMENTS_PER_REQ * sysconf(_SC_PAGE_SIZE);
-	cache->bufsz = LOCAL_CACHE_REQUESTS * lreq_bufsz;
+	cache->bufsz = TD_LCACHE_MAX_REQ * lreq_bufsz;
 
 	prot   = PROT_READ|PROT_WRITE;
 	_flags = MAP_ANONYMOUS|MAP_PRIVATE;
@@ -138,85 +144,85 @@ local_cache_open(td_driver_t *driver, const char *name, td_flag_t flags)
 		goto fail;
 	}
 
-	cache->requests_free = LOCAL_CACHE_REQUESTS;
-	for (i = 0; i < LOCAL_CACHE_REQUESTS; i++) {
-		local_cache_request_t *lreq = &cache->requests[i];
-		lreq->buf = cache->buf + i * lreq_bufsz;
-		cache->request_free_list[i] = lreq;
+	cache->n_free = TD_LCACHE_MAX_REQ;
+	for (i = 0; i < TD_LCACHE_MAX_REQ; i++) {
+		td_lcache_req_t *req = &cache->reqv[i];
+		req->buf = cache->buf + i * lreq_bufsz;
+		cache->free[i] = req;
 	}
 
 	DPRINTF("Opening local cache for %s\n", cache->name);
 	return 0;
 
 fail:
-	local_cache_close(driver);
+	lcache_close(driver);
 	return err;
 }
 
 static void
-local_cache_complete_read(local_cache_t *cache, local_cache_request_t *lreq)
+lcache_complete_read(td_lcache_t *cache, td_lcache_req_t *req)
 {
 	td_vbd_request_t *vreq;
 	td_vbd_t *vbd;
 	td_request_t clone;
 
-	vreq = lreq->treq.vreq;
+	vreq = req->treq.vreq;
 	vbd  = vreq->vbd;
 
-	if (!lreq->err) {
-		size_t sz = lreq->treq.secs << SECTOR_SHIFT;
-		memcpy(lreq->treq.buf, lreq->buf, sz);
+	if (!req->err) {
+		size_t sz = req->treq.secs << SECTOR_SHIFT;
+		memcpy(req->treq.buf, req->buf, sz);
 	}
 
-	td_complete_request(lreq->treq, lreq->err);
+	td_complete_request(req->treq, req->err);
 
-	if (lreq->err) {
-		local_cache_put_request(cache, lreq);
+	if (req->err) {
+		lcache_free_request(cache, req);
 		return;
 	}
 
-	lreq->phase   = LC_WRITE;
-	lreq->secs    = lreq->treq.secs;
-	lreq->err     = 0;
+	req->phase   = LC_WRITE;
+	req->secs    = req->treq.secs;
+	req->err     = 0;
 
-	clone         = lreq->treq;
+	clone         = req->treq;
 	clone.op      = TD_OP_WRITE;
-	clone.buf     = lreq->buf;
-	clone.cb      = local_cache_complete_req;
-	clone.cb_data = lreq;
+	clone.buf     = req->buf;
+	clone.cb      = lcache_complete_req;
+	clone.cb_data = req;
 	clone.image   = tapdisk_vbd_first_image(vbd);
 
 	td_queue_write(clone.image, clone);
 }
 
 static void
-local_cache_complete_write(local_cache_t *cache, local_cache_request_t *lreq)
+lcache_complete_write(td_lcache_t *cache, td_lcache_req_t *req)
 {
-	local_cache_put_request(cache, lreq);
+	lcache_free_request(cache, req);
 }
 
 static void
-local_cache_complete_req(td_request_t treq, int err)
+lcache_complete_req(td_request_t treq, int err)
 {
-	local_cache_request_t *lreq = treq.cb_data;
-	local_cache_t *cache = lreq->cache;
+	td_lcache_req_t *req = treq.cb_data;
+	td_lcache_t *cache = req->cache;
 
-	BUG_ON(lreq->secs == 0);
-	BUG_ON(lreq->secs < treq.secs);
+	BUG_ON(req->secs == 0);
+	BUG_ON(req->secs < treq.secs);
 
-	lreq->secs -= treq.secs;
-	lreq->err   = lreq->err ? : err;
+	req->secs -= treq.secs;
+	req->err   = req->err ? : err;
 
-	if (lreq->secs)
+	if (req->secs)
 		return;
 
-	switch (lreq->phase) {
+	switch (req->phase) {
 	case LC_READ:
-		local_cache_complete_read(cache, lreq);
+		lcache_complete_read(cache, req);
 		break;
 
 	case LC_WRITE:
-		local_cache_complete_write(cache, lreq);
+		lcache_complete_write(cache, req);
 		break;
 
 	default:
@@ -225,48 +231,48 @@ local_cache_complete_req(td_request_t treq, int err)
 }
 
 static void
-local_cache_queue_read(td_driver_t *driver, td_request_t treq)
+lcache_queue_read(td_driver_t *driver, td_request_t treq)
 {
-	local_cache_t *cache = driver->data;
+	td_lcache_t *cache = driver->data;
 	int err;
 	size_t size;
 	td_request_t clone;
-	local_cache_request_t *lreq;
+	td_lcache_req_t *req;
 
 	//DPRINTF("LocalCache: read request! %lld (%d secs)\n", treq.sec, 
 	//treq.secs);
 
-	lreq = local_cache_get_request(cache);
-	if (!lreq) {
+	req = lcache_alloc_request(cache);
+	if (!req) {
 		td_forward_request(treq);
 		return;
 	}
 
-	lreq->treq    = treq;
-	lreq->cache   = cache;
+	req->treq    = treq;
+	req->cache   = cache;
 
-	lreq->phase   = LC_READ;
-	lreq->secs    = lreq->treq.secs;
-	lreq->err     = 0;
+	req->phase   = LC_READ;
+	req->secs    = req->treq.secs;
+	req->err     = 0;
 
 	clone         = treq;
-	clone.buf     = lreq->buf;
-	clone.cb      = local_cache_complete_req;
-	clone.cb_data = lreq;
+	clone.buf     = req->buf;
+	clone.cb      = lcache_complete_req;
+	clone.cb_data = req;
 
 out:
 	td_forward_request(clone);
 }
 
 static int
-local_cache_get_parent_id(td_driver_t *driver, td_disk_id_t *id)
+lcache_get_parent_id(td_driver_t *driver, td_disk_id_t *id)
 {
 	return -EINVAL;
 }
 
 static int
-local_cache_validate_parent(td_driver_t *driver,
-			    td_driver_t *pdriver, td_flag_t flags)
+lcache_validate_parent(td_driver_t *driver,
+		       td_driver_t *pdriver, td_flag_t flags)
 {
 	if (strcmp(driver->name, pdriver->name))
 		return -EINVAL;
@@ -275,23 +281,21 @@ local_cache_validate_parent(td_driver_t *driver,
 }
 
 static void
-local_cache_debug(td_driver_t *driver)
+lcache_debug(td_driver_t *driver)
 {
-	local_cache_t *cache;
-
-	cache = (local_cache_t *)driver->data;
+	td_lcache_t *cache = driver->data;
 
 	WARN("LOCAL CACHE %s\n", cache->name);
 }
 
-struct tap_disk tapdisk_local_cache = {
-	.disk_type                  = "tapdisk_local_cache",
+struct tap_disk tapdisk_lcache = {
+	.disk_type                  = "tapdisk_lcache",
 	.flags                      = 0,
-	.private_data_size          = sizeof(local_cache_t),
-	.td_open                    = local_cache_open,
-	.td_close                   = local_cache_close,
-	.td_queue_read              = local_cache_queue_read,
-	.td_get_parent_id           = local_cache_get_parent_id,
-	.td_validate_parent         = local_cache_validate_parent,
-	.td_debug                   = local_cache_debug,
+	.private_data_size          = sizeof(td_lcache_t),
+	.td_open                    = lcache_open,
+	.td_close                   = lcache_close,
+	.td_queue_read              = lcache_queue_read,
+	.td_get_parent_id           = lcache_get_parent_id,
+	.td_validate_parent         = lcache_validate_parent,
+	.td_debug                   = lcache_debug,
 };

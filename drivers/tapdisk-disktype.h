@@ -40,7 +40,7 @@
 #define DISK_TYPE_VINDEX      8
 #define DISK_TYPE_LOG         9
 #define DISK_TYPE_REMUS       10
-#define DISK_TYPE_LOCAL_CACHE 11
+#define DISK_TYPE_LCACHE      11
 #define DISK_TYPE_VALVE       12
 
 #define DISK_TYPE_NAME_MAX    32
