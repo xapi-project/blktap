@@ -141,7 +141,6 @@ struct td_vbd_request {
 	void                       *token;
 	const char                 *name;
 
-	int                         status;
 	int                         error;
 	int                         submitting;
 	int                         secs_pending;

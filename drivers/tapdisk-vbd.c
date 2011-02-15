@@ -912,7 +912,7 @@ static void
 tapdisk_vbd_complete_vbd_request(td_vbd_t *vbd, td_vbd_request_t *vreq)
 {
 	if (!vreq->submitting && !vreq->secs_pending) {
-		if (vreq->status == BLKTAP_RSP_ERROR &&
+		if (vreq->error &&
 		    tapdisk_vbd_request_should_retry(vbd, vreq))
 			tapdisk_vbd_move_request(vreq, &vbd->failed_requests);
 		else
@@ -952,8 +952,7 @@ __tapdisk_vbd_complete_td_request(td_vbd_t *vbd, td_vbd_request_t *vreq,
 	}
 
 	if (err) {
-		vreq->status = BLKTAP_RSP_ERROR;
-		vreq->error  = (vreq->error ? : err);
+		vreq->error = (vreq->error ? : err);
 		if (err != -EBUSY) {
 			vbd->errors++;
 			ERR(err, "req %s: %s 0x%04x secs @ 0x%08"PRIx64,
@@ -1179,7 +1178,7 @@ out:
 	return err;
 
 fail:
-	vreq->status = BLKTAP_RSP_ERROR;
+	vreq->error = err;
 	goto out;
 }
 
@@ -1215,7 +1214,6 @@ tapdisk_vbd_reissue_failed_requests(td_vbd_t *vbd)
 		vbd->retries++;
 		vreq->num_retries++;
 		vreq->error  = 0;
-		vreq->status = BLKTAP_RSP_OKAY;
 		DBG(TLOG_DBG, "retry #%d of req %s, "
 		    "sec 0x%08"PRIx64", iovcnt: %d\n", vreq->num_retries,
 		    vreq->name, vreq->sec, vreq->iovcnt);
@@ -1271,12 +1269,12 @@ tapdisk_vbd_kill_requests(td_vbd_t *vbd)
 	td_vbd_request_t *vreq, *tmp;
 
 	tapdisk_vbd_for_each_request(vreq, tmp, &vbd->new_requests) {
-		vreq->status = BLKTAP_RSP_ERROR;
+		vreq->error = -ESHUTDOWN;
 		tapdisk_vbd_move_request(vreq, &vbd->completed_requests);
 	}
 
 	tapdisk_vbd_for_each_request(vreq, tmp, &vbd->failed_requests) {
-		vreq->status = BLKTAP_RSP_ERROR;
+		vreq->error = -ESHUTDOWN;
 		tapdisk_vbd_move_request(vreq, &vbd->completed_requests);
 	}
 

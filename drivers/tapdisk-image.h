@@ -29,7 +29,6 @@
 #define _TAPDISK_IMAGE_H_
 
 #include "tapdisk.h"
-#include "blktap.h"
 
 struct td_image_handle {
 	int                          type;

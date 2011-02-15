@@ -31,7 +31,6 @@
 #include <sys/time.h>
 
 #include "tapdisk.h"
-#include "blktap.h"
 #include "scheduler.h"
 #include "tapdisk-image.h"
 #include "tapdisk-blktap.h"
