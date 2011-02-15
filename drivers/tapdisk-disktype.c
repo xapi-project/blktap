@@ -154,13 +154,19 @@ const struct tap_disk *tapdisk_disk_drivers[] = {
 	0,
 };
 
+#define ARRAY_SIZE(_a) (sizeof(_a)/sizeof((_a)[0]))
+
 int
 tapdisk_disktype_find(const char *name)
 {
-	const disk_info_t *info;
 	int i;
 
-	for (i = 0; info = tapdisk_disk_types[i], info != NULL; ++i) {
+	for (i = 0; i < ARRAY_SIZE(tapdisk_disk_types); i++) {
+		const disk_info_t *info = tapdisk_disk_types[i];
+
+		if (!info)
+			continue;
+
 		if (strcmp(name, info->name))
 			continue;
 
