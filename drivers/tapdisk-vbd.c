@@ -1269,6 +1269,10 @@ tapdisk_vbd_recheck_state(td_vbd_t *vbd)
 	if (list_empty(&vbd->new_requests))
 		return 0;
 
+	if (td_flag_test(vbd->state, TD_VBD_QUIESCED) ||
+	    td_flag_test(vbd->state, TD_VBD_QUIESCE_REQUESTED))
+		return 0;
+
 	tapdisk_vbd_issue_new_requests(vbd);
 
 	return 1;
@@ -1299,6 +1303,10 @@ tapdisk_vbd_issue_requests(td_vbd_t *vbd)
 
 	if (td_flag_test(vbd->state, TD_VBD_DEAD))
 		return tapdisk_vbd_kill_requests(vbd);
+
+	if (td_flag_test(vbd->state, TD_VBD_QUIESCED) ||
+	    td_flag_test(vbd->state, TD_VBD_QUIESCE_REQUESTED))
+		return -EAGAIN;
 
 	err = tapdisk_vbd_reissue_failed_requests(vbd);
 	if (err)
