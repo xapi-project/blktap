@@ -128,13 +128,8 @@ vhd_util_modify(int argc, char **argv)
 		else
 			err = -ENOSYS;
 
-		if (!err) {
-			err = vhd_end_of_headers(&vhd, &newsize);
-			newsize += sizeof(vhd_footer_t);
-		}
-
-		if (!err)
-			err = vhd_set_phys_size(&vhd, newsize);
+		if (!err && !vhd.is_block) // truncate file-based VHDs
+			err = vhd_write_footer(&vhd, &vhd.footer);
 
 		if (err)
 			printf("failed to zero VHD: %d\n", err);
