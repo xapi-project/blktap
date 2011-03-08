@@ -126,7 +126,7 @@ tapdisk_vbd_initialize(int rfd, int wfd, uint16_t uuid)
 	return 0;
 }
 
-int
+static int
 tapdisk_vbd_validate_chain(td_vbd_t *vbd)
 {
 	return tapdisk_image_validate_chain(&vbd->images);
@@ -151,7 +151,7 @@ tapdisk_vbd_close_vdi(td_vbd_t *vbd)
 	td_flag_set(vbd->state, TD_VBD_CLOSED);
 }
 
-int
+static int
 tapdisk_vbd_add_block_cache(td_vbd_t *vbd)
 {
 	int err;
@@ -213,7 +213,7 @@ done:
 	return 0;
 }
 
-int
+static int
 tapdisk_vbd_add_local_cache(td_vbd_t *vbd)
 {
 	int err;
@@ -266,15 +266,15 @@ done:
 }
 
 int
-tapdisk_vbd_add_secondary(td_vbd_t *vbd, const char *name, int standby)
+tapdisk_vbd_add_secondary(td_vbd_t *vbd)
 {
 	td_image_t *leaf, *second = NULL;
 	const char *path;
 	int type, err;
 
-	DPRINTF("Adding secondary image: %s\n", name);
+	DPRINTF("Adding secondary image: %s\n", vbd->secondary_name);
 
-	type = tapdisk_disktype_parse_params(name, &path);
+	type = tapdisk_disktype_parse_params(vbd->secondary_name, &path);
 	if (type < 0)
 		return type;
 
@@ -297,7 +297,7 @@ tapdisk_vbd_add_secondary(td_vbd_t *vbd, const char *name, int standby)
 
 	vbd->secondary = second;
 	leaf->flags |= TD_IGNORE_ENOSPC;
-	if (standby) {
+	if (td_flag_test(vbd->flags, TD_OPEN_STANDBY)) {
 		DPRINTF("In standby mode\n");
 		vbd->secondary_mode = TD_VBD_SECONDARY_STANDBY;
 	} else {
@@ -379,7 +379,7 @@ fail:
 }
 #endif
 
-int
+static int
 tapdisk_vbd_add_dirty_log(td_vbd_t *vbd)
 {
 	int err;
@@ -448,6 +448,34 @@ tapdisk_vbd_open_vdi(td_vbd_t *vbd, const char *name, td_flag_t flags, int prt_d
 	err = tapdisk_image_open_chain(vbd->name, flags, prt_devnum, &vbd->images);
 	if (err)
 		goto fail;
+
+	if (td_flag_test(vbd->flags, TD_OPEN_LOG_DIRTY)) {
+		err = tapdisk_vbd_add_dirty_log(vbd);
+		if (err)
+			goto fail;
+	}
+
+	if (td_flag_test(vbd->flags, TD_OPEN_ADD_CACHE)) {
+		err = tapdisk_vbd_add_block_cache(vbd);
+		if (err)
+			goto fail;
+	}
+
+	if (td_flag_test(vbd->flags, TD_OPEN_LOCAL_CACHE)) {
+		err = tapdisk_vbd_add_local_cache(vbd);
+		if (err)
+			goto fail;
+	}
+
+	err = tapdisk_vbd_validate_chain(vbd);
+	if (err)
+		goto fail;
+
+	if (td_flag_test(vbd->flags, TD_OPEN_SECONDARY)) {
+		err = tapdisk_vbd_add_secondary(vbd);
+		if (err)
+			goto fail;
+	}
 
 	td_flag_clear(vbd->state, TD_VBD_CLOSED);
 

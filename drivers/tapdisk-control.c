@@ -712,50 +712,32 @@ tapdisk_control_open_image(struct tapdisk_ctl_conn *conn,
 		flags |= TD_OPEN_RDONLY;
 	if (request->u.params.flags & TAPDISK_MESSAGE_FLAG_SHARED)
 		flags |= TD_OPEN_SHAREABLE;
+	if (request->u.params.flags & TAPDISK_MESSAGE_FLAG_ADD_CACHE)
+		flags |= TD_OPEN_ADD_CACHE;
 	if (request->u.params.flags & TAPDISK_MESSAGE_FLAG_VHD_INDEX)
 		flags |= TD_OPEN_VHD_INDEX;
+	if (request->u.params.flags & TAPDISK_MESSAGE_FLAG_LOG_DIRTY)
+		flags |= TD_OPEN_LOG_DIRTY;
+	if (request->u.params.flags & TAPDISK_MESSAGE_FLAG_ADD_LCACHE)
+		flags |= TD_OPEN_LOCAL_CACHE;
 	if (request->u.params.flags & TAPDISK_MESSAGE_FLAG_REUSE_PRT)
 		flags |= TD_OPEN_REUSE_PARENT;
+	if (request->u.params.flags & TAPDISK_MESSAGE_FLAG_STANDBY)
+		flags |= TD_OPEN_STANDBY;
+	if (request->u.params.flags & TAPDISK_MESSAGE_FLAG_SECONDARY) {
+		char *name = strdup(request->u.params.secondary);
+		if (!name) {
+			err = -errno;
+			goto out;
+		}
+		vbd->secondary_name = name;
+		flags |= TD_OPEN_SECONDARY;
+	}
 
-	 err = tapdisk_vbd_open_vdi(vbd, request->u.params.path, flags,
-				    request->u.params.prt_devnum);
+	err = tapdisk_vbd_open_vdi(vbd, request->u.params.path, flags,
+				   request->u.params.prt_devnum);
 	if (err)
 		goto out;
-
-	if (request->u.params.flags & TAPDISK_MESSAGE_FLAG_LOG_DIRTY) {
-		err = tapdisk_vbd_add_dirty_log(vbd);
-		if (err)
-			goto fail_close;
-	}
-
-	if (request->u.params.flags & TAPDISK_MESSAGE_FLAG_ADD_CACHE) {
-		err = tapdisk_vbd_add_block_cache(vbd);
-		if (err)
-			goto fail_close;
-	}
-
-	if (request->u.params.flags & TAPDISK_MESSAGE_FLAG_ADD_LCACHE) {
-		err = tapdisk_vbd_add_local_cache(vbd);
-		if (err)
-			goto fail_close;
-	}
-
-	if (request->u.params.flags & TAPDISK_MESSAGE_FLAG_SECONDARY) {
-		const char *name;
-		int standby;
-		name     = request->u.params.secondary;
-		standby  = request->u.params.flags;
-		standby &= TAPDISK_MESSAGE_FLAG_STANDBY;
-		standby  = !!standby;
-
-		err = tapdisk_vbd_add_secondary(vbd, name, standby);
-		if (err)
-			goto fail_close;
-	}
-
-	err = tapdisk_vbd_validate_chain(vbd);
-	if (err)
-		goto fail_close;
 
 	err = tapdisk_vbd_get_disk_info(vbd, &info);
 	if (err)
