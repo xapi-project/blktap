@@ -2371,11 +2371,12 @@ vhd_debug(td_driver_t *driver)
 	DBG(TLOG_WARN, "ALLOCATED REQUESTS: (%u total)\n", VHD_REQS_DATA);
 	for (i = 0; i < VHD_REQS_DATA; i++) {
 		struct vhd_request *r = &s->vreq_list[i];
+		const char *vname     = t->vreq ? t->vreq->name: NULL;
 		td_request_t *t       = &r->treq;
 		if (t->secs)
 			DBG(TLOG_WARN, "%d: vreq: %s.%d, err: %d, op: %d,"
 			    " lsec: 0x%08"PRIx64", flags: %d, this: %p, "
-			    "next: %p, tx: %p\n", i, t->vreq->name, t->sidx, r->error, r->op,
+			    "next: %p, tx: %p\n", i, vname, t->sidx, r->error, r->op,
 			    t->sec, r->flags, r, r->next, r->tx);
 	}
 
