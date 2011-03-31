@@ -355,7 +355,7 @@ tapdisk_image_open_x_chain(const char *path, struct list_head *_head)
 {
 	struct list_head head = LIST_HEAD_INIT(head);
 	td_image_t *image = NULL, *next;
-	regex_t _im, *im, _ws, *ws;
+	regex_t _im, *im = NULL, _ws, *ws = NULL;
 	FILE *s;
 	int err;
 
