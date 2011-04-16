@@ -449,6 +449,9 @@ tapdisk_vbd_open_vdi(td_vbd_t *vbd, const char *name, td_flag_t flags, int prt_d
 	if (err)
 		goto fail;
 
+	td_flag_clear(vbd->state, TD_VBD_CLOSED);
+	vbd->flags = flags;
+
 	if (td_flag_test(vbd->flags, TD_OPEN_LOG_DIRTY)) {
 		err = tapdisk_vbd_add_dirty_log(vbd);
 		if (err)
@@ -476,10 +479,6 @@ tapdisk_vbd_open_vdi(td_vbd_t *vbd, const char *name, td_flag_t flags, int prt_d
 		if (err)
 			goto fail;
 	}
-
-	td_flag_clear(vbd->state, TD_VBD_CLOSED);
-
-	vbd->flags = flags;
 
 	if (tmp != vbd->name)
 		free(tmp);
