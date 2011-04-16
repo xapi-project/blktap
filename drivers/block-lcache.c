@@ -33,7 +33,9 @@
 #include <fcntl.h>
 #include <unistd.h>
 #include <stdlib.h>
+#include <limits.h>
 #include <sys/mman.h>
+#include <sys/vfs.h>
 
 #include "vhd.h"
 #include "tapdisk.h"
@@ -42,15 +44,21 @@
 #include "tapdisk-server.h"
 #include "tapdisk-interface.h"
 
+#define DEBUG 1
+
 #ifdef DEBUG
 #define DBG(_f, _a...) tlog_write(TLOG_DBG, _f, ##_a)
 #else
 #define DBG(_f, _a...) ((void)0)
 #endif
-
-#define WARN(_f, _a...) tlog_write(TLOG_WARN, _f, ##_a)
+#define WARN(_f, _a...) tlog_syslog(TLOG_WARN, "WARNING: "_f "in %s:%d", \
+				    ##_a, __func__, __LINE__)
+#define INFO(_f, _a...) tlog_syslog(TLOG_INFO, _f, ##_a)
 #define BUG()           td_panic()
 #define BUG_ON(_cond)   if (unlikely(_cond)) { td_panic(); }
+#define WARN_ON(_p)     if (unlikely(_cond)) { WARN(_cond); }
+
+#define MIN(a, b)       ((a) < (b) ? (a) : (b))
 
 #define TD_LCACHE_MAX_REQ               (MAX_REQUESTS*2)
 #define TD_LCACHE_BUFSZ                 (MAX_SEGMENTS_PER_REQ * \
@@ -82,6 +90,9 @@ struct lcache {
 
 	char                           *buf;
 	size_t                          bufsz;
+
+	int                             wr_en;
+	struct timeval                  ts;
 };
 
 static td_lcache_req_t *
@@ -174,6 +185,9 @@ lcache_open(td_driver_t *driver, const char *name, td_flag_t flags)
 	if (err)
 		goto fail;
 
+	timerclear(&cache->ts);
+	cache->wr_en = 1;
+
 	return 0;
 
 fail:
@@ -181,38 +195,80 @@ fail:
 	return err;
 }
 
-void
+/*
+ * NB. lcache->{wr_en,ts}: test free space in the caching SR before
+ * attempting to store our reads. VHD block allocation writes on Ext3
+ * have the nasty property of blocking excessively after running out
+ * of space. We therefore enable/disable ourselves at a 1/s
+ * granularity, querying free space through statfs beforehand.
+ */
+
+static long
+lcache_fs_bfree(const td_lcache_t *cache, long *bsize)
+{
+	struct statfs fst;
+	int err;
+
+	err = statfs(cache->name, &fst);
+	if (err)
+		return err;
+
+	if (likely(bsize))
+		*bsize = fst.f_bsize;
+
+	return MIN(fst.f_bfree, LONG_MAX);
+}
+
+static int
+__lcache_wr_enabled(const td_lcache_t *cache)
+{
+	long threshold = 2<<20; /* B */
+	long bfree, bsz = 1;
+	int enable;
+
+	bfree  = lcache_fs_bfree(cache, &bsz);
+	enable = bfree > threshold / bsz;
+
+	return enable;
+}
+
+static int
+lcache_wr_enabled(td_lcache_t *cache)
+{
+	const int timeout = 1; /* s */
+	struct timeval now, delta;
+
+	gettimeofday(&now, NULL);
+	timersub(&now, &cache->ts, &delta);
+
+	if (delta.tv_sec >= timeout) {
+		cache->wr_en = __lcache_wr_enabled(cache);
+		cache->ts    = now;
+	}
+
+	return cache->wr_en;
+}
+
+static void
 __lcache_write_cb(td_vbd_request_t *vreq, int error,
 		  void *token, int final)
 {
 	td_lcache_req_t *req = containerof(vreq, td_lcache_req_t, vreq);
 	td_lcache_t *cache = token;
 
+	if (error == -ENOSPC)
+		cache->wr_en = 0;
+
 	lcache_free_request(cache, req);
 }
 
 static void
-lcache_complete_read(td_lcache_t *cache, td_lcache_req_t *req)
+lcache_store_read(td_lcache_t *cache, td_lcache_req_t *req)
 {
 	td_vbd_request_t *vreq;
 	struct td_iovec *iov;
 	td_vbd_t *vbd;
 	int err;
-
-	vreq = req->treq.vreq;
-	vbd  = vreq->vbd;
-
-	if (!req->err) {
-		size_t sz = req->treq.secs << SECTOR_SHIFT;
-		memcpy(req->treq.buf, req->buf, sz);
-	}
-
-	td_complete_request(req->treq, req->err);
-
-	if (req->err) {
-		lcache_free_request(cache, req);
-		return;
-	}
 
 	iov          = &req->iov;
 	iov->base    = req->buf;
@@ -230,6 +286,28 @@ lcache_complete_read(td_lcache_t *cache, td_lcache_req_t *req)
 
 	err = tapdisk_vbd_queue_request(vbd, vreq);
 	BUG_ON(err);
+}
+
+static void
+lcache_complete_read(td_lcache_t *cache, td_lcache_req_t *req)
+{
+	td_vbd_request_t *vreq;
+
+	vreq = req->treq.vreq;
+
+	if (likely(!req->err)) {
+		size_t sz = req->treq.secs << SECTOR_SHIFT;
+		memcpy(req->treq.buf, req->buf, sz);
+	}
+
+	td_complete_request(req->treq, req->err);
+
+	if (unlikely(req->err) || !lcache_wr_enabled(cache)) {
+		lcache_free_request(cache, req);
+		return;
+	}
+
+	lcache_store_read(cache, req);
 }
 
 static void
