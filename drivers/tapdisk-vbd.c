@@ -689,7 +689,7 @@ tapdisk_vbd_queue_ready(td_vbd_t *vbd)
 int
 tapdisk_vbd_retry_needed(td_vbd_t *vbd)
 {
-	return !(list_empty(&vbd->failed_requests) ||
+	return !(list_empty(&vbd->failed_requests) &&
 		 list_empty(&vbd->new_requests));
 }
 
