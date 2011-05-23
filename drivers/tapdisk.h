@@ -147,6 +147,8 @@ struct td_vbd_request {
 	const char                 *name;
 
 	int                         error;
+	int                         prev_error;
+
 	int                         submitting;
 	int                         secs_pending;
 	int                         num_retries;

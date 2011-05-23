@@ -65,7 +65,6 @@
 #define ASSERT(p) ((void)0)
 #endif 
 
-
 #define TD_VBD_EIO_RETRIES          10
 #define TD_VBD_EIO_SLEEP            1
 #define TD_VBD_WATCHDOG_TIMEOUT     10
@@ -826,7 +825,8 @@ __tapdisk_vbd_request_timeout(td_vbd_request_t *vreq,
 
 	timeout = tapdisk_vbd_request_ttl(vreq, now) < 0;
 	if (timeout)
-		DBG(TLOG_INFO, "req %s timed out, retried %d times\n",
+		ERR(vreq->error,
+		    "req %s timed out, retried %d times\n",
 		    vreq->name, vreq->num_retries);
 
 	return timeout;
@@ -979,14 +979,17 @@ __tapdisk_vbd_complete_td_request(td_vbd_t *vbd, td_vbd_request_t *vreq,
 	}
 
 	if (err) {
-		vreq->error = (vreq->error ? : err);
 		if (err != -EBUSY) {
+			if (!vreq->error &&
+			    err != vreq->prev_error)
+				tlog_drv_error(image->driver, err,
+					       "req %s: %s 0x%04x secs @ 0x%08"PRIx64,
+					       vreq->name,
+					       (treq.op == TD_OP_WRITE ? "write" : "read"),
+					       treq.secs, treq.sec);
 			vbd->errors++;
-			ERR(err, "req %s: %s 0x%04x secs @ 0x%08"PRIx64,
-			    vreq->name,
-			    (treq.op == TD_OP_WRITE ? "write" : "read"),
-			    treq.secs, treq.sec);
 		}
+		vreq->error = (vreq->error ? : err);
 	}
 
 	tapdisk_vbd_complete_vbd_request(vbd, vreq);
@@ -1240,7 +1243,10 @@ tapdisk_vbd_reissue_failed_requests(td_vbd_t *vbd)
 
 		vbd->retries++;
 		vreq->num_retries++;
-		vreq->error  = 0;
+
+		vreq->prev_error = vreq->error;
+		vreq->error      = 0;
+
 		DBG(TLOG_DBG, "retry #%d of req %s, "
 		    "sec 0x%08"PRIx64", iovcnt: %d\n", vreq->num_retries,
 		    vreq->name, vreq->sec, vreq->iovcnt);
