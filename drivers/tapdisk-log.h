@@ -60,4 +60,9 @@ void __tlog_error(const char *fmt, ...) __printf(1, 2);
 	__tlog_error("ERROR: errno %d at %s: " _f,	\
 		     _err, __func__, ##_a)
 
+#define tlog_drv_error(_drv, _err, _f, _a ...) do {	\
+	if (tapdisk_driver_log_pass(_drv, __func__))	\
+		tlog_error(_err, _f, ##_a);		\
+} while (0)
+
 #endif

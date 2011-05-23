@@ -34,6 +34,38 @@
 #include "tapdisk-disktype.h"
 #include "tapdisk-stats.h"
 
+static void
+tapdisk_driver_log_flush(td_driver_t *driver, const char *__caller)
+{
+	td_loglimit_t *rl = &driver->loglimit;
+
+	if (rl->dropped) {
+		tlog_syslog(LOG_WARNING,
+			    "%s: %s: %d messages suppressed",
+			    driver->name, __caller, rl->dropped);
+		rl->dropped = 0;
+	}
+}
+
+int
+tapdisk_driver_log_pass(td_driver_t *driver, const char *__caller)
+{
+	td_loglimit_t *rl = &driver->loglimit;
+	int dropping = rl->dropped;
+
+	if (tapdisk_loglimit_pass(rl)) {
+		tapdisk_driver_log_flush(driver, __caller);
+		return 1;
+	}
+
+	if (!dropping)
+		tlog_syslog(LOG_WARNING,
+			    "%s: %s: too many errors, dropped.",
+			    driver->name, __caller);
+
+	return 0;
+}
+
 td_driver_t *
 tapdisk_driver_allocate(int type, const char *name, td_flag_t flags)
 {
@@ -63,6 +95,10 @@ tapdisk_driver_allocate(int type, const char *name, td_flag_t flags)
 	if (td_flag_test(flags, TD_OPEN_RDONLY))
 		td_flag_set(driver->state, TD_DRIVER_RDONLY);
 
+	tapdisk_loglimit_init(&driver->loglimit,
+			      16 /* msgs */,
+			      90 * 1000 /* ms */);
+
 	return driver;
 
 fail:
@@ -84,6 +120,8 @@ tapdisk_driver_free(td_driver_t *driver)
 	if (td_flag_test(driver->state, TD_DRIVER_OPEN))
 		EPRINTF("freeing open driver %s (state 0x%08x)\n",
 			driver->name, driver->state);
+
+	tapdisk_driver_log_flush(driver, __func__);
 
 	free(driver->name);
 	free(driver->data);
