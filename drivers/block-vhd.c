@@ -99,15 +99,15 @@ unsigned int SPB;
 
 #if (DEBUGGING == 1)
   #define DBG(level, _f, _a...)      DPRINTF(_f, ##_a)
-  #define ERR(err, _f, _a...)        DPRINTF("ERROR: %d: " _f, err, ##_a)
+  #define ERR(_s, err, _f, _a...)    DPRINTF("ERROR: %d: " _f, err, ##_a)
   #define TRACE(s)                   ((void)0)
 #elif (DEBUGGING == 2)
   #define DBG(level, _f, _a...)      tlog_write(level, _f, ##_a)
-  #define ERR(err, _f, _a...)	     tlog_error(err, _f, ##_a)
+  #define ERR(_s, _err, _f, _a...)   tlog_drv_error((_s)->driver, _err, _f, ##_a)
   #define TRACE(s)                   __TRACE(s)
 #else
   #define DBG(level, _f, _a...)      ((void)0)
-  #define ERR(err, _f, _a...)        ((void)0)
+  #define ERR(_s, err, _f, _a...)    ((void)0)
   #define TRACE(s)                   ((void)0)
 #endif
 
@@ -1500,7 +1500,7 @@ allocate_block(struct vhd_state *s, uint32_t blk)
 	    blk, s->bat.pbw_offset);
 
 	if (lseek(s->vhd.fd, offset, SEEK_SET) == (off_t)-1) {
-		ERR(errno, "lseek failed\n");
+		ERR(s, -errno, "lseek failed\n");
 		return -errno;
 	}
 
@@ -1508,7 +1508,7 @@ allocate_block(struct vhd_state *s, uint32_t blk)
 	count = write(s->vhd.fd, vhd_zeros(size), size);
 	if (count != size) {
 		err = count < 0 ? -errno : -ENOSPC;
-		ERR(errno,
+		ERR(s, -errno,
 		    "write failed (%zd, offset %"PRIu64")\n", count, offset);
 		return err;
 	}
@@ -2164,7 +2164,7 @@ finish_redundant_bm_write(struct vhd_request *req)
 	   DBG(TLOG_DBG, "blk: %u\n", blk); */
 
 	if (req->error) {
-		ERR(req->error, "lsec: 0x%08"PRIx64, req->treq.sec);
+		ERR(s, req->error, "lsec: 0x%08"PRIx64, req->treq.sec);
 	}
 	free_vhd_request(s, req);
 	s->debug_done_redundant_writes++;
@@ -2313,7 +2313,7 @@ vhd_complete(void *arg, struct tiocb *tiocb, int err)
 	req->error = err;
 
 	if (req->error)
-		ERR(req->error, "%s: op: %u, lsec: %"PRIu64", secs: %u, "
+		ERR(s, req->error, "%s: op: %u, lsec: %"PRIu64", secs: %u, "
 		    "nbytes: %lu, blk: %"PRIu64", blk_offset: %u",
 		    s->vhd.file, req->op, req->treq.sec, req->treq.secs,
 		    io->u.c.nbytes, req->treq.sec / s->spb,
