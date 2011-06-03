@@ -1,0 +1,190 @@
+
+SYNOPSIS
+
+    td-rated <name> -type {token|leaky|meminfo} -- [options]
+
+DESCRIPTION
+
+    The td-rated 'bridge' is a daemon program to which one or a number
+    of tapdisk processes connect, in order to cooperatively limit the
+    data rate at which they will issue I/O requests to physical
+    storage.
+
+    A data rate denotes I/O bandwidth, i.e. an (average) amount of
+    data over time. A rate limiter is a state machine dispatching an
+    overall queue of incoming I/O requests, at a desired data rate.
+
+    The td-rated program included a number of alternative rate
+    limiting algorithms for various purposes. Rate limiters are
+    discussed below.
+
+    The standard client implementation in tapdisk is a transparent
+    filter driver, of type name 'valve'. Valves are typically inserted
+    at either the top of certain level of the disk image stack
+    constituting a VDI, thereby uniformly limiting any I/O issued.
+
+    Every bridge process constitutes a single rate limiter. Arbitrary
+    numbers of client valves can connect to each bridge. I/O requests
+    issued by clients are normally aggregated, dividing the available
+    bandwidth among all active clients.
+
+OPTIONS
+
+    Token Bucket
+
+	Token bucket is a rate limiter which drains a request queue of
+	pending I/O requests at a given overall data rate. It is
+	invoked as follows:
+
+	td-rated -t token -- ..
+
+	--rate <limit>
+		Bandwidth limit [B/s].
+
+	--cap <limit>
+		Burst (aggregated credit) limit [B].
+
+	Token bucket's main feature over basic constant-rate
+	algorithms (leaky buckets) is that it allows for I/O
+	bursts. Bursts are batches of data request, which are
+	preferably issued simultaneously to reduce the overall number
+	of seeks involved on shared rotational media. 
+
+	With bursty I/O transfers, bandwidth may transiently exceed
+	the nominal data rate, but in a controlled fashion. Different
+	from a constant rate output, the I/O output rate is maintained
+	as an average over periods of time.
+
+	Internally, bursts issued at any time instant consume
+	bandwidth credit ('tokens'). Credit gets accumulated, at the
+	given rate, over time. Once exhausted, credit taken must be
+	amortized before additional I/O can pass. That is, while the
+	rate set will limit an output data rate, it does so only
+	indirectly, by limiting the rate at which new credit is
+	assigned.
+
+	The cap argument is a limit to accumulated credit. Excess
+	credit above the given capacity will be discarded. Caps limit
+	the maximum burst size observable. The maximum only becomes
+	available whenever all clients remained idle for for a time
+	perid of cap/rate.
+
+	A token bucket allows for bursts, it does not promote or
+	enforce them at. Once configured bandwidth credit is exeeded,
+	amortization time is applied to client request batches
+	individually, in the order in which they were issued, and
+	output will effectively degrade to a constant data rate.
+ 
+    Leaky Bucket
+
+	Leaky bucket is a simpler constant rate algorithm. Requests
+	are issued in a round-robin fashion. The given rate is never
+	exceeded, so requests.
+
+	This is presently equivalent to a token bucket with a cap
+	value of zero, and therefore implemented accordingly.
+
+	td-rated -t leaky -- ..
+
+        --rate <limit>
+		Bandwidth limit [B/s].
+
+    Meminfo Driver
+
+	Meminfo is an experimental rate limiting driver aiming
+	specifically at write bandwidth reduction for tapdisk I/O
+	modes targeting the host OS buffer cache. It is invoked as
+	follows
+
+	td-rated -t meminfo -- ..
+	
+	--high <limit>
+	        [% of total memory]
+
+	--low <limit>
+	        [% of total memory]
+
+	[--period <time>]
+		Memory stats update period [ms]
+		Default: 100
+
+	-t <type> ...
+		Subordinate rate limiter type.
+
+	-- [ subordinate options .. ]
+
+	Where the subordinate type and options typically invokes one
+	of the basic rate-oriented algorithms described above.
+
+	Memory limits are not bandwidth limits, but cache utilization
+	bounds aimed to be met. The arguments to --high and --low
+	options are watermarks setting hysteresis limits on domain OS
+	cache utilization detected. They are defined in percent of
+	total memory available to the domain OS.
+	
+	The driver periodically scans OS memory statistics to estimate
+	present host buffer I/O loads. By default a state update is
+	performed every 100ms.
+
+	The cache is considered underutilized while the amount of
+	memory either modified, or under writeback, does not exceed
+	the percentage indicated by --high. In that state, I/O will
+	pass unrestricted.
+
+	Once the --high limit is exceeded, a congestion mode of
+	operation is entered, where the output data rate is
+	reduced. That state prevails until the cache is detected
+	underutilized again, at a value below or equal the --low
+	watermark.
+
+	Meminfo rate limiting is driven by overall domain state,
+	commonly involving applications not sharing the same domain of
+	bandwidth arbitration. I/O can therefore only be throttled,
+	not blocked, or would risk starvation. For that purpose, the
+	meminfo driver requires a (configurable) subordinate rate
+	limiter. This may be any of the raw bandwidth-oriented
+	implementations available.
+
+    Limit Formats
+
+        I/O size and limit values specified at td-rated invocation
+        time are integers in units of bytes, or integers as multiples
+        of units given in either SI decimal (K,M,G) or IEC binary
+        (Ki,Mi,Gi) suffix notation, e.g. 10k (10 * 2^10 B), 128Mi (128
+        * 10^6 B), 1Gi (1 * 10^9 B).
+
+EXAMPLES
+
+    Invocations
+ 
+	td-rated /var/run/blktap/x.sk -t leaky -- \
+		--rate=60M
+
+	  Constant-rate output rate limit at 60M/s. Listening for
+	  client connections at /var/run/blktap/x.sk.
+
+	td-rated /var/run/blktap/y.sk -t token -- \
+		--rate=80M --cap 10M
+
+	  Token bucket rate limiting at 80M/s with a burst limit of 10M.
+	
+	td-rated /var/run/blktap/y.sk -t meminfo -- \
+		--low=40 --high=60 -t leaky -- --rate=15M
+
+	  Buffer I/O rate limiting with a high/low cache utilization
+	  watermark of 60%/40% of host memory. Once the upper limit is
+	  met, constant rate output targeting a limit of 10M/s is
+	  applied.
+
+    Image Chain
+
+	tap-ctl create x-chain:/var/tmp/limit.chain
+
+	/var/tmp/limit.chain:
+		valve:/var/run/blktap/x.sk
+		vhd:/dev/vg/image.vhd
+
+BUGS
+
+    The -t leaky type isn't really aliased yet properly.
+    Use the form -t token -- --cap=0 instead.
