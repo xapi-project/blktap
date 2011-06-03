@@ -63,9 +63,9 @@ static int debug = 0;
 
 #define DBG(_l, _f, _a...) if (debug >= _l) { rlb_log(LOG_DEBUG, _f, ##_a); }
 #define INFO(_f, _a...)    rlb_log(LOG_INFO, _f, ##_a)
-#define WARN(_f, _a...)    rlb_log(LOG_WARNING, "WARNING: " _f " in %s:%d", \
+#define WARN(_f, _a...)    rlb_log(LOG_WARNING, "WARNING: " _f ", in %s:%d", \
 				   ##_a, __func__, __LINE__)
-#define ERR(_f, _a...)     rlb_log(LOG_ERR, "ERROR: " _f " in %s:%d", \
+#define ERR(_f, _a...)     rlb_log(LOG_ERR, "ERROR: " _f ", in %s:%d", \
 				   ##_a, __func__, __LINE__)
 #define PERROR(_f, _a...)  rlb_log(LOG_ERR, _f ": %s in %s:%d", \
 				   ##_a, strerror(errno), __func__, __LINE__)
@@ -202,22 +202,22 @@ rlb_strtol(const char *s)
 		case 'i':
 			switch (p) {
 			case_G:
-				u *= 1000;
+				u *= 1024;
 			case_M:
-				u *= 1000;
+				u *= 1024;
 			case_K:
-				u *= 1000;
+				u *= 1024;
 			}
 			break;
 
 		case 0:
 			switch (p) {
 			case_G:
-				u *= 1024;
+				u *= 1000;
 			case_M:
-				u *= 1024;
+				u *= 1000;
 			case_K:
-				u *= 1024;
+				u *= 1000;
 			}
 			break;
 
@@ -395,8 +395,13 @@ rlb_sock_open(td_rlb_t *rlb)
 	rlb->sock = s;
 
 	rlb->addr.sun_family = AF_UNIX;
-	snprintf(rlb->addr.sun_path, sizeof(rlb->addr.sun_path),
-		 "%s/%s", TD_VALVE_SOCKDIR, rlb->name);
+
+	if (rlb->name[0] == '/')
+		strncpy(rlb->addr.sun_path, rlb->name,
+			sizeof(rlb->addr.sun_path));
+	else
+		snprintf(rlb->addr.sun_path, sizeof(rlb->addr.sun_path),
+			 "%s/%s", TD_VALVE_SOCKDIR, rlb->name);
 
 	err = bind(rlb->sock, &rlb->addr, sizeof(rlb->addr));
 	if (err) {
@@ -1023,7 +1028,7 @@ rlb_meminfo_usage(td_rlb_t *rlb, FILE *stream, void *data)
 
 	fprintf(stream,
 		" {-t|--type}=meminfo "
-		" {-H|--high}=<percent> {-l|--low}=<percent>"
+		" {-H|--high}=<percent> {-L|--low}=<percent>"
 		" {-p|--period}=<msecs> --");
 
 	if (m && m->valve.ops) {
@@ -1057,6 +1062,7 @@ rlb_meminfo_create(td_rlb_t *rlb, int argc, char **argv, void **data)
 
 	m = calloc(1, sizeof(*m));
 	if (!m) {
+		PERROR("calloc");
 		err = -errno;
 		goto fail;
 	}
@@ -1105,11 +1111,6 @@ rlb_meminfo_create(td_rlb_t *rlb, int argc, char **argv, void **data)
 		}
 	} while (1);
 
-	if (!type) {
-		ERR("--type required");
-		goto usage;
-	}
-
 	if (!m->limit_hi || !m->limit_lo) {
 		ERR("--high/--low required");
 		goto usage;
@@ -1120,9 +1121,15 @@ rlb_meminfo_create(td_rlb_t *rlb, int argc, char **argv, void **data)
 		goto usage;
 	}
 
+	if (!type) {
+		ERR("(sub) --type required");
+		goto usage;
+	}
+
 	dbr = sysctl_strtoul("vm/dirty_background_ratio");
 	if (dbr < 0) {
 		err = dbr;
+		ERR("vm/dirty_background_ratio: %d", err);
 		goto fail;
 	}
 
@@ -1145,14 +1152,15 @@ rlb_meminfo_create(td_rlb_t *rlb, int argc, char **argv, void **data)
 	}
 
 	err = rlb_meminfo_scan(m);
-	if (err)
+	if (err) {
+		PERROR("/proc/meminfo");
 		goto fail;
+	}
 
 	return 0;
 
 fail:
-	rlb_meminfo_destroy(rlb, m);
-	WARN("err = %d", err);
+	ERR("err = %d", err);
 	return err;
 
 usage:
@@ -1578,6 +1586,7 @@ rlb_create_valve(td_rlb_t *rlb, struct rlb_valve *v,
 
 	ops = rlb_find_valve(name);
 	if (!ops) {
+		ERR("No such driver: %s", name);
 		err = -ESRCH;
 		goto fail;
 	}
