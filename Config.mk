@@ -13,6 +13,8 @@ CONFIG_$(BLKTAP_OS) := y
 SHELL     ?= /bin/sh
 
 DESTDIR     ?= /
+SBINDIR     ?= usr/sbin
+SYSCONFDIR  ?= etc
 
 include $(BLKTAP_ROOT)/config/$(BLKTAP_OS).mk
 include $(BLKTAP_ROOT)/config/$(BLKTAP_TARGET_ARCH).mk

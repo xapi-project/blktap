@@ -1066,6 +1066,7 @@ vhd_util_check_vhd(struct vhd_util_check_ctx *ctx, const char *name)
 
 	fd = -1;
 	memset(&vhd, 0, sizeof(vhd));
+	memset(&footer, 0, sizeof(footer));
 
 	err = stat(name, &stats);
 	if (err == -1) {

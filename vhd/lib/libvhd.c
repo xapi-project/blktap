@@ -40,6 +40,8 @@
 #include <libgen.h>
 #include <iconv.h>
 #include <sys/mman.h>
+#include <sys/stat.h>
+#include <sys/types.h>
 
 #include "libvhd.h"
 #include "relative-path.h"

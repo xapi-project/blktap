@@ -327,7 +327,7 @@ static void signal_enospc(td_vbd_t *vbd)
 		return;
 	}
 
-	fd = open(fn, O_WRONLY | O_CREAT | O_NONBLOCK);
+	fd = open(fn, O_WRONLY | O_CREAT | O_NONBLOCK, 0666);
 	if (fd == -1)
 		EPRINTF("Failed to open file to signal ENOSPC condition\n");
 	else

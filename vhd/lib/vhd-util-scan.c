@@ -37,6 +37,8 @@
 #include <unistd.h>
 #include <fnmatch.h>
 #include <syslog.h>
+#include <sys/stat.h>
+#include <sys/types.h>
 
 #include "list.h"
 #include "libvhd.h"
