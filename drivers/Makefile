@@ -42,7 +42,6 @@ TAP-OBJS  += tapdisk-filter.o
 TAP-OBJS  += tapdisk-logfile.o
 TAP-OBJS  += tapdisk-log.o
 TAP-OBJS  += tapdisk-utils.o
-TAP-OBJS  += tapdisk-disktype.o
 TAP-OBJS  += tapdisk-syslog.o
 TAP-OBJS  += tapdisk-stats.o
 TAP-OBJS  += tapdisk-storage.o
