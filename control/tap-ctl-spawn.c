@@ -119,6 +119,12 @@ tap_ctl_wait(pid_t child)
 	if (WIFSIGNALED(status)) {
 		int signo = WTERMSIG(status);
 		EPRINTF("tapdisk2[%d] killed by signal %d\n", child, signo);
+		if (signo == SIGUSR1)
+			/* NB. there's a race between tapdisk's
+			 * sigaction init and xen-bugtool shooting
+			 * debug signals. If killed by something as
+			 * innocuous as USR1, then retry. */
+			return -EAGAIN;
 		return -EINTR;
 	}
 
@@ -158,13 +164,17 @@ tap_ctl_spawn(void)
 
 	readfd = -1;
 
+again:
 	child = __tap_ctl_spawn(&readfd);
 	if (child < 0)
 		return child;
 
 	err = tap_ctl_wait(child);
-	if (err)
+	if (err) {
+		if (err == -EAGAIN)
+			goto again;
 		return err;
+	}
 
 	id = tap_ctl_get_child_id(readfd);
 	if (id < 0)
