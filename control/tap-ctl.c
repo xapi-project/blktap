@@ -769,7 +769,7 @@ usage:
 static void
 tap_cli_stats_usage(FILE *stream)
 {
-	fprintf(stream, "usage: info <-p pid> <-m minor>\n");
+	fprintf(stream, "usage: stats <-p pid> <-m minor>\n");
 }
 
 static int
