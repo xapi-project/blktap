@@ -57,7 +57,10 @@ struct td_blktap {
 	void                   *vma;
 	size_t                  vma_size;
 
-	blktap_back_ring_t      ring;
+	struct blktap_sring    *sring;
+	unsigned int            req_cons;
+	unsigned int            rsp_prod_pvt;
+
 	int                     event_id;
 	void                   *vstart;
 

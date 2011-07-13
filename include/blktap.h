@@ -29,10 +29,6 @@
 #ifndef _TD_BLKTAP_H_
 #define _TD_BLKTAP_H_
 
-#include <stdint.h>
-#include <stddef.h>
-#include <linux/blktap.h>
-
 #define BLKTAP2_SYSFS_DIR              "/sys/class/blktap2"
 #define BLKTAP2_CONTROL_NAME           "blktap-control"
 #define BLKTAP2_CONTROL_DIR            "/var/run/"BLKTAP2_CONTROL_NAME

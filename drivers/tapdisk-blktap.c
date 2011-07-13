@@ -42,9 +42,8 @@
 #include "tapdisk-vbd.h"
 #include "tapdisk-blktap.h"
 #include "tapdisk-server.h"
+#include "linux-blktap.h"
 
-#define wmb() /* blktap is synchronous */
-#define BLKTAP_PAGE_SIZE sysconf(_SC_PAGE_SIZE)
 #define BUG(_cond)       td_panic()
 #define BUG_ON(_cond)    if (unlikely(_cond)) { td_panic(); }
 
@@ -53,6 +52,21 @@
 #define ERR(_err, _f, _a...) tlog_error(_err, _f, ##_a)
 #define WARN(_f, _a...)      tlog_syslog(TLOG_WARN, "WARNING: "_f "in %s:%d", \
 					 ##_a, __func__, __LINE__)
+
+#define __RD2(_x)  (((_x) & 0x00000002) ? 0x2                  : ((_x) & 0x1))
+#define __RD4(_x)  (((_x) & 0x0000000c) ? __RD2((_x)>>2)<<2    : __RD2(_x))
+#define __RD8(_x)  (((_x) & 0x000000f0) ? __RD4((_x)>>4)<<4    : __RD4(_x))
+#define __RD16(_x) (((_x) & 0x0000ff00) ? __RD8((_x)>>8)<<8    : __RD8(_x))
+#define __RD32(_x) (((_x) & 0xffff0000) ? __RD16((_x)>>16)<<16 : __RD16(_x))
+
+#define BLKTAP_RD32(_n)      __RD32(_n)
+#define BLKTAP_RING_SIZE     __BLKTAP_RING_SIZE(BLKTAP_PAGE_SIZE)
+#define BLKTAP_PAGE_SIZE     sysconf(_SC_PAGE_SIZE)
+
+#define BLKTAP_GET_RESPONSE(_tap, _idx) \
+	(&(_tap)->sring->entry[(_idx) % BLKTAP_RING_SIZE].rsp)
+#define BLKTAP_GET_REQUEST(_tap, _idx) \
+	(&(_tap)->sring->entry[(_idx) % BLKTAP_RING_SIZE].req)
 
 static void __tapdisk_blktap_close(td_blktap_t *);
 
@@ -156,14 +170,12 @@ tapdisk_blktap_error_status(td_blktap_t *tap, int error)
 }
 
 static void
-__tapdisk_blktap_push_responses(td_blktap_t *tap, int final)
+__tapdisk_blktap_push_response(td_blktap_t *tap, int final)
 {
-	blktap_back_ring_t *ring = &tap->ring;
-
-	ring->rsp_prod_pvt++;
+	tap->rsp_prod_pvt++;
 
 	if (final) {
-		RING_PUSH_RESPONSES(&tap->ring);
+		tap->sring->rsp_prod = tap->rsp_prod_pvt;
 		tapdisk_blktap_kick(tap);
 	}
 
@@ -174,31 +186,29 @@ static void
 tapdisk_blktap_fail_request(td_blktap_t *tap,
 			    blktap_ring_req_t *msg, int error)
 {
-	blktap_back_ring_t *ring = &tap->ring;
 	blktap_ring_rsp_t *rsp;
 
 	BUG_ON(!tap->vma);
 
-	rsp = RING_GET_RESPONSE(&tap->ring, ring->rsp_prod_pvt);
+	rsp = BLKTAP_GET_RESPONSE(tap, tap->rsp_prod_pvt);
 
 	rsp->id        = msg->id;
 	rsp->operation = msg->operation;
 	rsp->status    = tapdisk_blktap_error_status(tap, error);
 
-	__tapdisk_blktap_push_responses(tap, 1);
+	__tapdisk_blktap_push_response(tap, 1);
 }
 
 static void
 tapdisk_blktap_put_response(td_blktap_t *tap,
 			    td_blktap_req_t *req, int error, int final)
 {
-	blktap_back_ring_t *ring = &tap->ring;
 	blktap_ring_rsp_t *rsp;
 	int op = 0;
 
 	BUG_ON(!tap->vma);
 
-	rsp = RING_GET_RESPONSE(&tap->ring, ring->rsp_prod_pvt);
+	rsp = BLKTAP_GET_RESPONSE(tap, tap->rsp_prod_pvt);
 
 	switch (req->vreq.op) {
 	case TD_OP_READ:
@@ -215,7 +225,7 @@ tapdisk_blktap_put_response(td_blktap_t *tap,
 	rsp->operation = op;
 	rsp->status    = tapdisk_blktap_error_status(tap, error);
 
-	__tapdisk_blktap_push_responses(tap, final);
+	__tapdisk_blktap_push_response(tap, final);
 }
 
 static void
@@ -325,14 +335,13 @@ fail:
 static void
 tapdisk_blktap_get_requests(td_blktap_t *tap)
 {
-	blktap_back_ring_t *ring = &tap->ring;
-	RING_IDX rp, rc;
+	unsigned int rp, rc;
 	int err;
 
-	rp = ring->sring->req_prod;
+	rp = tap->sring->req_prod;
 
-	for (rc = ring->req_cons; rc != rp; rc++) {
-		blktap_ring_req_t *msg = RING_GET_REQUEST(ring, rc);
+	for (rc = tap->req_cons; rc != rp; rc++) {
+		blktap_ring_req_t *msg = BLKTAP_GET_REQUEST(tap, rc);
 		td_blktap_req_t *req;
 
 		tap->stats.reqs.in++;
@@ -355,7 +364,7 @@ tapdisk_blktap_get_requests(td_blktap_t *tap)
 			tapdisk_blktap_complete_request(tap, req, err, 1);
 	}
 
-	ring->req_cons = rc;
+	tap->req_cons = rc;
 
 	return;
 
@@ -478,7 +487,10 @@ tapdisk_blktap_map(td_blktap_t *tap)
 
 	tap->vma    = vma;
 	tap->vstart = vma + BLKTAP_PAGE_SIZE;
-	BACK_RING_INIT(&tap->ring, (blktap_sring_t*)vma, BLKTAP_PAGE_SIZE);
+
+	tap->req_cons     = 0;
+	tap->rsp_prod_pvt = 0;
+	tap->sring        = vma;
 
 	return 0;
 
