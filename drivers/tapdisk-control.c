@@ -587,7 +587,7 @@ tapdisk_control_attach_vbd(struct tapdisk_ctl_conn *conn,
 			   tapdisk_message_t *request)
 {
 	tapdisk_message_t response;
-	char *devname;
+	char *devname = NULL;
 	td_vbd_t *vbd;
 	int minor, err;
 
@@ -615,12 +615,12 @@ tapdisk_control_attach_vbd(struct tapdisk_ctl_conn *conn,
 
 	err = asprintf(&devname, BLKTAP2_RING_DEVICE"%d", minor);
 	if (err == -1) {
+		devname = NULL;
 		err = -ENOMEM;
 		goto fail_vbd;
 	}
 
 	err = tapdisk_vbd_attach(vbd, devname, minor);
-	free(devname);
 	if (err) {
 		ERR(err, "failure attaching to %s", devname);
 		goto fail_vbd;
@@ -629,6 +629,9 @@ tapdisk_control_attach_vbd(struct tapdisk_ctl_conn *conn,
 	tapdisk_server_add_vbd(vbd);
 
 out:
+	if (devname)
+		free(devname);
+
 	memset(&response, 0, sizeof(response));
 	response.type = TAPDISK_MESSAGE_ATTACH_RSP;
 	response.cookie = request->cookie;
