@@ -773,7 +773,12 @@ out:
 
 fail_close:
 	tapdisk_vbd_close_vdi(vbd);
-	free(vbd);
+
+	if (vbd->name) {
+		free(vbd->name);
+		vbd->name = NULL;
+	}
+
 	goto out;
 }
 
