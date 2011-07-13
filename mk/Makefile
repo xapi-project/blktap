@@ -2,7 +2,6 @@ USE_BRANDING := yes
 IMPORT_BRANDING := yes
 include $(B_BASE)/common.mk
 include $(B_BASE)/rpmbuild.mk
-include $(PROJECT_OUTPUTDIR)/kernel-dom0/kernel.inc
 
 REPO_NAME= blktap
 REPO=$(call hg_loc,blktap)
@@ -58,7 +57,6 @@ $(RPM_SPECSDIR)/blktap.spec: blktap.spec.in $(RPM_SPECSDIR)/.dirstamp
 	sed -e s\,@REPO_VERSION@,$(REPO_VERSION),g \
 	    -e s\,@BLKTAP_VERSION@,$(BLKTAP_VERSION),g\
 	    -e s\,@BLKTAP_RELEASE@,$(BLKTAP_RELEASE),g\
-	    -e s\,@KERNEL_VERSION@,$(KERNEL_VERSION),g\
 	    -e \\,%changelog,rchangelog.tmp        \
 	    < blktap.spec.in                       \
 	    > $(RPM_SPECSDIR)/blktap.spec
