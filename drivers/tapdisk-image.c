@@ -234,6 +234,8 @@ tapdisk_image_open_parent(td_image_t *image, td_image_t **_parent)
 		err = 0;
 		goto out;
 	}
+	if (err)
+		return err;
 
 	err = tapdisk_image_open(id.type, id.name, id.flags, &parent);
 	if (err)
