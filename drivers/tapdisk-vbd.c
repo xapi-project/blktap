@@ -422,7 +422,6 @@ fail:
 int
 tapdisk_vbd_open_vdi(td_vbd_t *vbd, const char *name, td_flag_t flags, int prt_devnum)
 {
-	td_image_t *image = NULL;
 	char *tmp = vbd->name;
 	int err;
 
@@ -490,10 +489,8 @@ fail:
 		vbd->name = tmp;
 	}
 
-	if (image) {
-		list_del_init(&vbd->images);
-		tapdisk_image_close(image);
-	}
+	if (!list_empty(&vbd->images))
+		tapdisk_image_close_chain(&vbd->images);
 
 	vbd->flags = 0;
 
