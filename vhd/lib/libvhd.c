@@ -1633,7 +1633,7 @@ vhd_parent_locator_get(vhd_context_t *ctx, char **parent)
 	char *name, *location;
 	vhd_parent_locator_t *loc;
 
-	err     = 0;
+	err     = -EINVAL;
 	*parent = NULL;
 
 	if (ctx->footer.type != HD_TYPE_DIFF)
@@ -1641,9 +1641,11 @@ vhd_parent_locator_get(vhd_context_t *ctx, char **parent)
 
 	n = vhd_parent_locator_count(ctx);
 	for (i = 0; i < n; i++) {
+		int _err;
+
 		loc = ctx->header.loc + i;
-		err = vhd_parent_locator_read(ctx, loc, &name);
-		if (err)
+		_err = vhd_parent_locator_read(ctx, loc, &name);
+		if (_err)
 			continue;
 
 		err = vhd_find_parent(ctx, name, &location);
