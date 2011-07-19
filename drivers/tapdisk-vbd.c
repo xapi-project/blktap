@@ -288,7 +288,7 @@ tapdisk_vbd_add_secondary(td_vbd_t *vbd)
 		goto fail;
 
 	if (second->info.size != leaf->info.size) {
-		EPRINTF("Secondary image size %lld != image size %lld\n",
+		EPRINTF("Secondary image size %"PRIu64" != image size %"PRIu64"\n",
 			second->info.size, leaf->info.size);
 		err = -EINVAL;
 		goto fail;
@@ -642,8 +642,9 @@ tapdisk_vbd_debug(td_vbd_t *vbd)
 
 	DBG(TLOG_WARN, "%s: state: 0x%08x, new: 0x%02x, pending: 0x%02x, "
 	    "failed: 0x%02x, completed: 0x%02x, last activity: %010ld.%06ld, "
-	    "errors: 0x%04llx, retries: 0x%04llx, received: 0x%08llx, "
-	    "returned: 0x%08llx, kicked: 0x%08llx\n",
+	    "errors: 0x%04"PRIx64", retries: 0x%04"PRIx64", "
+	    "received: 0x%08"PRIx64", returned: 0x%08"PRIx64", "
+	    "kicked: 0x%08"PRIx64"\n",
 	    vbd->name, vbd->state, new, pending, failed, completed,
 	    vbd->ts.tv_sec, vbd->ts.tv_usec, vbd->errors, vbd->retries,
 	    vbd->received, vbd->returned, vbd->kicked);
@@ -1101,8 +1102,8 @@ tapdisk_vbd_complete_td_request(td_request_t treq, int res)
 		}
 	}
 
-	DBG(TLOG_DBG, "%s: req %s seg %d sec 0x%08llx "
-	    "secs 0x%04x buf %p op %d res %d\n", image->name,
+	DBG(TLOG_DBG, "%s: req %s seg %d sec 0x%08"PRIx64
+	    " secs 0x%04x buf %p op %d res %d\n", image->name,
 	    vreq->name, treq.sidx, treq.sec, treq.secs,
 	    treq.buf, vreq->op, res);
 
@@ -1187,7 +1188,7 @@ tapdisk_vbd_issue_request(td_vbd_t *vbd, td_vbd_request_t *vreq)
 			break;
 		}
 
-		DBG(TLOG_DBG, "%s: req %s seg %d sec 0x%08llx secs 0x%04x "
+		DBG(TLOG_DBG, "%s: req %s seg %d sec 0x%08"PRIx64" secs 0x%04x "
 		    "buf %p op %d\n", image->name, vreq->name, i, treq.sec, treq.secs,
 		    treq.buf, vreq->op);
 		sec += iov->secs;

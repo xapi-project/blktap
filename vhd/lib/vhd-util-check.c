@@ -170,7 +170,7 @@ vhd_util_check_stats_print(struct vhd_util_check_ctx *ctx)
 		return;
 
 	head = list_entry(ctx->stats.next, struct vhd_util_check_stats, next);
-	printf("%s: secs allocated: 0x%llx secs written: 0x%llx (%.2f%%)\n",
+	printf("%s: secs allocated: 0x%"PRIx64" secs written: 0x%"PRIx64" (%.2f%%)\n",
 	       name(head->name), head->secs_allocated, head->secs_written,
 	       pct(head->secs_written, head->secs_allocated));
 
@@ -205,9 +205,9 @@ vhd_util_check_stats_print(struct vhd_util_check_ctx *ctx)
 			}
 		}
 
-		printf("%s: secs allocated: 0x%llx secs written: 0x%llx "
-		       "(%.2f%%) secs not in parent: 0x%llx (%.2f%%) "
-		       "secs not in ancestors: 0x%llx (%.2f%%)\n",
+		printf("%s: secs allocated: 0x%"PRIx64" secs written: 0x%"PRIx64
+		       " (%.2f%%) secs not in parent: 0x%"PRIx64" (%.2f%%)"
+		       " secs not in ancestors: 0x%"PRIx64" (%.2f%%)\n",
 		       name(cur->name), cur->secs_allocated, cur->secs_written,
 		       pct(cur->secs_written, cur->secs_allocated),
 		       up, pct(up, cur->secs_written),
@@ -794,7 +794,7 @@ vhd_util_check_bat(struct vhd_util_check_ctx *ctx, vhd_context_t *vhd)
 
 	vhd_blks = vhd->footer.curr_size >> VHD_BLOCK_SHIFT;
 	if (vhd_blks > vhd->header.max_bat_size) {
-		printf("VHD size (%llu blocks) exceeds BAT size (%u)\n",
+		printf("VHD size (%"PRIu64" blocks) exceeds BAT size (%u)\n",
 		       vhd_blks, vhd->header.max_bat_size);
 		return -EINVAL;
 	}

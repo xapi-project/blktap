@@ -656,7 +656,7 @@ tapdisk_debug_queue(struct tqueue *queue)
 
 	WARN("TAPDISK QUEUE:\n");
 	WARN("size: %d, tio: %s, queued: %d, iocbs_pending: %d, "
-	     "tiocbs_pending: %d, tiocbs_deferred: %d, deferrals: %llx\n",
+	     "tiocbs_pending: %d, tiocbs_deferred: %d, deferrals: %"PRIx64"\n",
 	     queue->size, queue->tio->name, queue->queued, queue->iocbs_pending,
 	     queue->tiocbs_pending, queue->tiocbs_deferred, queue->deferrals);
 

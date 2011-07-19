@@ -176,7 +176,7 @@ vhd_util_query(int argc, char **argv)
 		uint64_t max_size;
 
 		max_size = vhd.header.max_bat_size << (VHD_BLOCK_SHIFT - 20);
-		printf("%llu\n", max_size);
+		printf("%"PRIu64"\n", max_size);
 	}
 		
 	vhd_close(&vhd);

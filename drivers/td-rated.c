@@ -644,7 +644,7 @@ rlb_accept_conn(td_rlb_t *rlb)
 		goto fail;
 	}
 
-	INFO("Accepting connection %d.", conn - rlb->connv);
+	INFO("Accepting connection %td.", conn - rlb->connv);
 
 	memset(conn, 0, sizeof(*conn));
 	INIT_LIST_HEAD(&conn->wait);

@@ -54,7 +54,7 @@
 #define TD_CTL_SOCK_BACKLOG     32
 #define TD_CTL_RECV_TIMEOUT     10
 #define TD_CTL_SEND_TIMEOUT     10
-#define TD_CTL_SEND_BUFSZ       4096
+#define TD_CTL_SEND_BUFSZ       ((size_t)4096)
 
 #define DBG(_f, _a...)             tlog_syslog(LOG_DEBUG, _f, ##_a)
 #define ERR(err, _f, _a...)        tlog_error(err, _f, ##_a)
@@ -243,7 +243,7 @@ tapdisk_ctl_conn_send_event(event_id_t id, char mode, void *private)
 		return;
 
 	if (rv < 0)
-		ERR(rv, "failure sending message at offset %d/%d\n",
+		ERR(rv, "failure sending message at offset %td/%td\n",
 		    conn->out.cons - conn->out.buf,
 		    conn->out.prod - conn->out.buf);
 

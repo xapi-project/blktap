@@ -769,7 +769,8 @@ block_cache_debug(td_driver_t *driver)
 	stats = &cache->stats;
 
 	WARN("BLOCK CACHE %s\n", cache->name);
-	WARN("reads: %llu, hits: %llu, misses: %llu, prunes: %llu\n",
+	WARN("reads: %"PRIu64", hits: %"PRIu64", "
+	     "misses: %"PRIu64", prunes: %"PRIu64"\n",
 	     stats->reads, stats->hits, stats->misses, stats->prunes);
 }
 

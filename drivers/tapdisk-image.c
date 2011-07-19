@@ -115,7 +115,7 @@ tapdisk_image_check_td_request(td_image_t *image, td_request_t treq)
 	return 0;
 
 fail:
-	ERR(err, "bad td request on %s (%s, %llu): %d at %llu",
+	ERR(err, "bad td request on %s (%s, %"PRIu64"): %d at %"PRIu64,
 	    image->name, (rdonly ? "ro" : "rw"), info->size, treq.op,
 	    treq.sec + treq.secs);
 	return err;
@@ -167,7 +167,7 @@ tapdisk_image_check_request(td_image_t *image, td_vbd_request_t *vreq)
 	return 0;
 
 fail:
-	ERR(err, "bad request on %s (%s, %llu): req %s op %d at %llu",
+	ERR(err, "bad request on %s (%s, %"PRIu64"): req %s op %d at %"PRIu64,
 	    image->name, (rdonly ? "ro" : "rw"), info->size, vreq->name,
 	    vreq->op, vreq->sec + secs);
 

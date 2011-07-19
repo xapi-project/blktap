@@ -1076,8 +1076,8 @@ vhd_dynamic_grow_fast(const char *name, uint64_t bytes)
 	blks   = (bytes + VHD_BLOCK_SIZE - 1) >> VHD_BLOCK_SHIFT;
 	size   = blks << VHD_BLOCK_SHIFT;
 	if (size < vhd.footer.curr_size) {
-		printf("%s: size (%llu) < curr size (%llu)\n", 
-				name, size, vhd.footer.curr_size);
+		printf("%s: size (%"PRIu64") < curr size (%llu)\n", 
+		       name, size, vhd.footer.curr_size);
 		err = -EINVAL;
 		goto done;
 	}

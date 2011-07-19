@@ -2738,7 +2738,7 @@ vhd_initialize_header(vhd_context_t *ctx, const char *parent_path,
 		vhd_close(&parent);
 	}
 	if (size < *psize) {
-		VHDLOG("snapshot size (%llu) < parent size (%llu)\n",
+		VHDLOG("snapshot size (%"PRIu64") < parent size (%"PRIu64")\n",
 				size, *psize);
 		return -EINVAL;
 	}
@@ -3007,7 +3007,7 @@ vhd_set_virt_size_no_write(vhd_context_t *ctx, uint64_t size)
 {
 	if ((size >> VHD_BLOCK_SHIFT) > ctx->header.max_bat_size) {
 		VHDLOG("not enough metadata space reserved for fast "
-				"resize (BAT size %u, need %llu)\n",
+				"resize (BAT size %u, need %"PRIu64")\n",
 				ctx->header.max_bat_size, 
 				size >> VHD_BLOCK_SHIFT);
 		return -EINVAL;

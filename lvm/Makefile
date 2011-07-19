@@ -9,6 +9,7 @@ CFLAGS            += -Werror
 CFLAGS            += -Wno-unused
 CFLAGS            += -I../include
 CFLAGS            += -D_GNU_SOURCE
+CFLAGS            += -fPIC
 
 # Get gcc to generate the dependencies for us.
 CFLAGS            += -Wp,-MD,.$(@F).d

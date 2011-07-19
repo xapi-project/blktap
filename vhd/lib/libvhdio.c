@@ -440,7 +440,7 @@ out:
 	_libvhd_io_interpose = 1;
 	if (obj) {
 		obj->refcnt++;
-		LOG("%s: %s 0x%llx 0x%x\n",
+		LOG("%s: %s 0x%"PRIx64" 0x%x\n",
 		    __func__, path, obj->ino, obj->refcnt);
 	}
 	return obj;
@@ -449,7 +449,7 @@ out:
 static void
 _libvhd_io_put_vhd(vhd_object_t *obj)
 {
-	LOG("%s: 0x%llx 0x%x\n", __func__, obj->ino, obj->refcnt - 1);
+	LOG("%s: 0x%"PRIx64" 0x%x\n", __func__, obj->ino, obj->refcnt - 1);
 	if (--obj->refcnt == 0) {
 		vhd_close(&obj->vhd);
 		list_del(&obj->next);
@@ -505,12 +505,12 @@ _libvhd_io_read_bytes(vhd_partition_t *vhd_part,
 	_libvhd_io_interpose = 1;
 
 	if (ret) {
-		LOG("vhd_io_read_bytes %s %p 0x%x 0x%llx failed: %d\n",
+		LOG("vhd_io_read_bytes %s %p 0x%zx 0x%"PRIx64" failed: %d\n",
 		    vhd->file, buf, size, off, ret);
 		errno = -ret;
 		ret = 1;
 	} else {
-		LOG("vhd_io_read_bytes %s %p 0x%x 0x%llx\n",
+		LOG("vhd_io_read_bytes %s %p 0x%zx 0x%"PRIx64"\n",
 		    vhd->file, buf, size, off);
 		DUMP(buf, size);
 	}
@@ -530,12 +530,12 @@ _libvhd_io_write_bytes(vhd_partition_t *vhd_part,
 	_libvhd_io_interpose = 1;
 
 	if (ret) {
-		LOG("vhd_io_write_bytes %s %p 0x%x 0x%llx failed: %d\n",
+		LOG("vhd_io_write_bytes %s %p 0x%zx 0x%"PRIx64" failed: %d\n",
 		    vhd->file, buf, size, off, ret);
 		errno = -ret;
 		ret = 1;
 	} else {
-		LOG("vhd_io_write_bytes %s %p 0x%x 0x%llx\n",
+		LOG("vhd_io_write_bytes %s %p 0x%zx 0x%"PRIx64"\n",
 		    vhd->file, buf, size, off);
 		DUMP(buf, size);
 	}
@@ -641,7 +641,7 @@ _libvhd_io_init_partition(vhd_partition_t *vhd_part, int partition)
 	vhd_part->size      = p->blocks;
 	err                 = 0;
 
-	LOG("%s: opening %s partition 0x%x start 0x%08llx end 0x%08llx\n",
+	LOG("%s: opening %s partition 0x%x start 0x%08"PRIx64" end 0x%08"PRIx64"\n",
 	    __func__, vhd->file, partition, vhd_part->start, vhd_part->end);
 
 out:
@@ -1144,7 +1144,7 @@ lseek64(int fd, off64_t offset, int whence)
 	_RESOLVE(_std_lseek64);
 	vhd_fd = _libvhd_io_map_get(fd);
 
-	LOG("%s 0x%x 0x%llx 0x%x\n", __func__, fd, offset, whence);
+	LOG("%s 0x%x 0x%"PRIx64" 0x%x\n", __func__, fd, offset, whence);
 
 	if (!vhd_fd)
 		return _std_lseek64(fd, offset, whence);
@@ -1184,7 +1184,7 @@ read(int fd, void *buf, size_t count)
 	_RESOLVE(_std_read);
 	vhd_fd = _libvhd_io_map_get(fd);
 
-	LOG("%s 0x%x %p 0x%x\n", __func__, fd, buf, count);
+	LOG("%s 0x%x %p 0x%zx\n", __func__, fd, buf, count);
 
 	if (!vhd_fd)
 		return _std_read(fd, buf, count);
@@ -1206,7 +1206,7 @@ write(int fd, const void *buf, size_t count)
 	_RESOLVE(_std_write);
 	vhd_fd = _libvhd_io_map_get(fd);
 
-	LOG("%s 0x%x %p 0x%x\n", __func__, fd, buf, count);
+	LOG("%s 0x%x %p 0x%zx\n", __func__, fd, buf, count);
 
 	if (!vhd_fd)
 		return _std_write(fd, buf, count);
@@ -1227,7 +1227,7 @@ pread(int fd, void *buf, size_t count, off_t offset)
 	_RESOLVE(_std_pread);
 	vhd_fd = _libvhd_io_map_get(fd);
 
-	LOG("%s 0x%x %p 0x%x 0x%lx\n", __func__, fd, buf, count, offset);
+	LOG("%s 0x%x %p 0x%zx 0x%lx\n", __func__, fd, buf, count, offset);
 
 	if (!vhd_fd)
 		return _std_pread(fd, buf, count, offset);
@@ -1244,7 +1244,7 @@ pread64(int fd, void *buf, size_t count, off64_t offset)
 	_RESOLVE(_std_pread64);
 	vhd_fd = _libvhd_io_map_get(fd);
 
-	LOG("%s 0x%x %p 0x%x 0x%llx\n", __func__, fd, buf, count, offset);
+	LOG("%s 0x%x %p 0x%zx 0x%"PRIx64"\n", __func__, fd, buf, count, offset);
 
 	if (!vhd_fd)
 		return _std_pread64(fd, buf, count, offset);
@@ -1261,7 +1261,7 @@ pwrite(int fd, const void *buf, size_t count, off_t offset)
 	_RESOLVE(_std_pwrite);
 	vhd_fd = _libvhd_io_map_get(fd);
 
-	LOG("%s 0x%x %p 0x%x, 0x%lx\n", __func__, fd, buf, count, offset);
+	LOG("%s 0x%x %p 0x%zx, 0x%lx\n", __func__, fd, buf, count, offset);
 
 	if (!vhd_fd)
 		return _std_pwrite(fd, buf, count, offset);
@@ -1278,7 +1278,7 @@ pwrite64(int fd, const void *buf, size_t count, off64_t offset)
 	_RESOLVE(_std_pwrite64);
 	vhd_fd = _libvhd_io_map_get(fd);
 
-	LOG("%s 0x%x %p 0x%x, 0x%llx\n", __func__, fd, buf, count, offset);
+	LOG("%s 0x%x %p 0x%zx, 0x%"PRIx64"\n", __func__, fd, buf, count, offset);
 
 	if (!vhd_fd)
 		return _std_pwrite64(fd, buf, count, offset);
@@ -1525,6 +1525,7 @@ fcntl(int fd, int cmd, ...)
 		return _std_fcntl(real_fd, cmd, flk);
 	}
 
+#if __WORDSIZE == 32
 	case F_SETLK64:
 	case F_SETLKW64:
 	case F_GETLK64:
@@ -1537,6 +1538,7 @@ fcntl(int fd, int cmd, ...)
 		    __func__, real_fd, flk, _std_fcntl);
 		return _std_fcntl(real_fd, cmd, flk);
 	}
+#endif
 
 	default:
 		LOG("%s unrecognized cmd\n", __func__);
@@ -1623,7 +1625,7 @@ fread(void *buf, size_t size, size_t n, FILE *f)
 	if (!vhd_fd)
 		return _std_fread(buf, size, n, f);
 
-	LOG("%s %p 0x%x 0x%x %p (0x%x)\n",
+	LOG("%s %p 0x%zx 0x%zx %p (0x%x)\n",
 	    __func__, buf, size, n, f, fileno(f));
 	cnt = _libvhd_io_pread(&vhd_fd->vhd_part, buf, n * size, vhd_fd->off);
 	if (cnt > 0) {

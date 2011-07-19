@@ -130,7 +130,7 @@ lvm_open_vg(const char *vgname, struct vg *vg)
 			break;
 
 		err = -EINVAL;
-		if (sscanf(line, _NAME" %llu %d %d "_NAME" %llu", vg->name, 
+		if (sscanf(line, _NAME" %"PRIu64" %d %d "_NAME" %"PRIu64, vg->name,
 			   &size, &lvs, &pvs, pvname, &pv_start) != 6) {
 			EPRINTF("sscanf failed on '%s'\n", line);
 			goto out;
@@ -140,7 +140,6 @@ lvm_open_vg(const char *vgname, struct vg *vg)
 			EPRINTF("VG name '%s' != '%s'\n", vg->name, vgname);
 			goto out;
 		}
-
 		err = lvm_parse_pv(vg, pvname, pvs, pv_start);
 		if (err)
 			goto out;
@@ -190,7 +189,7 @@ lvm_parse_lv_devices(struct vg *vg, struct lv_segment *seg, char *devices)
 		if (strchr(",()", devices[i]))
 			devices[i] = ' ';
 
-	if (sscanf(devices, _NAME" %llu", seg->device, &start) != 2) {
+	if (sscanf(devices, _NAME" %"PRIu64, seg->device, &start) != 2) {
 		EPRINTF("sscanf failed on '%s'\n", devices);
 		return -EINVAL;
 	}
@@ -249,7 +248,7 @@ lvm_scan_lvs(struct vg *vg)
 		err = -EINVAL;
 		lv  = vg->lvs + i;
 
-		if (sscanf(line, _NAME" %llu %31s %u %llu %llu %1023s",
+		if (sscanf(line, _NAME" %llu %31s %u %llu %"PRIu64" %1023s",
 			   name, &size, type, &segs, &seg_start,
 			   &seg.pe_size, devices) != 7) {
 			EPRINTF("sscanf failed on '%s'\n", line);
