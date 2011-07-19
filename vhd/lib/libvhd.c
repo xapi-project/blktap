@@ -325,7 +325,7 @@ vhd_validate_header(vhd_header_t *header)
 	}
 
 	if (header->data_offset != 0xFFFFFFFFFFFFFFFFULL) {
-		VHDLOG("invalid header data_offset 0x%016llx\n",
+		VHDLOG("invalid header data_offset 0x%016"PRIx64"\n",
 		       header->data_offset);
 		return -EINVAL;
 	}
@@ -1619,7 +1619,7 @@ out:
 		VHDLOG("%s: error reading parent locator: %d\n",
 		       ctx->file, err);
 		VHDLOG("%s: locator: code %u, space 0x%x, len 0x%x, "
-		       "off 0x%llx\n", ctx->file, loc->code, loc->data_space,
+		       "off 0x%"PRIx64"\n", ctx->file, loc->code, loc->data_space,
 		       loc->data_len, loc->data_offset);
 	}
 

@@ -238,7 +238,8 @@ tapdisk_stream_complete_request(td_stream_t *s, td_stream_req_t *req,
 	else {
 		s->err = EIO;
 		tapdisk_stream_free_req(s, req);
-		fprintf(stderr, "error reading sector 0x%llx\n", req->vreq.sec);
+		fprintf(stderr, "error reading sector 0x%"PRIx64"\n",
+			req->vreq.sec);
 	}
 
 	if (!final)
@@ -376,7 +377,7 @@ tapdisk_stream_set_position(td_stream_t *s,
 		count = info.size - skip;
 
 	if (count + skip > info.size) {
-		fprintf(stderr, "0x%llx past end of image 0x%llx\n",
+		fprintf(stderr, "0x%"PRIx64" past end of image 0x%"PRIx64"\n",
 			count + skip, info.size);
 		return -EINVAL;
 	}

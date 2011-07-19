@@ -454,7 +454,7 @@ td_query(int type, int argc, char *argv[])
 		}
 
 		if (size)
-			printf("%llu\n", vhd.footer.curr_size >> 20);
+			printf("%"PRIu64"\n", vhd.footer.curr_size >> 20);
 
 		if (parent) {
 			if (vhd.footer.type != HD_TYPE_DIFF)

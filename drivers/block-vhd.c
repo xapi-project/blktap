@@ -204,8 +204,8 @@ struct vhd_bat_state {
 };
 
 struct vhd_bitmap {
-	u32                       blk;
-	u64                       seqno;       /* lru sequence number */
+	uint32_t                  blk;
+	uint64_t                  seqno;       /* lru sequence number */
 	vhd_flag_t                status;
 
 	char                     *map;         /* map should only be modified
@@ -230,16 +230,16 @@ struct vhd_state {
 
         /* VHD stuff */
 	vhd_context_t             vhd;
-	u32                       spp;         /* sectors per page */
-        u32                       spb;         /* sectors per block */
-	u64                       first_db;    /* pointer to datablock 0 */
-        u64                       next_db;     /* pointer to the next 
+	uint32_t                  spp;         /* sectors per page */
+	uint32_t                  spb;         /* sectors per block */
+	uint64_t                  first_db;    /* pointer to datablock 0 */
+	uint64_t                  next_db;     /* pointer to the next 
 						* (unallocated) datablock */
 
 	struct vhd_bat_state      bat;
 
-	u64                       bm_lru;      /* lru sequence number */
-	u32                       bm_secs;     /* size of bitmap, in sectors */
+	uint64_t                  bm_lru;      /* lru sequence number */
+	uint32_t                  bm_secs;     /* size of bitmap, in sectors */
 	struct vhd_bitmap        *bitmap[VHD_CACHE_SIZE];
 
 	int                       bm_free_count;
@@ -528,7 +528,7 @@ fail:
 static int
 vhd_initialize_dynamic_disk(struct vhd_state *s)
 {
-	u32 bm_size;
+	uint32_t bm_size;
 	int err;
 
 	err = vhd_get_header(&s->vhd);
@@ -622,7 +622,7 @@ vhd_log_open(struct vhd_state *s)
 			full++;
 	}
 
-	DPRINTF("%s version: %s 0x%08x, b: %u, a: %u, f: %u, n: %llu\n",
+	DPRINTF("%s version: %s 0x%08x, b: %u, a: %u, f: %u, n: %"PRIu64"\n",
 		s->vhd.file, buf, s->vhd.footer.crtr_ver, s->bat.bat.entries,
 		allocated, full, s->next_db);
 }
@@ -755,7 +755,7 @@ vhd_log_close(struct vhd_state *s)
 			full++;
 	}
 
-	DPRINTF("%s: b: %u, a: %u, f: %u, n: %llu\n",
+	DPRINTF("%s: b: %u, a: %u, f: %u, n: %"PRIu64"\n",
 		s->vhd.file, s->bat.bat.entries, allocated, full, s->next_db);
 }
 
@@ -1073,7 +1073,7 @@ static struct vhd_bitmap *
 remove_lru_bitmap(struct vhd_state *s)
 {
 	int i, idx = 0;
-	u64 seq = s->bm_lru;
+	uint64_t seq = s->bm_lru;
 	struct vhd_bitmap *bm, *lru = NULL;
 
 	for (i = 0; i < VHD_CACHE_SIZE; i++) {
@@ -1177,7 +1177,7 @@ free_vhd_bitmap(struct vhd_state *s, struct vhd_bitmap *bm)
 static int
 read_bitmap_cache(struct vhd_state *s, uint64_t sector, uint8_t op)
 {
-	u32 blk, sec;
+	uint32_t blk, sec;
 	struct vhd_bitmap *bm;
 
 	/* in fixed disks, every block is present */
@@ -1225,7 +1225,7 @@ read_bitmap_cache_span(struct vhd_state *s,
 		       uint64_t sector, int nr_secs, int value)
 {
 	int ret;
-	u32 blk, sec;
+	uint32_t blk, sec;
 	struct vhd_bitmap *bm;
 
 	/* in fixed disks, every block is present */
@@ -1324,9 +1324,9 @@ static int
 schedule_bat_write(struct vhd_state *s)
 {
 	int i;
-	u32 blk;
+	uint32_t blk;
 	char *buf;
-	u64 offset;
+	uint64_t offset;
 	struct vhd_request *req;
 
 	ASSERT(bat_locked(s));
@@ -1338,10 +1338,10 @@ schedule_bat_write(struct vhd_state *s)
 	init_vhd_request(s, req);
 	memcpy(buf, &bat_entry(s, blk - (blk % 128)), 512);
 
-	((u32 *)buf)[blk % 128] = s->bat.pbw_offset;
+	((uint32_t *)buf)[blk % 128] = s->bat.pbw_offset;
 
 	for (i = 0; i < 128; i++)
-		BE32_OUT(&((u32 *)buf)[i]);
+		BE32_OUT(&((uint32_t *)buf)[i]);
 
 	offset         = s->vhd.header.table_offset + (blk - (blk % 128)) * 4;
 	req->treq.secs = 1;
@@ -1401,7 +1401,7 @@ schedule_zero_bm_write(struct vhd_state *s,
  * or potential write conflicts.
  * */
 static void
-schedule_redundant_bm_write(struct vhd_state *s, u32 blk)
+schedule_redundant_bm_write(struct vhd_state *s, uint32_t blk)
 {
 	uint64_t offset;
 	struct vhd_bitmap *bm;
@@ -1536,8 +1536,8 @@ allocate_block(struct vhd_state *s, uint32_t blk)
 static int 
 schedule_data_read(struct vhd_state *s, td_request_t treq, vhd_flag_t flags)
 {
-	u64 offset;
-	u32 blk = 0, sec = 0;
+	uint64_t offset;
+	uint32_t blk = 0, sec = 0;
 	struct vhd_bitmap  *bm;
 	struct vhd_request *req;
 
@@ -1581,8 +1581,8 @@ static int
 schedule_data_write(struct vhd_state *s, td_request_t treq, vhd_flag_t flags)
 {
 	int err;
-	u64 offset;
-	u32 blk = 0, sec = 0;
+	uint64_t offset;
+	uint32_t blk = 0, sec = 0;
 	struct vhd_bitmap  *bm = NULL;
 	struct vhd_request *req;
 
@@ -1649,7 +1649,7 @@ static int
 schedule_bitmap_read(struct vhd_state *s, uint32_t blk)
 {
 	int err;
-	u64 offset;
+	uint64_t offset;
 	struct vhd_bitmap  *bm;
 	struct vhd_request *req = NULL;
 
@@ -1691,7 +1691,7 @@ schedule_bitmap_read(struct vhd_state *s, uint32_t blk)
 static void
 schedule_bitmap_write(struct vhd_state *s, uint32_t blk)
 {
-	u64 offset;
+	uint64_t offset;
 	struct vhd_bitmap  *bm;
 	struct vhd_request *req;
 
@@ -1736,7 +1736,7 @@ schedule_bitmap_write(struct vhd_state *s, uint32_t blk)
 static int
 __vhd_queue_request(struct vhd_state *s, uint8_t op, td_request_t treq)
 {
-	u32 blk;
+	uint32_t blk;
 	struct vhd_bitmap  *bm;
 	struct vhd_request *req;
 
@@ -1979,7 +1979,7 @@ start_new_bitmap_transaction(struct vhd_state *s, struct vhd_bitmap *bm)
 		if (test_vhd_flag(r->flags, VHD_FLAG_REQ_FINISHED)) {
 			tx->finished++;
 			if (!r->error) {
-				u32 sec = r->treq.sec % s->spb;
+				uint32_t sec = r->treq.sec % s->spb;
 				for (i = 0; i < r->treq.secs; i++)
 					vhd_bitmap_set(&s->vhd,
 						       bm->shadow, sec + i);
@@ -2121,7 +2121,7 @@ finish_bat_write(struct vhd_request *req)
 static void
 finish_zero_bm_write(struct vhd_request *req)
 {
-	u32 blk;
+	uint32_t blk;
 	struct vhd_bitmap *bm;
 	struct vhd_transaction *tx = req->tx;
 	struct vhd_state *s = req->state;
@@ -2155,7 +2155,7 @@ finish_zero_bm_write(struct vhd_request *req)
 static int
 finish_redundant_bm_write(struct vhd_request *req)
 {
-	/* u32 blk; */
+	/* uint32_t blk; */
 	struct vhd_state *s = (struct vhd_state *) req->state;
 
 	s->returned++;
@@ -2175,7 +2175,7 @@ finish_redundant_bm_write(struct vhd_request *req)
 static void
 finish_bitmap_read(struct vhd_request *req)
 {
-	u32 blk;
+	uint32_t blk;
 	struct vhd_bitmap  *bm;
 	struct vhd_request *r, *next;
 	struct vhd_state   *s = req->state;
@@ -2227,7 +2227,7 @@ finish_bitmap_read(struct vhd_request *req)
 static void
 finish_bitmap_write(struct vhd_request *req)
 {
-	u32 blk;
+	uint32_t blk;
 	struct vhd_bitmap  *bm;
 	struct vhd_transaction *tx;
 	struct vhd_state *s = req->state;
@@ -2270,7 +2270,7 @@ finish_data_write(struct vhd_request *req)
 	set_vhd_flag(req->flags, VHD_FLAG_REQ_FINISHED);
 
 	if (tx) {
-		u32 blk, sec;
+		uint32_t blk, sec;
 		struct vhd_bitmap *bm;
 
 		blk = req->treq.sec / s->spb;

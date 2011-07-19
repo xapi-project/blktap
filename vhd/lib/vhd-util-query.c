@@ -106,7 +106,7 @@ vhd_util_query(int argc, char **argv)
 	}
 
 	if (size)
-		printf("%llu\n", vhd.footer.curr_size >> 20);
+		printf("%"PRIu64"\n", vhd.footer.curr_size >> 20);
 
 	if (physize) {
 		err = vhd_get_phys_size(&vhd, &currsize);

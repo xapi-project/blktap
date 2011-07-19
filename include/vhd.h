@@ -30,12 +30,8 @@
 #ifndef __VHD_H__
 #define __VHD_H__
 
-#include <asm/types.h>
-#include <uuid/uuid.h>
 #include <inttypes.h>
-
-typedef __u32 u32;
-typedef __u64 u64;
+#include <uuid/uuid.h>
 
 #define DEBUG 1
 
@@ -51,23 +47,23 @@ typedef __u64 u64;
 /* ---------------------------------------------------------------------- */
 
 struct hd_ftr {
-  char   cookie[8];       /* Identifies original creator of the disk      */
-  u32    features;        /* Feature Support -- see below                 */
-  u32    ff_version;      /* (major,minor) version of disk file           */
-  u64    data_offset;     /* Abs. offset from SOF to next structure       */
-  u32    timestamp;       /* Creation time.  secs since 1/1/2000GMT       */
-  char   crtr_app[4];     /* Creator application                          */
-  u32    crtr_ver;        /* Creator version (major,minor)                */
-  u32    crtr_os;         /* Creator host OS                              */
-  u64    orig_size;       /* Size at creation (bytes)                     */
-  u64    curr_size;       /* Current size of disk (bytes)                 */
-  u32    geometry;        /* Disk geometry                                */
-  u32    type;            /* Disk type                                    */
-  u32    checksum;        /* 1's comp sum of this struct.                 */
-  uuid_t uuid;            /* Unique disk ID, used for naming parents      */
-  char   saved;           /* one-bit -- is this disk/VM in a saved state? */
-  char   hidden;          /* tapdisk-specific field: is this vdi hidden?  */
-  char   reserved[426];   /* padding                                      */
+  char        cookie[8];       /* Identifies original creator of the disk      */
+  uint32_t    features;        /* Feature Support -- see below                 */
+  uint32_t    ff_version;      /* (major,minor) version of disk file           */
+  uint64_t    data_offset;     /* Abs. offset from SOF to next structure       */
+  uint32_t    timestamp;       /* Creation time.  secs since 1/1/2000GMT       */
+  char        crtr_app[4];     /* Creator application                          */
+  uint32_t    crtr_ver;        /* Creator version (major,minor)                */
+  uint32_t    crtr_os;         /* Creator host OS                              */
+  uint64_t    orig_size;       /* Size at creation (bytes)                     */
+  uint64_t    curr_size;       /* Current size of disk (bytes)                 */
+  uint32_t    geometry;        /* Disk geometry                                */
+  uint32_t    type;            /* Disk type                                    */
+  uint32_t    checksum;        /* 1's comp sum of this struct.                 */
+  uuid_t      uuid;            /* Unique disk ID, used for naming parents      */
+  char        saved;           /* one-bit -- is this disk/VM in a saved state? */
+  char        hidden;          /* tapdisk-specific field: is this vdi hidden?  */
+  char        reserved[426];   /* padding                                      */
 };
 
 /* VHD cookie string. */
@@ -124,11 +120,11 @@ static const char *HD_TYPE_STR[7] = {
 #define HD_TYPE_MAX 6
 
 struct prt_loc {
-  u32    code;            /* Platform code -- see defines below.          */
-  u32    data_space;      /* Number of 512-byte sectors to store locator  */
-  u32    data_len;        /* Actual length of parent locator in bytes     */
-  u32    res;             /* Must be zero                                 */
-  u64    data_offset;     /* Absolute offset of locator data (bytes)      */
+  uint32_t    code;            /* Platform code -- see defines below.          */
+  uint32_t    data_space;      /* Number of 512-byte sectors to store locator  */
+  uint32_t    data_len;        /* Actual length of parent locator in bytes     */
+  uint32_t    res;             /* Must be zero                                 */
+  uint64_t    data_offset;     /* Absolute offset of locator data (bytes)      */
 };
 
 /* Platform Codes */
@@ -145,19 +141,19 @@ struct prt_loc {
 /* ---------------------------------------------------------------------- */
 
 struct dd_hdr {
-  char   cookie[8];       /* Should contain "cxsparse"                    */
-  u64    data_offset;     /* Byte offset of next record. (Unused) 0xffs   */
-  u64    table_offset;    /* Absolute offset to the BAT.                  */
-  u32    hdr_ver;         /* Version of the dd_hdr (major,minor)          */
-  u32    max_bat_size;    /* Maximum number of entries in the BAT         */
-  u32    block_size;      /* Block size in bytes. Must be power of 2.     */
-  u32    checksum;        /* Header checksum.  1's comp of all fields.    */
-  uuid_t prt_uuid;        /* ID of the parent disk.                       */
-  u32    prt_ts;          /* Modification time of the parent disk         */
-  u32    res1;            /* Reserved.                                    */
-  char   prt_name[512];   /* Parent unicode name.                         */
+  char        cookie[8];       /* Should contain "cxsparse"                    */
+  uint64_t    data_offset;     /* Byte offset of next record. (Unused) 0xffs   */
+  uint64_t    table_offset;    /* Absolute offset to the BAT.                  */
+  uint32_t    hdr_ver;         /* Version of the dd_hdr (major,minor)          */
+  uint32_t    max_bat_size;    /* Maximum number of entries in the BAT         */
+  uint32_t    block_size;      /* Block size in bytes. Must be power of 2.     */
+  uint32_t    checksum;        /* Header checksum.  1's comp of all fields.    */
+  uuid_t      prt_uuid;        /* ID of the parent disk.                       */
+  uint32_t    prt_ts;          /* Modification time of the parent disk         */
+  uint32_t    res1;            /* Reserved.                                    */
+  char        prt_name[512];   /* Parent unicode name.                         */
   struct prt_loc loc[8];  /* Parent locator entries.                      */
-  char   res2[256];       /* Reserved.                                    */
+  char        res2[256];       /* Reserved.                                    */
 };
 
 /* VHD cookie string. */
@@ -172,12 +168,12 @@ static const char DD_COOKIE[9]  =  "cxsparse";
 #define DD_BLK_UNUSED 0xFFFFFFFF
 
 struct dd_batmap_hdr {
-  char   cookie[8];       /* should contain "tdbatmap"                    */
-  u64    batmap_offset;   /* byte offset to batmap                        */
-  u32    batmap_size;     /* batmap size in sectors                       */
-  u32    batmap_version;  /* version of batmap                            */
-  u32    checksum;        /* batmap checksum -- 1's complement of batmap  */
-  char   marker;          /* generic marker field                         */
+  char        cookie[8];       /* should contain "tdbatmap"                    */
+  uint64_t    batmap_offset;   /* byte offset to batmap                        */
+  uint32_t    batmap_size;     /* batmap size in sectors                       */
+  uint32_t    batmap_version;  /* version of batmap                            */
+  uint32_t    checksum;        /* batmap checksum -- 1's complement of batmap  */
+  char        marker;          /* generic marker field                         */
 };
 
 static const char VHD_BATMAP_COOKIE[9] = "tdbatmap";
@@ -197,7 +193,7 @@ static const char VHD_BATMAP_COOKIE[9] = "tdbatmap";
  * +-------------------------------------------------+
  * | BAT (Block allocation table)                    |
  * |   - Array of absolute sector offsets into the   |
- * |     file (u32).                                 |
+ * |     file (uint32_t).                            |
  * |   - Rounded up to a sector boundary.            |
  * |   - Unused entries are marked as 0xFFFFFFFF     |
  * |   - max entries in dd_hdr->max_bat_size         |
