@@ -624,7 +624,7 @@ vhd_index_update_bat(vhdi_name_t *name)
 
 	err = vhd_get_bat(&vhd);
 	if (err)
-		goto out_bat;
+		goto out_vhd;
 
 	for (block = 0; block < vhd.bat.entries; block++) {
 		err = vhd_index_update_bat_entry(name, &vhdi, &bat,
