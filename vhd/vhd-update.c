@@ -44,7 +44,6 @@
 #include <endian.h>
 #include <byteswap.h>
 
-#include "atomicio.h"
 #include "libvhd.h"
 #include "libvhd-journal.h"
 
