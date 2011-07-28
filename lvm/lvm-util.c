@@ -347,19 +347,19 @@ main(int argc, char **argv)
 		return (err >= 0 ? err : -err);
 	}
 
-	printf("vg %s: extent_size: %llu, pvs: %d, lvs: %d\n",
+	printf("vg %s: extent_size: %"PRIu64", pvs: %d, lvs: %d\n",
 	       vg.name, vg.extent_size, vg.pv_cnt, vg.lv_cnt);
 
 	for (i = 0; i < vg.pv_cnt; i++) {
 		pv = vg.pvs + i;
-		printf("pv %s: start %llu\n", pv->name, pv->start);
+		printf("pv %s: start %"PRIu64"\n", pv->name, pv->start);
 	}
 
 	for (i = 0; i < vg.lv_cnt; i++) {
 		lv  = vg.lvs + i;
 		seg = &lv->first_segment;
-		printf("lv %s: size: %llu, segments: %u, type: %u, "
-		       "dev: %s, pe_start: %llu, pe_size: %llu\n",
+		printf("lv %s: size: %"PRIu64", segments: %u, type: %u, "
+		       "dev: %s, pe_start: %"PRIu64", pe_size: %"PRIu64"\n",
 		       lv->name, lv->size, lv->segments, seg->type,
 		       seg->device, seg->pe_start, seg->pe_size);
 	}

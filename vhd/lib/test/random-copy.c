@@ -4,6 +4,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+#include <inttypes.h>
 #include <sys/stat.h>
 
 struct range {
@@ -158,11 +159,12 @@ random_copy(struct random_copy_ctx *ctx)
 			return ENOMEM;
 		}
 
-		fprintf(stderr, "copying 0x%x from 0x%llx\n", count, r->start);
+		fprintf(stderr, "copying 0x%zx from 0x%"PRIx64"\n",
+			count, r->start);
 
 		err = pread(ctx->sfd, buf, count, r->start);
 		if (err != count) {
-			printf("pread(0x%x 0x%llx) returned 0x%x (%d)\n",
+			printf("pread(0x%zx 0x%"PRIx64") returned 0x%x (%d)\n",
 			       count, r->start, err, errno);
 			free(buf);
 			return (errno ? : EIO);
@@ -170,7 +172,7 @@ random_copy(struct random_copy_ctx *ctx)
 
 		err = pwrite(ctx->dfd, buf, count, r->start);
 		if (err != count) {
-			printf("pwrite(0x%x 0x%llx) returned 0x%x (%d)\n",
+			printf("pwrite(0x%zx 0x%"PRIx64") returned 0x%x (%d)\n",
 			       count, r->start, err, errno);
 			free(buf);
 			return (errno ? : EIO);
