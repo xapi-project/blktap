@@ -433,6 +433,7 @@ tapdisk_lio_ack_event(struct tqueue *queue)
 
 	if (lio->flags & LIO_FLAG_EVENTFD) {
 		int gcc = read(lio->event_fd, &val, sizeof(val));
+		if (gcc) {};
 	}
 }
 

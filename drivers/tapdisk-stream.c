@@ -193,6 +193,7 @@ tapdisk_stream_print_request(td_stream_t *s, td_stream_req_t *req)
 	struct td_iovec *iov = &req->iov;
 
 	int gcc = write(s->out_fd, iov->base, iov->secs << SECTOR_SHIFT);
+	if (gcc) {};
 
 	return iov->secs;
 }

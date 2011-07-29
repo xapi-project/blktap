@@ -658,6 +658,7 @@ vhdi_append_block(vhdi_context_t *ctx, vhdi_block_t *block, uint32_t *sector)
 out:
 	if (err) {
 		int gcc = ftruncate(ctx->fd, off);
+		if (gcc) {}
 	}
 	free(entries);
 	return err;
@@ -1184,6 +1185,7 @@ vhdi_file_table_add(const char *name, const char *file, vhdi_file_id_t *_fid)
 out:
 	if (err && off) {
 		int gcc = ftruncate(fd, off);
+		if (gcc) {};
 	}
 	close(fd);
 
