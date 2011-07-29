@@ -105,19 +105,7 @@ static const char HD_COOKIE[9]  =  "conectix";
 #define HD_TYPE_FIXED      2  /* fixed-allocation disk */
 #define HD_TYPE_DYNAMIC    3  /* dynamic disk */
 #define HD_TYPE_DIFF       4  /* differencing disk */
-
-/* String table for hd.type */
-static const char *HD_TYPE_STR[7] = {
-        "None",                    /* 0 */
-        "Reserved (deprecated)",   /* 1 */
-        "Fixed hard disk",         /* 2 */
-        "Dynamic hard disk",       /* 3 */
-        "Differencing hard disk",  /* 4 */
-        "Reserved (deprecated)",   /* 5 */
-        "Reserved (deprecated)"    /* 6 */
-};
-
-#define HD_TYPE_MAX 6
+#define HD_TYPE_MAX        6
 
 struct prt_loc {
   uint32_t    code;            /* Platform code -- see defines below.          */

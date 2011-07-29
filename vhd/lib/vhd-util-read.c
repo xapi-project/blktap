@@ -94,6 +94,17 @@ vhd_print_header(vhd_context_t *vhd, vhd_header_t *h, int hex)
 	printf("\n");
 }
 
+/* String table for hd.type */
+char *hd_type_str[7] = {
+        "None",                    /* 0 */
+        "Reserved (deprecated)",   /* 1 */
+        "Fixed hard disk",         /* 2 */
+        "Dynamic hard disk",       /* 3 */
+        "Differencing hard disk",  /* 4 */
+        "Reserved (deprecated)",   /* 5 */
+        "Reserved (deprecated)"    /* 6 */
+};
+
 static void
 vhd_print_footer(vhd_footer_t *f, int hex)
 {
@@ -150,8 +161,8 @@ vhd_print_footer(vhd_footer_t *f, int hex)
 	printf("(%s Bytes)\n", conv(hex, c * h * s << 9));
 
 	printf("Disk type           : %s\n", 
-		f->type <= HD_TYPE_MAX ? 
-		HD_TYPE_STR[f->type] : "Unknown type!\n");
+	       f->type <= HD_TYPE_MAX ? 
+	       hd_type_str[f->type] : "Unknown type!\n");
 
 	cksm = vhd_checksum_footer(f);
 	printf("Checksum            : 0x%x|0x%x (%s)\n", f->checksum, cksm,
