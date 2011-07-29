@@ -567,10 +567,9 @@ static inline uint32_t
 vhd_next_block_offset(vhd_context_t *vhd)
 {
 	int i;
-	uint32_t blk, end, spp, next;
+	uint32_t blk, end, next;
 
 	next = 0;
-	spp  = getpagesize() >> VHD_SECTOR_SHIFT;
 
 	for (i = 0; i < vhd->bat.entries; i++) {
 		blk = vhd->bat.bat[i];
@@ -881,7 +880,7 @@ vhd_add_bat_entries(vhd_journal_t *journal, int entries)
 static int
 vhd_dynamic_grow(vhd_journal_t *journal, uint64_t secs)
 {
-	int i, err;
+	int err;
 	off64_t eob, eom;
 	vhd_context_t *vhd;
 	vhd_block_t first_block;

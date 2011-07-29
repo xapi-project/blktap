@@ -61,7 +61,6 @@ static void
 tapdisk_loglimit_update(td_loglimit_t *rl, struct timeval *now)
 {
 	struct timeval next = rl->ts;
-	int expired;
 
 	timeradd_ms(&next, rl->interval);
 

@@ -1128,7 +1128,7 @@ vhdi_file_table_add(const char *name, const char *file, vhdi_file_id_t *_fid)
 	off64_t off;
 	size_t size;
 	vhdi_file_id_t fid;
-	int err, i, fd, len;
+	int err, fd, len;
 	vhdi_file_table_entry_t entry;
 	vhdi_file_table_header_t header;
 

@@ -186,7 +186,6 @@ tapdisk_namedup(char **dup, const char *name)
 int
 tapdisk_get_image_size(int fd, uint64_t *_sectors, uint32_t *_sector_size)
 {
-	int ret;
 	struct stat stat;
 	uint64_t sectors, bytes;
 	uint32_t sector_size;
@@ -213,7 +212,6 @@ tapdisk_get_image_size(int fd, uint64_t *_sectors, uint32_t *_sector_size)
 		/*Get the sector size*/
 #if defined(BLKSSZGET)
 		{
-			int arg;
 			sector_size = DEFAULT_SECTOR_SIZE;
 			ioctl(fd, BLKSSZGET, &sector_size);
 

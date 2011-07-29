@@ -134,8 +134,6 @@ vhd_index_initialize_request(vhd_index_request_t *req)
 static inline void
 vhd_index_initialize_block(vhd_index_block_t *block)
 {
-	char *buf;
-
 	block->blk   = 0;
 	block->state = 0;
 	INIT_LIST_HEAD(&block->queue);

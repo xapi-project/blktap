@@ -41,7 +41,6 @@
 int
 td_load(td_image_t *image)
 {
-	int err;
 	td_image_t *shared;
 	td_driver_t *driver;
 

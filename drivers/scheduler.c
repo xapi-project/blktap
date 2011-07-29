@@ -269,7 +269,7 @@ scheduler_register_event(scheduler_t *s, char mode, int fd,
 void
 scheduler_unregister_event(scheduler_t *s, event_id_t id)
 {
-	event_t *event, *tmp;
+	event_t *event;
 
 	if (!id)
 		return;

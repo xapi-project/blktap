@@ -65,7 +65,6 @@ int
 tap_ctl_check(const char **msg)
 {
 	int err;
-	uid_t uid;
 
 	err = tap_ctl_check_blktap(msg);
 	if (err)

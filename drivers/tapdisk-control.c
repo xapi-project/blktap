@@ -497,6 +497,7 @@ tapdisk_control_validate_request(tapdisk_message_t *request)
 	return 0;
 }
 
+#if 0
 static void
 tapdisk_control_list_minors(struct tapdisk_ctl_conn *conn,
 			    tapdisk_message_t *request)
@@ -529,6 +530,7 @@ tapdisk_control_list_minors(struct tapdisk_ctl_conn *conn,
 	response.u.minors.count = i;
 	tapdisk_ctl_conn_write(conn, &response, 2);
 }
+#endif
 
 static void
 tapdisk_control_list(struct tapdisk_ctl_conn *conn, tapdisk_message_t *request)
@@ -536,7 +538,7 @@ tapdisk_control_list(struct tapdisk_ctl_conn *conn, tapdisk_message_t *request)
 	td_vbd_t *vbd;
 	struct list_head *head;
 	tapdisk_message_t response;
-	int count, i;
+	int count;
 
 	memset(&response, 0, sizeof(response));
 	response.type = TAPDISK_MESSAGE_LIST_RSP;
@@ -997,7 +999,7 @@ struct tapdisk_control_info message_infos[] = {
 static void
 tapdisk_control_handle_request(event_id_t id, char mode, void *private)
 {
-	int err, len, excl;
+	int err, excl;
 	tapdisk_message_t message, response;
 	struct tapdisk_ctl_conn *conn = private;
 	struct tapdisk_control_info *info;
@@ -1143,8 +1145,8 @@ tapdisk_control_mkdir(const char *dir)
 static int
 tapdisk_control_create_socket(char **socket_path)
 {
-	int err, flags;
 	struct sockaddr_un saddr;
+	int err;
 
 	err = tapdisk_control_mkdir(BLKTAP2_CONTROL_DIR);
 	if (err) {
@@ -1214,8 +1216,6 @@ fail:
 int
 tapdisk_control_open(char **path)
 {
-	int err;
-
 	tapdisk_control_initialize();
 
 	return tapdisk_control_create_socket(path);

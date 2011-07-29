@@ -55,9 +55,6 @@ struct tdram_state {
 static int get_image_info(int fd, td_disk_info_t *info)
 {
 	int ret;
-	long size;
-	unsigned long total_size;
-	struct statvfs statBuf;
 	struct stat stat;
 
 	ret = fstat(fd, &stat);
@@ -82,7 +79,6 @@ static int get_image_info(int fd, td_disk_info_t *info)
 		/*Get the sector size*/
 #if defined(BLKSSZGET)
 		{
-			int arg;
 			info->sector_size = DEFAULT_SECTOR_SIZE;
 			ioctl(fd, BLKSSZGET, &info->sector_size);
 			
@@ -213,7 +209,6 @@ done:
 
 void tdram_queue_read(td_driver_t *driver, td_request_t treq)
 {
-	struct tdram_state *prv = (struct tdram_state *)driver->data;
 	int      size    = treq.secs * driver->info.sector_size;
 	uint64_t offset  = treq.sec * (uint64_t)driver->info.sector_size;
 
@@ -224,7 +219,6 @@ void tdram_queue_read(td_driver_t *driver, td_request_t treq)
 
 void tdram_queue_write(td_driver_t *driver, td_request_t treq)
 {
-	struct tdram_state *prv = (struct tdram_state *)driver->data;
 	int      size    = treq.secs * driver->info.sector_size;
 	uint64_t offset  = treq.sec * (uint64_t)driver->info.sector_size;
 	
@@ -237,8 +231,6 @@ void tdram_queue_write(td_driver_t *driver, td_request_t treq)
 
 int tdram_close(td_driver_t *driver)
 {
-	struct tdram_state *prv = (struct tdram_state *)driver->data;
-	
 	connections--;
 	
 	return 0;

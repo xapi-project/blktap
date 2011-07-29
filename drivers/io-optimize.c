@@ -221,8 +221,7 @@ io_merge(struct opioctx *ctx, struct iocb **queue, int num)
 {
 	int i, on_queue;
 	struct iocb *io, **q;
-	struct opio *ophead;
-	
+
 	if (!num)
 		return 0;
 

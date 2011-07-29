@@ -63,7 +63,7 @@ vhd_print_header(vhd_context_t *vhd, vhd_header_t *h, int hex)
 {
 	int err;
 	uint32_t  cksm;
-	char      uuid[37], time_str[26], cookie[9], out[512], *name;
+	char      uuid[37], time_str[26], cookie[9], *name;
 
 	printf("VHD Header Summary:\n-------------------\n");
 
@@ -98,7 +98,7 @@ static void
 vhd_print_footer(vhd_footer_t *f, int hex)
 {
 	uint64_t  c, h, s;
-	uint32_t  ff_maj, ff_min, cr_maj, cr_min, cksm, cksm_save;
+	uint32_t  ff_maj, ff_min, cr_maj, cr_min, cksm;
 	char      time_str[26], creator[5], uuid[37], cookie[9];
 
 	printf("VHD Footer Summary:\n-------------------\n");
@@ -475,7 +475,6 @@ vhd_test_bitmap(vhd_context_t *vhd, uint64_t sector, int count, int hex)
 		else
 			bit = vhd_bitmap_test(vhd, buf, sec);
 
-	print:
 		printf("block %s: ", conv(hex, blk));
 		printf("sec: %s: %d\n", conv(hex, sec), bit);
 	}

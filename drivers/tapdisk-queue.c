@@ -196,7 +196,6 @@ static int
 tapdisk_rwio_setup(struct tqueue *queue, int size)
 {
 	struct rwio *rwio = queue->tio_data;
-	int err;
 
 	rwio->aio_events = calloc(size, sizeof(struct io_event));
 	if (!rwio->aio_events)
@@ -473,7 +472,6 @@ static int
 tapdisk_lio_setup(struct tqueue *queue, int qlen)
 {
 	struct lio *lio = queue->tio_data;
-	size_t sz;
 	int err;
 
 	lio->event_id = -1;
@@ -607,7 +605,7 @@ int
 tapdisk_init_queue(struct tqueue *queue, int size,
 		   int drv, struct tfilter *filter)
 {
-	int i, err;
+	int err;
 
 	memset(queue, 0, sizeof(struct tqueue));
 

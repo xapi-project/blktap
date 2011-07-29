@@ -126,7 +126,6 @@ static int
 vhd_util_scan_pretty_allocate_list(int cnt)
 {
 	int i;
-	struct vhd_image *list;
 
 	memset(&scan, 0, sizeof(scan));
 
@@ -460,7 +459,6 @@ copy_name(char *dst, const char *src)
 static int
 vhd_util_scan_extract_volume_name(char *dst, const char *src)
 {
-	int err;
 	char copy[VHD_MAX_NAME_LEN], *name, *s, *c;
 
 	name = strrchr(src, '/');
@@ -527,7 +525,7 @@ found:
 static int
 vhd_util_scan_get_parent(vhd_context_t *vhd, struct vhd_image *image)
 {
-	int i, err;
+	int err;
 	vhd_parent_locator_t *loc;
 
 	if (!target_vhd(image->target->type)) {
@@ -711,7 +709,6 @@ out:
 static int
 vhd_util_scan_open_volume(vhd_context_t *vhd, struct vhd_image *image)
 {
-	int err;
 	struct target *target;
 
 	target = image->target;
@@ -1285,15 +1282,13 @@ vhd_util_scan_find_targets(int cnt, char **names,
 int
 vhd_util_scan(int argc, char **argv)
 {
-	int c, ret, err, cnt, markers;
+	int c, err, cnt;
 	char *filter, *volume;
 	struct target *targets;
 
 	cnt     = 0;
-	ret     = 0;
 	err     = 0;
 	flags   = 0;
-	markers = 0;
 	filter  = NULL;
 	volume  = NULL;
 	targets = NULL;

@@ -209,7 +209,6 @@ vhd_util_coalesce_parent(const char *name, int sparse, int progress)
 
 	err = vhd_util_coalesce_onto(&vhd, &parent, parent_fd, progress);
 
- done:
 	free(pname);
 	vhd_close(&vhd);
 	if (parent.file)
@@ -644,7 +643,6 @@ done:
 int
 vhd_util_coalesce(int argc, char **argv)
 {
-	uint64_t i;
 	char *name, *oname, *ancestor;
 	int err, c, progress, sparse;
 

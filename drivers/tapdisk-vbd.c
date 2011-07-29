@@ -153,9 +153,8 @@ tapdisk_vbd_close_vdi(td_vbd_t *vbd)
 static int
 tapdisk_vbd_add_block_cache(td_vbd_t *vbd)
 {
-	int err;
-	td_driver_t *driver;
 	td_image_t *cache, *image, *target, *tmp;
+	int err;
 
 	target = NULL;
 
@@ -215,9 +214,8 @@ done:
 static int
 tapdisk_vbd_add_local_cache(td_vbd_t *vbd)
 {
-	int err;
-	td_driver_t *driver;
 	td_image_t *cache, *parent;
+	int err;
 
 	parent = tapdisk_vbd_first_image(vbd);
 	if (tapdisk_vbd_is_last_image(vbd, parent)) {
@@ -726,6 +724,7 @@ tapdisk_vbd_kill_queue(td_vbd_t *vbd)
 	return 0;
 }
 
+#if 0
 static int
 tapdisk_vbd_open_image(td_vbd_t *vbd, td_image_t *image)
 {
@@ -747,6 +746,7 @@ tapdisk_vbd_open_image(td_vbd_t *vbd, td_image_t *image)
 
 	return 0;
 }
+#endif
 
 int
 tapdisk_vbd_pause(td_vbd_t *vbd)
@@ -900,9 +900,6 @@ tapdisk_vbd_check_progress(td_vbd_t *vbd)
 static int
 tapdisk_vbd_check_queue(td_vbd_t *vbd)
 {
-	int err;
-	td_image_t *image;
-
 	if (list_empty(&vbd->images))
 		return -ENOSYS;
 
@@ -959,7 +956,7 @@ static void
 __tapdisk_vbd_complete_td_request(td_vbd_t *vbd, td_vbd_request_t *vreq,
 				  td_request_t treq, int res)
 {
-	td_image_t *image = treq.image, *prev, *tmp;
+	td_image_t *image = treq.image;
 	int err;
 
 	err = (res <= 0 ? res : -res);

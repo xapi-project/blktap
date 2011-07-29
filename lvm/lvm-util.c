@@ -235,7 +235,7 @@ lvm_scan_lvs(struct vg *vg)
 		struct lv *lv;
 		struct lv_segment seg;
 		unsigned long long size, seg_start;
-		char type[32], name[256], dev[256], devices[1024];
+		char type[32], name[256], devices[1024];
 
 		if (i >= vg->lv_cnt)
 			break;

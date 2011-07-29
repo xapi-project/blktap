@@ -361,7 +361,6 @@ vhd_journal_update(vhd_journal_t *j, off64_t offset,
 		   char *buf, size_t size, uint32_t type)
 {
 	int err;
-	off64_t eof;
 	uint64_t *off, off_bak;
 	uint32_t *entries;
 	vhd_journal_entry_t entry;
@@ -615,7 +614,6 @@ static int
 vhd_journal_add_metadata(vhd_journal_t *j)
 {
 	int err;
-	off64_t eof;
 	vhd_context_t *vhd;
 
 	vhd = &j->vhd;
@@ -1260,11 +1258,7 @@ fail:
 int
 vhd_journal_create(vhd_journal_t *j, const char *file, const char *jfile)
 {
-	char *buf;
-	int i, err;
-	size_t size;
-	off64_t off;
-	struct stat stats;
+	int err;
 
 	memset(j, 0, sizeof(vhd_journal_t));
 	j->jfd = -1;

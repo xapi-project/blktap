@@ -135,12 +135,8 @@ insert_hash(struct tfilter *filter, uint64_t sec, char *buf)
 static void
 check_sector(struct tfilter *filter, int type, int rw, uint64_t sec, char *buf)
 {
-	struct dhash *hash;
-
 	if (sec >= filter->secs)
 		return;
-
-	hash = filter->dhash + sec;
 
 	if (rw) {
 		if (type == PRE_CHECK)
@@ -157,7 +153,7 @@ static void
 check_data(struct tfilter *filter, int type, struct iocb *io)
 {
 	int rw;
-	uint64_t i, sec;
+	uint64_t i;
 
 	rw = (io->aio_lio_opcode == IO_CMD_PWRITE);
 

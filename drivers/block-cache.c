@@ -747,12 +747,9 @@ static int
 block_cache_validate_parent(td_driver_t *driver,
 			    td_driver_t *pdriver, td_flag_t flags)
 {
-	block_cache_t *cache;
-
 	if (!td_flag_test(pdriver->state, TD_DRIVER_RDONLY))
 		return -EINVAL;
 
-	cache = (block_cache_t *)driver->data;
 	if (strcmp(driver->name, pdriver->name))
 		return -EINVAL;
 

@@ -141,11 +141,6 @@ struct llpcache {
 	int                     n_free;
 };
 
-static void
-llpcache_close_image(td_llpcache_t *s)
-{
-}
-
 static td_llpcache_req_t *
 llpcache_alloc_request(td_llpcache_t *s)
 {
@@ -216,7 +211,6 @@ llpcache_requeue_treq(td_llpcache_t *s, td_llpcache_req_t *req, int target)
 {
 	struct llpcache_vreq *lvr;
 	td_vbd_request_t *vreq;
-	td_vbd_t *vbd;
 	int err;
 
 	lvr           = &req->lvr[target];

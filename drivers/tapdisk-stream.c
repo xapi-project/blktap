@@ -166,8 +166,6 @@ tapdisk_stream_destroy_reqs(td_stream_t *s)
 static int
 tapdisk_stream_create_reqs(td_stream_t *s)
 {
-	size_t size;
-	void *buf;
 	int i, err;
 
 	s->n_free = 0;
@@ -392,7 +390,6 @@ tapdisk_stream_set_position(td_stream_t *s,
 void
 __tapdisk_stream_event_cb(event_id_t id, char mode, void *arg)
 {
-	td_stream_t *s = arg;
 }
 
 static int
@@ -459,7 +456,6 @@ main(int argc, char *argv[])
 {
 	int c, err;
 	const char *params;
-	const char *path;
 	uint64_t count, skip;
 	struct tapdisk_stream stream;
 

@@ -200,7 +200,6 @@ tapdisk_server_submit_tiocbs(void)
 static void
 tapdisk_server_kick_responses(void)
 {
-	int n;
 	td_vbd_t *vbd, *tmp;
 
 	tapdisk_server_for_each_vbd(vbd, tmp)

@@ -359,7 +359,7 @@ int
 td_coalesce(int type, int argc, char *argv[])
 {
 	int c, ret, cargc;
-	char *name, *pname, *cargv[3];
+	char *name, *cargv[3];
 
 	if (type != TD_TYPE_VHD) {
 		fprintf(stderr, "Cannot create snapshot of %s image type\n",
@@ -547,7 +547,7 @@ td_query(int type, int argc, char *argv[])
 int
 td_set_field(int type, int argc, char *argv[])
 {
-	int ret, i, c, cargc;
+	int c, cargc;
 	struct vdi_field *field;
 	char *name, *value, *cargv[7];
 

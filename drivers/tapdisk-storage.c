@@ -100,8 +100,6 @@ tapdisk_storage_type(const char *path)
 const char *
 tapdisk_storage_name(int type)
 {
-	const char *name;
-
 	switch (type) {
 	case TAPDISK_STORAGE_TYPE_NFS:
 		return "nfs";

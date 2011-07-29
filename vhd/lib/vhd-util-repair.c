@@ -41,7 +41,6 @@ vhd_util_repair(int argc, char **argv)
 {
 	char *name;
 	int err, c;
-	off64_t eof;
 	vhd_context_t vhd;
 
 	name = NULL;

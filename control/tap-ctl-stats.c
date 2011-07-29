@@ -39,7 +39,6 @@ _tap_ctl_stats_connect_and_send(pid_t pid, int minor)
 	struct timeval timeout = { .tv_sec = 10, .tv_usec = 0 };
 	tapdisk_message_t message;
 	int sfd, err;
-	size_t len;
 
 	err = tap_ctl_connect_id(pid, &sfd);
 	if (err)

@@ -39,7 +39,7 @@
 static pid_t
 __tap_ctl_spawn(int *readfd)
 {
-	int err, child, channel[2];
+	int child, channel[2];
 	char *tapdisk;
 
 	if (pipe(channel)) {

@@ -41,7 +41,6 @@ vhd_util_set_field(int argc, char **argv)
 {
 	long value;
 	int err, c;
-	off64_t eof;
 	vhd_context_t vhd;
 	char *name, *field;
 
@@ -107,8 +106,7 @@ vhd_util_set_field(int argc, char **argv)
 		err = vhd_set_marker(&vhd, (char)value);
 	}
 		
- done:
-	vhd_close(&vhd);
+ 	vhd_close(&vhd);
 	return err;
 
 usage:

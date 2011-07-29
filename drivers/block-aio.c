@@ -64,10 +64,7 @@ struct tdaio_state {
 static int tdaio_get_image_info(int fd, td_disk_info_t *info)
 {
 	int ret;
-	long size;
-	unsigned long total_size;
 	unsigned long long bytes;
-	struct statvfs statBuf;
 	struct stat stat;
 
 	ret = fstat(fd, &stat);
@@ -94,7 +91,6 @@ static int tdaio_get_image_info(int fd, td_disk_info_t *info)
 		/*Get the sector size*/
 #if defined(BLKSSZGET)
 		{
-			int arg;
 			info->sector_size = DEFAULT_SECTOR_SIZE;
 			ioctl(fd, BLKSSZGET, &info->sector_size);
 			

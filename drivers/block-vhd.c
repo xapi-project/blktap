@@ -418,11 +418,9 @@ vhd_free_bat(struct vhd_state *s)
 static int
 vhd_initialize_bat(struct vhd_state *s)
 {
-	int err, psize, batmap_required, i;
+	int err, batmap_required, i;
 
 	memset(&s->bat, 0, sizeof(struct vhd_bat));
-
-	psize = getpagesize();
 
 	err = vhd_read_bat(&s->vhd, &s->bat.bat);
 	if (err) {
@@ -764,7 +762,6 @@ _vhd_close(td_driver_t *driver)
 {
 	int err;
 	struct vhd_state *s;
-	struct vhd_bitmap *bm;
 	
 	DBG(TLOG_WARN, "vhd_close\n");
 	s = (struct vhd_state *)driver->data;
@@ -814,7 +811,6 @@ int
 vhd_validate_parent(td_driver_t *child_driver,
 		    td_driver_t *parent_driver, td_flag_t flags)
 {
-	struct stat stats;
 	struct vhd_state *child  = (struct vhd_state *)child_driver->data;
 	struct vhd_state *parent;
 
@@ -1404,7 +1400,6 @@ static void
 schedule_redundant_bm_write(struct vhd_state *s, uint32_t blk)
 {
 	uint64_t offset;
-	struct vhd_bitmap *bm;
 	struct vhd_request *req;
 
 	ASSERT(s->vhd.footer.type != HD_TYPE_FIXED);
@@ -1469,7 +1464,6 @@ update_bat(struct vhd_state *s, uint32_t blk)
 static int
 allocate_block(struct vhd_state *s, uint32_t blk)
 {
-	char *zeros;
 	int err, gap;
 	uint64_t offset, size;
 	struct vhd_bitmap *bm;
@@ -1954,9 +1948,9 @@ signal_completion(struct vhd_request *list, int error)
 static void
 start_new_bitmap_transaction(struct vhd_state *s, struct vhd_bitmap *bm)
 {
-	int i, error = 0;
 	struct vhd_transaction *tx;
 	struct vhd_request *r, *next;
+	int i;
 
 	if (!bm->queue.head)
 		return;

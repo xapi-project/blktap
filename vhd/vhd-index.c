@@ -147,8 +147,8 @@ static inline int
 vhd_index_get_file_id(vhdi_name_t *name, const char *file,
 		      vhdi_file_table_t *files, vhdi_file_id_t *fid)
 {
-	int i, err;
 	char *path;
+	int i;
 
 	path = realpath(file, NULL);
 	if (!path)
@@ -655,7 +655,7 @@ out:
 static int
 vhd_index_create(vhdi_name_t *name)
 {
-	int err, len;
+	int err;
 	vhd_context_t ctx;
 	uint32_t block_size;
 
@@ -701,7 +701,7 @@ vhd_index(vhdi_name_t *name)
 	vhd_context_t ctx;
 	uint64_t vhd_blocks;
 	uint32_t vhd_block_size;
-	int err, len, new_index, new_bat;
+	int err, new_index, new_bat;
 
 	parent    = NULL;
 	new_bat   = 0;

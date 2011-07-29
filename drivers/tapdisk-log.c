@@ -100,7 +100,7 @@ static void
 tlog_logfile_close(void)
 {
 	td_logfile_t *logfile = &tapdisk_log.logfile;
-	int keep, err;
+	int keep;
 
 	keep = tapdisk_log.precious || tapdisk_log.errors;
 
@@ -269,8 +269,7 @@ __tlog_error(const char *fmt, ...)
 void
 tapdisk_start_logging(const char *ident, const char *_facility)
 {
-	static char buf[128];
-	int facility, err;
+	int facility;
 
 	facility = tapdisk_syslog_facility(_facility);
 	tapdisk_server_openlog(ident, LOG_CONS|LOG_ODELAY, facility);

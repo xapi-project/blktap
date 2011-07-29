@@ -1183,7 +1183,6 @@ int
 vhd_util_check(int argc, char **argv)
 {
 	char *name;
-	vhd_context_t vhd;
 	int c, err, parents;
 	struct vhd_util_check_ctx ctx;
 

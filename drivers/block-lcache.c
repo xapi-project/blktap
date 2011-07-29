@@ -129,7 +129,6 @@ static int
 lcache_create_buffers(td_lcache_t *cache)
 {
 	int prot, flags, i, err;
-	size_t bufsz;
 
 	prot  = PROT_READ|PROT_WRITE;
 	flags = MAP_ANONYMOUS|MAP_PRIVATE|MAP_LOCKED;
@@ -173,9 +172,7 @@ static int
 lcache_open(td_driver_t *driver, const char *name, td_flag_t flags)
 {
 	td_lcache_t *cache = driver->data;
-	int i, err;
-	int prot, _flags;
-	size_t lreq_bufsz;
+	int err;
 
 	err  = tapdisk_namedup(&cache->name, (char *)name);
 	if (err)
@@ -291,10 +288,6 @@ lcache_store_read(td_lcache_t *cache, td_lcache_req_t *req)
 static void
 lcache_complete_read(td_lcache_t *cache, td_lcache_req_t *req)
 {
-	td_vbd_request_t *vreq;
-
-	vreq = req->treq.vreq;
-
 	if (likely(!req->err)) {
 		size_t sz = req->treq.secs << SECTOR_SHIFT;
 		memcpy(req->treq.buf, req->buf, sz);
@@ -328,8 +321,6 @@ static void
 lcache_queue_read(td_driver_t *driver, td_request_t treq)
 {
 	td_lcache_t *cache = driver->data;
-	int err;
-	size_t size;
 	td_request_t clone;
 	td_lcache_req_t *req;
 
@@ -350,7 +341,6 @@ lcache_queue_read(td_driver_t *driver, td_request_t treq)
 	clone.cb      = __lcache_read_cb;
 	clone.cb_data = req;
 
-out:
 	td_forward_request(clone);
 }
 

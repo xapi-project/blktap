@@ -72,7 +72,7 @@ int
 main(int argc, char *argv[])
 {
 	char *control;
-	int c, err, nodaemon, fd;
+	int c, err, nodaemon;
 	FILE *out;
 
 	control  = NULL;

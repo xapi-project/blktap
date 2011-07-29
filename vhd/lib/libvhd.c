@@ -1036,7 +1036,6 @@ out:
 int
 vhd_read_header(vhd_context_t *ctx, vhd_header_t *header)
 {
-	int err;
 	off64_t off;
 
 	if (!vhd_type_dynamic(ctx)) {
@@ -2014,7 +2013,6 @@ out:
 int
 vhd_write_header(vhd_context_t *ctx, vhd_header_t *header)
 {
-	int err;
 	off64_t off;
 
 	if (!vhd_type_dynamic(ctx))
@@ -2189,7 +2187,7 @@ vhd_write_bitmap(vhd_context_t *ctx, uint32_t block, char *bitmap)
 	int err;
 	off64_t off;
 	uint64_t blk;
-	size_t secs, size;
+	size_t size;
 
 	if (!vhd_type_dynamic(ctx))
 		return -EINVAL;
@@ -3038,8 +3036,6 @@ __vhd_create(const char *name, const char *parent, uint64_t bytes, int type,
 	int err;
 	off64_t off;
 	vhd_context_t ctx;
-	vhd_footer_t *footer;
-	vhd_header_t *header;
 	uint64_t size, psize, blks;
 
 	switch (type) {
@@ -3061,8 +3057,6 @@ __vhd_create(const char *name, const char *parent, uint64_t bytes, int type,
 
 	memset(&ctx, 0, sizeof(vhd_context_t));
 	psize = 0;
-	footer = &ctx.footer;
-	header = &ctx.header;
 	blks   = (bytes + VHD_BLOCK_SIZE - 1) >> VHD_BLOCK_SHIFT;
 	/* If mbytes is provided (virtual-size-for-metadata-preallocation),
 	 * create the VHD of size mbytes, which will create the BAT & the 
@@ -3435,7 +3429,7 @@ __vhd_io_allocate_block(vhd_context_t *ctx, uint32_t block)
 	char *buf;
 	size_t size;
 	off64_t off, max;
-	int i, err, gap, spp, secs;
+	int err, gap, spp, secs;
 
 	spp = getpagesize() >> VHD_SECTOR_SHIFT;
 
@@ -3776,7 +3770,7 @@ vhd_block_vector_init(vhd_context_t *ctx,
 {
 	int err, sec;
 	char *bitmap;
-	uint32_t blk, first_sec, last_sec;
+	uint32_t first_sec, last_sec;
 
 	bitmap = NULL;
 	memset(vec, 0, sizeof(*vec));
@@ -3916,7 +3910,7 @@ __vhd_io_dynamic_read_link_bytes(vhd_context_t *ctx, char *map,
 				 char *buf, size_t size, uint64_t off)
 {
 	char *blkmap;
-	int i, err, cnt, map_off;
+	int i, err, map_off;
 	off64_t blk_off, blk_size;
 	uint32_t blk, bytes, first_sec, last_sec;
 
