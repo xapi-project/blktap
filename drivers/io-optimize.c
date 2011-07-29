@@ -46,9 +46,6 @@
 #define DBG(ctx, f, a...) ((void)0)
 #endif
 
-static void print_merged_iocbs(struct opioctx *ctx, 
-			       struct iocb **iocbs, int num_iocbs);
-
 void
 opio_free(struct opioctx *ctx)
 {
@@ -216,6 +213,44 @@ merge(struct opioctx *ctx, struct iocb *head, struct iocb *io)
 	return merge_tail(ctx, head, io);		
 }
 
+#if (defined(TEST) || defined(DEBUG))
+static void
+print_optimized_iocbs(struct opioctx *ctx, struct opio *op, int *cnt)
+{
+	char pref[10];
+
+	while (op) {
+		snprintf(pref, 10, "  %d: ", (*cnt)++);
+		__print_iocb(ctx, op->iocb, pref);
+		op = op->next;
+	}
+}
+
+static void
+print_merged_iocbs(struct opioctx *ctx, struct iocb **iocbs, int num_iocbs)
+{
+	int i, cnt;
+	char pref[10];
+	struct iocb *io;
+	struct opio *op;
+
+	DBG(ctx, "merged iocbs:\n");
+	for (i = 0, cnt = 0; i < num_iocbs; i++) {
+		io = iocbs[i];
+		snprintf(pref, 10, "%d: ", cnt++);
+		__print_iocb(ctx, io, pref);
+
+		if (iocb_optimized(ctx, io)) {
+			op = (struct opio *)io->data;
+			print_optimized_iocbs(ctx, op->next, &cnt);
+		}
+	}
+}
+#else
+#define print_optimized_iocbs(...)
+#define print_merged_iocbs(...)
+#endif
+
 int
 io_merge(struct opioctx *ctx, struct iocb **queue, int num)
 {
@@ -235,9 +270,7 @@ io_merge(struct opioctx *ctx, struct iocb **queue, int num)
 			queue[++on_queue] = io;
 	}
 
-#if (defined(TEST) || defined(DEBUG))
 	print_merged_iocbs(ctx, queue, on_queue + 1);
-#endif
 
 	return ++on_queue;
 }
@@ -359,68 +392,8 @@ __print_iocb(struct opioctx *ctx, struct iocb *io, char *prefix)
 	    iocb_optimized(ctx, io));
 }
 
-static char *null_prefix = "";
-#define print_iocb(ctx, io) __print_iocb(ctx, io, null_prefix)
+#define print_iocb(ctx, io) __print_iocb(ctx, io, "")
 
-static void
-print_iocbs(struct opioctx *ctx, struct iocb **iocbs, int num_iocbs)
-{
-	int i;
-	char pref[10];
-	struct iocb *io;
-
-	DBG(ctx, "iocbs:\n");
-	for (i = 0; i < num_iocbs; i++) {
-		io = iocbs[i];
-		snprintf(pref, 10, "%d: ", i);
-		__print_iocb(ctx, io, pref);
-	}
-}
-
-static void
-print_optimized_iocbs(struct opioctx *ctx, struct opio *op, int *cnt)
-{
-	char pref[10];
-
-	while (op) {
-		snprintf(pref, 10, "  %d: ", (*cnt)++);
-		__print_iocb(ctx, op->iocb, pref);
-		op = op->next;
-	}
-}
-
-static void
-print_merged_iocbs(struct opioctx *ctx, struct iocb **iocbs, int num_iocbs)
-{
-	int i, cnt;
-	char pref[10];
-	struct iocb *io;
-	struct opio *op;
-
-	DBG(ctx, "merged iocbs:\n");
-	for (i = 0, cnt = 0; i < num_iocbs; i++) {
-		io = iocbs[i];
-		snprintf(pref, 10, "%d: ", cnt++);
-		__print_iocb(ctx, io, pref);
-
-		if (iocb_optimized(ctx, io)) {
-			op = (struct opio *)io->data;
-			print_optimized_iocbs(ctx, op->next, &cnt);
-		}
-	}
-}
-
-static void
-print_events(struct opioctx *ctx, struct io_event *events, int num_events)
-{
-	int i;
-	struct iocb *io;
-
-	for (i = 0; i < num_events; i++) {
-		io = events[i].obj;
-		print_iocb(ctx, io);
-	}
-}
 /******************************************************************************
 end debug print functions
 ******************************************************************************/
@@ -570,6 +543,33 @@ init_optest(struct iocb *iocb_list,
 
 	for (i = 0; i < num; i++)
 		iocbs[i]  = &iocb_list[i];
+}
+
+static void
+print_iocbs(struct opioctx *ctx, struct iocb **iocbs, int num_iocbs)
+{
+	int i;
+	char pref[10];
+	struct iocb *io;
+
+	DBG(ctx, "iocbs:\n");
+	for (i = 0; i < num_iocbs; i++) {
+		io = iocbs[i];
+		snprintf(pref, 10, "%d: ", i);
+		__print_iocb(ctx, io, pref);
+	}
+}
+
+static void
+print_events(struct opioctx *ctx, struct io_event *events, int num_events)
+{
+	int i;
+	struct iocb *io;
+
+	for (i = 0; i < num_events; i++) {
+		io = events[i].obj;
+		print_iocb(ctx, io);
+	}
 }
 
 int
