@@ -3831,6 +3831,7 @@ out:
 	return err;
 }
 
+#if 0
 /**
  * @block: vhd block number
  * @buf: buffer to place data in
@@ -3861,6 +3862,7 @@ out:
 	free(vec.array);
 	return err;
 }
+#endif
 
 /**
  * @block: vhd block number
