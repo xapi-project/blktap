@@ -80,7 +80,7 @@ resume(pid_t pid)
 	}
 }
 
-static int
+static void
 test(pid_t pid, int interval)
 {
 	for (;;) {
