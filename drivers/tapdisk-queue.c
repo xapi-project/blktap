@@ -264,8 +264,8 @@ tapdisk_rwio_submit(struct tqueue *queue)
 static const struct tio td_tio_rwio = {
 	.name        = "rwio",
 	.data_size   = 0,
-	.tio_setup   = NULL,
-	.tio_destroy = NULL,
+	.tio_setup   = tapdisk_rwio_setup,
+	.tio_destroy = tapdisk_rwio_destroy,
 	.tio_submit  = tapdisk_rwio_submit
 };
 
