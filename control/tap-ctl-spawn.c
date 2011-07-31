@@ -84,6 +84,10 @@ __tap_ctl_spawn(int *readfd)
 	execl(TAPDISK_EXECDIR "/" TAPDISK_EXEC, TAPDISK_EXEC,
 	      NULL);
 
+	if (errno == ENOENT)
+		execl(TAPDISK_BUILDDIR "/" TAPDISK_EXEC, TAPDISK_EXEC,
+		      NULL);
+
 	exit(errno);
 }
 

@@ -7,6 +7,7 @@ AM_CPPFLAGS += -DTAPCTL
 AM_CPPFLAGS += -I$(top_srcdir)/include
 AM_CPPFLAGS += -DTAPDISK_EXEC='"tapdisk"'
 AM_CPPFLAGS += -DTAPDISK_EXECDIR='"$(libexecdir)"'
+AM_CPPFLAGS += -DTAPDISK_BUILDDIR='"$(top_builddir)/drivers"'
 
 sbin_PROGRAMS = tap-ctl
 tap_ctl_LDADD = libblktapctl.la
