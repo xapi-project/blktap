@@ -16,6 +16,7 @@ INST-DIR         = /usr/lib
 CFLAGS          += -Werror
 CFLAGS          += -Wno-unused
 CFLAGS          += -I../../include
+CFLAGS		+= -I../../lvm
 CFLAGS          += -D_GNU_SOURCE
 ifndef TRANSFERVM
 CFLAGS          += -fPIC
@@ -46,11 +47,9 @@ LIB-SRCS        += vhd-util-scan.c
 LIB-SRCS        += vhd-util-check.c
 LIB-SRCS        += relative-path.c
 LIB-SRCS        += atomicio.c
+LIB-SRCS        += ../../lvm/lvm-util.c
 
 LIB-OBJS         = $(patsubst %.c,%.o,$(LIB-SRCS))
-ifndef TRANSFERVM
-LIB-OBJS        += $(LVM-UTIL-OBJ)
-endif
 
 LIBVHD-IO-LIBS  := -ldl -L./ -lvhd
 LIBVHD-IO-OBJS  := libvhdio.o $(BLKTAP_ROOT)/part/partition.o
