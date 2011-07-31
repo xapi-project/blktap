@@ -72,14 +72,19 @@ __tap_ctl_spawn(int *readfd)
 	close(channel[0]);
 	close(channel[1]);
 
-	tapdisk = getenv("TAPDISK2");
+	tapdisk = getenv("TAPDISK");
 	if (!tapdisk)
-		tapdisk = "tapdisk2";
+		tapdisk = getenv("TAPDISK2");
 
-	execlp(tapdisk, tapdisk, NULL);
+	if (tapdisk) {
+		execlp(tapdisk, tapdisk, NULL);
+		exit(errno);
+	}
 
-	EPRINTF("exec failed\n");
-	exit(1);
+	execl(TAPDISK_EXECDIR "/" TAPDISK_EXEC, TAPDISK_EXEC,
+	      NULL);
+
+	exit(errno);
 }
 
 pid_t

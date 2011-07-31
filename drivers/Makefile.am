@@ -5,7 +5,7 @@ AM_CFLAGS += -Werror
 AM_CPPFLAGS  = -D_GNU_SOURCE
 AM_CPPFLAGS += -I$(top_srcdir)/include
 
-sbin_PROGRAMS = tapdisk
+libexec_PROGRAMS = tapdisk
 
 tapdisk_SOURCES = tapdisk2.c
 tapdisk_LDADD = libtapdisk.la

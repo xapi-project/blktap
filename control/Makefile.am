@@ -5,6 +5,8 @@ AM_CFLAGS += -Werror
 AM_CPPFLAGS  = -D_GNU_SOURCE
 AM_CPPFLAGS += -DTAPCTL
 AM_CPPFLAGS += -I$(top_srcdir)/include
+AM_CPPFLAGS += -DTAPDISK_EXEC='"tapdisk"'
+AM_CPPFLAGS += -DTAPDISK_EXECDIR='"$(libexecdir)"'
 
 sbin_PROGRAMS = tap-ctl
 tap_ctl_LDADD = libblktapctl.la
