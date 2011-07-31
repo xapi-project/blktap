@@ -17,6 +17,7 @@ CFLAGS          += -Werror
 CFLAGS          += -Wno-unused
 CFLAGS          += -I../../include
 CFLAGS		+= -I../../lvm
+CFLAGS		+= -I../../part
 CFLAGS          += -D_GNU_SOURCE
 ifndef TRANSFERVM
 CFLAGS          += -fPIC
