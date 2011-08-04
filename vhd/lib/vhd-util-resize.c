@@ -685,7 +685,8 @@ vhd_shift_metadata(vhd_journal_t *journal, off64_t eob,
 	int i, n, err;
 	vhd_context_t *vhd;
 	size_t size_needed;
-	char *buf, **locators;
+	void *buf;
+	char **locators;
 	vhd_parent_locator_t *loc;
 
 	vhd         = &journal->vhd;
@@ -708,7 +709,7 @@ vhd_shift_metadata(vhd_journal_t *journal, off64_t eob,
 			continue;
 
 		size = vhd_parent_locator_size(loc);
-		err  = posix_memalign((void **)&buf, VHD_SECTOR_SIZE, size);
+		err  = posix_memalign(&buf, VHD_SECTOR_SIZE, size);
 		if (err) {
 			err = -err;
 			buf = NULL;
@@ -784,6 +785,7 @@ vhd_add_bat_entries(vhd_journal_t *journal, int entries)
 	uint32_t new_entries;
 	vhd_batmap_t new_batmap;
 	uint64_t bat_size, new_bat_size, map_size, new_map_size;
+	void *bat, *map;
 
 	vhd          = &journal->vhd;
 	new_entries  = vhd->header.max_bat_size + entries;
@@ -820,10 +822,11 @@ vhd_add_bat_entries(vhd_journal_t *journal, int entries)
 		return err;
 
 	/* allocate new bat */
-	err = posix_memalign((void **)&new_bat.bat, VHD_SECTOR_SIZE, new_bat_size);
+	err = posix_memalign(&bat, VHD_SECTOR_SIZE, new_bat_size);
 	if (err)
 		return -err;
 
+	new_bat.bat     = bat;
 	new_bat.spb     = vhd->bat.spb;
 	new_bat.entries = new_entries;
 	memcpy(new_bat.bat, vhd->bat.bat, bat_size);
@@ -845,11 +848,11 @@ vhd_add_bat_entries(vhd_journal_t *journal, int entries)
 		return 0;
 
 	/* allocate new batmap */
-	err = posix_memalign((void **)&new_batmap.map,
-			     VHD_SECTOR_SIZE, new_map_size);
+	err = posix_memalign(&map, VHD_SECTOR_SIZE, new_map_size);
 	if (err)
 		return err;
 
+	new_batmap.map    = map;
 	new_batmap.header = vhd->batmap.header;
 	new_batmap.header.batmap_size = secs_round_up_no_zero(new_map_size);
 	memcpy(new_batmap.map, vhd->batmap.map, map_size);

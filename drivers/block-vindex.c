@@ -167,14 +167,14 @@ vhd_index_init(vhd_index_t *index)
 static int
 vhd_index_allocate_cache(vhd_index_t *index)
 {
-	char *buf;
+	void *buf;
 	int i, err;
 	size_t size;
 
 	size = vhd_bytes_padded(index->vhdi.spb * sizeof(vhdi_entry_t));
 
 	for (i = 0; i < VHD_INDEX_CACHE_SIZE; i++) {
-		err = posix_memalign((void **)&buf, VHD_SECTOR_SIZE, size);
+		err = posix_memalign(&buf, VHD_SECTOR_SIZE, size);
 		if (err)
 			goto fail;
 

@@ -497,7 +497,7 @@ vhd_journal_add_locators(vhd_journal_t *j)
 
 	n = sizeof(vhd->header.loc) / sizeof(vhd_parent_locator_t);
 	for (i = 0; i < n; i++) {
-		char *buf;
+		void *buf;
 		off64_t off;
 		size_t size;
 		vhd_parent_locator_t *loc;
@@ -513,7 +513,7 @@ vhd_journal_add_locators(vhd_journal_t *j)
 		off  = loc->data_offset;
 		size = vhd_parent_locator_size(loc);
 
-		err  = posix_memalign((void **)&buf, VHD_SECTOR_SIZE, size);
+		err  = posix_memalign(&buf, VHD_SECTOR_SIZE, size);
 		if (err)
 			return -err;
 
@@ -714,7 +714,8 @@ static int
 vhd_journal_read_locators(vhd_journal_t *j, char ***locators, int *locs)
 {
 	int err, n, _locs;
-	char **_locators, *buf;
+	char **_locators;
+	void *buf;
 	off_t pos;
 	vhd_journal_entry_t entry;
 
@@ -747,8 +748,7 @@ vhd_journal_read_locators(vhd_journal_t *j, char ***locators, int *locs)
 			goto fail;
 		}
 
-		err = posix_memalign((void **)&buf,
-				     VHD_SECTOR_SIZE, entry.size);
+		err = posix_memalign(&buf, VHD_SECTOR_SIZE, entry.size);
 		if (err) {
 			err = -err;
 			buf = NULL;
@@ -785,6 +785,7 @@ vhd_journal_read_bat(vhd_journal_t *j, vhd_bat_t *bat)
 	size_t size;
 	vhd_context_t *vhd;
 	vhd_journal_entry_t entry;
+	void *_bat;
 
 	vhd  = &j->vhd;
 
@@ -803,9 +804,10 @@ vhd_journal_read_bat(vhd_journal_t *j, vhd_bat_t *bat)
 	if (entry.offset != vhd->header.table_offset)
 		return -EINVAL;
 
-	err = posix_memalign((void **)&bat->bat, VHD_SECTOR_SIZE, size);
+	err = posix_memalign(&_bat, VHD_SECTOR_SIZE, size);
 	if (err)
 		return -err;
+	bat->bat = _bat;
 
 	err = vhd_journal_read(j, bat->bat, entry.size);
 	if (err)
@@ -827,7 +829,7 @@ static int
 vhd_journal_read_batmap_header(vhd_journal_t *j, vhd_batmap_t *batmap)
 {
 	int err;
-	char *buf;
+	void *buf;
 	size_t size;
 	vhd_journal_entry_t entry;
 
@@ -843,7 +845,7 @@ vhd_journal_read_batmap_header(vhd_journal_t *j, vhd_batmap_t *batmap)
 	if (entry.size != size)
 		return -EINVAL;
 
-	err = posix_memalign((void **)&buf, VHD_SECTOR_SIZE, size);
+	err = posix_memalign(&buf, VHD_SECTOR_SIZE, size);
 	if (err)
 		return err;
 
@@ -864,6 +866,7 @@ vhd_journal_read_batmap_map(vhd_journal_t *j, vhd_batmap_t *batmap)
 {
 	int err;
 	vhd_journal_entry_t entry;
+	void *map;
 
 	err  = vhd_journal_read_entry(j, &entry);
 	if (err)
@@ -878,10 +881,11 @@ vhd_journal_read_batmap_map(vhd_journal_t *j, vhd_batmap_t *batmap)
 	if (entry.offset != batmap->header.batmap_offset)
 		return -EINVAL;
 
-	err = posix_memalign((void **)&batmap->map,
-			     VHD_SECTOR_SIZE, entry.size);
+	err = posix_memalign(&map, VHD_SECTOR_SIZE, entry.size);
 	if (err)
 		return -err;
+
+	batmap->map = map;
 
 	err = vhd_journal_read(j, batmap->map, entry.size);
 	if (err) {
@@ -1436,7 +1440,8 @@ int
 vhd_journal_revert(vhd_journal_t *j)
 {
 	int i, err;
-	char *buf, *file;
+	char *file;
+	void *buf;
 	vhd_context_t *vhd;
 	vhd_journal_entry_t entry;
 
@@ -1485,8 +1490,7 @@ vhd_journal_revert(vhd_journal_t *j)
 		if (err)
 			goto end;
 
-		err = posix_memalign((void **)&buf,
-				     VHD_SECTOR_SIZE, entry.size);
+		err = posix_memalign(&buf, VHD_SECTOR_SIZE, entry.size);
 		if (err) {
 			err = -err;
 			buf = NULL;

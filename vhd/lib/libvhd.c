@@ -873,9 +873,9 @@ vhd_put_batmap(vhd_context_t *ctx)
 int
 vhd_read_short_footer(vhd_context_t *ctx, vhd_footer_t *footer)
 {
-	int err;
-	char *buf;
 	off64_t eof;
+	void *buf;
+	int err;
 
 	buf = NULL;
 
@@ -893,8 +893,7 @@ vhd_read_short_footer(vhd_context_t *ctx, vhd_footer_t *footer)
 	if (err)
 		goto out;
 
-	err = posix_memalign((void **)&buf,
-			     VHD_SECTOR_SIZE, sizeof(vhd_footer_t));
+	err = posix_memalign(&buf, VHD_SECTOR_SIZE, sizeof(vhd_footer_t));
 	if (err) {
 		buf = NULL;
 		err = -err;
@@ -924,8 +923,8 @@ out:
 int
 vhd_read_footer_at(vhd_context_t *ctx, vhd_footer_t *footer, off64_t off)
 {
+	void *buf;
 	int err;
-	char *buf;
 
 	buf = NULL;
 
@@ -933,8 +932,7 @@ vhd_read_footer_at(vhd_context_t *ctx, vhd_footer_t *footer, off64_t off)
 	if (err)
 		goto out;
 
-	err = posix_memalign((void **)&buf,
-			     VHD_SECTOR_SIZE, sizeof(vhd_footer_t));
+	err = posix_memalign(&buf, VHD_SECTOR_SIZE, sizeof(vhd_footer_t));
 	if (err) {
 		buf = NULL;
 		err = -err;
@@ -994,8 +992,8 @@ vhd_read_footer(vhd_context_t *ctx, vhd_footer_t *footer)
 int
 vhd_read_header_at(vhd_context_t *ctx, vhd_header_t *header, off64_t off)
 {
+	void *buf;
 	int err;
-	char *buf;
 
 	buf = NULL;
 
@@ -1008,8 +1006,7 @@ vhd_read_header_at(vhd_context_t *ctx, vhd_header_t *header, off64_t off)
 	if (err)
 		goto out;
 
-	err = posix_memalign((void **)&buf,
-			     VHD_SECTOR_SIZE, sizeof(vhd_header_t));
+	err = posix_memalign(&buf, VHD_SECTOR_SIZE, sizeof(vhd_header_t));
 	if (err) {
 		buf = NULL;
 		err = -err;
@@ -1051,7 +1048,7 @@ int
 vhd_read_bat(vhd_context_t *ctx, vhd_bat_t *bat)
 {
 	int err;
-	char *buf;
+	void *buf;
 	off64_t off;
 	uint32_t vhd_blks;
 	size_t size;
@@ -1071,7 +1068,7 @@ vhd_read_bat(vhd_context_t *ctx, vhd_bat_t *bat)
 	ASSERT(ctx->header.max_bat_size >= vhd_blks);
 	size = vhd_bytes_padded(vhd_blks * sizeof(uint32_t));
 
-	err  = posix_memalign((void **)&buf, VHD_SECTOR_SIZE, size);
+	err  = posix_memalign(&buf, VHD_SECTOR_SIZE, size);
 	if (err) {
 		buf = NULL;
 		err = -err;
@@ -1105,7 +1102,7 @@ static int
 vhd_read_batmap_header(vhd_context_t *ctx, vhd_batmap_t *batmap)
 {
 	int err;
-	char *buf;
+	void *buf;
 	off64_t off;
 	size_t size;
 
@@ -1120,7 +1117,7 @@ vhd_read_batmap_header(vhd_context_t *ctx, vhd_batmap_t *batmap)
 		goto fail;
 
 	size = vhd_bytes_padded(sizeof(vhd_batmap_header_t));
-	err  = posix_memalign((void **)&buf, VHD_SECTOR_SIZE, size);
+	err  = posix_memalign(&buf, VHD_SECTOR_SIZE, size);
 	if (err) {
 		buf = NULL;
 		err = -err;
@@ -1150,7 +1147,7 @@ static int
 vhd_read_batmap_map(vhd_context_t *ctx, vhd_batmap_t *batmap)
 {
 	int err;
-	char *buf;
+	void *buf;
 	off64_t off;
 	size_t map_size;
 
@@ -1158,7 +1155,7 @@ vhd_read_batmap_map(vhd_context_t *ctx, vhd_batmap_t *batmap)
 			ctx->footer.curr_size >> (VHD_BLOCK_SHIFT + 3)));
 	ASSERT(vhd_sectors_to_bytes(batmap->header.batmap_size) >= map_size);
 
-	err = posix_memalign((void **)&buf, VHD_SECTOR_SIZE, map_size);
+	err = posix_memalign(&buf, VHD_SECTOR_SIZE, map_size);
 	if (err) {
 		buf = NULL;
 		err = -err;
@@ -1542,7 +1539,7 @@ vhd_parent_locator_read(vhd_context_t *ctx,
 			vhd_parent_locator_t *loc, char **parent)
 {
 	int err, size;
-	char *raw, *out, *name;
+	void *raw, *out, *name;
 
 	raw     = NULL;
 	out     = NULL;
@@ -1574,7 +1571,7 @@ vhd_parent_locator_read(vhd_context_t *ctx,
 		goto out;
 	}
 
-	err = posix_memalign((void **)&raw, VHD_SECTOR_SIZE, size);
+	err = posix_memalign(&raw, VHD_SECTOR_SIZE, size);
 	if (err) {
 		raw = NULL;
 		err = -err;
@@ -1669,7 +1666,8 @@ vhd_parent_locator_write_at(vhd_context_t *ctx,
 {
 	struct stat stats;
 	int err, len, size;
-	char *absolute_path, *relative_path, *encoded, *block;
+	char *absolute_path, *relative_path, *encoded;
+	void *block;
 
 	memset(loc, 0, sizeof(vhd_parent_locator_t));
 
@@ -1741,7 +1739,7 @@ vhd_parent_locator_write_at(vhd_context_t *ctx,
 		goto out;
 	}
 
-	err  = posix_memalign((void **)&block, VHD_SECTOR_SIZE, size);
+	err  = posix_memalign(&block, VHD_SECTOR_SIZE, size);
 	if (err) {
 		block = NULL;
 		err   = -err;
@@ -1793,7 +1791,7 @@ int
 vhd_read_bitmap(vhd_context_t *ctx, uint32_t block, char **bufp)
 {
 	int err;
-	char *buf;
+	void *buf;
 	size_t size;
 	off64_t off;
 	uint64_t blk;
@@ -1822,7 +1820,7 @@ vhd_read_bitmap(vhd_context_t *ctx, uint32_t block, char **bufp)
 	if (err)
 		return err;
 
-	err  = posix_memalign((void **)&buf, VHD_SECTOR_SIZE, size);
+	err  = posix_memalign(&buf, VHD_SECTOR_SIZE, size);
 	if (err)
 		return -err;
 
@@ -1842,7 +1840,7 @@ int
 vhd_read_block(vhd_context_t *ctx, uint32_t block, char **bufp)
 {
 	int err;
-	char *buf;
+	void *buf;
 	size_t size;
 	uint64_t blk;
 	off64_t end, off;
@@ -1871,7 +1869,7 @@ vhd_read_block(vhd_context_t *ctx, uint32_t block, char **bufp)
 	if (err)
 		return err;
 
-	err  = posix_memalign((void **)&buf, VHD_SECTOR_SIZE, size);
+	err  = posix_memalign(&buf, VHD_SECTOR_SIZE, size);
 	if (err) {
 		err = -err;
 		goto fail;
@@ -1902,17 +1900,17 @@ int
 vhd_write_footer_at(vhd_context_t *ctx, vhd_footer_t *footer, off64_t off)
 {
 	int err;
+	void *buf;
 	vhd_footer_t *f;
 
 	f = NULL;
 
-	err = posix_memalign((void **)&f,
-			     VHD_SECTOR_SIZE, sizeof(vhd_footer_t));
+	err = posix_memalign(&buf, VHD_SECTOR_SIZE, sizeof(vhd_footer_t));
 	if (err) {
-		f   = NULL;
 		err = -err;
 		goto out;
 	}
+	f = buf;
 
 	memcpy(f, footer, sizeof(vhd_footer_t));
 	f->checksum = vhd_checksum_footer(f);
@@ -1971,6 +1969,7 @@ vhd_write_header_at(vhd_context_t *ctx, vhd_header_t *header, off64_t off)
 {
 	int err;
 	vhd_header_t *h;
+	void *buf;
 
 	h = NULL;
 
@@ -1979,13 +1978,12 @@ vhd_write_header_at(vhd_context_t *ctx, vhd_header_t *header, off64_t off)
 		goto out;
 	}
 
-	err = posix_memalign((void **)&h,
-			     VHD_SECTOR_SIZE, sizeof(vhd_header_t));
+	err = posix_memalign(&buf, VHD_SECTOR_SIZE, sizeof(vhd_header_t));
 	if (err) {
-		h   = NULL;
 		err = -err;
 		goto out;
 	}
+	h = buf;
 
 	memcpy(h, header, sizeof(vhd_header_t));
 
@@ -2028,6 +2026,7 @@ vhd_write_bat(vhd_context_t *ctx, vhd_bat_t *bat)
 	int err;
 	off64_t off;
 	vhd_bat_t b;
+	void *buf;
 	size_t size;
 
 	if (!vhd_type_dynamic(ctx))
@@ -2050,9 +2049,10 @@ vhd_write_bat(vhd_context_t *ctx, vhd_bat_t *bat)
 	if (err)
 		return err;
 
-	err  = posix_memalign((void **)&b.bat, VHD_SECTOR_SIZE, size);
+	err  = posix_memalign(&buf, VHD_SECTOR_SIZE, size);
 	if (err)
 		return -err;
+	b.bat = buf;
 
 	memcpy(b.bat, bat->bat, size);
 	b.spb     = bat->spb;
@@ -2071,7 +2071,7 @@ vhd_write_batmap_header(vhd_context_t *ctx, vhd_batmap_t *batmap)
 	int err;
 	size_t size;
 	off64_t off;
-	char *buf = NULL;
+	void *buf = NULL;
 
 	err = vhd_batmap_header_offset(ctx, &off);
 	if (err)
@@ -2083,10 +2083,9 @@ vhd_write_batmap_header(vhd_context_t *ctx, vhd_batmap_t *batmap)
 	if (err)
 		goto out;
 
-	err = posix_memalign((void **)&buf, VHD_SECTOR_SIZE, size);
+	err = posix_memalign(&buf, VHD_SECTOR_SIZE, size);
 	if (err) {
 		err = -err;
-		buf = NULL;
 		goto out;
 	}
 
@@ -2109,7 +2108,7 @@ vhd_write_batmap(vhd_context_t *ctx, vhd_batmap_t *batmap)
 	int err;
 	off64_t off;
 	vhd_batmap_t b;
-	char *buf, *map;
+	void *buf, *map;
 	size_t size, map_size;
 
 	buf      = NULL;
@@ -2137,7 +2136,7 @@ vhd_write_batmap(vhd_context_t *ctx, vhd_batmap_t *batmap)
 	if (err)
 		goto out;
 
-	err  = posix_memalign((void **)&map, VHD_SECTOR_SIZE, map_size);
+	err  = posix_memalign(&map, VHD_SECTOR_SIZE, map_size);
 	if (err) {
 		map = NULL;
 		err = -err;
@@ -2160,7 +2159,7 @@ vhd_write_batmap(vhd_context_t *ctx, vhd_batmap_t *batmap)
 	if (err)
 		goto out;
 
-	err  = posix_memalign((void **)&buf, VHD_SECTOR_SIZE, size);
+	err  = posix_memalign(&buf, VHD_SECTOR_SIZE, size);
 	if (err) {
 		err = -err;
 		buf = NULL;
@@ -2455,11 +2454,11 @@ int
 vhd_open_fast(vhd_context_t *ctx)
 {
 	int err;
-	char *buf;
+	void *buf;
 	size_t size;
 
 	size = sizeof(vhd_footer_t) + sizeof(vhd_header_t);
-	err  = posix_memalign((void **)&buf, VHD_SECTOR_SIZE, size);
+	err  = posix_memalign(&buf, VHD_SECTOR_SIZE, size);
 	if (err) {
 		VHDLOG("failed allocating %s: %d\n", ctx->file, -err);
 		return -err;
@@ -2876,6 +2875,7 @@ vhd_create_batmap(vhd_context_t *ctx)
 	off64_t off;
 	int err, map_bytes;
 	vhd_batmap_header_t *header;
+	void *map;
 
 	if (!vhd_type_dynamic(ctx))
 		return -EINVAL;
@@ -2897,14 +2897,12 @@ vhd_create_batmap(vhd_context_t *ctx)
 
 	map_bytes = vhd_sectors_to_bytes(header->batmap_size);
 
-	err = posix_memalign((void **)&ctx->batmap.map,
-			     VHD_SECTOR_SIZE, map_bytes);
-	if (err) {
-		ctx->batmap.map = NULL;
+	err = posix_memalign(&map, VHD_SECTOR_SIZE, map_bytes);
+	if (err)
 		return -err;
-	}
 
-	memset(ctx->batmap.map, 0, map_bytes);
+	memset(map, 0, map_bytes);
+	ctx->batmap.map = map;
 
 	return vhd_write_batmap(ctx, &ctx->batmap);
 }
@@ -2914,16 +2912,17 @@ vhd_create_bat(vhd_context_t *ctx)
 {
 	int i, err;
 	size_t size;
+	void *bat;
 
 	if (!vhd_type_dynamic(ctx))
 		return -EINVAL;
 
 	size = vhd_bytes_padded(ctx->header.max_bat_size * sizeof(uint32_t));
-	err  = posix_memalign((void **)&ctx->bat.bat, VHD_SECTOR_SIZE, size);
-	if (err) {
-		ctx->bat.bat = NULL;
+	err  = posix_memalign(&bat, VHD_SECTOR_SIZE, size);
+	if (err)
 		return err;
-	}
+
+	ctx->bat.bat = bat;
 
 	memset(ctx->bat.bat, 0, size);
 	for (i = 0; i < ctx->header.max_bat_size; i++)
@@ -3274,7 +3273,7 @@ __raw_read_link(char *filename,
 	int fd, err;
 	off64_t off;
 	uint64_t size;
-	char *data;
+	void *data;
 
 	err = 0;
 	errno = 0;
@@ -3293,7 +3292,7 @@ __raw_read_link(char *filename,
 	}
 
 	size = vhd_sectors_to_bytes(secs);
-	err = posix_memalign((void **)&data, VHD_SECTOR_SIZE, size);
+	err = posix_memalign(&data, VHD_SECTOR_SIZE, size);
 	if (err)
 		goto close;
 
@@ -4126,7 +4125,7 @@ out:
 }
 
 int
-vhd_io_read_bytes(vhd_context_t *ctx, char *buf, size_t size, uint64_t off)
+vhd_io_read_bytes(vhd_context_t *ctx, void *buf, size_t size, uint64_t off)
 {
 	if (off + size > ctx->footer.curr_size)
 		return -ERANGE;
@@ -4316,7 +4315,7 @@ out:
 }
 
 int
-vhd_io_write_bytes(vhd_context_t *ctx, char *buf, size_t size, uint64_t off)
+vhd_io_write_bytes(vhd_context_t *ctx, void *buf, size_t size, uint64_t off)
 {
 	if (off + size > ctx->footer.curr_size)
 		return -ERANGE;

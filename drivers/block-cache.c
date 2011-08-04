@@ -666,7 +666,7 @@ out:
 static void
 block_cache_miss(block_cache_t *cache, td_request_t treq)
 {
-	char *buf;
+	void *buf;
 	size_t size;
 	td_request_t clone;
 	radix_tree_t *tree;
@@ -687,7 +687,7 @@ block_cache_miss(block_cache_t *cache, td_request_t treq)
 	if (!breq)
 		goto out;
 
-	if (posix_memalign((void **)&buf, RADIX_TREE_NODE_SIZE, size)) {
+	if (posix_memalign(&buf, RADIX_TREE_NODE_SIZE, size)) {
 		block_cache_put_request(cache, breq);
 		goto out;
 	}

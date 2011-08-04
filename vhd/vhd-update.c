@@ -117,13 +117,14 @@ update_vhd(vhd_journal_t *journal, int rollback)
 {
 	int i, err;
 	size_t size;
-	char *buf, *converted;
+	char *buf;
+	void *converted;
 
 	buf       = NULL;
 	converted = NULL;
 
 	size = vhd_bytes_padded(journal->vhd.spb / 8);
-	err  = posix_memalign((void **)&converted, 512, size);
+	err  = posix_memalign(&converted, 512, size);
 	if (err) {
 		converted = NULL;
 		goto out;

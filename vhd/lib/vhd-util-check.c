@@ -510,14 +510,15 @@ vhd_util_check_footer(struct vhd_util_check_ctx *ctx,
 {
 	int err;
 	size_t size;
-	char *msg, *buf;
+	char *msg;
+	void *buf;
 	off64_t eof, off;
 	vhd_footer_t primary, backup;
 
 	memset(&primary, 0, sizeof(primary));
 	memset(&backup, 0, sizeof(backup));
 
-	err = posix_memalign((void **)&buf, VHD_SECTOR_SIZE, sizeof(primary));
+	err = posix_memalign(&buf, VHD_SECTOR_SIZE, sizeof(primary));
 	if (err) {
 		printf("error allocating buffer: %d\n", err);
 		return -err;
@@ -632,10 +633,11 @@ vhd_util_check_header(int fd, vhd_footer_t *footer)
 {
 	int err;
 	off64_t off;
-	char *msg, *buf;
+	char *msg;
+	void *buf;
 	vhd_header_t header;
 
-	err = posix_memalign((void **)&buf, VHD_SECTOR_SIZE, sizeof(header));
+	err = posix_memalign(&buf, VHD_SECTOR_SIZE, sizeof(header));
 	if (err) {
 		printf("error allocating header: %d\n", err);
 		return err;

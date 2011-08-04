@@ -654,7 +654,7 @@ vhd_print_data(vhd_context_t *vhd, uint64_t block, int count, int hex)
 static int
 vhd_read_data(vhd_context_t *vhd, uint64_t sec, int count, int hex)
 {
-	char *buf;
+	void *buf;
 	uint64_t cur;
 	int err, max, secs;
 
@@ -662,7 +662,7 @@ vhd_read_data(vhd_context_t *vhd, uint64_t sec, int count, int hex)
 		return -ERANGE;
 
 	max = MIN(vhd_sectors_to_bytes(count), VHD_BLOCK_SIZE);
-	err = posix_memalign((void **)&buf, VHD_SECTOR_SIZE, max);
+	err = posix_memalign(&buf, VHD_SECTOR_SIZE, max);
 	if (err)
 		return -err;
 
@@ -690,7 +690,7 @@ vhd_read_data(vhd_context_t *vhd, uint64_t sec, int count, int hex)
 static int
 vhd_read_bytes(vhd_context_t *vhd, uint64_t byte, int count, int hex)
 {
-	char *buf;
+	void *buf;
 	uint64_t cur;
 	int err, max, bytes;
 
@@ -698,7 +698,7 @@ vhd_read_bytes(vhd_context_t *vhd, uint64_t byte, int count, int hex)
 		return -ERANGE;
 
 	max = MIN(count, VHD_BLOCK_SIZE);
-	err = posix_memalign((void **)&buf, VHD_SECTOR_SIZE, max);
+	err = posix_memalign(&buf, VHD_SECTOR_SIZE, max);
 	if (err)
 		return -err;
 

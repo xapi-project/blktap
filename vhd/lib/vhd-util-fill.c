@@ -40,7 +40,8 @@ int
 vhd_util_fill(int argc, char **argv)
 {
 	int err, c;
-	char *buf, *name;
+	char *name;
+	void *buf;
 	vhd_context_t vhd;
 	uint64_t i, sec, secs;
 
@@ -75,7 +76,7 @@ vhd_util_fill(int argc, char **argv)
 	if (err)
 		goto done;
 
-	err = posix_memalign((void **)&buf, 4096, vhd.header.block_size);
+	err = posix_memalign(&buf, 4096, vhd.header.block_size);
 	if (err) {
 		err = -err;
 		goto done;

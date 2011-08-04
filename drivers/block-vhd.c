@@ -351,12 +351,12 @@ vhd_kill_footer(struct vhd_state *s)
 {
 	int err;
 	off64_t end;
-	char *zeros;
+	void *zeros;
 
 	if (s->vhd.footer.type == HD_TYPE_FIXED)
 		return 0;
 
-	err = posix_memalign((void **)&zeros, 512, 512);
+	err = posix_memalign(&zeros, 512, 512);
 	if (err)
 		return -err;
 
@@ -419,6 +419,7 @@ static int
 vhd_initialize_bat(struct vhd_state *s)
 {
 	int err, batmap_required, i;
+	void *buf;
 
 	memset(&s->bat, 0, sizeof(struct vhd_bat));
 
@@ -454,12 +455,11 @@ vhd_initialize_bat(struct vhd_state *s)
 					s->vhd.file);
 	}
 
-	err = posix_memalign((void **)&s->bat.bat_buf,
-			     VHD_SECTOR_SIZE, VHD_SECTOR_SIZE);
-	if (err) {
-		s->bat.bat_buf = NULL;
+	err = posix_memalign(&buf, VHD_SECTOR_SIZE, VHD_SECTOR_SIZE);
+	if (err)
 		goto fail;
-	}
+
+	s->bat.bat_buf = buf;
 
 	return 0;
 
@@ -489,6 +489,7 @@ vhd_initialize_bitmap_cache(struct vhd_state *s)
 {
 	int i, err, map_size;
 	struct vhd_bitmap *bm;
+	void *map, *shadow;
 
 	memset(s->bitmap_list, 0, sizeof(struct vhd_bitmap) * VHD_CACHE_SIZE);
 
@@ -499,17 +500,17 @@ vhd_initialize_bitmap_cache(struct vhd_state *s)
 	for (i = 0; i < VHD_CACHE_SIZE; i++) {
 		bm = s->bitmap_list + i;
 
-		err = posix_memalign((void **)&bm->map, 512, map_size);
-		if (err) {
-			bm->map = NULL;
+		err = posix_memalign(&map, 512, map_size);
+		if (err)
 			goto fail;
-		}
 
-		err = posix_memalign((void **)&bm->shadow, 512, map_size);
-		if (err) {
-			bm->shadow = NULL;
+		bm->map = map;
+
+		err = posix_memalign(&shadow, 512, map_size);
+		if (err)
 			goto fail;
-		}
+
+		bm->shadow = shadow;
 
 		memset(bm->map, 0, map_size);
 		memset(bm->shadow, 0, map_size);
@@ -527,6 +528,7 @@ static int
 vhd_initialize_dynamic_disk(struct vhd_state *s)
 {
 	uint32_t bm_size;
+	void *buf;
 	int err;
 
 	err = vhd_get_header(&s->vhd);
@@ -550,9 +552,11 @@ vhd_initialize_dynamic_disk(struct vhd_state *s)
 	if (s->bm_secs % getpagesize())
 		s->padbm_size += getpagesize();
 
-	err = posix_memalign((void **)&s->padbm_buf, 512, s->padbm_size);
+	err = posix_memalign(&buf, 512, s->padbm_size);
 	if (err)
 		return -err;
+
+	s->padbm_buf = buf;
 	bm_size = s->bm_secs << VHD_SECTOR_SHIFT;
 	memset(s->padbm_buf, 0, s->padbm_size - bm_size);
 	memset(s->padbm_buf + (s->padbm_size - bm_size), ~0, bm_size);

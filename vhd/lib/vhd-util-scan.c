@@ -638,7 +638,7 @@ static int
 vhd_util_scan_read_volume_headers(vhd_context_t *vhd, struct vhd_image *image)
 {
 	int err;
-	char *buf;
+	void *buf;
 	size_t size;
 	struct target *target;
 
@@ -646,7 +646,7 @@ vhd_util_scan_read_volume_headers(vhd_context_t *vhd, struct vhd_image *image)
 	target = image->target;
 	size   = sizeof(vhd_footer_t) + sizeof(vhd_header_t);
 
-	err = posix_memalign((void **)&buf, VHD_SECTOR_SIZE, size);
+	err = posix_memalign(&buf, VHD_SECTOR_SIZE, size);
 	if (err) {
 		buf            = NULL;
 		image->message = "allocating image";

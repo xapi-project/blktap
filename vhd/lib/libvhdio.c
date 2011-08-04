@@ -596,6 +596,7 @@ _libvhd_io_init_partition(vhd_partition_t *vhd_part, int partition)
 {
 	int err;
 	vhd_context_t *vhd;
+	void *_p;
 	struct partition_table *pt;
 	struct primary_partition *p;
 
@@ -612,11 +613,12 @@ _libvhd_io_init_partition(vhd_partition_t *vhd_part, int partition)
 		return 0;
 	}
 
-	err = posix_memalign((void **)&pt, VHD_SECTOR_SIZE, VHD_SECTOR_SIZE);
+	err = posix_memalign(&_p, VHD_SECTOR_SIZE, VHD_SECTOR_SIZE);
 	if (err)
 		return err;
+	pt = _p;
 
-	err = _libvhd_io_read_bytes(vhd_part, (char *)pt, 512, 0);
+	err = _libvhd_io_read_bytes(vhd_part, pt, 512, 0);
 	if (err) {
 		LOG("reading partition failed: %d\n", err);
 		goto out;

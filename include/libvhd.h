@@ -346,7 +346,7 @@ int vhd_write_block(vhd_context_t *, uint32_t block, char *data);
 
 int vhd_io_read(vhd_context_t *, char *, uint64_t, uint32_t);
 int vhd_io_write(vhd_context_t *, char *, uint64_t, uint32_t);
-int vhd_io_read_bytes(vhd_context_t *, char *, size_t, uint64_t);
-int vhd_io_write_bytes(vhd_context_t *, char *, size_t, uint64_t);
+int vhd_io_read_bytes(vhd_context_t *, void *, size_t, uint64_t);
+int vhd_io_write_bytes(vhd_context_t *, void *, size_t, uint64_t);
 
 #endif

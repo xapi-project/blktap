@@ -41,7 +41,7 @@
 #include "tapdisk-driver.h"
 #include "tapdisk-interface.h"
 
-char *img;
+void *img;
 long int   disksector_size;
 long int   disksize;
 long int   diskinfo;
@@ -175,8 +175,7 @@ int tdram_open (td_driver_t *driver, const char *name, td_flag_t flags)
 	}
 
 	/*Read the image into memory*/
-	if (posix_memalign((void **)&img, 
-			   DEFAULT_SECTOR_SIZE,
+	if (posix_memalign(&img, DEFAULT_SECTOR_SIZE,
 			   driver->info.size << SECTOR_SHIFT)) {
 		DPRINTF("Mem malloc failed\n");
 		return -errno;

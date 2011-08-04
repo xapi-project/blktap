@@ -435,7 +435,7 @@ out:
 int
 vhdi_create(const char *name, uint32_t vhd_block_size)
 {
-	char *buf;
+	void *buf;
 	int err, fd;
 	size_t size;
 	vhdi_header_t header;
@@ -461,7 +461,7 @@ vhdi_create(const char *name, uint32_t vhd_block_size)
 	vhdi_header_out(&header);
 
 	size = vhd_bytes_padded(sizeof(vhdi_header_t));
-	err  = posix_memalign((void **)&buf, VHD_SECTOR_SIZE, size);
+	err  = posix_memalign(&buf, VHD_SECTOR_SIZE, size);
 	if (err)
 		return -err;
 
@@ -495,7 +495,8 @@ vhdi_open(vhdi_context_t *ctx, const char *file, int flags)
 {
 	int err, fd;
 	size_t size;
-	char *name, *buf;
+	char *name;
+	void *buf;
 	vhdi_header_t header;
 
 	buf = NULL;
@@ -512,7 +513,7 @@ vhdi_open(vhdi_context_t *ctx, const char *file, int flags)
 	}
 
 	size = vhd_bytes_padded(sizeof(vhdi_header_t));
-	err = posix_memalign((void **)&buf, VHD_SECTOR_SIZE, size);
+	err = posix_memalign(&buf, VHD_SECTOR_SIZE, size);
 	if (err) {
 		err = -err;
 		goto fail;
@@ -559,6 +560,7 @@ vhdi_read_block(vhdi_context_t *ctx, vhdi_block_t *block, uint32_t sector)
 {
 	int i, err;
 	size_t size;
+	void *tab;
 
 	err = vhdi_seek(ctx, vhd_sectors_to_bytes(sector), SEEK_SET);
 	if (err)
@@ -567,9 +569,11 @@ vhdi_read_block(vhdi_context_t *ctx, vhdi_block_t *block, uint32_t sector)
 	size = vhd_bytes_padded(ctx->spb * sizeof(vhdi_entry_t));
 
 	block->entries = ctx->spb;
-	err = posix_memalign((void **)&block->table, VHD_SECTOR_SIZE, size);
+	err = posix_memalign(&tab, VHD_SECTOR_SIZE, size);
 	if (err)
 		return -err;
+
+	block->table = tab;
 
 	err = vhdi_read(ctx, block->table, size);
 	if (err)
@@ -588,7 +592,7 @@ fail:
 int
 vhdi_write_block(vhdi_context_t *ctx, vhdi_block_t *block, uint32_t sector)
 {
-	char *buf;
+	void *buf;
 	int i, err;
 	size_t size;
 	vhdi_entry_t *entries;
@@ -598,7 +602,7 @@ vhdi_write_block(vhdi_context_t *ctx, vhdi_block_t *block, uint32_t sector)
 		return err;
 
 	size = vhd_bytes_padded(ctx->spb * sizeof(vhdi_entry_t));
-	err = posix_memalign((void **)&buf, VHD_SECTOR_SIZE, size);
+	err = posix_memalign(&buf, VHD_SECTOR_SIZE, size);
 	if (err)
 		return -err;
 
@@ -622,7 +626,7 @@ out:
 int
 vhdi_append_block(vhdi_context_t *ctx, vhdi_block_t *block, uint32_t *sector)
 {
-	char *buf;
+	void *buf;
 	int i, err;
 	off64_t off;
 	size_t size;
@@ -639,12 +643,12 @@ vhdi_append_block(vhdi_context_t *ctx, vhdi_block_t *block, uint32_t *sector)
 		return err;
 
 	size = vhd_bytes_padded(block->entries * sizeof(vhdi_entry_t));
-	err = posix_memalign((void **)&buf, VHD_SECTOR_SIZE, size);
+	err = posix_memalign(&buf, VHD_SECTOR_SIZE, size);
 	if (err)
 		return -err;
 
 	memset(buf, 0, size);
-	entries = (vhdi_entry_t *)buf;
+	entries = buf;
 
 	for (i = 0; i < block->entries; i++)
 		entries[i] = vhdi_entry_out(&block->table[i]);
