@@ -20,6 +20,9 @@ AC_CHECK_LIB([uuid], [main],
              [:],
 	     AC_MSG_ERROR([Need uuid-dev]))
 
+AM_CONDITIONAL([ENABLE_SHARED],
+	       [test x$enable_shared = xyes])
+
 # AC_CONFIG_MACRO_DIR([m4])
 AC_CONFIG_HEADERS([config.h])
 AC_CONFIG_FILES([

@@ -1,4 +1,6 @@
 
+SUBDIRS = . test
+
 AM_CFLAGS  = -Wall
 AM_CFLAGS += -Werror
 
@@ -8,7 +10,6 @@ AM_CPPFLAGS += -I$(top_srcdir)/lvm
 AM_CPPFLAGS += -I$(top_srcdir)/part
 
 lib_LTLIBRARIES  = libvhd.la
-lib_LTLIBRARIES += libvhdio.la
 
 libvhd_la_SOURCES  = libvhd.c
 libvhd_la_SOURCES += libvhd-journal.c
@@ -36,12 +37,15 @@ libvhd_la_LDFLAGS = -release $(VERSION)
 
 libvhd_la_LIBADD = -luuid
 
+if ENABLE_SHARED
+lib_LTLIBRARIES += libvhdio.la
+endif
+
 libvhdio_la_SOURCES  = libvhdio.c
 libvhdio_la_SOURCES += ../../part/partition.c
 
-libvhdio_la_LDFLAGS = -release $(VERSION)
+libvhdio_la_LDFLAGS  = -release $(VERSION)
+libvhdio_la_LDFLAGS += -shared
 
 libvhdio_la_LIBADD  = libvhd.la
 libvhdio_la_LIBADD += -ldl
-
-SUBDIRS = . test
