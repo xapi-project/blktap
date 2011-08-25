@@ -382,14 +382,10 @@ debug print functions
 static inline void
 __print_iocb(struct opioctx *ctx, struct iocb *io, char *prefix)
 {
-	char *type;
-
-	type = (io->aio_lio_opcode == IO_CMD_PREAD ? "read" : "write");
-
 	DBG(ctx, "%soff: %08llx, nbytes: %04lx, buf: %p, type: %s, data: %08lx,"
 	    " optimized: %d\n", prefix, io->u.c.offset, io->u.c.nbytes, 
-	    io->u.c.buf, type, (unsigned long)io->data, 
-	    iocb_optimized(ctx, io));
+	    io->u.c.buf, (io->aio_lio_opcode == IO_CMD_PREAD ? "read" : "write"),
+	    (unsigned long)io->data, iocb_optimized(ctx, io));
 }
 
 #define print_iocb(ctx, io) __print_iocb(ctx, io, "")
