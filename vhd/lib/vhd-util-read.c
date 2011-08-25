@@ -390,8 +390,11 @@ vhd_print_bat(vhd_context_t *vhd, uint64_t block, int count, int hex)
 static int
 vhd_print_bat_str(vhd_context_t *vhd)
 {
-	int i, gcc, total_blocks, bitmap_size;
+	int i, err, total_blocks, bitmap_size;
 	char *bitmap;
+	ssize_t n;
+
+	err = 0;
 
 	if (!vhd_type_dynamic(vhd))
 		return -EINVAL;
@@ -411,9 +414,13 @@ vhd_print_bat_str(vhd_context_t *vhd)
 			set_bit(bitmap, i);
 	}
 
-	gcc = write(STDOUT_FILENO, bitmap, bitmap_size);
+	n = write(STDOUT_FILENO, bitmap, bitmap_size);
+	if (n < 0)
+		err = -errno;
+
 	free(bitmap);
-	return 0;
+
+	return err;
 }
 
 static int
@@ -422,12 +429,12 @@ vhd_print_bitmap(vhd_context_t *vhd, uint64_t block, int count, int hex)
 	char *buf;
 	int i, err;
 	uint64_t cur;
+	ssize_t n;
 
 	if (check_block_range(vhd, block + count, hex))
 		return -ERANGE;
 
 	for (i = 0; i < count; i++) {
-		int gcc;
 		cur = block + i;
 
 		if (vhd->bat.bat[cur] == DD_BLK_UNUSED) {
@@ -439,7 +446,12 @@ vhd_print_bitmap(vhd_context_t *vhd, uint64_t block, int count, int hex)
 		if (err)
 			goto out;
 
-		gcc = write(STDOUT_FILENO, buf, vhd_sectors_to_bytes(vhd->bm_secs));
+		n = write(STDOUT_FILENO, buf, vhd_sectors_to_bytes(vhd->bm_secs));
+		if (n < 0) {
+			err = -errno;
+			goto out;
+		}
+
 		free(buf);
 	}
 
@@ -575,6 +587,8 @@ vhd_print_batmap(vhd_context_t *vhd)
 
 	size = vhd_sectors_to_bytes(vhd->batmap.header.batmap_size);
 	gcc = write(STDOUT_FILENO, vhd->batmap.map, size);
+	if (gcc)
+		;
 
 	return 0;
 }
@@ -629,6 +643,8 @@ vhd_print_data(vhd_context_t *vhd, uint64_t block, int count, int hex)
 			break;
 
 		gcc = write(STDOUT_FILENO, buf, vhd->header.block_size);
+		if (gcc)
+			;
 		free(buf);
 	}
 
@@ -660,6 +676,8 @@ vhd_read_data(vhd_context_t *vhd, uint64_t sec, int count, int hex)
 			break;
 
 		gcc = write(STDOUT_FILENO, buf, vhd_sectors_to_bytes(secs));
+		if (gcc)
+			;
 
 		cur   += secs;
 		count -= secs;
@@ -686,14 +704,18 @@ vhd_read_bytes(vhd_context_t *vhd, uint64_t byte, int count, int hex)
 
 	cur = byte;
 	while (count) {
-		int gcc;
+		ssize_t n;
 
 		bytes = MIN(max, count);
 		err   = vhd_io_read_bytes(vhd, buf, bytes, cur);
 		if (err)
 			break;
 
-		gcc = write(STDOUT_FILENO, buf, bytes);
+		n = write(STDOUT_FILENO, buf, bytes);
+		if (n < 0) {
+			err = -errno;
+			break;
+		}
 
 		cur   += bytes;
 		count -= bytes;
