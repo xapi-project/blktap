@@ -30,6 +30,7 @@
 
 #include <syslog.h>
 #include <errno.h>
+#include <sys/time.h>
 #include <tapdisk-message.h>
 #include <list.h>
 

@@ -37,6 +37,7 @@
 #include <unistd.h>
 #include <fnmatch.h>
 #include <limits.h>
+#include <libgen.h>
 #include <syslog.h>
 #include <sys/stat.h>
 #include <sys/types.h>
