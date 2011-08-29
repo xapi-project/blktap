@@ -20,6 +20,16 @@ AC_CHECK_LIB([uuid], [main],
              [:],
 	     AC_MSG_ERROR([Need uuid-dev]))
 
+AC_ARG_ENABLE([tests],
+	      [AS_HELP_STRING([--enable-tests],
+			      [build test programs])],
+	      [],
+	      [enable_tests=no])
+
+AM_CONDITIONAL([ENABLE_TESTS],
+	       [test x$enable_tests = xyes])
+
+
 AM_CONDITIONAL([ENABLE_SHARED],
 	       [test x$enable_shared = xyes])
 

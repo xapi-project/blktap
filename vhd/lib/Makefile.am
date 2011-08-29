@@ -1,5 +1,5 @@
 
-SUBDIRS = . test
+SUBDIRS = . $(MAYBE_test)
 
 AM_CFLAGS  = -Wall
 AM_CFLAGS += -Werror
@@ -49,3 +49,7 @@ libvhdio_la_LDFLAGS += -shared
 
 libvhdio_la_LIBADD  = libvhd.la
 libvhdio_la_LIBADD += -ldl
+
+if ENABLE_TESTS
+MAYBE_test = test
+endif
