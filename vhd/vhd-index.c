@@ -34,6 +34,7 @@
 #include <stdlib.h>
 #include <unistd.h>
 #include <string.h>
+#include <limits.h>
 
 #include "libvhd.h"
 #include "libvhd-index.h"
@@ -147,21 +148,19 @@ static inline int
 vhd_index_get_file_id(vhdi_name_t *name, const char *file,
 		      vhdi_file_table_t *files, vhdi_file_id_t *fid)
 {
-	char *path;
+	char *path, __path[PATH_MAX];
 	int i;
 
-	path = realpath(file, NULL);
+	path = realpath(file, __path);
 	if (!path)
 		return -errno;
 
 	for (i = 0; i < files->entries; i++)
 		if (!strcmp(files->table[i].path, path)) {
 			*fid = files->table[i].file_id;
-			free(path);
 			return 0;
 		}
 
-	free(path);
 	return vhd_index_add_file_table_entry(name, file, files, fid);
 }
 

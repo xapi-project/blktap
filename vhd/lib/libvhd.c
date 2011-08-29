@@ -39,6 +39,7 @@
 #include <string.h>
 #include <libgen.h>
 #include <iconv.h>
+#include <limits.h>
 #include <sys/mman.h>
 #include <sys/stat.h>
 #include <sys/types.h>
@@ -1264,8 +1265,10 @@ vhd_test_file_fixed(const char *file, int *is_block)
 int
 vhd_find_parent(vhd_context_t *ctx, const char *parent, char **_location)
 {
+	char *location, __location[PATH_MAX];
+	char *cpath, __cpath[PATH_MAX];
+	char *cdir, *path;
 	int err;
-	char *location, *cpath, *cdir, *path;
 
 	err        = 0;
 	path       = NULL;
@@ -1278,16 +1281,15 @@ vhd_find_parent(vhd_context_t *ctx, const char *parent, char **_location)
 
 	if (parent[0] == '/') {
 		if (!access(parent, R_OK)) {
-			path = strdup(parent);
-			if (!path)
-				return -ENOMEM;
-			*_location = path;
+			*_location = strdup(parent);
+			if (!*_location)
+				return -errno;
 			return 0;
 		}
 	}
 
 	/* check parent path relative to child's directory */
-	cpath = realpath(ctx->file, NULL);
+	cpath = realpath(ctx->file, __cpath);
 	if (!cpath) {
 		err = -errno;
 		goto out;
@@ -1301,17 +1303,16 @@ vhd_find_parent(vhd_context_t *ctx, const char *parent, char **_location)
 	}
 
 	if (!access(location, R_OK)) {
-		path = realpath(location, NULL);
+		path = realpath(location, __location);
 		if (path) {
-			*_location = path;
+			*_location = strdup(path);
+			if (!*_location)
+				return -errno;
 			return 0;
 		}
 	}
-	err = -errno;
 
 out:
-	free(location);
-	free(cpath);
 	return err;
 }
 
@@ -1667,6 +1668,7 @@ vhd_parent_locator_write_at(vhd_context_t *ctx,
 	struct stat stats;
 	int err, len, size;
 	char *absolute_path, *relative_path, *encoded;
+	char __parent[PATH_MAX];
 	void *block;
 
 	memset(loc, 0, sizeof(vhd_parent_locator_t));
@@ -1690,7 +1692,7 @@ vhd_parent_locator_write_at(vhd_context_t *ctx,
 		return -EINVAL;
 	}
 
-	absolute_path = realpath(parent, NULL);
+	absolute_path = realpath(parent, __parent);
 	if (!absolute_path) {
 		err = -errno;
 		goto out;
@@ -1756,7 +1758,6 @@ vhd_parent_locator_write_at(vhd_context_t *ctx,
 	err = 0;
 
 out:
-	free(absolute_path);
 	free(relative_path);
 	free(encoded);
 	free(block);
@@ -2796,8 +2797,9 @@ vhd_change_parent(vhd_context_t *child, char *parent_path, int raw)
 	char *ppath;
 	struct stat stats;
 	vhd_context_t parent;
+	char __parent_path[PATH_MAX];
 
-	ppath = realpath(parent_path, NULL);
+	ppath = realpath(parent_path, __parent_path);
 	if (!ppath) {
 		VHDLOG("error resolving parent path %s for %s: %d\n",
 		       parent_path, child->file, errno);
@@ -2865,7 +2867,6 @@ vhd_change_parent(vhd_context_t *child, char *parent_path, int raw)
 	err = 0;
 
 out:
-	free(ppath);
 	return err;
 }
 

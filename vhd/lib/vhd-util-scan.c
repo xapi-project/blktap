@@ -36,6 +36,7 @@
 #include <stdlib.h>
 #include <unistd.h>
 #include <fnmatch.h>
+#include <limits.h>
 #include <syslog.h>
 #include <sys/stat.h>
 #include <sys/types.h>
@@ -754,7 +755,11 @@ vhd_util_scan_open(vhd_context_t *vhd, struct vhd_image *image)
 	if (target_volume(image->target->type) || !(flags & VHD_SCAN_PRETTY))
 		image->name = target->name;
 	else {
-		image->name = realpath(target->name, NULL);
+		char __image_name[PATH_MAX];
+
+		image->name = realpath(target->name, __image_name);
+		if (image->name)
+			image->name = strdup(__image_name);
 		if (!image->name) {
 			image->name    = target->name;
 			image->message = "resolving name";

@@ -33,6 +33,7 @@
 #include <fcntl.h>
 #include <stdlib.h>
 #include <unistd.h>
+#include <limits.h>
 
 #include "libvhd.h"
 
@@ -110,7 +111,8 @@ vhd_util_snapshot(int argc, char **argv)
 {
 	vhd_flag_creat_t flags;
 	int c, err, prt_raw, limit, empty_check;
-	char *name, *pname, *ppath, *backing;
+	char *name, *pname, *backing;
+	char *ppath, __ppath[PATH_MAX];
 	uint64_t size, msize;
 	vhd_context_t vhd;
 
@@ -164,7 +166,7 @@ vhd_util_snapshot(int argc, char **argv)
 		goto usage;
 	}
 
-	ppath = realpath(pname, NULL);
+	ppath = realpath(pname, __ppath);
 	if (!ppath)
 		return -errno;
 
@@ -216,7 +218,6 @@ vhd_util_snapshot(int argc, char **argv)
 	err = vhd_snapshot(name, size, backing, msize << 20, flags);
 
 out:
-	free(ppath);
 	free(backing);
 
 	return err;

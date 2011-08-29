@@ -35,6 +35,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <libgen.h>
+#include <limits.h>
 #include <sys/stat.h>
 #include <sys/types.h>
 
@@ -239,7 +240,8 @@ static inline char *
 vhdi_path_expand(const char *src, vhdi_path_t *dest, int *err)
 {
 	int len;
-	char *path, *base, *absolute_path, copy[VHD_MAX_NAME_LEN];
+	char *path, *base, copy[VHD_MAX_NAME_LEN];
+	char *absolute_path, __absolute_path[PATH_MAX];
 
 	strcpy(copy, src);
 	base = dirname(copy);
@@ -250,9 +252,10 @@ vhdi_path_expand(const char *src, vhdi_path_t *dest, int *err)
 		return NULL;
 	}
 
-	absolute_path = realpath(path, NULL);
+	absolute_path = realpath(path, __absolute_path);
 	free(path);
-
+	if (absolute_path)
+		absolute_path = strdup(absolute_path);
 	if (!absolute_path) {
 		*err = -errno;
 		return NULL;
@@ -672,16 +675,22 @@ static int
 vhdi_copy_path_to(vhdi_path_t *path, const char *src, const char *dest)
 {
 	int len, err;
-	char *file, *absolute_path, *relative_path, copy[VHD_MAX_NAME_LEN];
+	char *file, *relative_path, copy[VHD_MAX_NAME_LEN];
+	char *absolute_path, __absolute_path[PATH_MAX];
 
 	strcpy(copy, dest);
 
 	file          = basename(copy);
-	absolute_path = realpath(copy, NULL);
+	absolute_path = realpath(copy, __absolute_path);
 	relative_path = NULL;
 
-	if (!absolute_path || !strcmp(file, "")) {
-		err = (errno ? -errno : -EINVAL);
+	if (!absolute_path) {
+		err = -errno;
+		goto out;
+	}
+
+	if (!strcmp(file, "")) {
+		err = -EINVAL;
 		goto out;
 	}
 
@@ -703,7 +712,6 @@ vhdi_copy_path_to(vhdi_path_t *path, const char *src, const char *dest)
 	err = 0;
 
 out:
-	free(absolute_path);
 	free(relative_path);
 	return err;
 }
@@ -1046,7 +1054,7 @@ vhdi_file_table_next_fid(const char *name,
 			 const char *file, vhdi_file_id_t *fid)
 {
 	int i, err;
-	char *path;
+	char *path, __path[PATH_MAX];
 	vhdi_file_id_t max;
 	vhdi_file_table_t files;
 
@@ -1057,7 +1065,7 @@ vhdi_file_table_next_fid(const char *name,
 	if (err)
 		return err;
 
-	path = realpath(file, NULL);
+	path = realpath(file, __path);
 	if (!path) {
 		err = -errno;
 		goto out;
@@ -1077,7 +1085,6 @@ vhdi_file_table_next_fid(const char *name,
 
 out:
 	vhdi_file_table_free(&files);
-	free(path);
 
 	return err;
 }

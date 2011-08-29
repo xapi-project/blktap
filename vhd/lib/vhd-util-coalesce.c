@@ -33,6 +33,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
+#include <limits.h>
 
 #include "libvhd.h"
 
@@ -230,15 +231,16 @@ static int
 vhd_util_pathcmp(const char *a, const char *b, int *cmp)
 {
 	int err;
-	char *apath = NULL, *bpath = NULL;
+	char *apath = NULL, __apath[PATH_MAX];
+	char *bpath = NULL, __bpath[PATH_MAX];
 
-	apath = realpath(a, NULL);
+	apath = realpath(a, __apath);
 	if (!apath) {
 		err = -errno;
 		goto out;
 	}
 
-	bpath = realpath(b, NULL);
+	bpath = realpath(b, __bpath);
 	if (!bpath) {
 		err = -errno;
 		goto out;
@@ -248,8 +250,6 @@ vhd_util_pathcmp(const char *a, const char *b, int *cmp)
 	err  = 0;
 
 out:
-	free(apath);
-	free(bpath);
 	return err;
 }
 

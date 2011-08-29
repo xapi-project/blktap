@@ -32,6 +32,7 @@
 #include <errno.h>
 #include <stdlib.h>
 #include <string.h>
+#include <limits.h>
 
 #include "relative-path.h"
 
@@ -216,7 +217,8 @@ char *
 relative_path_to(char *from, char *to, int *err)
 {
 	int from_nodes, common;
-	char *to_absolute, *from_absolute;
+	char *to_absolute, __to_absolute[PATH_MAX];
+	char *from_absolute, __from_absolute[PATH_MAX];
 	char *up, *common_target_path, *relative_path;
 
 	*err          = 0;
@@ -233,14 +235,14 @@ relative_path_to(char *from, char *to, int *err)
 		return NULL;
 	}
 
-	to_absolute = realpath(to, NULL);
+	to_absolute = realpath(to, __to_absolute);
 	if (!to_absolute) {
 		EPRINTF("failed to get absolute path of %s\n", to);
 		*err = -errno;
 		goto out;
 	}
 
-	from_absolute = realpath(from, NULL);
+	from_absolute = realpath(from, __from_absolute);
 	if (!from_absolute) {
 		EPRINTF("failed to get absolute path of %s\n", from);
 		*err = -errno;
@@ -296,8 +298,6 @@ relative_path_to(char *from, char *to, int *err)
 
 out:
 	sfree(up);
-	sfree(to_absolute);
-	sfree(from_absolute);
 
 	return relative_path;
 }
