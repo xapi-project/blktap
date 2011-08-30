@@ -12,6 +12,12 @@ AC_CANONICAL_HOST
 AC_CHECK_HEADERS([uuid/uuid.h], [], [Need uuid-dev])
 AC_CHECK_HEADERS([libaio.h], [], [Need libaio-dev])
 
+AC_ARG_WITH([libiconv],
+	     [AS_HELP_STRING([--with-libiconv],
+			     [link to libiconv])],
+             [],
+             [with_libiconv=check])
+
 AC_CHECK_LIB([aio], [main],
              [:],
              AC_MSG_ERROR([Need libaio-dev]))
@@ -19,6 +25,16 @@ AC_CHECK_LIB([aio], [main],
 AC_CHECK_LIB([uuid], [main],
              [:],
 	     AC_MSG_ERROR([Need uuid-dev]))
+
+AS_IF([test x$with_libiconv != xno],
+      [AC_CHECK_LIB([iconv], [main],
+		    [AC_SUBST([LIBICONV], ["-liconv"])],
+		    [if test x$with_libiconv == xyes; then
+		       AC_MSG_FAILURE([--with-libiconv given, but test failed])
+		     fi])],
+      [AC_CHECK_LIB([], [iconv_open],
+                    [:],
+		    AC_MSG_ERROR([Missing iconv in libc]))])
 
 AC_ARG_ENABLE([tests],
 	      [AS_HELP_STRING([--enable-tests],
