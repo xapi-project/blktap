@@ -32,6 +32,10 @@
  * http://www.ietf.org/rfc/rfc3164.txt (FIXME: Read this.)
  */
 
+#ifdef HAVE_CONFIG_H
+#include "config.h"
+#endif
+
 #define _ISOC99_SOURCE
 #include <stdlib.h>
 #include <stdio.h>

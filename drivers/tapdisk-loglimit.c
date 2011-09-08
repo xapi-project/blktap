@@ -31,6 +31,10 @@
  * until some interval expired.
  */
 
+#ifdef HAVE_CONFIG_H
+#include "config.h"
+#endif
+
 #include "tapdisk-loglimit.h"
 #include "compiler.h"
 #include "list.h"

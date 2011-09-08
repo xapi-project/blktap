@@ -29,6 +29,11 @@
 /* Local persistent cache: write any sectors not found in the leaf back to the 
  * leaf.
  */
+
+#ifdef HAVE_CONFIG_H
+#include "config.h"
+#endif
+
 #include <errno.h>
 #include <fcntl.h>
 #include <unistd.h>

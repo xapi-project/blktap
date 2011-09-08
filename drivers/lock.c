@@ -30,6 +30,10 @@
  * This module implements a "dot locking" style advisory file locking algorithm.
  */
 
+#ifdef HAVE_CONFIG_H
+#include "config.h"
+#endif
+
 #include <unistd.h>
 #include <fcntl.h>
 #include <sys/types.h>

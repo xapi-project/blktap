@@ -36,6 +36,11 @@
  * Updates are performed in place by writing appropriately 
  * transformed versions of journaled bitmaps to the original file.
  */
+
+#ifdef HAVE_CONFIG_H
+#include "config.h"
+#endif
+
 #include <stdio.h>
 #include <errno.h>
 #include <fcntl.h>

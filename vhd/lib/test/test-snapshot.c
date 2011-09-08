@@ -6,6 +6,10 @@
  * this harness simply forks a test and stops/continues it at a given interval.
  */
 
+#ifdef HAVE_CONFIG_H
+#include "config.h"
+#endif
+
 #include <stdio.h>
 #include <errno.h>
 #include <signal.h>
