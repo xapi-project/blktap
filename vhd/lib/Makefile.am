@@ -34,7 +34,7 @@ libvhd_la_SOURCES += atomicio.c
 libvhd_la_SOURCES += atomicio.h
 libvhd_la_SOURCES += ../../lvm/lvm-util.c
 
-libvhd_la_LDFLAGS = -release $(VERSION)
+libvhd_la_LDFLAGS = -version-info 1:1:1
 
 libvhd_la_LIBADD = -luuid $(LIBICONV)
 
