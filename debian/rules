@@ -1,0 +1,32 @@
+#!/usr/bin/make -f
+
+pkg_libvhd = libvhd0
+vrs_libvhd = 0.1.1
+pkg_libvhdio = libvhdio2
+vrs_libvhdio = 2.0.90
+pkg_libblktapctl = libblktapctl0
+vrs_libblktapctl = 0.1.1
+
+
+%:
+	dh $@
+
+override_dh_auto_clean:
+	[ ! -f Makefile ] || $(MAKE) distclean
+	rm -f aclocal.m4 config.* configure depcomp install-sh ltmain.sh Makefile.in missing
+	rm -f control/Makefile.in drivers/Makefile.in include/Makefile.in
+	rm -f lvm/Makefile.in part/Makefile.in vhd/lib/Makefile.in
+	rm -f vhd/lib/test/Makefile.in vhd/Makefile.in
+	rm -f control/*.opic control/tap-ctl
+	rm -f vhd/vhd-util part/part-util vhd/vhd-util part/part-util
+	rm -f drivers/tapdisk2 drivers/tapdisk-stream drivers/lock-util drivers/td-util drivers/td-rated
+	rm -f vhd/vhd-update vhd/vhd-index
+	rm -f control/libblktapctl.so vhd/lib/libvhdio.so.1.0.0 vhd/lib/libvhd.so.1.0.0
+	find . -type f -iname '*.o' -delete
+	rm -f build-stamp
+	dh_clean
+
+override_dh_auto_build:
+	./autogen.sh
+	./configure --prefix=/usr --with-pic --libexecdir=/usr/bin -sysconfdir=/etc
+	$(MAKE) -j 20 USE_SYSTEM_LIBRARIES=y DESTDIR=$(CURDIR)/debian/tmp
