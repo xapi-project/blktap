@@ -3,7 +3,7 @@ Section: libs
 Priority: extra
 Maintainer: PKG Xen Devel <pkg-xen-devel@lists.alioth.debian.org>
 Uploaders: Thomas Goirand <zigo@debian.org>
-Build-Depends: debhelper (>= 8), autotools-dev, uuid-dev, libaio-dev, libtool
+Build-Depends: debhelper (>= 8), autotools-dev, uuid-dev, libaio-dev, libtool, autoconf, automake
 Standards-Version: 3.9.2
 Vcs-Browser: http://git.debian.org/?p=pkg-xen/blktap.git
 Vcs-Git: http://git.debian.org/git/pkg-xen/blktap.git
