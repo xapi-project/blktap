@@ -1,0 +1,22 @@
+Fix the path to the LVM utilities vgs and lvs
+
+--- a/lvm/lvm-util.c
++++ b/lvm/lvm-util.c
+@@ -117,7 +117,7 @@
+ 
+ 	memset(vg, 0, sizeof(*vg));
+ 
+-	err = asprintf(&cmd, "/usr/sbin/vgs %s --noheadings --nosuffix --units=b "
++	err = asprintf(&cmd, "/sbin/vgs %s --noheadings --nosuffix --units=b "
+ 		       "--options=vg_name,vg_extent_size,lv_count,pv_count,"
+ 		       "pv_name,pe_start --unbuffered 2> /dev/null", vgname);
+ 	if (err == -1)
+@@ -222,7 +222,7 @@
+ 	FILE *scan;
+ 	int i, err;
+ 
+-	err = asprintf(&cmd, "/usr/sbin/lvs %s --noheadings --nosuffix --units=b "
++	err = asprintf(&cmd, "/sbin/lvs %s --noheadings --nosuffix --units=b "
+ 		       "--options=lv_name,lv_size,segtype,seg_count,seg_start,"
+ 		       "seg_size,devices --unbuffered 2> /dev/null", vg->name);
+ 	if (err == -1)
