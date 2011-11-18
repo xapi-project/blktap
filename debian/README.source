@@ -1,0 +1,5 @@
+This package uses dpatch. To patch do:
+dpatch apply-all
+
+To unpatch, do:
+dpatch deapply-all

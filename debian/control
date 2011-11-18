@@ -1,0 +1,132 @@
+Source: blktap
+Section: libs
+Priority: extra
+Maintainer: PKG Xen Devel <pkg-xen-devel@lists.alioth.debian.org>
+Uploaders: Thomas Goirand <zigo@debian.org>
+Build-Depends: debhelper (>= 8), autotools-dev, uuid-dev, libaio-dev, libtool, autoconf, automake
+Standards-Version: 3.9.2
+Vcs-Browser: http://git.debian.org/?p=pkg-xen/blktap.git
+Vcs-Git: http://git.debian.org/git/pkg-xen/blktap.git
+Homepage: http://www.xen.org/products/cloudxen.html
+
+Package: blktap-dev
+Section: devel
+Architecture: i386 amd64
+Depends: ${misc:Depends}, ${shlibs:Depends}, libvhd0 (= ${binary:Version}), libvhdio-2.0.90 (= ${binary:Version}), libblktapctl0 (= ${binary:Version})
+Description: Xen API blktap shared library (development files)
+ The Xen Cloud Platform (XCP) is an open source enterprise-ready server
+ virtualization and cloud computing platform, delivering the Xen Hypervisor
+ with support for a range of guest operating systems. This package is part
+ of it. It implements the userland part of the blktap driver.
+ .
+ Virtual Hard Disk (VHD) is a file format standard which maps logical hard disk
+ contents to a physical disk image format, which can then be more efficiently
+ stored in a variety of different storage types, such as file systems or
+ logical volumes.
+ .
+ VHDs are container files storing block metadata alongside a virtual disk's
+ contents, in a single disk image. The metadata enables advanced storage
+ backend capabilities, such as thin provisioning, disk image snapshotting, and
+ coalescing of differencing disks.
+  .
+ Libvhd is a library to access VHD format metadata. It provides disk image
+ initialization, inspection and manipulation to both VHD user utilities and
+ the VHD disk driver in Blktap.
+ .
+ This package contains the development files
+
+Package: blktap-utils
+Section: utils
+Architecture: i386 amd64
+Depends: ${misc:Depends}, ${shlibs:Depends}, libvhd0 (= ${binary:Version}), libvhdio-2.0.90 (= ${binary:Version}), libblktapctl0 (= ${binary:Version})
+Description: utilities to work with VHD disk images files
+ The Xen Cloud Platform (XCP) is an open source enterprise-ready server
+ virtualization and cloud computing platform, delivering the Xen Hypervisor
+ with support for a range of guest operating systems. This package is part
+ of it. It implements the userland part of the blktap driver.
+ .
+ Virtual Hard Disk (VHD) is a file format standard which maps logical hard disk
+ contents to a physical disk image format, which can then be more efficiently
+ stored in a variety of different storage types, such as file systems or
+ logical volumes.
+ .
+ VHDs are container files storing block metadata alongside a virtual disk's
+ contents, in a single disk image. The metadata enables advanced storage
+ backend capabilities, such as thin provisioning, disk image snapshotting, and
+ coalescing of differencing disks.
+ .
+ This package contains user utilities to inspect, test, and manipulate
+ Virtual Hard Disk (VHD) images through libvhd, and the control utilities
+ needed to create destroy and manipulate devices ('tap-ctl'), the 'tapdisk'
+ driver program to perform tap devices I/O, and a number of image drivers.
+
+Package: libvhd0
+Architecture: i386 amd64
+Depends: ${misc:Depends}, ${shlibs:Depends}
+Description: VHD file format access library
+ The Xen Cloud Platform (XCP) is an open source enterprise-ready server
+ virtualization and cloud computing platform, delivering the Xen Hypervisor
+ with support for a range of guest operating systems. This package is part
+ of it. It implements the userland part of the blktap driver.
+ .
+ Virtual Hard Disk (VHD) is a file format standard which maps logical hard disk
+ contents to a physical disk image format, which can then be more efficiently
+ stored in a variety of different storage types, such as file systems or
+ logical volumes.
+ .
+ VHDs are container files storing block metadata alongside a virtual disk's
+ contents, in a single disk image. The metadata enables advanced storage
+ backend capabilities, such as thin provisioning, disk image snapshotting, and
+ coalescing of differencing disks.
+  .
+ Libvhd is a library to access VHD format metadata. It provides disk image
+ initialization, inspection and manipulation to both VHD user utilities and
+ the VHD disk driver in Blktap.
+ .
+ This package contains the runtime vhd library.
+
+Package: libvhdio-2.0.90
+Architecture: i386 amd64
+Depends: ${misc:Depends}, ${shlibs:Depends}
+Description: Xen API blktap shared library (shared library)
+ The Xen Cloud Platform (XCP) is an open source enterprise-ready server
+ virtualization and cloud computing platform, delivering the Xen Hypervisor
+ with support for a range of guest operating systems. This package is part
+ of it. It implements the userland part of the blktap driver.
+ .
+ Virtual Hard Disk (VHD) is a file format standard which maps logical hard disk
+ contents to a physical disk image format, which can then be more efficiently
+ stored in a variety of different storage types, such as file systems or
+ logical volumes.
+ .
+ VHDs are container files storing block metadata alongside a virtual disk's
+ contents, in a single disk image. The metadata enables advanced storage
+ backend capabilities, such as thin provisioning, disk image snapshotting, and
+ coalescing of differencing disks.
+ .
+ This package contains the runtime vhdio library.
+
+Package: libblktapctl0
+Architecture: i386 amd64
+Depends: ${misc:Depends}, ${shlibs:Depends}
+Description: Xen API blktapctl shared library (shared library)
+ The Xen Cloud Platform (XCP) is an open source enterprise-ready server
+ virtualization and cloud computing platform, delivering the Xen Hypervisor
+ with support for a range of guest operating systems. This package is part
+ of it. It implements the userland part of the blktap driver.
+ .
+ Virtual Hard Disk (VHD) is a file format standard which maps logical hard disk
+ contents to a physical disk image format, which can then be more efficiently
+ stored in a variety of different storage types, such as file systems or
+ logical volumes.
+ .
+ VHDs are container files storing block metadata alongside a virtual disk's
+ contents, in a single disk image. The metadata enables advanced storage
+ backend capabilities, such as thin provisioning, disk image snapshotting, and
+ coalescing of differencing disks.
+  .
+ Libvhd is a library to access VHD format metadata. It provides disk image
+ initialization, inspection and manipulation to both VHD user utilities and
+ the VHD disk driver in Blktap.
+ .
+ This package contains the runtime blktapctl library.

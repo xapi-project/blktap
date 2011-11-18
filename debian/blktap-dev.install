@@ -1,0 +1,15 @@
+usr/lib/libblktapctl.a
+usr/include/blktap/tap-ctl.h
+usr/include/blktap/blktaplib.h
+usr/include/blktap/tapdisk-message.h
+usr/include/blktap/blktap2.h
+usr/lib/libvhd.a
+usr/include/vhd/vhd.h
+usr/include/vhd/libvhd-index.h
+usr/include/vhd/libvhd-journal.h
+usr/include/vhd/libvhd.h
+usr/include/vhd/vhd-util.h
+usr/include/vhd/list.h
+usr/lib/libvhd.so
+usr/lib/libvhdio.so
+usr/lib/libblktapctl.so

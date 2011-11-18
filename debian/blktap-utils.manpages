@@ -1,0 +1,13 @@
+debian/mans/lock-util.8
+debian/mans/part-util.8
+debian/mans/tapdisk2.8
+debian/mans/tapdisk-stream.8
+debian/mans/td-rated.8
+debian/mans/td-util.8
+debian/mans/vhd-index.8
+debian/mans/vhdpartx.8
+debian/mans/vhd-update.8
+debian/mans/vhd-util.8
+debian/mans/tap-ctl.8
+debian/mans/lvm-util.8
+debian/mans/tapdisk.8
