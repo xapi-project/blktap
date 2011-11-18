@@ -38,7 +38,7 @@ Description: Xen API blktap shared library (development files)
 Package: blktap-utils
 Section: utils
 Architecture: i386 amd64
-Depends: ${misc:Depends}, ${shlibs:Depends}, libvhd0 (= ${binary:Version}), libvhdio-2.0.90 (= ${binary:Version}), libblktapctl0 (= ${binary:Version})
+Depends: ${misc:Depends}, ${shlibs:Depends}, libvhd0 (= ${binary:Version}), libvhdio-2.0.90 (= ${binary:Version}), libblktapctl0 (= ${binary:Version}), blktap-dkms
 Description: utilities to work with VHD disk images files
  The Xen Cloud Platform (XCP) is an open source enterprise-ready server
  virtualization and cloud computing platform, delivering the Xen Hypervisor

@@ -1,7 +1,7 @@
 Format: http://svn.debian.org/wsvn/dep/web/deps/dep5.mdwn?op=file&rev=173
 Upstream-Name: blktap
 Upstream-Contact: Jonathan Ludlam <Jonathan.Ludlam@eu.citrix.com>
-Source: git clone http://github.com/jonludlam/blktap.git
+Source: git clone https://github.com/xen-org/blktap.git
 
 Files: debian/*
 Copyright: (c) 2011, Thomas Goirand <zigo@debian.org>
@@ -14,7 +14,7 @@ License: BSD (2 clauses)
 
 Files: *
 Copyright: (c) 2008-2011, XenSource Inc., All rights reserved.
-	(c) 2010-2011, Cirix System, Inc
+	(c) 2010-2011, Citrix Systems, Inc
 License: BSD (3 clauses)
 
 License: BSD (2 clauses)
