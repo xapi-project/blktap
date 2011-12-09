@@ -1310,13 +1310,14 @@ vhd_find_parent(vhd_context_t *ctx, const char *parent, char **_location)
 		path = realpath(location, __location);
 		if (path) {
 			*_location = strdup(path);
-			if (!*_location)
-				return -errno;
-			return 0;
+			if (*_location)
+				goto out;
 		}
 	}
+	err = -errno;
 
 out:
+	free(location);
 	return err;
 }
 
