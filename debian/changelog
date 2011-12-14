@@ -1,3 +1,9 @@
+blktap (2.0.90-2) unstable; urgency=low
+
+  * Bump release to make xapi-autobuilder happy
+
+ -- Jonathan Ludlam <jonathan.ludlam@eu.citrix.com>  Wed, 14 Dec 2011 15:07:32 +0000
+
 blktap (2.0.90-1) unstable; urgency=low
 
   * Initial release. (Closes: #635115)
