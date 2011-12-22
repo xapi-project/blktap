@@ -1,3 +1,9 @@
+blktap (2.0.90-3) unstable; urgency=low
+
+  * xapi-autobuilder automatic changelog bump
+
+ -- Mike McClurg <mike.mcclurg@citrix.com>  Thu, 22 Dec 2011 12:49:44 +0000
+
 blktap (2.0.90-2) unstable; urgency=low
 
   * Bump release to make xapi-autobuilder happy
