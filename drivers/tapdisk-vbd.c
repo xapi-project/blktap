@@ -52,6 +52,7 @@
 #include "tapdisk-interface.h"
 #include "tapdisk-stats.h"
 #include "tapdisk-storage.h"
+#include "tapdisk-nbdserver.h"
 
 #define DBG(_level, _f, _a...) tlog_write(_level, _f, ##_a)
 #define ERR(_err, _f, _a...) tlog_error(_err, _f, ##_a)
@@ -149,6 +150,11 @@ tapdisk_vbd_close_vdi(td_vbd_t *vbd)
 	if (vbd->retired) {
 		tapdisk_image_close(vbd->retired);
 		vbd->retired = NULL;
+	}
+
+	if (vbd->nbdserver) {
+		tapdisk_nbdserver_free(vbd->nbdserver);
+		vbd->nbdserver = NULL;							   
 	}
 
 	td_flag_set(vbd->state, TD_VBD_CLOSED);
@@ -520,6 +526,7 @@ tapdisk_vbd_attach(td_vbd_t *vbd, const char *devname, int minor)
 	return tapdisk_blktap_open(devname, vbd, &vbd->tap);
 }
 
+/*
 int
 tapdisk_vbd_open(td_vbd_t *vbd, const char *name,
 		 int minor, const char *ring, td_flag_t flags)
@@ -543,7 +550,7 @@ out:
 	vbd->name = NULL;
 	return err;
 }
-
+*/
 static void
 tapdisk_vbd_queue_count(td_vbd_t *vbd, int *new,
 			int *pending, int *failed, int *completed)
@@ -1385,6 +1392,29 @@ tapdisk_vbd_kick(td_vbd_t *vbd)
 		prev->cb(prev, prev->error, prev->token, 1);
 		vbd->returned++;
 	}
+}
+
+int
+tapdisk_vbd_start_nbdserver(td_vbd_t *vbd)
+{
+	td_disk_info_t info;
+	int err;
+
+	err = tapdisk_vbd_get_disk_info(vbd, &info);
+
+	if(err) {
+		return err;
+	}
+
+	vbd->nbdserver=tapdisk_nbdserver_alloc(vbd, info);
+
+	if(!vbd->nbdserver) {
+		EPRINTF("Error starting nbd server");
+		return -1;
+	}
+
+	return 0;
+	
 }
 
 void

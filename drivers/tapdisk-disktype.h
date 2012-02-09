@@ -44,6 +44,8 @@
 #define DISK_TYPE_LLECACHE    12
 #define DISK_TYPE_LLPCACHE    13
 #define DISK_TYPE_VALVE       14
+#define DISK_TYPE_EXPORT      15
+#define DISK_TYPE_NBD         16
 
 #define DISK_TYPE_NAME_MAX    32
 
