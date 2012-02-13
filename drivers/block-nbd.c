@@ -17,7 +17,7 @@
 #include "tapdisk-interface.h"
 #include "tapdisk-utils.h"
 #include "tapdisk-fdreceiver.h"
-#include "nbd.h"
+#include "tapdisk-nbd.h"
 
 #ifdef HAVE_CONFIG_H
 #include "config.h"

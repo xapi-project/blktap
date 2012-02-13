@@ -19,7 +19,7 @@
 #include "tapdisk-nbdserver.h"
 #include "tapdisk-fdreceiver.h"
 
-#include "nbd.h"
+#include "tapdisk-nbd.h"
 
 #ifdef HAVE_CONFIG_H
 #include "config.h"
@@ -419,7 +419,7 @@ tapdisk_nbdserver_newclient_fd(td_nbdserver_t *server, int new_fd)
 
 	INFO("About to alloc client");
 	td_nbdserver_client_t *client=tapdisk_nbdserver_alloc_client(server);
-	INFO("Got an allocated client at %"PRIu64,(uint64_t)client);
+	INFO("Got an allocated client at %p",client);
 	client->client_fd = new_fd;
 	INFO("About to enable client");
   
