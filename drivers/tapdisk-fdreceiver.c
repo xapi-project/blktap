@@ -37,6 +37,8 @@ td_fdreceiver_recv_fd(event_id_t id, char mode, void *data)
     struct cmsghdr *cmsg;
     
     numbytes = UNIX_BUFFER_SIZE;
+
+	bzero(iobuf,numbytes);
     
     msg.msg_name=&unix_socket_name;
     msg.msg_namelen=sizeof(unix_socket_name);

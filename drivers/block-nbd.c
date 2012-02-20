@@ -263,7 +263,7 @@ int tdnbd_send_chunk(struct tdnbd_data *prv, const char *buffer, uint32_t length
 	struct nbd_request request;
 	struct nbd_reply reply;
 
-	INFO("Sending chunk of size %u at offset %"PRIu64"\n", length, offset);
+/*	INFO("Sending chunk of size %u at offset %"PRIu64"\n", length, offset);*/
 	if (prv->socket == 0) {
 		ERROR("Cannot send chunk without an open socket\n");
 		return -1;
@@ -461,14 +461,19 @@ static int tdnbd_close(td_driver_t* driver)
 
 static void tdnbd_queue_read(td_driver_t* driver, td_request_t treq)
 {
-  struct tdnbd_data *prv = (struct tdnbd_data *)driver->data;
+  /** Disabling this temporarily. We'll need a switch for when we're
+      in real client mode vs storage write mirroring 
+	struct tdnbd_data *prv = (struct tdnbd_data *)driver->data;
         int      size    = treq.secs * driver->info.sector_size;
         uint64_t offset  = treq.sec * (uint64_t)driver->info.sector_size;
         INFO("READ %"PRIu64" (%u)\n", offset, size);
 
 		tdnbd_recv_chunk(prv, treq.buf, size, offset);
 
-		td_complete_request(treq, 0);
+		td_complete_request(treq, 0); 
+  */
+
+  td_forward_request(treq);
 }
 
 static void tdnbd_queue_write(td_driver_t* driver, td_request_t treq)
@@ -479,7 +484,7 @@ static void tdnbd_queue_write(td_driver_t* driver, td_request_t treq)
         
 	//memcpy(img + offset, treq.buf, size);
 
-	INFO("WRITE %"PRIu64" (%u)\n", offset, size);
+	/*INFO("WRITE %"PRIu64" (%u)\n", offset, size);*/
 
 	tdnbd_send_chunk(prv, treq.buf, size, offset);
 

@@ -57,8 +57,6 @@ tapdisk_nbdserver_alloc_request(td_nbdserver_client_t *client)
 {
 	td_nbdserver_req_t *req = NULL;
 
-	INFO("Alloc request...");
-
 	if (likely(client->n_reqs_free))
 		req = client->reqs_free[--client->n_reqs_free];
 
@@ -68,7 +66,6 @@ tapdisk_nbdserver_alloc_request(td_nbdserver_client_t *client)
 void
 tapdisk_nbdserver_free_request(td_nbdserver_client_t *client, td_nbdserver_req_t *req)
 {
-    INFO("Free request...");
 	if(client->n_reqs_free >= client->n_reqs) {
 		ERROR("Error, trying to free a client, but the free list is full! leaking!");
 		return;
@@ -384,7 +381,7 @@ tapdisk_nbdserver_clientcb(event_id_t id, char mode, void *data)
 		ERROR("tapdisk_vbd_queue_request failed: %d",rc);
 		goto fail;
 	}
-	INFO("queued request");
+
 	return;
 
 fail:
@@ -583,6 +580,8 @@ tapdisk_nbdserver_pause(td_nbdserver_t *server)
 {
 	struct td_nbdserver_client *pos, *q;
 
+	INFO("NBD server pause(%p)",server);
+
 	list_for_each_entry_safe(pos, q, &server->clients, clientlist){
 	  if(pos->paused != 1 && pos->client_event_id >= 0) { 
 		tapdisk_nbdserver_disable_client(pos);
@@ -600,19 +599,22 @@ tapdisk_nbdserver_unpause(td_nbdserver_t *server)
 {
 	struct td_nbdserver_client *pos, *q;
 
+	INFO("NBD server unpause(%p) - listening_fd=%d",server,server->listening_fd);
+
 	list_for_each_entry_safe(pos, q, &server->clients, clientlist){
 		if(pos->paused == 1) {
 			tapdisk_nbdserver_enable_client(pos);
 			pos->paused = 0;
 		}
 	}
-	
-	if(server->listening_event_id < 0) {
+
+	if(server->listening_event_id < 0 && server->listening_fd >= 0) {
 		server->listening_event_id =
 			tapdisk_server_register_event(SCHEDULER_POLL_READ_FD,
 										  server->listening_fd, 0,
 										  tapdisk_nbdserver_newclient,
 										  server);	
+		INFO("registering for listening_fd");
 	}
 
 	return server->listening_event_id;
@@ -622,6 +624,8 @@ void
 tapdisk_nbdserver_free(td_nbdserver_t *server)
 {
 	struct td_nbdserver_client *pos, *q;
+
+	INFO("NBD server free(%p)",server);
 
 	list_for_each_entry_safe(pos, q, &server->clients, clientlist){
 		tapdisk_nbdserver_free_client(pos);
