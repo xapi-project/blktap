@@ -138,6 +138,7 @@ void td_fdreceiver_stop(struct td_fdreceiver *fdreceiver)
     }
 	
     if(fdreceiver->path != NULL) {
+		unlink(fdreceiver->path);
 		free(fdreceiver->path);
     }
 

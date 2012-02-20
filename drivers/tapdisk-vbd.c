@@ -152,11 +152,6 @@ tapdisk_vbd_close_vdi(td_vbd_t *vbd)
 		vbd->retired = NULL;
 	}
 
-	if (vbd->nbdserver) {
-		tapdisk_nbdserver_free(vbd->nbdserver);
-		vbd->nbdserver = NULL;							   
-	}
-
 	td_flag_set(vbd->state, TD_VBD_CLOSED);
 }
 
@@ -768,6 +763,10 @@ tapdisk_vbd_pause(td_vbd_t *vbd)
 
 	td_flag_set(vbd->state, TD_VBD_PAUSE_REQUESTED);
 
+	if(vbd->nbdserver) {
+	  tapdisk_nbdserver_pause(vbd->nbdserver);
+	}
+
 	err = tapdisk_vbd_quiesce_queue(vbd);
 	if (err)
 		return err;
@@ -811,6 +810,10 @@ tapdisk_vbd_resume(td_vbd_t *vbd, const char *name)
 	td_flag_clear(vbd->state, TD_VBD_PAUSED);
 	td_flag_clear(vbd->state, TD_VBD_PAUSE_REQUESTED);
 	tapdisk_vbd_check_state(vbd);
+
+	if(vbd->nbdserver) {
+	  tapdisk_nbdserver_unpause(vbd->nbdserver);
+	}
 
 	DBG(TLOG_DBG, "state checked\n");
 

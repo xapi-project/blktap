@@ -818,6 +818,10 @@ tapdisk_control_close_image(struct tapdisk_ctl_conn *conn,
 		goto out;
 	}
 
+	if(vbd->nbdserver) {
+	  tapdisk_nbdserver_pause(vbd->nbdserver);
+	}
+
 	do {
 		err = tapdisk_blktap_remove_device(vbd->tap);
 
@@ -841,6 +845,11 @@ tapdisk_control_close_image(struct tapdisk_ctl_conn *conn,
 
 	if (err)
 		goto out;
+
+	if(vbd->nbdserver) {
+	  tapdisk_nbdserver_free(vbd->nbdserver);
+	  vbd->nbdserver = NULL;
+	}
 
 	tapdisk_vbd_close_vdi(vbd);
 

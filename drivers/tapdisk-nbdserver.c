@@ -49,6 +49,8 @@ void
 tapdisk_nbdserver_clientcb(event_id_t id, char mode, void *data);
 int 
 tapdisk_nbdserver_setup_listening_socket(td_nbdserver_t *server);
+int 
+tapdisk_nbdserver_unpause(td_nbdserver_t *server);
 
 td_nbdserver_req_t *
 tapdisk_nbdserver_alloc_request(td_nbdserver_client_t *client)
@@ -159,6 +161,8 @@ tapdisk_nbdserver_alloc_client(td_nbdserver_t *server)
 	client->server=server;
 	INIT_LIST_HEAD(&client->clientlist);
 	list_add(&client->clientlist, &server->clients);
+
+	client->paused=0;
 
 	return client;
 
@@ -490,8 +494,8 @@ tapdisk_nbdserver_alloc(td_vbd_t *vbd, td_disk_info_t info)
 
 	snprintf(fdreceiver_path, TAPDISK_NBDSERVER_MAX_PATH_LEN, "%s%d.%d",
 			 TAPDISK_NBDSERVER_LISTENING_SOCK_PATH, getpid(), 
-			 server->vbd->uuid);
-	
+			 vbd->uuid);
+
 	server->fdreceiver=td_fdreceiver_start(fdreceiver_path, 
 										   tapdisk_nbdserver_fdreceiver_cb, server);
 
@@ -560,13 +564,8 @@ tapdisk_nbdserver_listen(td_nbdserver_t *server, int port)
 		return -1;
 	}
 
-
-	server->listening_event_id =
-		tapdisk_server_register_event(SCHEDULER_POLL_READ_FD,
-									  server->listening_fd, 0,
-									  tapdisk_nbdserver_newclient,
-									  server);
-
+	tapdisk_nbdserver_unpause(server);
+	
 	if (server->listening_event_id < 0) {
 		err = server->listening_event_id;
 		close(server->listening_fd);
@@ -578,6 +577,46 @@ tapdisk_nbdserver_listen(td_nbdserver_t *server, int port)
 	return 0;
 }
 
+
+void
+tapdisk_nbdserver_pause(td_nbdserver_t *server)
+{
+	struct td_nbdserver_client *pos, *q;
+
+	list_for_each_entry_safe(pos, q, &server->clients, clientlist){
+	  if(pos->paused != 1 && pos->client_event_id >= 0) { 
+		tapdisk_nbdserver_disable_client(pos);
+		pos->paused = 1;
+	  }
+	}
+
+	if(server->listening_event_id >= 0) {
+	  tapdisk_server_unregister_event(server->listening_event_id);
+	}
+}
+
+int 
+tapdisk_nbdserver_unpause(td_nbdserver_t *server)
+{
+	struct td_nbdserver_client *pos, *q;
+
+	list_for_each_entry_safe(pos, q, &server->clients, clientlist){
+		if(pos->paused == 1) {
+			tapdisk_nbdserver_enable_client(pos);
+			pos->paused = 0;
+		}
+	}
+	
+	if(server->listening_event_id < 0) {
+		server->listening_event_id =
+			tapdisk_server_register_event(SCHEDULER_POLL_READ_FD,
+										  server->listening_fd, 0,
+										  tapdisk_nbdserver_newclient,
+										  server);	
+	}
+
+	return server->listening_event_id;
+}
 
 void 
 tapdisk_nbdserver_free(td_nbdserver_t *server)

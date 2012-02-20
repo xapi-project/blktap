@@ -61,10 +61,15 @@ struct td_nbdserver_client {
 
 	td_nbdserver_t         *server;
 	struct list_head        clientlist;
+
+    int                     paused;
 };
 
 td_nbdserver_t *tapdisk_nbdserver_alloc(td_vbd_t *, td_disk_info_t);
 int tapdisk_nbdserver_listen(td_nbdserver_t *, int);
 void tapdisk_nbdserver_free(td_nbdserver_t *);
+void tapdisk_nbdserver_pause(td_nbdserver_t *);
+int tapdisk_nbdserver_unpause(td_nbdserver_t *);
+
 
 #endif /* _TAPDISK_NBDSERVER_H_ */
