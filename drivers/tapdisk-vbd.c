@@ -57,6 +57,9 @@
 #define DBG(_level, _f, _a...) tlog_write(_level, _f, ##_a)
 #define ERR(_err, _f, _a...) tlog_error(_err, _f, ##_a)
 
+#define INFO(_f, _a...)            tlog_syslog(TLOG_INFO, "vbd: " _f, ##_a)
+#define ERROR(_f, _a...)           tlog_syslog(TLOG_WARN, "vbd: " _f, ##_a)
+
 #if 1                                                                        
 #define ASSERT(p)							\
 	do {								\
@@ -759,7 +762,7 @@ tapdisk_vbd_pause(td_vbd_t *vbd)
 {
 	int err;
 
-	DBG(TLOG_DBG, "pause requested\n");
+	INFO("pause requested\n");
 
 	td_flag_set(vbd->state, TD_VBD_PAUSE_REQUESTED);
 
@@ -773,7 +776,7 @@ tapdisk_vbd_pause(td_vbd_t *vbd)
 
 	tapdisk_vbd_close_vdi(vbd);
 
-	DBG(TLOG_DBG, "pause completed\n");
+	INFO("pause completed\n");
 
 	td_flag_clear(vbd->state, TD_VBD_PAUSE_REQUESTED);
 	td_flag_set(vbd->state, TD_VBD_PAUSED);
@@ -1111,6 +1114,26 @@ tapdisk_vbd_complete_td_request(td_request_t treq, int res)
 			vbd->secondary_mode = TD_VBD_SECONDARY_DISABLED;
 			signal_enospc(vbd);
 		}
+	}
+
+	if(res != 0) {
+	  DPRINTF("Res=%d, image->type=%d\n",res,image->type);
+	}
+	  
+
+	if (image->type == DISK_TYPE_NBD && image == vbd->secondary) {
+	  if (res != 0) {
+		ERROR("Got non-zero res for NBD secondary - disabling mirroring");
+		res = 0; /* Pretend the writes have completed successfully */
+
+		/* It was the secondary that timed out - disable secondary */
+		list_del_init(&image->next);
+		vbd->retired = image;
+		if (vbd->secondary_mode != TD_VBD_SECONDARY_DISABLED) {
+		  vbd->secondary = NULL;
+		  vbd->secondary_mode = TD_VBD_SECONDARY_DISABLED;
+		}
+	  }
 	}
 
 	DBG(TLOG_DBG, "%s: req %s seg %d sec 0x%08"PRIx64

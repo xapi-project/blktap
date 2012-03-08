@@ -25,7 +25,7 @@
 #include "config.h"
 #endif
 
-#define NBD_SERVER_NUM_REQS 10
+#define NBD_SERVER_NUM_REQS TAPDISK_DATA_REQUESTS
 
 #define TAPDISK_NBDSERVER_LISTENING_SOCK_PATH "/var/run/blktap-control/nbdserver"
 #define TAPDISK_NBDSERVER_MAX_PATH_LEN 256
@@ -186,10 +186,6 @@ tapdisk_nbdserver_free_client(td_nbdserver_client_t *client)
 		tapdisk_nbdserver_disable_client(client);
 	}
 
-	if(client->client_fd >= 0) {
-		close(client->client_fd);
-	}
-
 	list_del(&client->clientlist);
 	tapdisk_nbdserver_reqs_free(client);
 	free(client);
@@ -293,13 +289,18 @@ finish:
 }
 
 void
+tapdisk_nbdserver_newclient_fd(td_nbdserver_t *server, int new_fd);
+void
 tapdisk_nbdserver_clientcb(event_id_t id, char mode, void *data)
 {
 	td_nbdserver_client_t *client=data;
 	td_nbdserver_t *server=client->server;
 	int rc;
 	int len;
+	int hdrlen;
 	int n;
+	int fd = client->client_fd;
+	char *ptr;
 	td_vbd_request_t *vreq;
 	struct nbd_request request;
 
@@ -315,13 +316,20 @@ tapdisk_nbdserver_clientcb(event_id_t id, char mode, void *data)
 
 	memset(req, 0, sizeof(td_nbdserver_req_t));
 	/* Read the request the client has sent */
-	rc=recv(client->client_fd, &request, sizeof(struct nbd_request), 0);
-  
-	if(rc<sizeof(struct nbd_request)) {
-		ERROR("Short read in nbdserver_clientcb. Closing connection");
-		goto fail;
-	}
 
+	hdrlen = sizeof(struct nbd_request);
+	
+	n = 0;
+	ptr = (char *) &request;
+	while(n<hdrlen) {
+	  rc=recv(fd, ptr+n, hdrlen - n, 0);
+	  if(rc < 0) {
+		ERROR("Bad return in nbdserver_clientcb. Closing connection");
+		goto fail;
+	  }
+	  n += rc;
+	}
+  
 	if(request.magic != htonl(NBD_REQUEST_MAGIC)) {
 		ERROR("Not enough magic");
 		goto fail;
@@ -361,7 +369,7 @@ tapdisk_nbdserver_clientcb(event_id_t id, char mode, void *data)
 
 		n=0;
 		while(n<len) {
-			rc = recv(client->client_fd, vreq->iov->base+n, (len-n), 0);
+			rc = recv(fd, vreq->iov->base+n, (len-n), 0);
 			if(rc <= 0) {
 				ERROR("Short send or error in callback: %d",rc);
 				goto fail;
@@ -371,9 +379,17 @@ tapdisk_nbdserver_clientcb(event_id_t id, char mode, void *data)
 		};
 
 		break;
+	case NBD_CMD_DISC:
+	  INFO("Received close message. Sending reconnect header");
+	  tapdisk_nbdserver_free_client(client);
+	  INFO("About to send initial connection message");
+	  tapdisk_nbdserver_newclient_fd(server, fd);
+	  INFO("Sent");
+	  return;
+
 	default:
-		ERROR("Unsupported operation");
-		goto fail;
+	  ERROR("Unsupported operation: 0x%x",request.type);
+	  goto fail;
 	}
 
 	rc = tapdisk_vbd_queue_request(server->vbd, vreq);

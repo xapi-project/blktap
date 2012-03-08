@@ -29,6 +29,9 @@
 #define N_PASSED_FDS 10
 #define TAPDISK_NBDCLIENT_MAX_PATH_LEN 256
 #define TAPDISK_NBDCLIENT_LISTENING_SOCK_PATH "/var/run/blktap-control/nbdclient"
+#define MAX_NBD_REQS TAPDISK_DATA_REQUESTS
+#define NBD_TIMEOUT 30
+
 /* We'll only ever have one nbdclient fd receiver per tapdisk process, 
    so let's just store it here globally. We'll also keep track of the 
    passed fds here too. */
@@ -42,15 +45,50 @@ struct tdnbd_passed_fd {
 } passed_fds[N_PASSED_FDS];
 
 
+struct nbd_queued_io {
+	char *buffer;
+	int len;
+	int so_far;
+};
 
+struct td_nbd_request {
+	td_request_t treq;
+	struct nbd_request nreq;
+	int timeout_event;
+	struct nbd_queued_io header; /* points to the request struct above */
+	struct nbd_queued_io body; /* in or out, depending on whether type is read or write */ 
+	struct list_head queue;
+};
 
-struct tdnbd_data {
-	/* Socket details */
+struct tdnbd_data
+{
+	int writer_event_id;
+	struct list_head sent_reqs;
+	struct list_head pending_reqs;
+	struct list_head free_reqs;
+	struct td_nbd_request requests[MAX_NBD_REQS];
+	int nr_free_count;
+	
+	int reader_event_id;
+	struct nbd_reply current_reply;
+	struct nbd_queued_io cur_reply_qio;
+	struct td_nbd_request *current_reply_request;
+	
 	int                 socket;
 	struct sockaddr_in *remote;
 	char               *peer_ip;
-    int                 port;
+	int                 port;
+	char               *name;
+
+	int                 flags;
+	int                 closed;
 };
+
+int global_id=0;
+
+void disable_write_queue(struct tdnbd_data *prv);
+
+
 
 /* -- fdreceiver bits and pieces -- */
 
@@ -114,6 +152,311 @@ tdnbd_fdreceiver_start()
 
 }
 
+
+
+void tdnbd_disable(struct tdnbd_data *prv, int e)
+{
+	struct td_nbd_request *pos, *q;
+	int i=0;
+	char handle[9];
+	
+	INFO("NBD client full-disable");
+
+	tapdisk_server_unregister_event(prv->writer_event_id);
+	tapdisk_server_unregister_event(prv->reader_event_id);
+
+	list_for_each_entry_safe(pos, q, &prv->sent_reqs, queue) {
+		memcpy(handle,pos->nreq.handle,8);
+		handle[8]=0;
+		INFO("Entry %d: handle='%s' type=%d -- reporting errno: %d",i,handle,ntohl(pos->nreq.type), e);
+		i++;
+
+		if(pos->timeout_event >= 0) {
+			tapdisk_server_unregister_event(pos->timeout_event);
+			pos->timeout_event = -1;
+		}
+
+		td_complete_request(pos->treq, e);
+	}
+
+	INFO("Setting closed");
+	prv->closed = 3;
+}
+
+/* NBD writer queue */
+
+
+/* Return code: how much is left to write, or a negative error code */
+int tdnbd_write_some(int fd, struct nbd_queued_io *data) 
+{
+	int left = data->len - data->so_far;
+	int rc;
+	char *code;
+
+	while(left > 0) {
+		rc = send(fd, data->buffer + data->so_far, left, 0);
+
+		if(rc == -1) {
+
+			if((errno == EAGAIN) || (errno == EWOULDBLOCK)) {
+				return left;
+			}
+
+			code = strerror(errno);
+			ERROR("Bad return code %d from send (%s)",rc,(code==0 ? "unknown" : code));
+			return rc;
+		}
+
+		left -= rc;
+		data->so_far += rc;
+	}
+
+	return left;
+}
+
+int tdnbd_read_some(int fd, struct nbd_queued_io *data)
+{
+	int left = data->len - data->so_far;
+	int rc;
+	char *code;
+
+	while(left > 0) {
+		rc = recv(fd, data->buffer + data->so_far, left, 0);
+
+		if(rc == -1) {
+
+			if((errno == EAGAIN) || (errno == EWOULDBLOCK)) {
+				return left;
+			}
+
+			code = strerror(errno);
+			ERROR("Bad return code %d from send (%s)",rc,(code==0 ? "unknown" : code));
+			return rc;
+		}
+
+		data->so_far += rc;
+		left -= rc;
+	}
+
+	return left;
+}
+
+void tdnbd_timeout_cb(event_id_t eb, char mode, void *data)
+{
+	struct tdnbd_data *prv=data;
+
+	ERROR("Timeout!");
+
+	tdnbd_disable(prv, ETIMEDOUT);
+}
+
+void tdnbd_writer_cb(event_id_t eb, char mode, void *data)
+{
+	struct td_nbd_request *pos, *q;
+
+	struct tdnbd_data *prv=data;
+
+	list_for_each_entry_safe(pos, q, &prv->pending_reqs, queue) {
+		if(tdnbd_write_some(prv->socket, &pos->header)>0)
+			return;
+		if(ntohl(pos->nreq.type)==NBD_CMD_WRITE) {
+			if(tdnbd_write_some(prv->socket, &pos->body)>0)
+				return;
+		}
+		if(ntohl(pos->nreq.type)==NBD_CMD_DISC) {
+			INFO("sent close request");
+			/* We don't expect a response from a DISC, so move the request back onto the free list */
+			list_move(&pos->queue, &prv->free_reqs);
+			prv->nr_free_count++;
+			prv->closed=2;
+		} else {
+			list_move(&pos->queue, &prv->sent_reqs);
+		}
+	}
+
+	/* If we're here, we've written everything */
+
+	disable_write_queue(prv);
+
+	if(prv->closed==2) {
+		tdnbd_disable(prv,EIO);
+	}
+
+	return;
+}
+
+int enable_write_queue(struct tdnbd_data *prv)
+{
+	if(prv->writer_event_id >= 0) 
+		return 0;
+
+	prv->writer_event_id = 
+		tapdisk_server_register_event(SCHEDULER_POLL_WRITE_FD,
+									  prv->socket,
+									  0,
+									  tdnbd_writer_cb,
+									  prv);
+	
+	return prv->writer_event_id;
+}
+
+void disable_write_queue(struct tdnbd_data *prv)
+{
+	if(prv->writer_event_id < 0)
+		return;
+
+	tapdisk_server_unregister_event(prv->writer_event_id);
+
+	prv->writer_event_id = -1;
+}
+
+int tdnbd_queue_request(struct tdnbd_data *prv, int type, uint64_t offset,
+						char *buffer, uint32_t length, td_request_t treq)
+{
+	if(prv->nr_free_count==0) 
+		return -EBUSY;
+
+	struct td_nbd_request *req=list_entry(prv->free_reqs.next, struct td_nbd_request, queue);
+
+	/* fill in the request */
+
+	req->treq=treq;
+	int id=global_id++;
+	snprintf(req->nreq.handle, 8, "td%05x", id % 0xffff);
+
+	/* No response from a disconnect, so no need for a timeout */
+	if(type != NBD_CMD_DISC) { 
+		req->timeout_event=tapdisk_server_register_event(SCHEDULER_POLL_TIMEOUT, 
+														 -1, /* dummy */
+														 NBD_TIMEOUT,
+														 tdnbd_timeout_cb,
+														 prv);
+	} else {
+		req->timeout_event = -1;
+	}
+
+
+	req->nreq.magic = htonl(NBD_REQUEST_MAGIC);
+	req->nreq.type = htonl(type);
+	req->nreq.from = htonll(offset);
+	req->nreq.len = htonl(length);
+	req->header.buffer = (char *)&req->nreq;
+	req->header.len = sizeof(req->nreq);
+	req->header.so_far = 0;
+	req->body.buffer = buffer;
+	req->body.len = length;
+	req->body.so_far = 0;
+
+	list_move_tail(&req->queue, &prv->pending_reqs);
+	prv->nr_free_count--;
+
+	if(prv->writer_event_id < 0) {
+		enable_write_queue(prv);
+	}
+	return 0;
+}
+
+/* NBD Reader callback */
+
+void tdnbd_reader_cb(event_id_t eb, char mode, void *data)
+{
+	char handle[9];
+	int do_disable=0;
+
+	/* Check to see if we're in the middle of reading a response already */
+
+	struct tdnbd_data *prv=data;
+
+	int rc = tdnbd_read_some(prv->socket, &prv->cur_reply_qio);
+
+	if(rc<0) {
+		ERROR("Error reading reply header: %d",rc);
+		tdnbd_disable(prv, EIO);
+		return;
+	}
+
+	if(rc>0) {
+		return; /* need more data */
+	}
+
+	/* Got a header. */
+
+	if(prv->current_reply.error != 0) {
+		ERROR("Error in reply: %d",prv->current_reply.error);
+		tdnbd_disable(prv, EIO);
+		return;
+	}
+
+    /* Have we found the request yet? */
+
+	if(prv->current_reply_request==NULL) {
+		struct td_nbd_request *pos, *q;
+		list_for_each_entry_safe(pos, q, &prv->sent_reqs, queue) {
+			if(memcmp(pos->nreq.handle, prv->current_reply.handle, 8)==0) {
+				prv->current_reply_request=pos;
+				break;
+			}
+		}
+
+		if(prv->current_reply_request==NULL) {
+			memcpy(handle,prv->current_reply.handle,8);
+			handle[8]=0;
+
+			ERROR("Couldn't find request corresponding to reply (reply handle='%s')",handle);
+			tdnbd_disable(prv, EIO);
+			return;
+		}
+	}
+
+	switch(ntohl(prv->current_reply_request->nreq.type)) {
+	case NBD_CMD_READ:
+		rc = tdnbd_read_some(prv->socket, &prv->current_reply_request->body);
+
+		if(rc<0) {
+			ERROR("Error reading body of request: %d",rc);
+			tdnbd_disable(prv, EIO);
+			return;
+		}
+		
+		if(rc>0) {
+			return; /* need more data */
+		}		
+
+		td_complete_request(prv->current_reply_request->treq, 0);
+
+		break;
+	case NBD_CMD_WRITE:
+		td_complete_request(prv->current_reply_request->treq, 0);
+
+		break;
+
+	default:
+		ERROR("Unhandled request response: %d",ntohl(prv->current_reply_request->nreq.type));
+		do_disable=1;
+		return;
+	} 
+
+	/* remove the state */
+
+	list_move(&prv->current_reply_request->queue, &prv->free_reqs);
+	prv->nr_free_count++;
+
+	prv->cur_reply_qio.so_far=0;
+	if(prv->current_reply_request->timeout_event >= 0) {
+		tapdisk_server_unregister_event(prv->current_reply_request->timeout_event);
+	}
+
+	prv->current_reply_request=NULL;
+
+	/* Nb, do this here otherwise we cancel the request that has just been moved */
+
+	if(do_disable)
+		tdnbd_disable(prv, EIO);
+
+
+}
+
+
 int tdnbd_nbd_negotiate(struct tdnbd_data *prv, td_driver_t *driver)
 {
 #define RECV_BUFFER_SIZE 256
@@ -152,7 +495,7 @@ int tdnbd_nbd_negotiate(struct tdnbd_data *prv, td_driver_t *driver)
 	rc = recv(sock, &magic, sizeof(magic), 0);
 	if(rc<8) {
 	  ERROR("Short read in negotiation(2) (%d)\n",rc);
-	  close(sock);
+
 	  return -1;
 	} 
 
@@ -195,6 +538,8 @@ int tdnbd_nbd_negotiate(struct tdnbd_data *prv, td_driver_t *driver)
 	}
 	
 	INFO("Successfully connected to NBD server");
+
+	fcntl(sock, F_SETFL, O_NONBLOCK);
 
 	return 0;
 }
@@ -253,146 +598,6 @@ int tdnbd_connect_import_session(struct tdnbd_data *prv, td_driver_t* driver)
 	return tdnbd_nbd_negotiate(prv, driver);
 }
 
-
-int tdnbd_send_chunk(struct tdnbd_data *prv, const char *buffer, uint32_t length, uint64_t offset)
-{
-	ssize_t rc;
-	uint32_t bytes_to_send;
-	uint32_t bytes_sent;
-
-	struct nbd_request request;
-	struct nbd_reply reply;
-
-/*	INFO("Sending chunk of size %u at offset %"PRIu64"\n", length, offset);*/
-	if (prv->socket == 0) {
-		ERROR("Cannot send chunk without an open socket\n");
-		return -1;
-	}
-
-	request.magic = htonl(NBD_REQUEST_MAGIC);
-	request.type = htonl(NBD_CMD_WRITE);
-	request.from = htonll(offset);
-	memcpy(request.handle,"tapdiskw",8);
-	request.len = htonl(length);
-		
-	rc = send(prv->socket, &request, sizeof(request), 0);
-	if (rc < 0) {
-		ERROR("Error sending request header: %s\n", strerror(errno));
-		return -1;
-	}
-	if (rc != sizeof(request)) {
-	  ERROR("Send of %d bytes of chunk header does not match expected %u\n", (int)rc, (int)sizeof(request));
-	}
-
-	bytes_to_send = length;
-	bytes_sent = 0;
-
-	while(bytes_to_send) {
-		rc = send(prv->socket, buffer + bytes_sent, bytes_to_send, 0);
-		if (rc < 0) {
-			ERROR("Error sending request payload: %s\n", strerror(errno));
-			return -1;
-		}
-		if ((uint32_t)rc > bytes_to_send)
-			rc = bytes_to_send;
-		bytes_sent += (uint32_t)rc;
-		bytes_to_send -= (uint32_t)rc;
-	}
-
-	rc = recv(prv->socket, &reply, sizeof(reply), 0);
-	if(rc < 0) {
-	  ERROR("Error receiving response from nbd server: %s\n", strerror(errno));
-	  return -1;
-	}
-
-	if(ntohl(reply.magic) != NBD_REPLY_MAGIC) {
-	  ERROR("Not enough magic in reply from nbd server (got %x)", ntohl(reply.magic));
-	  return -1;
-	}
-
-	if(memcmp(reply.handle, "tapdiskw", 8) != 0) {
-	  ERROR("Handle in reply did not match request (got '%s')",reply.handle);
-	  return -1;
-	}
-
-	if(ntohl(reply.error) != 0) {
-	  ERROR("Got error from nbd server: %d",ntohl(reply.error));
-	  return -1;
-	}
-
-	return 0;
-}
-
-int tdnbd_recv_chunk(struct tdnbd_data *prv, char *buffer, uint32_t length, uint64_t offset)
-{
-	ssize_t rc;
-	uint32_t bytes_to_recv;
-	uint32_t bytes_recvd;
-
-	struct nbd_request request;
-	struct nbd_reply reply;
-
-	INFO("Receiving chunk of size %u at offset %"PRIu64"\n", length, offset);
-	if (prv->socket == 0) {
-		ERROR("Cannot send chunk without an open socket\n");
-		return -1;
-	}
-
-	request.magic = htonl(NBD_REQUEST_MAGIC);
-	request.type = htonl(NBD_CMD_READ);
-	request.from = htonll(offset);
-	memcpy(request.handle,"tapdiskr",8);
-	request.len = htonl(length);
-		
-	rc = send(prv->socket, &request, sizeof(request), 0);
-	if (rc < 0) {
-		ERROR("Error sending request header: %s\n", strerror(errno));
-		return -1;
-	}
-	if (rc != sizeof(request)) {
-	  ERROR("Send of %d bytes of chunk header does not match expected %u\n", (int)rc, (int)sizeof(request));
-	}
-
-	rc = recv(prv->socket, &reply, sizeof(reply), 0);
-	if(rc < 0) {
-	  ERROR("Error receiving response from nbd server: %s\n", strerror(errno));
-	  return -1;
-	}
-
-	if(ntohl(reply.magic) != NBD_REPLY_MAGIC) {
-	  ERROR("Not enough magic in reply from nbd server (got %x)", ntohl(reply.magic));
-	  return -1;
-	}
-
-	if(memcmp(reply.handle, "tapdiskr", 8) != 0) {
-	  ERROR("Handle in reply did not match request (got '%s')",reply.handle);
-	  return -1;
-	}
-
-	if(ntohl(reply.error) != 0) {
-	  ERROR("Got error from nbd server: %d",ntohl(reply.error));
-	  return -1;
-	}
-
-	bytes_to_recv = length;
-	bytes_recvd = 0;
-
-	while(bytes_to_recv) {
-		rc = recv(prv->socket, buffer + bytes_recvd, bytes_to_recv, 0);
-		if (rc < 0) {
-			ERROR("Error receiving reply payload: %s\n", strerror(errno));
-			return -1;
-		}
-		if ((uint32_t)rc > bytes_to_recv)
-			rc = bytes_to_recv;
-		bytes_recvd += (uint32_t)rc;
-		bytes_to_recv -= (uint32_t)rc;
-	}
-
-	return 0;
-}
-
-
 /* -- interface -- */
 
 static int tdnbd_close(td_driver_t*);
@@ -403,6 +608,7 @@ static int tdnbd_open(td_driver_t* driver, const char* name, td_flag_t flags)
 	char peer_ip[256];
 	int port;
 	int rc;
+	int i;
 
 	driver->info.sector_size = 512;
 	driver->info.info = 0;
@@ -410,8 +616,20 @@ static int tdnbd_open(td_driver_t* driver, const char* name, td_flag_t flags)
 	prv = (struct tdnbd_data *)driver->data;
 	memset(prv, 0, sizeof(struct tdnbd_data));
 
-	INFO("Opening nbd export to %s\n", name);
-
+	INFO("Opening nbd export to %s (flags=%x)\n", name, flags);
+	
+	prv->writer_event_id=-1;
+	INIT_LIST_HEAD(&prv->sent_reqs);
+	INIT_LIST_HEAD(&prv->pending_reqs);
+	INIT_LIST_HEAD(&prv->free_reqs);
+	for(i=0; i<MAX_NBD_REQS; i++) {
+		INIT_LIST_HEAD(&prv->requests[i].queue);
+		prv->requests[i].timeout_event=-1;
+		list_add(&prv->requests[i].queue, &prv->free_reqs);
+	}
+	prv->nr_free_count = MAX_NBD_REQS;
+	prv->cur_reply_qio.buffer = (char *)&prv->current_reply;
+	prv->cur_reply_qio.len = sizeof(struct nbd_reply);
 	rc = sscanf(name, "%255[^:]:%d", peer_ip, &port);
 	if (rc == 2) {
 		prv->peer_ip = malloc(strlen(peer_ip) + 1);
@@ -421,39 +639,76 @@ static int tdnbd_open(td_driver_t* driver, const char* name, td_flag_t flags)
 		}
 		strcpy(prv->peer_ip, peer_ip);
 		prv->port=port;
-		
+		prv->name=NULL;
 		INFO("Export peer=%s port=%d\n", prv->peer_ip, prv->port);
 		if (tdnbd_connect_import_session(prv, driver) < 0) {
 			return -1;
 		}
-		
-		return 0;
+
 	} else {
 		prv->socket = tdnbd_retreive_passed_fd(name);
 		if(prv->socket < 0) {
-			ERROR("Couln't find fd named: %s",name);
+			ERROR("Couldn't find fd named: %s",name);
 			return -1;
 		}
 		INFO("Found passed fd. Connecting...");
 		prv->remote = NULL;
 		prv->peer_ip = NULL;
+		prv->name = strdup(name);
 		prv->port = -1;
-		return tdnbd_nbd_negotiate(prv, driver);
+		if(tdnbd_nbd_negotiate(prv, driver) < 0) {
+			ERROR("Failed to negotiate");
+			return -1;
+		}
 	}
+
+	prv->reader_event_id = 
+		tapdisk_server_register_event(SCHEDULER_POLL_READ_FD,
+									  prv->socket, 0,
+									  tdnbd_reader_cb,
+									  (void *)prv);
+
+	prv->flags = flags;
+	prv->closed = 0;
+
+	if(flags & TD_OPEN_SECONDARY) {
+		INFO("Opening in secondary mode: Read requests will be forwarded");
+	}
+
+	return 0;
+
 }
 
 static int tdnbd_close(td_driver_t* driver)
 {
-	struct tdnbd_data *prv;
+	struct tdnbd_data *prv = (struct tdnbd_data *)driver->data;
+	td_request_t treq;
 
-	prv = (struct tdnbd_data *)driver->data;
-	if (prv->socket) {
-		close(prv->socket);
-	}
+	bzero(&treq, sizeof(treq));
+
+	/* Send a close packet */
+
+	INFO("Sending disconnect request");
+	tdnbd_queue_request(prv, NBD_CMD_DISC, 0, 0, 0, treq);
+
+	INFO("Switching socket to blocking IO mode");
+	fcntl(prv->socket, F_SETFL, fcntl(prv->socket, F_GETFL) & ~O_NONBLOCK);
+
+	INFO("Writing disconnection request");
+	tdnbd_writer_cb(0,0,prv);
+
+	INFO("Written");
 
 	if (prv->peer_ip) {
 		free(prv->peer_ip);
 		prv->peer_ip = NULL;
+	}
+
+	if (prv->name) {
+		tdnbd_stash_passed_fd(prv->socket, prv->name, 0);
+		free(prv->name);
+	} else {
+		close(prv->socket);
 	}
 
 	return 0;
@@ -461,19 +716,16 @@ static int tdnbd_close(td_driver_t* driver)
 
 static void tdnbd_queue_read(td_driver_t* driver, td_request_t treq)
 {
-  /** Disabling this temporarily. We'll need a switch for when we're
-      in real client mode vs storage write mirroring 
 	struct tdnbd_data *prv = (struct tdnbd_data *)driver->data;
-        int      size    = treq.secs * driver->info.sector_size;
-        uint64_t offset  = treq.sec * (uint64_t)driver->info.sector_size;
-        INFO("READ %"PRIu64" (%u)\n", offset, size);
+	int      size    = treq.secs * driver->info.sector_size;
+	uint64_t offset  = treq.sec * (uint64_t)driver->info.sector_size;
 
-		tdnbd_recv_chunk(prv, treq.buf, size, offset);
+	if(prv->flags & TD_OPEN_SECONDARY) {
+		td_forward_request(treq);
+	} else {
+		tdnbd_queue_request(prv, NBD_CMD_READ, offset, treq.buf, size, treq);
+	}
 
-		td_complete_request(treq, 0); 
-  */
-
-  td_forward_request(treq);
 }
 
 static void tdnbd_queue_write(td_driver_t* driver, td_request_t treq)
@@ -484,11 +736,7 @@ static void tdnbd_queue_write(td_driver_t* driver, td_request_t treq)
         
 	//memcpy(img + offset, treq.buf, size);
 
-	/*INFO("WRITE %"PRIu64" (%u)\n", offset, size);*/
-
-	tdnbd_send_chunk(prv, treq.buf, size, offset);
-
-	td_complete_request(treq, 0);
+	tdnbd_queue_request(prv, NBD_CMD_WRITE, offset, treq.buf, size, treq);
 }
 
 static int tdnbd_get_parent_id(td_driver_t* driver, td_disk_id_t* id)
