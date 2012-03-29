@@ -2,7 +2,7 @@
 SUBDIRS = . $(MAYBE_test)
 
 AM_CFLAGS  = -Wall
-AM_CFLAGS += -Werror
+# AM_CFLAGS += -Werror
 
 AM_CPPFLAGS  = -D_GNU_SOURCE
 AM_CPPFLAGS += -I$(top_srcdir)/include
