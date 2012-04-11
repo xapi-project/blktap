@@ -277,6 +277,13 @@ tapdisk_vbd_add_secondary(td_vbd_t *vbd)
 	const char *path;
 	int type, err;
 
+	if(strcmp(vbd->secondary_name, "null")==0) {
+	  DPRINTF("Removing secondary image\n");
+	  vbd->secondary_mode=TD_VBD_SECONDARY_DISABLED;
+	  vbd->secondary=NULL;
+	  return 0;
+	}
+
 	DPRINTF("Adding secondary image: %s\n", vbd->secondary_name);
 
 	type = tapdisk_disktype_parse_params(vbd->secondary_name, &path);
