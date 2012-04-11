@@ -1124,6 +1124,7 @@ tapdisk_vbd_complete_td_request(td_request_t treq, int res)
 	if (image->type == DISK_TYPE_NBD && image == vbd->secondary) {
 	  if (res != 0) {
 		ERROR("Got non-zero res for NBD secondary - disabling mirroring");
+		vbd->nbd_mirror_failed = 1;
 		res = 0; /* Pretend the writes have completed successfully */
 
 		/* It was the secondary that timed out - disable secondary */
@@ -1470,6 +1471,10 @@ tapdisk_vbd_stats(td_vbd_t *vbd, td_stats_t *st)
 	tapdisk_stats_field(st,
 			    "FIXME_enospc_redirect_count",
 			    "llu", vbd->FIXME_enospc_redirect_count);
+
+	tapdisk_stats_field(st,
+						"nbd_mirror_failed",
+						"d", vbd->nbd_mirror_failed);
 
 	tapdisk_stats_leave(st, '}');
 }

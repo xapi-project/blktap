@@ -82,6 +82,8 @@ struct td_vbd_handle {
 	 * Therefore, we move it into 'retired' until shutdown. */
 	td_image_t                 *retired;
 
+    int                         nbd_mirror_failed;
+
 	struct list_head            new_requests;
 	struct list_head            pending_requests;
 	struct list_head            failed_requests;
