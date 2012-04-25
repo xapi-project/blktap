@@ -323,6 +323,10 @@ tapdisk_nbdserver_clientcb(event_id_t id, char mode, void *data)
 	ptr = (char *) &request;
 	while(n<hdrlen) {
 	  rc=recv(fd, ptr+n, hdrlen - n, 0);
+	  if(rc==0) {
+		INFO("Client closed connection");
+		goto fail;
+	  }
 	  if(rc < 0) {
 		ERROR("Bad return in nbdserver_clientcb. Closing connection");
 		goto fail;
