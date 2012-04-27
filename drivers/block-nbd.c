@@ -207,6 +207,11 @@ int tdnbd_write_some(int fd, struct nbd_queued_io *data)
 			return rc;
 		}
 
+		if(rc == 0) {
+		  ERROR("Server shutdown prematurely in write_some");
+		  return -1;
+		}
+
 		left -= rc;
 		data->so_far += rc;
 	}
@@ -232,6 +237,11 @@ int tdnbd_read_some(int fd, struct nbd_queued_io *data)
 			code = strerror(errno);
 			ERROR("Bad return code %d from send (%s)",rc,(code==0 ? "unknown" : code));
 			return rc;
+		}
+
+		if(rc == 0) {
+		  ERROR("Server shutdown prematurely in read_some");
+		  return -1;
 		}
 
 		data->so_far += rc;
