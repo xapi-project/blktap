@@ -55,6 +55,7 @@ struct td_nbd_request {
 	td_request_t treq;
 	struct nbd_request nreq;
 	int timeout_event;
+    int fake;
 	struct nbd_queued_io header; /* points to the request struct above */
 	struct nbd_queued_io body; /* in or out, depending on whether type is read or write */ 
 	struct list_head queue;
@@ -153,12 +154,25 @@ tdnbd_fdreceiver_start()
 }
 
 
+void __cancel_req(int i, struct td_nbd_request *pos, int e)
+{
+	char handle[9];
+	memcpy(handle,pos->nreq.handle,8);
+	handle[8]=0;
+	INFO("Entry %d: handle='%s' type=%d -- reporting errno: %d",i,handle,ntohl(pos->nreq.type), e);
+	
+	if(pos->timeout_event >= 0) {
+		tapdisk_server_unregister_event(pos->timeout_event);
+		pos->timeout_event = -1;
+	}
+	
+	td_complete_request(pos->treq, e);
+}
 
 void tdnbd_disable(struct tdnbd_data *prv, int e)
 {
 	struct td_nbd_request *pos, *q;
 	int i=0;
-	char handle[9];
 	
 	INFO("NBD client full-disable");
 
@@ -166,19 +180,13 @@ void tdnbd_disable(struct tdnbd_data *prv, int e)
 	tapdisk_server_unregister_event(prv->reader_event_id);
 
 	list_for_each_entry_safe(pos, q, &prv->sent_reqs, queue) {
-		memcpy(handle,pos->nreq.handle,8);
-		handle[8]=0;
-		INFO("Entry %d: handle='%s' type=%d -- reporting errno: %d",i,handle,ntohl(pos->nreq.type), e);
-		i++;
-
-		if(pos->timeout_event >= 0) {
-			tapdisk_server_unregister_event(pos->timeout_event);
-			pos->timeout_event = -1;
-		}
-
-		td_complete_request(pos->treq, e);
+		__cancel_req(i++,pos,e);
 	}
 
+	list_for_each_entry_safe(pos, q, &prv->pending_reqs, queue) {
+		__cancel_req(i++,pos,e);
+	}
+	
 	INFO("Setting closed");
 	prv->closed = 3;
 }
@@ -255,7 +263,7 @@ void tdnbd_timeout_cb(event_id_t eb, char mode, void *data)
 {
 	struct tdnbd_data *prv=data;
 
-	ERROR("Timeout!");
+	ERROR("Timeout!: %d",eb);
 
 	tdnbd_disable(prv, ETIMEDOUT);
 }
@@ -321,10 +329,15 @@ void disable_write_queue(struct tdnbd_data *prv)
 }
 
 int tdnbd_queue_request(struct tdnbd_data *prv, int type, uint64_t offset,
-						char *buffer, uint32_t length, td_request_t treq)
+						char *buffer, uint32_t length, td_request_t treq, int fake)
 {
 	if(prv->nr_free_count==0) 
 		return -EBUSY;
+
+	if(prv->closed==3) {
+	    td_complete_request(treq, -ETIMEDOUT);
+		return -ETIMEDOUT;
+	}
 
 	struct td_nbd_request *req=list_entry(prv->free_reqs.next, struct td_nbd_request, queue);
 
@@ -345,6 +358,7 @@ int tdnbd_queue_request(struct tdnbd_data *prv, int type, uint64_t offset,
 		req->timeout_event = -1;
 	}
 
+	INFO("request: %s timeout %d",req->nreq.handle, req->timeout_event);
 
 	req->nreq.magic = htonl(NBD_REQUEST_MAGIC);
 	req->nreq.type = htonl(type);
@@ -356,6 +370,7 @@ int tdnbd_queue_request(struct tdnbd_data *prv, int type, uint64_t offset,
 	req->body.buffer = buffer;
 	req->body.len = length;
 	req->body.so_far = 0;
+	req->fake=fake;
 
 	list_move_tail(&req->queue, &prv->pending_reqs);
 	prv->nr_free_count--;
@@ -466,6 +481,19 @@ void tdnbd_reader_cb(event_id_t eb, char mode, void *data)
 
 }
 
+int tdnbd_wait_read(int fd)
+{
+	struct timeval select_tv;
+	fd_set socks;
+	int rc;
+
+	FD_ZERO(&socks);
+	FD_SET(fd, &socks);
+	select_tv.tv_sec=10;
+	select_tv.tv_usec=0;
+	rc = select(fd+1, &socks, NULL, NULL, &select_tv);
+	return rc;
+}
 
 int tdnbd_nbd_negotiate(struct tdnbd_data *prv, td_driver_t *driver)
 {
@@ -478,6 +506,7 @@ int tdnbd_nbd_negotiate(struct tdnbd_data *prv, td_driver_t *driver)
 	int padbytes = 124;
 	int sock = prv->socket;
 
+
 	/* NBD negotiation protocol: 
 	 *
 	 * Server sends 'NBDMAGIC'
@@ -487,6 +516,16 @@ int tdnbd_nbd_negotiate(struct tdnbd_data *prv, td_driver_t *driver)
 	 * then it sends 124 bytes of nothing
 	 *
 	 */
+
+
+	/* We need to limit the time we spend in this function
+	   as we're still using blocking IO at this point */
+
+	if(tdnbd_wait_read(sock) <= 0) {
+	  ERROR("Timeout in nbd_negotiate");
+	  close(sock);
+	  return -1;
+	}
 
 	rc = recv(sock, buffer, 8, 0);
 	if(rc<8) {
@@ -498,6 +537,12 @@ int tdnbd_nbd_negotiate(struct tdnbd_data *prv, td_driver_t *driver)
 	if(memcmp(buffer, "NBDMAGIC", 8) != 0) {
 	  buffer[8]=0;
 	  ERROR("Error in NBD negotiation: got '%s'",buffer);
+	  close(sock);
+	  return -1;
+	}
+
+	if(tdnbd_wait_read(sock) <= 0) {
+	  ERROR("Timeout in nbd_negotiate");
 	  close(sock);
 	  return -1;
 	}
@@ -515,6 +560,12 @@ int tdnbd_nbd_negotiate(struct tdnbd_data *prv, td_driver_t *driver)
 	  return -1;
 	}
 
+	if(tdnbd_wait_read(sock) <= 0) {
+	  ERROR("Timeout in nbd_negotiate");
+	  close(sock);
+	  return -1;
+	}
+
 	rc = recv(sock, &size, sizeof(size), 0);
 	if(rc<sizeof(size)) {
 	  ERROR("Short read in negotiation(3) (%d)\n",rc);
@@ -528,6 +579,12 @@ int tdnbd_nbd_negotiate(struct tdnbd_data *prv, td_driver_t *driver)
 	driver->info.sector_size = DEFAULT_SECTOR_SIZE;
 	driver->info.info = 0;
 
+	if(tdnbd_wait_read(sock) <= 0) {
+	  ERROR("Timeout in nbd_negotiate");
+	  close(sock);
+	  return -1;
+	}
+
 	rc = recv(sock, &flags, sizeof(flags), 0);
 	if(rc<sizeof(flags)) {
 	  ERROR("Short read in negotiation(4) (%d)\n",rc);
@@ -538,6 +595,12 @@ int tdnbd_nbd_negotiate(struct tdnbd_data *prv, td_driver_t *driver)
 	INFO("Got flags: %"PRIu32"", ntohl(flags));
 
 	while(padbytes>0) {
+	  if(tdnbd_wait_read(sock) <= 0) {
+		ERROR("Timeout in nbd_negotiate");
+		close(sock);
+		return -1;
+	  }
+
 	  rc = recv(sock, buffer, padbytes, 0);
 	  if(rc<0) {
 		ERROR("Bad read in negotiation(5) (%d)\n",rc);
@@ -696,10 +759,19 @@ static int tdnbd_close(td_driver_t* driver)
 
 	bzero(&treq, sizeof(treq));
 
+
+	if(prv->closed == 3) {
+		INFO("NBD close: already decided that the connection is dead.");
+		if(prv->socket >= 0) 
+			close(prv->socket);
+		prv->socket = -1;
+		return 0;
+	}
+
 	/* Send a close packet */
 
 	INFO("Sending disconnect request");
-	tdnbd_queue_request(prv, NBD_CMD_DISC, 0, 0, 0, treq);
+	tdnbd_queue_request(prv, NBD_CMD_DISC, 0, 0, 0, treq, 0);
 
 	INFO("Switching socket to blocking IO mode");
 	fcntl(prv->socket, F_SETFL, fcntl(prv->socket, F_GETFL) & ~O_NONBLOCK);
@@ -718,7 +790,9 @@ static int tdnbd_close(td_driver_t* driver)
 		tdnbd_stash_passed_fd(prv->socket, prv->name, 0);
 		free(prv->name);
 	} else {
-		close(prv->socket);
+		if(prv->socket >= 0) 
+			close(prv->socket);
+		prv->socket = -1;
 	}
 
 	return 0;
@@ -733,7 +807,7 @@ static void tdnbd_queue_read(td_driver_t* driver, td_request_t treq)
 	if(prv->flags & TD_OPEN_SECONDARY) {
 		td_forward_request(treq);
 	} else {
-		tdnbd_queue_request(prv, NBD_CMD_READ, offset, treq.buf, size, treq);
+	    tdnbd_queue_request(prv, NBD_CMD_READ, offset, treq.buf, size, treq, 0);
 	}
 
 }
@@ -746,7 +820,7 @@ static void tdnbd_queue_write(td_driver_t* driver, td_request_t treq)
         
 	//memcpy(img + offset, treq.buf, size);
 
-	tdnbd_queue_request(prv, NBD_CMD_WRITE, offset, treq.buf, size, treq);
+	tdnbd_queue_request(prv, NBD_CMD_WRITE, offset, treq.buf, size, treq, 0);
 }
 
 static int tdnbd_get_parent_id(td_driver_t* driver, td_disk_id_t* id)

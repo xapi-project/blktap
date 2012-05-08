@@ -47,6 +47,7 @@
 #include "tapdisk-image.h"
 #include "tapdisk-driver.h"
 #include "tapdisk-server.h"
+
 #include "tapdisk-vbd.h"
 #include "tapdisk-disktype.h"
 #include "tapdisk-interface.h"
@@ -297,8 +298,17 @@ tapdisk_vbd_add_secondary(td_vbd_t *vbd)
 	}
 
 	err = tapdisk_image_open(type, path, leaf->flags, &second);
-	if (err)
+	if (err) {
+	    if(type == DISK_TYPE_NBD) {
+		    vbd->nbd_mirror_failed = 1;
+	    }
+
+		vbd->secondary=NULL;
+		vbd->secondary_mode=TD_VBD_SECONDARY_DISABLED;
+		
 		goto fail;
+
+	}
 
 	if (second->info.size != leaf->info.size) {
 		EPRINTF("Secondary image size %"PRIu64" != image size %"PRIu64"\n",
@@ -487,8 +497,13 @@ tapdisk_vbd_open_vdi(td_vbd_t *vbd, const char *name, td_flag_t flags, int prt_d
 
 	if (td_flag_test(vbd->flags, TD_OPEN_SECONDARY)) {
 		err = tapdisk_vbd_add_secondary(vbd);
-		if (err)
+		if (err) {
+		  if(vbd->nbd_mirror_failed != 1)
 			goto fail;
+		  
+		  INFO("Ignoring failed NBD secondary attach\n");
+		  err=0;
+		}
 	}
 
 	if (tmp != vbd->name)
@@ -1128,9 +1143,10 @@ tapdisk_vbd_complete_td_request(td_request_t treq, int res)
 	}
 	  
 
-	if (image->type == DISK_TYPE_NBD && image == vbd->secondary) {
+	if (image->type == DISK_TYPE_NBD && 
+		((image == vbd->secondary) || (image == vbd->retired))) {
 	  if (res != 0) {
-		ERROR("Got non-zero res for NBD secondary - disabling mirroring");
+		ERROR("Got non-zero res for NBD secondary - disabling mirroring: %s",vreq->name);
 		vbd->nbd_mirror_failed = 1;
 		res = 0; /* Pretend the writes have completed successfully */
 
