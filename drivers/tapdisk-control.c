@@ -54,6 +54,7 @@
 #include "tapdisk-disktype.h"
 #include "tapdisk-stats.h"
 #include "tapdisk-control.h"
+#include "tapdisk-nbdserver.h"
 
 #define TD_CTL_MAX_CONNECTIONS  10
 #define TD_CTL_SOCK_BACKLOG     32
@@ -63,6 +64,7 @@
 
 #define DBG(_f, _a...)             tlog_syslog(LOG_DEBUG, _f, ##_a)
 #define ERR(err, _f, _a...)        tlog_error(err, _f, ##_a)
+#define INFO(_f, _a...)            tlog_syslog(TLOG_INFO, "control: " _f, ##_a)
 
 #define ASSERT(_p)							\
 	if (!(_p)) {							\
@@ -761,6 +763,16 @@ tapdisk_control_open_image(struct tapdisk_ctl_conn *conn,
 		goto fail_close;
 	}
 
+	/* For now, lets do this automatically on all 'open' calls
+	   In the future, we'll probably want a separate call to
+	   start the NBD server */
+	err = tapdisk_vbd_start_nbdserver(vbd);
+
+	if (err) {
+		EPRINTF("failed to start nbdserver: %d\n",err);
+		goto fail_close;
+	}
+
 	err = 0;
 
 out:
@@ -806,6 +818,10 @@ tapdisk_control_close_image(struct tapdisk_ctl_conn *conn,
 		goto out;
 	}
 
+	if(vbd->nbdserver) {
+	  tapdisk_nbdserver_pause(vbd->nbdserver);
+	}
+
 	do {
 		err = tapdisk_blktap_remove_device(vbd->tap);
 
@@ -829,6 +845,11 @@ tapdisk_control_close_image(struct tapdisk_ctl_conn *conn,
 
 	if (err)
 		goto out;
+
+	if(vbd->nbdserver) {
+	  tapdisk_nbdserver_free(vbd->nbdserver);
+	  vbd->nbdserver = NULL;
+	}
 
 	tapdisk_vbd_close_vdi(vbd);
 
@@ -899,10 +920,23 @@ tapdisk_control_resume_vbd(struct tapdisk_ctl_conn *conn,
 
 	response.type = TAPDISK_MESSAGE_RESUME_RSP;
 
+	INFO("Resuming. flags=0x%08x secondary=%p\n", request->u.params.flags, request->u.params.secondary);
+
 	vbd = tapdisk_server_get_vbd(request->cookie);
 	if (!vbd) {
 		err = -EINVAL;
 		goto out;
+	}
+
+	if (request->u.params.flags & TAPDISK_MESSAGE_FLAG_SECONDARY) {
+		char *name = strdup(request->u.params.secondary);
+		if (!name) {
+			err = -errno;
+			goto out;
+		}
+		INFO("Resuming with secondary '%s'\n", name);
+		vbd->secondary_name = name;
+		vbd->flags |= TD_OPEN_SECONDARY;
 	}
 
 	if (request->u.params.path[0])
