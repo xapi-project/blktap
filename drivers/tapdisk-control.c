@@ -61,7 +61,7 @@
 #define TD_CTL_SEND_TIMEOUT     10
 #define TD_CTL_SEND_BUFSZ       ((size_t)4096)
 
-#define DBG(_f, _a...)             tlog_syslog(LOG_DEBUG, _f, ##_a)
+#define DBG(_f, _a...)             tlog_syslog(TLOG_DBG, _f, ##_a)
 #define ERR(err, _f, _a...)        tlog_error(err, _f, ##_a)
 
 #define ASSERT(_p)							\
