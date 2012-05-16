@@ -43,8 +43,10 @@ static void
 __stats_vsprintf(td_stats_t *st,
 		      const char *fmt, va_list ap)
 {
+	int written;
 	size_t size = st->buf + st->size - st->pos;
-	st->pos += vsnprintf(st->pos, size, fmt, ap);
+	written = vsnprintf(st->pos, size, fmt, ap);
+	st->pos += written < size ? written : size;
 }
 
 static void __printf(2, 3)
