@@ -131,7 +131,7 @@ static void
 tapdisk_ctl_conn_uninit(struct tapdisk_ctl_conn *conn)
 {
 	if (conn->out.buf) {
-		munmap(conn->out.buf, conn->out.bufsz);
+		free(conn->out.buf);
 		conn->out.buf = NULL;
 	}
 }
@@ -139,18 +139,14 @@ tapdisk_ctl_conn_uninit(struct tapdisk_ctl_conn *conn)
 static int
 tapdisk_ctl_conn_init(struct tapdisk_ctl_conn *conn, size_t bufsz)
 {
-	int prot, flags, err;
+	int err;
 
 	memset(conn, 0, sizeof(*conn));
 	conn->out.event_id = -1;
 	conn->in.event_id  = -1;
 
-	prot  = PROT_READ|PROT_WRITE;
-	flags = MAP_ANONYMOUS|MAP_PRIVATE;
-
-	conn->out.buf = mmap(NULL, bufsz, prot, flags, -1, 0);
-	if (conn->out.buf == MAP_FAILED) {
-		conn->out.buf = NULL;
+	conn->out.buf = malloc(bufsz);
+	if (!conn->out.buf) {
 		err = -ENOMEM;
 		goto fail;
 	}
@@ -926,10 +922,16 @@ tapdisk_control_stats(struct tapdisk_ctl_conn *conn,
 	td_stats_t _st, *st = &_st;
 	td_vbd_t *vbd;
 	size_t rv;
+	void *buf;
+	int new_size;
 
-	tapdisk_stats_init(st,
-			   conn->out.buf + sizeof(response),
-			   conn->out.bufsz - sizeof(response));
+	buf = malloc(TD_CTL_SEND_BUFSZ);
+	if (!buf) {
+		rv = -ENOMEM;
+		goto out;
+	}
+
+	tapdisk_stats_init(st, buf, TD_CTL_SEND_BUFSZ);
 
 	if (request->cookie != (uint16_t)-1) {
 
@@ -953,7 +955,26 @@ tapdisk_control_stats(struct tapdisk_ctl_conn *conn,
 	}
 
 	rv = tapdisk_stats_length(st);
+
+	if (rv > conn->out.bufsz - sizeof(response)) {
+		ASSERT(conn->out.prod == conn->out.buf);
+		ASSERT(conn->out.cons == conn->out.buf);
+		new_size = rv + sizeof(response);
+		buf = realloc(conn->out.buf, new_size);
+		if (!buf) {
+			rv = -ENOMEM;
+			goto out;
+		}
+		conn->out.buf = buf;
+		conn->out.bufsz = new_size;
+		conn->out.prod = buf;
+		conn->out.cons = buf;
+	}
+	if (rv > 0) {
+		memcpy(conn->out.buf + sizeof(response), st->buf, rv);
+	}
 out:
+	free(st->buf);
 	memset(&response, 0, sizeof(response));
 	response.type = TAPDISK_MESSAGE_STATS_RSP;
 	response.cookie = request->cookie;

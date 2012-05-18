@@ -33,6 +33,8 @@
 
 #include <stdio.h>
 #include <stdarg.h>
+#include <stdlib.h>
+#include <errno.h>
 
 #include "tapdisk.h"
 #include "tapdisk-stats.h"
@@ -43,10 +45,28 @@ static void
 __stats_vsprintf(td_stats_t *st,
 		      const char *fmt, va_list ap)
 {
-	int written;
-	size_t size = st->buf + st->size - st->pos;
-	written = vsnprintf(st->pos, size, fmt, ap);
-	st->pos += written < size ? written : size;
+	void *buf;
+	int written, new_size, off;
+	size_t size = 0;
+	written = 1;
+	while (written > size) {
+		size = st->buf + st->size - st->pos;
+		written = vsnprintf(st->pos, size, fmt, ap);
+		if (written <= size)
+			break;
+		new_size = st->size * 2;
+		buf = realloc(st->buf, new_size);
+		if (!buf) {
+			st->err = -ENOMEM;
+			written = size;
+			break;
+		}
+		off = st->pos - st->buf;
+		st->buf = buf;
+		st->size = new_size;
+		st->pos = st->buf + off;
+	}
+	st->pos += written;
 }
 
 static void __printf(2, 3)
