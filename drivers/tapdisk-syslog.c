@@ -241,7 +241,7 @@ tapdisk_syslog_ring_warning(td_syslog_t *log)
 	n        = log->oom;
 	log->oom = 0;
 
-	err = tapdisk_syslog(log, LOG_WARNING,
+	err = tapdisk_syslog(log, TLOG_WARN,
 			     "tapdisk-syslog: %d messages dropped", n);
 	if (err)
 		log->oom = n;
