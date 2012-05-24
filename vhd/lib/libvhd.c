@@ -2804,6 +2804,11 @@ vhd_change_parent(vhd_context_t *child, char *parent_path, int raw)
 	vhd_context_t parent;
 	char __parent_path[PATH_MAX];
 
+	if (child->footer.type != HD_TYPE_DIFF) {
+		VHDLOG("would-be child is not a differencing disk\n");
+		return -EINVAL;
+	}
+
 	ppath = realpath(parent_path, __parent_path);
 	if (!ppath) {
 		VHDLOG("error resolving parent path %s for %s: %d\n",
