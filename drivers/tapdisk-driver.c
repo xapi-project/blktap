@@ -44,7 +44,7 @@ tapdisk_driver_log_flush(td_driver_t *driver, const char *__caller)
 	td_loglimit_t *rl = &driver->loglimit;
 
 	if (rl->dropped) {
-		tlog_syslog(LOG_WARNING,
+		tlog_syslog(TLOG_WARN,
 			    "%s: %s: %d messages suppressed",
 			    driver->name, __caller, rl->dropped);
 		rl->dropped = 0;
@@ -63,7 +63,7 @@ tapdisk_driver_log_pass(td_driver_t *driver, const char *__caller)
 	}
 
 	if (!dropping)
-		tlog_syslog(LOG_WARNING,
+		tlog_syslog(TLOG_WARN,
 			    "%s: %s: too many errors, dropped.",
 			    driver->name, __caller);
 

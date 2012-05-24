@@ -62,7 +62,7 @@
 #define TD_CTL_SEND_TIMEOUT     10
 #define TD_CTL_SEND_BUFSZ       ((size_t)4096)
 
-#define DBG(_f, _a...)             tlog_syslog(LOG_DEBUG, _f, ##_a)
+#define DBG(_f, _a...)             tlog_syslog(TLOG_DBG, _f, ##_a)
 #define ERR(err, _f, _a...)        tlog_error(err, _f, ##_a)
 #define INFO(_f, _a...)            tlog_syslog(TLOG_INFO, "control: " _f, ##_a)
 
@@ -824,6 +824,9 @@ tapdisk_control_close_image(struct tapdisk_ctl_conn *conn,
 
 	do {
 		err = tapdisk_blktap_remove_device(vbd->tap);
+
+        if (err == -EBUSY)
+            tlog_write(TLOG_WARN, "device still open\n");
 
 		if (!err || err != -EBUSY)
 			break;

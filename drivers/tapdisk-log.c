@@ -96,7 +96,7 @@ tlog_logfile_save(void)
 	err = tapdisk_logfile_rename(logfile,
 				     TLOG_DIR, name, ".log");
 
-	tlog_syslog(LOG_INFO,
+	tlog_syslog(TLOG_INFO,
 		    "logfile saved to %s: %d\n", logfile->path, err);
 }
 
@@ -187,6 +187,9 @@ void
 tlog_syslog(int prio, const char *fmt, ...)
 {
 	va_list ap;
+    static const int tlog_to_syslog[3] = {LOG_WARNING, LOG_INFO, LOG_DEBUG};
+
+    prio = prio >= 0 && prio < 3 ? tlog_to_syslog[prio] : LOG_INFO;
 
 	va_start(ap, fmt);
 	tlog_vsyslog(prio, fmt, ap);
