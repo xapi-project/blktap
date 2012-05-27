@@ -185,6 +185,13 @@ tdnbd_fdreceiver_start()
 
 }
 
+void
+tdnbd_fdreceiver_stop()
+{
+	if (fdreceiver)
+		td_fdreceiver_stop(fdreceiver);
+}
+
 static void
 __cancel_req(int i, struct td_nbd_request *pos, int e)
 {

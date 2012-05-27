@@ -42,6 +42,7 @@
 #include "tapdisk-control.h"
 
 void tdnbd_fdreceiver_start();
+void tdnbd_fdreceiver_stop();
 
 static void
 usage(const char *app, int err)
@@ -149,6 +150,7 @@ main(int argc, char *argv[])
 	err = tapdisk_server_run();
 
 out:
+	tdnbd_fdreceiver_stop();
 	tapdisk_control_close();
 	tapdisk_stop_logging();
 	return -err;
