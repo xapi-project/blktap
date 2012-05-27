@@ -177,6 +177,7 @@ td_fdreceiver_stop(struct td_fdreceiver *fdreceiver)
 		free(fdreceiver->path);
 	}
 
+	free(fdreceiver);
 }
 
 struct td_fdreceiver *
