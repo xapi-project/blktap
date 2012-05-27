@@ -128,9 +128,9 @@ static const disk_info_t valve_disk = {
 };
 
 static const disk_info_t nbd_disk = {
-  "nbd",
-  "export to a NBD server",
-  0,
+	"nbd",
+	"export to a NBD server",
+	0,
 };
 
 const disk_info_t *tapdisk_disk_types[] = {

@@ -75,14 +75,16 @@ struct td_vbd_handle {
 	int                         FIXME_enospc_redirect_count_enabled;
 	uint64_t                    FIXME_enospc_redirect_count;
 
-	/* when we encounter ENOSPC on the primary leaf image in mirror mode, 
+	/*
+	 * when we encounter ENOSPC on the primary leaf image in mirror mode, 
 	 * we need to remove it from the VBD chain so that writes start going 
 	 * on the secondary leaf. However, we cannot free the image at that 
 	 * time since it might still have in-flight treqs referencing it.  
-	 * Therefore, we move it into 'retired' until shutdown. */
+	 * Therefore, we move it into 'retired' until shutdown.
+	 */
 	td_image_t                 *retired;
 
-    int                         nbd_mirror_failed;
+	int                         nbd_mirror_failed;
 
 	struct list_head            new_requests;
 	struct list_head            pending_requests;

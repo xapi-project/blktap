@@ -139,9 +139,11 @@ main(int argc, char *argv[])
 	fprintf(out, "%s\n", control);
 	fclose(out);
 
-	/* Nb. We're unconditionally starting the FD receiver here -
-	   this is for the block-nbd driver. In the future we may
-	   want to start this as a response to a tap-ctl message */
+	/*
+	 * NB: We're unconditionally starting the FD receiver here - this is 
+	 * for the block-nbd driver. In the future we may want to start this as 
+	 * a response to a tap-ctl message
+	 */
 	tdnbd_fdreceiver_start();
 
 	err = tapdisk_server_run();
