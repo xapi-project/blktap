@@ -153,7 +153,7 @@ tap_ctl_stats_fwrite(pid_t pid, int minor, FILE *stream)
 			goto out;
 		}
 	}
-	fwrite("\n", 1, 1, stream);
+	len = fwrite("\n", 1, 1, stream);
 
 out:
 	if (sfd >= 0)
