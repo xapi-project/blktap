@@ -313,6 +313,7 @@ vhd_free(struct vhd_state *s)
 	if (_vhd_master != s || !_vhd_zeros)
 		return;
 
+	free(s->padbm_buf);
 	munmap(_vhd_zeros, _vhd_zsize);
 	_vhd_zsize  = 0;
 	_vhd_zeros  = NULL;
