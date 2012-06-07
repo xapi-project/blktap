@@ -47,14 +47,19 @@
 #include "tapdisk-image.h"
 #include "tapdisk-driver.h"
 #include "tapdisk-server.h"
+
 #include "tapdisk-vbd.h"
 #include "tapdisk-disktype.h"
 #include "tapdisk-interface.h"
 #include "tapdisk-stats.h"
 #include "tapdisk-storage.h"
+#include "tapdisk-nbdserver.h"
 
 #define DBG(_level, _f, _a...) tlog_write(_level, _f, ##_a)
 #define ERR(_err, _f, _a...) tlog_error(_err, _f, ##_a)
+
+#define INFO(_f, _a...)            tlog_syslog(TLOG_INFO, "vbd: " _f, ##_a)
+#define ERROR(_f, _a...)           tlog_syslog(TLOG_WARN, "vbd: " _f, ##_a)
 
 #if 1                                                                        
 #define ASSERT(p)							\
@@ -273,6 +278,13 @@ tapdisk_vbd_add_secondary(td_vbd_t *vbd)
 	const char *path;
 	int type, err;
 
+	if(strcmp(vbd->secondary_name, "null")==0) {
+	  DPRINTF("Removing secondary image\n");
+	  vbd->secondary_mode=TD_VBD_SECONDARY_DISABLED;
+	  vbd->secondary=NULL;
+	  return 0;
+	}
+
 	DPRINTF("Adding secondary image: %s\n", vbd->secondary_name);
 
 	type = tapdisk_disktype_parse_params(vbd->secondary_name, &path);
@@ -286,8 +298,17 @@ tapdisk_vbd_add_secondary(td_vbd_t *vbd)
 	}
 
 	err = tapdisk_image_open(type, path, leaf->flags, &second);
-	if (err)
+	if (err) {
+	    if(type == DISK_TYPE_NBD) {
+		    vbd->nbd_mirror_failed = 1;
+	    }
+
+		vbd->secondary=NULL;
+		vbd->secondary_mode=TD_VBD_SECONDARY_DISABLED;
+		
 		goto fail;
+
+	}
 
 	if (second->info.size != leaf->info.size) {
 		EPRINTF("Secondary image size %"PRIu64" != image size %"PRIu64"\n",
@@ -476,8 +497,13 @@ tapdisk_vbd_open_vdi(td_vbd_t *vbd, const char *name, td_flag_t flags, int prt_d
 
 	if (td_flag_test(vbd->flags, TD_OPEN_SECONDARY)) {
 		err = tapdisk_vbd_add_secondary(vbd);
-		if (err)
+		if (err) {
+		  if(vbd->nbd_mirror_failed != 1)
 			goto fail;
+		  
+		  INFO("Ignoring failed NBD secondary attach\n");
+		  err=0;
+		}
 	}
 
 	if (tmp != vbd->name)
@@ -520,6 +546,7 @@ tapdisk_vbd_attach(td_vbd_t *vbd, const char *devname, int minor)
 	return tapdisk_blktap_open(devname, vbd, &vbd->tap);
 }
 
+/*
 int
 tapdisk_vbd_open(td_vbd_t *vbd, const char *name,
 		 int minor, const char *ring, td_flag_t flags)
@@ -543,7 +570,7 @@ out:
 	vbd->name = NULL;
 	return err;
 }
-
+*/
 static void
 tapdisk_vbd_queue_count(td_vbd_t *vbd, int *new,
 			int *pending, int *failed, int *completed)
@@ -757,9 +784,13 @@ tapdisk_vbd_pause(td_vbd_t *vbd)
 {
 	int err;
 
-	DBG(TLOG_DBG, "pause requested\n");
+	INFO("pause requested\n");
 
 	td_flag_set(vbd->state, TD_VBD_PAUSE_REQUESTED);
+
+	if(vbd->nbdserver) {
+	  tapdisk_nbdserver_pause(vbd->nbdserver);
+	}
 
 	err = tapdisk_vbd_quiesce_queue(vbd);
 	if (err)
@@ -767,7 +798,7 @@ tapdisk_vbd_pause(td_vbd_t *vbd)
 
 	tapdisk_vbd_close_vdi(vbd);
 
-	DBG(TLOG_DBG, "pause completed\n");
+	INFO("pause completed\n");
 
 	td_flag_clear(vbd->state, TD_VBD_PAUSE_REQUESTED);
 	td_flag_set(vbd->state, TD_VBD_PAUSED);
@@ -804,6 +835,10 @@ tapdisk_vbd_resume(td_vbd_t *vbd, const char *name)
 	td_flag_clear(vbd->state, TD_VBD_PAUSED);
 	td_flag_clear(vbd->state, TD_VBD_PAUSE_REQUESTED);
 	tapdisk_vbd_check_state(vbd);
+
+	if(vbd->nbdserver) {
+	  tapdisk_nbdserver_unpause(vbd->nbdserver);
+	}
 
 	DBG(TLOG_DBG, "state checked\n");
 
@@ -1103,6 +1138,28 @@ tapdisk_vbd_complete_td_request(td_request_t treq, int res)
 		}
 	}
 
+	if(res != 0) {
+	  DPRINTF("Res=%d, image->type=%d\n",res,image->type);
+	}
+	  
+
+	if (image->type == DISK_TYPE_NBD && 
+		((image == vbd->secondary) || (image == vbd->retired))) {
+	  if (res != 0) {
+		ERROR("Got non-zero res for NBD secondary - disabling mirroring: %s",vreq->name);
+		vbd->nbd_mirror_failed = 1;
+		res = 0; /* Pretend the writes have completed successfully */
+
+		/* It was the secondary that timed out - disable secondary */
+		list_del_init(&image->next);
+		vbd->retired = image;
+		if (vbd->secondary_mode != TD_VBD_SECONDARY_DISABLED) {
+		  vbd->secondary = NULL;
+		  vbd->secondary_mode = TD_VBD_SECONDARY_DISABLED;
+		}
+	  }
+	}
+
 	DBG(TLOG_DBG, "%s: req %s seg %d sec 0x%08"PRIx64
 	    " secs 0x%04x buf %p op %d res %d\n", image->name,
 	    vreq->name, treq.sidx, treq.sec, treq.secs,
@@ -1387,6 +1444,29 @@ tapdisk_vbd_kick(td_vbd_t *vbd)
 	}
 }
 
+int
+tapdisk_vbd_start_nbdserver(td_vbd_t *vbd)
+{
+	td_disk_info_t info;
+	int err;
+
+	err = tapdisk_vbd_get_disk_info(vbd, &info);
+
+	if(err) {
+		return err;
+	}
+
+	vbd->nbdserver=tapdisk_nbdserver_alloc(vbd, info);
+
+	if(!vbd->nbdserver) {
+		EPRINTF("Error starting nbd server");
+		return -1;
+	}
+
+	return 0;
+	
+}
+
 void
 tapdisk_vbd_stats(td_vbd_t *vbd, td_stats_t *st)
 {
@@ -1414,6 +1494,10 @@ tapdisk_vbd_stats(td_vbd_t *vbd, td_stats_t *st)
 	tapdisk_stats_field(st,
 			    "FIXME_enospc_redirect_count",
 			    "llu", vbd->FIXME_enospc_redirect_count);
+
+	tapdisk_stats_field(st,
+						"nbd_mirror_failed",
+						"d", vbd->nbd_mirror_failed);
 
 	tapdisk_stats_leave(st, '}');
 }
