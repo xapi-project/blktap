@@ -148,11 +148,12 @@ tap_ctl_stats_fwrite(pid_t pid, int minor, FILE *stream)
 		len -= in;
 
 		out = fwrite(buf, in, 1, stream);
-		if (out != in) {
+		if (out != 1) {
 			err = -errno;
 			goto out;
 		}
 	}
+	len = fwrite("\n", 1, 1, stream);
 
 out:
 	if (sfd >= 0)
