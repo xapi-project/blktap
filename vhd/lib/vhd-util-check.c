@@ -515,6 +515,7 @@ vhd_util_check_footer(struct vhd_util_check_ctx *ctx,
 	int err;
 	size_t size;
 	char *msg;
+    char *msg_backup;
 	void *buf;
 	off64_t eof, off;
 	vhd_footer_t primary, backup;
@@ -562,12 +563,12 @@ vhd_util_check_footer(struct vhd_util_check_ctx *ctx,
 		if (ctx->opts.ignore_footer)
 			goto check_backup;
 
-		err = -EINVAL;
-		printf("primary footer invalid: %s\n", msg);
-		goto out;
+        //Flag an error only if both primary and backup are invalid;
+        printf("Warning: primary footer invalid (%s), checking for backup ...\n",
+                                                                           msg);
 	}
 
-	if (primary.type == HD_TYPE_FIXED) {
+	if (!msg && primary.type == HD_TYPE_FIXED) {
 		err = 0;
 		goto out;
 	}
@@ -593,39 +594,47 @@ check_backup:
 	memcpy(&backup, buf, sizeof(backup));
 	vhd_footer_in(&backup);
 
-	msg = vhd_util_check_validate_footer(ctx, &backup);
-	if (msg) {
+	msg_backup = vhd_util_check_validate_footer(ctx, &backup);
+	if (msg_backup) {
 		err = -EINVAL;
-		printf("backup footer invalid: %s\n", msg);
+		printf("backup footer invalid: %s\n", msg_backup);
 		goto out;
 	}
 
-	if (memcmp(&primary, &backup, sizeof(primary))) {
-		if (ctx->opts.ignore_footer) {
-			memcpy(&primary, &backup, sizeof(primary));
-			goto ok;
-		}
+    //Compare in case both primary and backup are valid
+    if(!msg) {
+        if (memcmp(&primary, &backup, sizeof(primary))) {
+            if (ctx->opts.ignore_footer) {
+                memcpy(&primary, &backup, sizeof(primary));
+                goto ok;
+            }
 
-		if (backup.hidden &&
-		    !strncmp(backup.crtr_app, "tap", 3) &&
-		    (backup.crtr_ver == VHD_VERSION(0, 1) ||
-		     backup.crtr_ver == VHD_VERSION(1, 1))) {
-			char cmp, tmp = backup.hidden;
-			backup.hidden = 0;
-			cmp = memcmp(&primary, &backup, sizeof(primary));
-			backup.hidden = tmp;
-			if (!cmp)
-				goto ok;
-		}
+            if (backup.hidden &&
+                !strncmp(backup.crtr_app, "tap", 3) &&
+                (backup.crtr_ver == VHD_VERSION(0, 1) ||
+                 backup.crtr_ver == VHD_VERSION(1, 1))) {
+                char cmp, tmp = backup.hidden;
+                backup.hidden = 0;
+                cmp = memcmp(&primary, &backup, sizeof(primary));
+                backup.hidden = tmp;
+                if (!cmp)
+                    goto ok;
+            }
 
-		err = -EINVAL;
-		printf("primary and backup footers do not match\n");
-		goto out;
-	}
+            err = -EINVAL;
+            printf("primary and backup footers do not match\n");
+            goto out;
+        }
+    }
 
 ok:
 	err = 0;
-	memcpy(footer, &primary, sizeof(primary));
+    if (!msg) {
+        memcpy(footer, &primary, sizeof(primary));
+    }
+    else {
+        memcpy(footer, &backup, sizeof(primary));
+    }
 
 out:
 	free(buf);
@@ -1091,6 +1100,7 @@ vhd_util_check_vhd(struct vhd_util_check_ctx *ctx, const char *name)
 		return -errno;
 	}
 
+    printf("Checking VHD: %s\n", name);
 	err = vhd_util_check_footer(ctx, fd, &footer);
 	if (err)
 		goto out;
