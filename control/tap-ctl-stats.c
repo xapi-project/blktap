@@ -123,9 +123,10 @@ tap_ctl_stats_fwrite(pid_t pid, int minor, FILE *stream)
 		goto out;
 
 	len = message.u.info.length;
-	err = len;
-	if (len < 0)
+	if (len < 0) {
+		err = len;
 		goto out;
+	}
 
 	while (len) {
 		fd_set rfds;
@@ -136,14 +137,16 @@ tap_ctl_stats_fwrite(pid_t pid, int minor, FILE *stream)
 		FD_SET(sfd, &rfds);
 
 		n = select(sfd + 1, &rfds, NULL, NULL, NULL);
-		err = n;
-		if (n < 0)
+		if (n < 0) {
+			err = n;
 			goto out;
+		}
 
 		in = read(sfd, buf, bufsz);
-		err = in;
-		if (in <= 0)
+		if (in <= 0) {
+			err = in;
 			goto out;
+		}
 
 		len -= in;
 
