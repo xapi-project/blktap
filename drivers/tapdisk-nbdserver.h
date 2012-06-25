@@ -1,5 +1,6 @@
 /*
- * Copyright (c) 2008, XenSource Inc.
+ * Copyright (c) 2010, Citrix Systems, Inc.
+ *
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -26,54 +27,49 @@
  * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifdef HAVE_CONFIG_H
-#include "config.h"
-#endif
+#ifndef _TAPDISK_NBDSERVER_H_
+#define _TAPDISK_NBDSERVER_H_
 
-#include <stdio.h>
-#include <errno.h>
-#include <stdlib.h>
-#include <unistd.h>
-#include <string.h>
-#include <getopt.h>
+typedef struct td_nbdserver td_nbdserver_t;
+typedef struct td_nbdserver_req td_nbdserver_req_t;
+typedef struct td_nbdserver_client td_nbdserver_client_t;
 
-#include "tap-ctl.h"
+#include "blktap.h"
+#include "tapdisk-vbd.h"
+#include "list.h"
 
-int
-tap_ctl_unpause(const int id, const int minor, const char *params, int flags, char *secondary)
-{
-	int err;
-	tapdisk_message_t message;
+struct td_nbdserver {
+	td_vbd_t               *vbd;
+	td_disk_info_t          info;
 
-	memset(&message, 0, sizeof(message));
-	message.type = TAPDISK_MESSAGE_RESUME;
-	message.cookie = minor;
-	message.u.params.flags = flags;
+	int                     listening_fd;
+	int                     listening_event_id;
 
-	if (params)
-		strncpy(message.u.params.path, params,
-			sizeof(message.u.params.path) - 1);
-	if (secondary) {
-		err = snprintf(message.u.params.secondary,
-		               sizeof(message.u.params.secondary) - 1, "%s",
-		               secondary);
-		if (err >= sizeof(message.u.params.secondary)) {
-			EPRINTF("secondary image name too long\n");
-			return ENAMETOOLONG;
-		}
-	}
+	struct td_fdreceiver   *fdreceiver;
+	struct list_head        clients;
+};
 
-	err = tap_ctl_connect_send_and_receive(id, &message, NULL);
-	if (err)
-		return err;
+struct td_nbdserver_client {
+	int                     n_reqs;
+	td_nbdserver_req_t     *reqs;
+	struct td_iovec        *iovecs;
+	int                     n_reqs_free;
+	td_nbdserver_req_t    **reqs_free;
 
-	if (message.type == TAPDISK_MESSAGE_RESUME_RSP)
-		err = message.u.response.error;
-	else {
-		err = EINVAL;
-		EPRINTF("got unexpected result '%s' from %d\n",
-			tapdisk_message_name(message.type), id);
-	}
+	int                     client_fd;
+	int                     client_event_id;
 
-	return err;
-}
+	td_nbdserver_t         *server;
+	struct list_head        clientlist;
+
+    int                     paused;
+};
+
+td_nbdserver_t *tapdisk_nbdserver_alloc(td_vbd_t *, td_disk_info_t);
+int tapdisk_nbdserver_listen(td_nbdserver_t *, int);
+void tapdisk_nbdserver_free(td_nbdserver_t *);
+void tapdisk_nbdserver_pause(td_nbdserver_t *);
+int tapdisk_nbdserver_unpause(td_nbdserver_t *);
+
+
+#endif /* _TAPDISK_NBDSERVER_H_ */

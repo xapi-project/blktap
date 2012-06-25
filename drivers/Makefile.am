@@ -32,6 +32,9 @@ libtapdisk_la_SOURCES += tapdisk-vbd.h
 libtapdisk_la_SOURCES += linux-blktap.h
 libtapdisk_la_SOURCES += tapdisk-blktap.c
 libtapdisk_la_SOURCES += tapdisk-blktap.h
+libtapdisk_la_SOURCES += tapdisk-nbdserver.c
+libtapdisk_la_SOURCES += tapdisk-nbdserver.h
+libtapdisk_la_SOURCES += tapdisk-nbd.h
 libtapdisk_la_SOURCES += tapdisk-image.c
 libtapdisk_la_SOURCES += tapdisk-image.h
 libtapdisk_la_SOURCES += tapdisk-driver.c
@@ -67,6 +70,8 @@ libtapdisk_la_SOURCES += lock.c
 libtapdisk_la_SOURCES += lock.h
 libtapdisk_la_SOURCES += atomicio.c
 libtapdisk_la_SOURCES += atomicio.h
+libtapdisk_la_SOURCES += tapdisk-fdreceiver.c
+libtapdisk_la_SOURCES += tapdisk-fdreceiver.h
 
 libtapdisk_la_SOURCES += block-aio.c
 libtapdisk_la_SOURCES += block-ram.c
@@ -77,6 +82,8 @@ libtapdisk_la_SOURCES += block-valve.h
 libtapdisk_la_SOURCES += block-vindex.c
 libtapdisk_la_SOURCES += block-lcache.c
 libtapdisk_la_SOURCES += block-llcache.c
+libtapdisk_la_SOURCES += block-export.c
+libtapdisk_la_SOURCES += block-nbd.c
 
 libtapdisk_la_LIBADD  = ../vhd/lib/libvhd.la
 libtapdisk_la_LIBADD += -laio

@@ -53,6 +53,8 @@
 #define TD_VBD_SECONDARY_MIRROR     1
 #define TD_VBD_SECONDARY_STANDBY    2
 
+struct td_nbdserver;
+
 struct td_vbd_handle {
 	char                       *name;
 
@@ -80,6 +82,8 @@ struct td_vbd_handle {
 	 * Therefore, we move it into 'retired' until shutdown. */
 	td_image_t                 *retired;
 
+    int                         nbd_mirror_failed;
+
 	struct list_head            new_requests;
 	struct list_head            pending_requests;
 	struct list_head            failed_requests;
@@ -98,6 +102,8 @@ struct td_vbd_handle {
 	uint64_t                    retries;
 	uint64_t                    errors;
 	td_sector_count_t           secs;
+
+	struct td_nbdserver        *nbdserver;
 };
 
 #define tapdisk_vbd_for_each_request(vreq, tmp, list)	                \
@@ -178,6 +184,7 @@ void tapdisk_vbd_check_state(td_vbd_t *);
 int tapdisk_vbd_recheck_state(td_vbd_t *);
 void tapdisk_vbd_check_progress(td_vbd_t *);
 void tapdisk_vbd_debug(td_vbd_t *);
+int tapdisk_vbd_start_nbdserver(td_vbd_t *);
 void tapdisk_vbd_stats(td_vbd_t *, td_stats_t *);
 
 #endif
