@@ -82,7 +82,6 @@ libtapdisk_la_SOURCES += block-valve.h
 libtapdisk_la_SOURCES += block-vindex.c
 libtapdisk_la_SOURCES += block-lcache.c
 libtapdisk_la_SOURCES += block-llcache.c
-libtapdisk_la_SOURCES += block-export.c
 libtapdisk_la_SOURCES += block-nbd.c
 
 libtapdisk_la_LIBADD  = ../vhd/lib/libvhd.la
