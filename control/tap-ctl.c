@@ -609,7 +609,8 @@ usage:
 static void
 tap_cli_unpause_usage(FILE *stream)
 {
-	fprintf(stream, "usage: unpause <-p pid> <-m minor> [-a args] [-2 secondary]\n");
+	fprintf(stream, "usage: unpause <-p pid> <-m minor> [-a args] "
+			"[-2 secondary]\n");
 }
 
 int

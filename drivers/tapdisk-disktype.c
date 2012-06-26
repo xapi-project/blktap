@@ -127,16 +127,10 @@ static const disk_info_t valve_disk = {
        DISK_TYPE_FILTER,
 };
 
-static const disk_info_t export_disk = {
-	"export",
-	"export to a remote VDI",
-	0,
-};
-
 static const disk_info_t nbd_disk = {
-  "nbd",
-  "export to a NBD server",
-  0,
+	"nbd",
+	"export to a NBD server",
+	0,
 };
 
 const disk_info_t *tapdisk_disk_types[] = {
@@ -155,7 +149,6 @@ const disk_info_t *tapdisk_disk_types[] = {
 	[DISK_TYPE_VALVE]       = &valve_disk,
 	[DISK_TYPE_LLPCACHE]    = &llpcache_disk,
 	[DISK_TYPE_LLECACHE]    = &llecache_disk,
-	[DISK_TYPE_EXPORT]      = &export_disk,
 	[DISK_TYPE_NBD]         = &nbd_disk,
 	0,
 };
@@ -180,7 +173,6 @@ extern struct tap_disk tapdisk_lcache;
 extern struct tap_disk tapdisk_llpcache;
 extern struct tap_disk tapdisk_llecache;
 extern struct tap_disk tapdisk_valve;
-extern struct tap_disk tapdisk_export;
 extern struct tap_disk tapdisk_nbd;
 
 const struct tap_disk *tapdisk_disk_drivers[] = {
@@ -204,7 +196,6 @@ const struct tap_disk *tapdisk_disk_drivers[] = {
 	[DISK_TYPE_LLPCACHE]    = &tapdisk_llpcache,
 	[DISK_TYPE_LLECACHE]    = &tapdisk_llecache,
 	[DISK_TYPE_VALVE]       = &tapdisk_valve,
-	[DISK_TYPE_EXPORT]      = &tapdisk_export,
 	[DISK_TYPE_NBD]         = &tapdisk_nbd,
 	0,
 };
