@@ -273,15 +273,15 @@ int tapdisk_linux_version(void)
 
 #ifdef WORDS_BIGENDIAN
 uint64_t ntohll(uint64_t a) {
-        return a;
+	return a;
 }
 #else
 uint64_t ntohll(uint64_t a) {
-        uint32_t lo = a & 0xffffffff;
-        uint32_t hi = a >> 32U;
-        lo = ntohl(lo);
-        hi = ntohl(hi);
-        return ((uint64_t) lo) << 32U | hi;
+	uint32_t lo = a & 0xffffffff;
+	uint32_t hi = a >> 32U;
+	lo = ntohl(lo);
+	hi = ntohl(hi);
+	return ((uint64_t) lo) << 32U | hi;
 }
 #endif
 #define htonll ntohll
