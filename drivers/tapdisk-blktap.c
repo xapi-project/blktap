@@ -439,7 +439,7 @@ tapdisk_blktap_create_device(td_blktap_t *tap,
 	memset(&bdi, 0, sizeof(bdi));
 
 	flags  = 0;
-	flags |= rdonly & TD_OPEN_RDONLY ? BLKTAP_DEVICE_RO : 0;
+	flags |= rdonly ? BLKTAP_DEVICE_RO : 0;
 
 	bdi.capacity             = info->size;
 	bdi.sector_size          = info->sector_size;
