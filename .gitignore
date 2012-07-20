@@ -10,6 +10,8 @@
 .libs
 cscope.*
 TAGS
+*.swp
+*.orig
 
 # ac/am
 Makefile.in
