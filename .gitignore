@@ -10,6 +10,8 @@
 .libs
 cscope.*
 TAGS
+*.swp
+*.orig
 
 # ac/am
 Makefile.in
@@ -55,3 +57,9 @@ Makefile.in
 # dist output
 /blktap-*.tar.*
 /blktap-*/
+
+# doxygen
+/html/
+
+# ctags
+tags
