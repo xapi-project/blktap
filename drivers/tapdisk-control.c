@@ -821,8 +821,8 @@ tapdisk_control_close_image(struct tapdisk_ctl_conn *conn,
 	do {
 		err = tapdisk_blktap_remove_device(vbd->tap);
 
-        if (err == -EBUSY)
-            tlog_write(TLOG_WARN, "device still open\n");
+		if (err == -EBUSY)
+			EPRINTF("device still open\n");
 
 		if (!err || err != -EBUSY)
 			break;
