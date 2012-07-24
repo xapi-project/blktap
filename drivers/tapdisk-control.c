@@ -481,7 +481,7 @@ tapdisk_control_write_message(struct tapdisk_ctl_conn *conn,
 {
 	size_t size = sizeof(*message), count;
 
-	if (conn->info->flags & TAPDISK_MSG_VERBOSE)
+	if (conn->info && conn->info->flags & TAPDISK_MSG_VERBOSE)
 		DBG("sending '%s' message (uuid = %u)\n",
 		    tapdisk_message_name(message->type), message->cookie);
 
@@ -1068,14 +1068,12 @@ tapdisk_control_handle_request(event_id_t id, char mode, void *private)
 	int err, excl;
 	tapdisk_message_t message, response;
 	struct tapdisk_ctl_conn *conn = private;
-	struct tapdisk_control_info *info;
+
+	conn->info = NULL;
 
 	err = tapdisk_control_read_message(conn->fd, &message, 2);
 	if (err)
 		goto close;
-
-	if (conn->in.busy)
-		goto busy;
 
 	err = tapdisk_control_validate_request(&message);
 	if (err)
@@ -1084,16 +1082,19 @@ tapdisk_control_handle_request(event_id_t id, char mode, void *private)
 	if (message.type > TAPDISK_MESSAGE_EXIT)
 		goto invalid;
 
-	info = &message_infos[message.type];
+	conn->info = &message_infos[message.type];
 
-	if (!info->handler)
+	if (!conn->info->handler)
 		goto invalid;
 
-	if (info->flags & TAPDISK_MSG_VERBOSE)
+	if (conn->info->flags & TAPDISK_MSG_VERBOSE)
 		DBG("received '%s' message (uuid = %u)\n",
 		    tapdisk_message_name(message.type), message.cookie);
 
-	excl = !(info->flags & TAPDISK_MSG_REENTER);
+	if (conn->in.busy)
+		goto busy;
+
+	excl = !(conn->info->flags & TAPDISK_MSG_REENTER);
 	if (excl) {
 		if (td_control.busy)
 			goto busy;
@@ -1101,9 +1102,8 @@ tapdisk_control_handle_request(event_id_t id, char mode, void *private)
 		td_control.busy = 1;
 	}
 	conn->in.busy = 1;
-	conn->info    = info;
 
-	info->handler(conn, &message);
+	conn->info->handler(conn, &message);
 
 	conn->in.busy = 0;
 	if (excl)
