@@ -814,6 +814,9 @@ tapdisk_control_close_image(struct tapdisk_ctl_conn *conn,
 		goto out;
 	}
 
+	if (td_flag_test(vbd->state, TD_VBD_PAUSED))
+		EPRINTF("warning: closing a paused VBD");	
+
 	if(vbd->nbdserver) {
 	  tapdisk_nbdserver_pause(vbd->nbdserver);
 	}
