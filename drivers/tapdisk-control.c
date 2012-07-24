@@ -814,6 +814,9 @@ tapdisk_control_close_image(struct tapdisk_ctl_conn *conn,
 		goto out;
 	}
 
+	if (td_flag_test(vbd->state, TD_VBD_PAUSED))
+		EPRINTF("warning: closing paused VBD %s", vbd->name);
+
 	if(vbd->nbdserver) {
 	  tapdisk_nbdserver_pause(vbd->nbdserver);
 	}
@@ -821,8 +824,8 @@ tapdisk_control_close_image(struct tapdisk_ctl_conn *conn,
 	do {
 		err = tapdisk_blktap_remove_device(vbd->tap);
 
-        if (err == -EBUSY)
-            tlog_write(TLOG_WARN, "device still open\n");
+		if (err == -EBUSY)
+			EPRINTF("device %s still open\n", vbd->name);
 
 		if (!err || err != -EBUSY)
 			break;

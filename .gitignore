@@ -55,3 +55,15 @@ Makefile.in
 # dist output
 /blktap-*.tar.*
 /blktap-*/
+
+# doxygen
+/html/
+
+# ctags
+tags
+
+# vim swap files
+*.swp
+
+# diff/patch
+*.orig
