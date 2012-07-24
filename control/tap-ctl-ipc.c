@@ -178,7 +178,7 @@ tap_ctl_connect(const char *name, int *sfd)
 
 	fd = socket(AF_UNIX, SOCK_STREAM, 0);
 	if (fd == -1) {
-		EPRINTF("couldn't create socket for %s: %d\n", name, errno);
+		EPRINTF("couldn't create socket for %s: %s\n", name, strerror(errno));
 		return -errno;
 	}
 
