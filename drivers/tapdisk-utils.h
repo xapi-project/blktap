@@ -47,5 +47,4 @@ int tapdisk_linux_version(void);
 uint64_t ntohll(uint64_t);
 #define htonll ntohll
 
-
 #endif

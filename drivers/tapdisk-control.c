@@ -759,11 +759,11 @@ tapdisk_control_open_image(struct tapdisk_ctl_conn *conn,
 		goto fail_close;
 	}
 
-	/* For now, lets do this automatically on all 'open' calls
-	   In the future, we'll probably want a separate call to
-	   start the NBD server */
+	/*
+	 * For now, let's do this automatically on all 'open' calls In the 
+	 * future, we'll probably want a separate call to start the NBD server
+	 */
 	err = tapdisk_vbd_start_nbdserver(vbd);
-
 	if (err) {
 		EPRINTF("failed to start nbdserver: %d\n",err);
 		goto fail_close;
@@ -848,16 +848,18 @@ tapdisk_control_close_image(struct tapdisk_ctl_conn *conn,
 	if (err)
 		goto out;
 
-	if(vbd->nbdserver) {
-	  tapdisk_nbdserver_free(vbd->nbdserver);
-	  vbd->nbdserver = NULL;
+	if (vbd->nbdserver) {
+		tapdisk_nbdserver_free(vbd->nbdserver);
+		vbd->nbdserver = NULL;
 	}
 
 	tapdisk_vbd_close_vdi(vbd);
 
-	/* NB. vbd->name free should probably belong into close_vdi,
-	   but the current blktap1 reopen-stuff likely depends on a
-	   lifetime extended until shutdown. */
+	/*
+	 * NB: vbd->name free should probably belong into close_vdi, but the 
+	 * current blktap1 reopen-stuff likely depends on a lifetime extended 
+	 * until shutdown
+	 */
 	free(vbd->name);
 	vbd->name = NULL;
 
@@ -922,7 +924,8 @@ tapdisk_control_resume_vbd(struct tapdisk_ctl_conn *conn,
 
 	response.type = TAPDISK_MESSAGE_RESUME_RSP;
 
-	INFO("Resuming. flags=0x%08x secondary=%p\n", request->u.params.flags, request->u.params.secondary);
+	INFO("Resuming: flags=0x%08x secondary=%p\n",
+			request->u.params.flags, request->u.params.secondary);
 
 	vbd = tapdisk_server_get_vbd(request->cookie);
 	if (!vbd) {
