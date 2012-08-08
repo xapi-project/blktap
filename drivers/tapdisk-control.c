@@ -270,7 +270,14 @@ tapdisk_ctl_conn_drain(struct tapdisk_ctl_conn *conn)
 	fd_set wfds;
 	int n, mode;
 
-	ASSERT(conn->out.done);
+	if (!conn->out.done) {
+		/* we accepted this connection but haven't received the message 
+		 * body yet. Since this tapdisk is on its way out, just drop 
+		 * the connection. */
+		tapdisk_ctl_conn_close(conn);
+		return;
+	}
+
 	ASSERT(conn->fd >= 0);
 
 	while (tapdisk_ctl_conn_connected(conn)) {
@@ -312,6 +319,7 @@ tapdisk_ctl_conn_open(int fd)
 	conn->fd       = fd;
 	conn->out.prod = conn->out.buf;
 	conn->out.cons = conn->out.buf;
+	conn->out.done = 0;
 
 	tapdisk_ctl_conn_mask_out(conn);
 
