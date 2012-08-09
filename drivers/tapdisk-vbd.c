@@ -281,6 +281,7 @@ tapdisk_vbd_add_secondary(td_vbd_t *vbd)
 		DPRINTF("Removing secondary image\n");
 		vbd->secondary_mode = TD_VBD_SECONDARY_DISABLED;
 		vbd->secondary = NULL;
+		vbd->nbd_mirror_failed = 0;
 		return 0;
 	}
 
