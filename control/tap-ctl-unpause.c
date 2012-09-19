@@ -40,7 +40,8 @@
 #include "tap-ctl.h"
 
 int
-tap_ctl_unpause(const int id, const int minor, const char *params)
+tap_ctl_unpause(const int id, const int minor, const char *params, int flags,
+		char *secondary)
 {
 	int err;
 	tapdisk_message_t message;
@@ -48,10 +49,20 @@ tap_ctl_unpause(const int id, const int minor, const char *params)
 	memset(&message, 0, sizeof(message));
 	message.type = TAPDISK_MESSAGE_RESUME;
 	message.cookie = minor;
+	message.u.params.flags = flags;
 
 	if (params)
 		strncpy(message.u.params.path, params,
 			sizeof(message.u.params.path) - 1);
+	if (secondary) {
+		err = snprintf(message.u.params.secondary,
+				sizeof(message.u.params.secondary) - 1, "%s",
+				secondary);
+		if (err >= sizeof(message.u.params.secondary)) {
+			EPRINTF("secondary image name too long\n");
+			return ENAMETOOLONG;
+		}
+	}
 
 	err = tap_ctl_connect_send_and_receive(id, &message, NULL);
 	if (err)

@@ -41,6 +41,8 @@
 #include <sys/ioctl.h>
 #include <sys/resource.h>
 #include <sys/utsname.h>
+#include <arpa/inet.h>
+
 #ifdef __linux__
 #include <linux/version.h>
 #endif
@@ -268,3 +270,19 @@ int tapdisk_linux_version(void)
 }
 
 #endif
+
+#ifdef WORDS_BIGENDIAN
+uint64_t ntohll(uint64_t a) {
+	return a;
+}
+#else
+uint64_t ntohll(uint64_t a) {
+	uint32_t lo = a & 0xffffffff;
+	uint32_t hi = a >> 32U;
+	lo = ntohl(lo);
+	hi = ntohl(hi);
+	return ((uint64_t) lo) << 32U | hi;
+}
+#endif
+#define htonll ntohll
+

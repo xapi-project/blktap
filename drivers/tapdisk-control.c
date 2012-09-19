@@ -54,6 +54,7 @@
 #include "tapdisk-disktype.h"
 #include "tapdisk-stats.h"
 #include "tapdisk-control.h"
+#include "tapdisk-nbdserver.h"
 
 #define TD_CTL_MAX_CONNECTIONS  10
 #define TD_CTL_SOCK_BACKLOG     32
@@ -61,8 +62,9 @@
 #define TD_CTL_SEND_TIMEOUT     10
 #define TD_CTL_SEND_BUFSZ       ((size_t)4096)
 
-#define DBG(_f, _a...)             tlog_syslog(LOG_DEBUG, _f, ##_a)
+#define DBG(_f, _a...)             tlog_syslog(TLOG_DBG, _f, ##_a)
 #define ERR(err, _f, _a...)        tlog_error(err, _f, ##_a)
+#define INFO(_f, _a...)            tlog_syslog(TLOG_INFO, "control: " _f, ##_a)
 
 #define ASSERT(_p)							\
 	if (!(_p)) {							\
@@ -131,7 +133,7 @@ static void
 tapdisk_ctl_conn_uninit(struct tapdisk_ctl_conn *conn)
 {
 	if (conn->out.buf) {
-		munmap(conn->out.buf, conn->out.bufsz);
+		free(conn->out.buf);
 		conn->out.buf = NULL;
 	}
 }
@@ -139,18 +141,14 @@ tapdisk_ctl_conn_uninit(struct tapdisk_ctl_conn *conn)
 static int
 tapdisk_ctl_conn_init(struct tapdisk_ctl_conn *conn, size_t bufsz)
 {
-	int prot, flags, err;
+	int err;
 
 	memset(conn, 0, sizeof(*conn));
 	conn->out.event_id = -1;
 	conn->in.event_id  = -1;
 
-	prot  = PROT_READ|PROT_WRITE;
-	flags = MAP_ANONYMOUS|MAP_PRIVATE;
-
-	conn->out.buf = mmap(NULL, bufsz, prot, flags, -1, 0);
-	if (conn->out.buf == MAP_FAILED) {
-		conn->out.buf = NULL;
+	conn->out.buf = malloc(bufsz);
+	if (!conn->out.buf) {
 		err = -ENOMEM;
 		goto fail;
 	}
@@ -272,7 +270,14 @@ tapdisk_ctl_conn_drain(struct tapdisk_ctl_conn *conn)
 	fd_set wfds;
 	int n, mode;
 
-	ASSERT(conn->out.done);
+	if (!conn->out.done) {
+		/* we accepted this connection but haven't received the message 
+		 * body yet. Since this tapdisk is on its way out, just drop 
+		 * the connection. */
+		tapdisk_ctl_conn_close(conn);
+		return;
+	}
+
 	ASSERT(conn->fd >= 0);
 
 	while (tapdisk_ctl_conn_connected(conn)) {
@@ -314,6 +319,7 @@ tapdisk_ctl_conn_open(int fd)
 	conn->fd       = fd;
 	conn->out.prod = conn->out.buf;
 	conn->out.cons = conn->out.buf;
+	conn->out.done = 0;
 
 	tapdisk_ctl_conn_mask_out(conn);
 
@@ -483,7 +489,7 @@ tapdisk_control_write_message(struct tapdisk_ctl_conn *conn,
 {
 	size_t size = sizeof(*message), count;
 
-	if (conn->info->flags & TAPDISK_MSG_VERBOSE)
+	if (conn->info && conn->info->flags & TAPDISK_MSG_VERBOSE)
 		DBG("sending '%s' message (uuid = %u)\n",
 		    tapdisk_message_name(message->type), message->cookie);
 
@@ -761,6 +767,16 @@ tapdisk_control_open_image(struct tapdisk_ctl_conn *conn,
 		goto fail_close;
 	}
 
+	/*
+	 * For now, let's do this automatically on all 'open' calls In the 
+	 * future, we'll probably want a separate call to start the NBD server
+	 */
+	err = tapdisk_vbd_start_nbdserver(vbd);
+	if (err) {
+		EPRINTF("failed to start nbdserver: %d\n",err);
+		goto fail_close;
+	}
+
 	err = 0;
 
 out:
@@ -806,8 +822,18 @@ tapdisk_control_close_image(struct tapdisk_ctl_conn *conn,
 		goto out;
 	}
 
+	if (td_flag_test(vbd->state, TD_VBD_PAUSED))
+		EPRINTF("warning: closing paused VBD %s", vbd->name);
+
+	if(vbd->nbdserver) {
+	  tapdisk_nbdserver_pause(vbd->nbdserver);
+	}
+
 	do {
 		err = tapdisk_blktap_remove_device(vbd->tap);
+
+		if (err == -EBUSY)
+			EPRINTF("device %s still open\n", vbd->name);
 
 		if (!err || err != -EBUSY)
 			break;
@@ -830,11 +856,18 @@ tapdisk_control_close_image(struct tapdisk_ctl_conn *conn,
 	if (err)
 		goto out;
 
+	if (vbd->nbdserver) {
+		tapdisk_nbdserver_free(vbd->nbdserver);
+		vbd->nbdserver = NULL;
+	}
+
 	tapdisk_vbd_close_vdi(vbd);
 
-	/* NB. vbd->name free should probably belong into close_vdi,
-	   but the current blktap1 reopen-stuff likely depends on a
-	   lifetime extended until shutdown. */
+	/*
+	 * NB: vbd->name free should probably belong into close_vdi, but the 
+	 * current blktap1 reopen-stuff likely depends on a lifetime extended 
+	 * until shutdown
+	 */
 	free(vbd->name);
 	vbd->name = NULL;
 
@@ -899,10 +932,24 @@ tapdisk_control_resume_vbd(struct tapdisk_ctl_conn *conn,
 
 	response.type = TAPDISK_MESSAGE_RESUME_RSP;
 
+	INFO("Resuming: flags=0x%08x secondary=%p\n",
+			request->u.params.flags, request->u.params.secondary);
+
 	vbd = tapdisk_server_get_vbd(request->cookie);
 	if (!vbd) {
 		err = -EINVAL;
 		goto out;
+	}
+
+	if (request->u.params.flags & TAPDISK_MESSAGE_FLAG_SECONDARY) {
+		char *name = strdup(request->u.params.secondary);
+		if (!name) {
+			err = -errno;
+			goto out;
+		}
+		INFO("Resuming with secondary '%s'\n", name);
+		vbd->secondary_name = name;
+		vbd->flags |= TD_OPEN_SECONDARY;
 	}
 
 	if (request->u.params.path[0])
@@ -923,10 +970,16 @@ tapdisk_control_stats(struct tapdisk_ctl_conn *conn,
 	td_stats_t _st, *st = &_st;
 	td_vbd_t *vbd;
 	size_t rv;
+	void *buf;
+	int new_size;
 
-	tapdisk_stats_init(st,
-			   conn->out.buf + sizeof(response),
-			   conn->out.bufsz - sizeof(response));
+	buf = malloc(TD_CTL_SEND_BUFSZ);
+	if (!buf) {
+		rv = -ENOMEM;
+		goto out;
+	}
+
+	tapdisk_stats_init(st, buf, TD_CTL_SEND_BUFSZ);
 
 	if (request->cookie != (uint16_t)-1) {
 
@@ -950,7 +1003,26 @@ tapdisk_control_stats(struct tapdisk_ctl_conn *conn,
 	}
 
 	rv = tapdisk_stats_length(st);
+
+	if (rv > conn->out.bufsz - sizeof(response)) {
+		ASSERT(conn->out.prod == conn->out.buf);
+		ASSERT(conn->out.cons == conn->out.buf);
+		new_size = rv + sizeof(response);
+		buf = realloc(conn->out.buf, new_size);
+		if (!buf) {
+			rv = -ENOMEM;
+			goto out;
+		}
+		conn->out.buf = buf;
+		conn->out.bufsz = new_size;
+		conn->out.prod = buf;
+		conn->out.cons = buf;
+	}
+	if (rv > 0) {
+		memcpy(conn->out.buf + sizeof(response), st->buf, rv);
+	}
 out:
+	free(st->buf);
 	memset(&response, 0, sizeof(response));
 	response.type = TAPDISK_MESSAGE_STATS_RSP;
 	response.cookie = request->cookie;
@@ -1007,14 +1079,12 @@ tapdisk_control_handle_request(event_id_t id, char mode, void *private)
 	int err, excl;
 	tapdisk_message_t message, response;
 	struct tapdisk_ctl_conn *conn = private;
-	struct tapdisk_control_info *info;
+
+	conn->info = NULL;
 
 	err = tapdisk_control_read_message(conn->fd, &message, 2);
 	if (err)
 		goto close;
-
-	if (conn->in.busy)
-		goto busy;
 
 	err = tapdisk_control_validate_request(&message);
 	if (err)
@@ -1023,16 +1093,19 @@ tapdisk_control_handle_request(event_id_t id, char mode, void *private)
 	if (message.type > TAPDISK_MESSAGE_EXIT)
 		goto invalid;
 
-	info = &message_infos[message.type];
+	conn->info = &message_infos[message.type];
 
-	if (!info->handler)
+	if (!conn->info->handler)
 		goto invalid;
 
-	if (info->flags & TAPDISK_MSG_VERBOSE)
+	if (conn->info->flags & TAPDISK_MSG_VERBOSE)
 		DBG("received '%s' message (uuid = %u)\n",
 		    tapdisk_message_name(message.type), message.cookie);
 
-	excl = !(info->flags & TAPDISK_MSG_REENTER);
+	if (conn->in.busy)
+		goto busy;
+
+	excl = !(conn->info->flags & TAPDISK_MSG_REENTER);
 	if (excl) {
 		if (td_control.busy)
 			goto busy;
@@ -1040,9 +1113,8 @@ tapdisk_control_handle_request(event_id_t id, char mode, void *private)
 		td_control.busy = 1;
 	}
 	conn->in.busy = 1;
-	conn->info    = info;
 
-	info->handler(conn, &message);
+	conn->info->handler(conn, &message);
 
 	conn->in.busy = 0;
 	if (excl)

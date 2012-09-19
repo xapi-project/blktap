@@ -1425,18 +1425,26 @@ __lxstat64(int version, const char *path, struct stat64 *buf)
 	return ret;
 }
 
+#ifdef __x86_64__
+#define IOCTL_REQUEST long long
+#define IOCTL_REQUEST_FMT "%Lx"
+#else
+#define IOCTL_REQUEST int
+#define IOCTL_REQUEST_FMT "%x"
+#endif
+
 int
-ioctl(int fd, int request, char *argp)
+ioctl(int fd, IOCTL_REQUEST request, char *argp)
 {
 	vhd_fd_context_t *vhd_fd;
-	static int (*_std_ioctl)(int, int, char *);
+	static int (*_std_ioctl)(int, IOCTL_REQUEST, char *);
 
 	_RESOLVE(_std_ioctl);
 	vhd_fd = _libvhd_io_map_get(fd);
 	if (!vhd_fd)
 		return _std_ioctl(fd, request, argp);
 
-	LOG("%s 0x%x 0x%x %p\n", __func__, fd, request, argp);
+	LOG("%s 0x%x 0x" IOCTL_REQUEST_FMT " %p\n", __func__, fd, request, argp);
 
 #ifdef BLKGETSIZE64
 	if (request == BLKGETSIZE64) {

@@ -609,21 +609,25 @@ usage:
 static void
 tap_cli_unpause_usage(FILE *stream)
 {
-	fprintf(stream, "usage: unpause <-p pid> <-m minor> [-a args]\n");
+	fprintf(stream, "usage: unpause <-p pid> <-m minor> [-a args] "
+			"[-2 secondary]\n");
 }
 
 int
 tap_cli_unpause(int argc, char **argv)
 {
 	const char *args;
-	int c, pid, minor;
+	char *secondary;
+	int c, pid, minor, flags;
 
 	pid   = -1;
 	minor = -1;
 	args  = NULL;
+	secondary = NULL;
+	flags = 0;
 
 	optind = 0;
-	while ((c = getopt(argc, argv, "p:m:a:h")) != -1) {
+	while ((c = getopt(argc, argv, "p:m:a:2:h")) != -1) {
 		switch (c) {
 		case 'p':
 			pid = atoi(optarg);
@@ -633,6 +637,10 @@ tap_cli_unpause(int argc, char **argv)
 			break;
 		case 'a':
 			args = optarg;
+			break;
+		case '2':
+			flags |= TAPDISK_MESSAGE_FLAG_SECONDARY;
+			secondary = optarg;
 			break;
 		case '?':
 			goto usage;
@@ -645,7 +653,7 @@ tap_cli_unpause(int argc, char **argv)
 	if (pid == -1 || minor == -1)
 		goto usage;
 
-	return tap_ctl_unpause(pid, minor, args);
+	return tap_ctl_unpause(pid, minor, args, flags, secondary);
 
 usage:
 	tap_cli_unpause_usage(stderr);

@@ -1,5 +1,6 @@
 /*
- * Copyright (c) 2007, 2010, XenSource Inc.
+ * Copyright (c) 2012, Citrix Systems, Inc.
+ *
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -26,44 +27,48 @@
  * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef __DISKTYPES_H__
-#define __DISKTYPES_H__
+#ifndef _TAPDISK_NBDSERVER_H_
+#define _TAPDISK_NBDSERVER_H_
 
-#define DISK_TYPE_AIO         0
-#define DISK_TYPE_SYNC        1
-#define DISK_TYPE_VMDK        2
-#define DISK_TYPE_VHDSYNC     3
-#define DISK_TYPE_VHD         4
-#define DISK_TYPE_RAM         5
-#define DISK_TYPE_QCOW        6
-#define DISK_TYPE_BLOCK_CACHE 7
-#define DISK_TYPE_VINDEX      8
-#define DISK_TYPE_LOG         9
-#define DISK_TYPE_REMUS       10
-#define DISK_TYPE_LCACHE      11
-#define DISK_TYPE_LLECACHE    12
-#define DISK_TYPE_LLPCACHE    13
-#define DISK_TYPE_VALVE       14
-#define DISK_TYPE_NBD         15
+typedef struct td_nbdserver td_nbdserver_t;
+typedef struct td_nbdserver_req td_nbdserver_req_t;
+typedef struct td_nbdserver_client td_nbdserver_client_t;
 
-#define DISK_TYPE_NAME_MAX    32
+#include "blktap.h"
+#include "tapdisk-vbd.h"
+#include "list.h"
 
-typedef struct disk_info {
-	const char     *name; /* driver name, e.g. 'aio' */
-	char           *desc;  /* e.g. "raw image" */
-	unsigned int    flags; 
-} disk_info_t;
+struct td_nbdserver {
+	td_vbd_t               *vbd;
+	td_disk_info_t          info;
 
-extern const disk_info_t     *tapdisk_disk_types[];
-extern const struct tap_disk *tapdisk_disk_drivers[];
+	int                     listening_fd;
+	int                     listening_event_id;
 
-/* one single controller for all instances of disk type */
-#define DISK_TYPE_SINGLE_CONTROLLER (1<<0)
+	struct td_fdreceiver   *fdreceiver;
+	struct list_head        clients;
+};
 
-/* filter driver without physical image data */
-#define DISK_TYPE_FILTER            (1<<1)
+struct td_nbdserver_client {
+	int                     n_reqs;
+	td_nbdserver_req_t     *reqs;
+	struct td_iovec        *iovecs;
+	int                     n_reqs_free;
+	td_nbdserver_req_t    **reqs_free;
 
-int tapdisk_disktype_find(const char *name);
-int tapdisk_disktype_parse_params(const char *params, const char **_path);
+	int                     client_fd;
+	int                     client_event_id;
 
-#endif
+	td_nbdserver_t         *server;
+	struct list_head        clientlist;
+
+	int                     paused;
+};
+
+td_nbdserver_t *tapdisk_nbdserver_alloc(td_vbd_t *, td_disk_info_t);
+int tapdisk_nbdserver_listen(td_nbdserver_t *, int);
+void tapdisk_nbdserver_free(td_nbdserver_t *);
+void tapdisk_nbdserver_pause(td_nbdserver_t *);
+int tapdisk_nbdserver_unpause(td_nbdserver_t *);
+
+#endif /* _TAPDISK_NBDSERVER_H_ */

@@ -42,6 +42,7 @@ struct tapdisk_stats_ctx {
 
 	int             n_elem[TD_STATS_MAX_DEPTH];
 	int             depth;
+	int             err;
 };
 
 typedef struct tapdisk_stats_ctx td_stats_t;
@@ -59,6 +60,9 @@ tapdisk_stats_init(td_stats_t *st, char *buf, size_t size)
 static inline size_t
 tapdisk_stats_length(td_stats_t *st)
 {
+	if (st->err)
+		return st->err;
+
 	return st->pos - st->buf;
 }
 

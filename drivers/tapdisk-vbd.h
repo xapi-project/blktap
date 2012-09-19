@@ -53,6 +53,8 @@
 #define TD_VBD_SECONDARY_MIRROR     1
 #define TD_VBD_SECONDARY_STANDBY    2
 
+struct td_nbdserver;
+
 struct td_vbd_handle {
 	char                       *name;
 
@@ -73,12 +75,16 @@ struct td_vbd_handle {
 	int                         FIXME_enospc_redirect_count_enabled;
 	uint64_t                    FIXME_enospc_redirect_count;
 
-	/* when we encounter ENOSPC on the primary leaf image in mirror mode, 
+	/*
+	 * when we encounter ENOSPC on the primary leaf image in mirror mode, 
 	 * we need to remove it from the VBD chain so that writes start going 
 	 * on the secondary leaf. However, we cannot free the image at that 
 	 * time since it might still have in-flight treqs referencing it.  
-	 * Therefore, we move it into 'retired' until shutdown. */
+	 * Therefore, we move it into 'retired' until shutdown.
+	 */
 	td_image_t                 *retired;
+
+	int                         nbd_mirror_failed;
 
 	struct list_head            new_requests;
 	struct list_head            pending_requests;
@@ -98,6 +104,8 @@ struct td_vbd_handle {
 	uint64_t                    retries;
 	uint64_t                    errors;
 	td_sector_count_t           secs;
+
+	struct td_nbdserver        *nbdserver;
 };
 
 #define tapdisk_vbd_for_each_request(vreq, tmp, list)	                \
@@ -178,6 +186,7 @@ void tapdisk_vbd_check_state(td_vbd_t *);
 int tapdisk_vbd_recheck_state(td_vbd_t *);
 void tapdisk_vbd_check_progress(td_vbd_t *);
 void tapdisk_vbd_debug(td_vbd_t *);
+int tapdisk_vbd_start_nbdserver(td_vbd_t *);
 void tapdisk_vbd_stats(td_vbd_t *, td_stats_t *);
 
 #endif

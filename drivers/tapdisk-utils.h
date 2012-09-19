@@ -44,5 +44,7 @@ int tapdisk_namedup(char **, const char *);
 int tapdisk_parse_disk_type(const char *, char **, int *);
 int tapdisk_get_image_size(int, uint64_t *, uint32_t *);
 int tapdisk_linux_version(void);
+uint64_t ntohll(uint64_t);
+#define htonll ntohll
 
 #endif

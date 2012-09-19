@@ -1,5 +1,6 @@
 /*
- * Copyright (c) 2007, 2010, XenSource Inc.
+ * Copyright (c) 2012, Citrix Systems, Inc.
+ *
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -26,44 +27,22 @@
  * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef __DISKTYPES_H__
-#define __DISKTYPES_H__
+/* Unix domain socket fd receiver */
 
-#define DISK_TYPE_AIO         0
-#define DISK_TYPE_SYNC        1
-#define DISK_TYPE_VMDK        2
-#define DISK_TYPE_VHDSYNC     3
-#define DISK_TYPE_VHD         4
-#define DISK_TYPE_RAM         5
-#define DISK_TYPE_QCOW        6
-#define DISK_TYPE_BLOCK_CACHE 7
-#define DISK_TYPE_VINDEX      8
-#define DISK_TYPE_LOG         9
-#define DISK_TYPE_REMUS       10
-#define DISK_TYPE_LCACHE      11
-#define DISK_TYPE_LLECACHE    12
-#define DISK_TYPE_LLPCACHE    13
-#define DISK_TYPE_VALVE       14
-#define DISK_TYPE_NBD         15
+typedef void (*fd_cb_t) (int fd, char *msg, void *data);
 
-#define DISK_TYPE_NAME_MAX    32
+struct td_fdreceiver *td_fdreceiver_start(char *path, fd_cb_t, void *data);
+void td_fdreceiver_stop(struct td_fdreceiver *);
 
-typedef struct disk_info {
-	const char     *name; /* driver name, e.g. 'aio' */
-	char           *desc;  /* e.g. "raw image" */
-	unsigned int    flags; 
-} disk_info_t;
+struct td_fdreceiver {
+	char *path;
 
-extern const disk_info_t     *tapdisk_disk_types[];
-extern const struct tap_disk *tapdisk_disk_drivers[];
+	int fd;
+	int fd_event_id;
 
-/* one single controller for all instances of disk type */
-#define DISK_TYPE_SINGLE_CONTROLLER (1<<0)
+	int client_fd;
+	int client_event_id;
 
-/* filter driver without physical image data */
-#define DISK_TYPE_FILTER            (1<<1)
-
-int tapdisk_disktype_find(const char *name);
-int tapdisk_disktype_parse_params(const char *params, const char **_path);
-
-#endif
+	fd_cb_t callback;
+	void *callback_data;
+};
