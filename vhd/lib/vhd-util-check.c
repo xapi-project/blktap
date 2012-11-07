@@ -55,6 +55,7 @@ struct vhd_util_check_options {
 	char                             ignore_parent_uuid;
 	char                             ignore_timestamps;
 	char                             check_data;
+	char                             no_check_bat;
 	char                             collect_stats;
 };
 
@@ -826,6 +827,9 @@ vhd_util_check_bat(struct vhd_util_check_ctx *ctx, vhd_context_t *vhd)
 			}
 		}
 
+		if (ctx->opts.no_check_bat)
+			continue;
+
 		for (j = 0; j < vhd_blks; j++) {
 			uint32_t joff = vhd->bat.bat[j];
 
@@ -1203,7 +1207,7 @@ vhd_util_check(int argc, char **argv)
 	vhd_util_check_stats_init(&ctx);
 
 	optind = 0;
-	while ((c = getopt(argc, argv, "n:iItpbsh")) != -1) {
+	while ((c = getopt(argc, argv, "n:iItpbBsh")) != -1) {
 		switch (c) {
 		case 'n':
 			name = optarg;
@@ -1223,6 +1227,9 @@ vhd_util_check(int argc, char **argv)
 		case 'b':
 			ctx.opts.check_data = 1;
 			break;
+		case 'B':
+			ctx.opts.no_check_bat = 1;
+			break;
 		case 's':
 			ctx.opts.collect_stats = 1;
 			break;
@@ -1236,6 +1243,12 @@ vhd_util_check(int argc, char **argv)
 	}
 
 	if (!name || optind != argc) {
+		err = -EINVAL;
+		goto usage;
+	}
+
+	if ((ctx.opts.collect_stats || ctx.opts.check_data) &&
+			ctx.opts.no_check_bat) {
 		err = -EINVAL;
 		goto usage;
 	}
@@ -1258,6 +1271,7 @@ out:
 usage:
 	printf("options: -n <file> [-i ignore missing primary footers] "
 	       "[-I ignore parent uuids] [-t ignore timestamps] "
+	       "[-B do not check BAT for overlapping (precludes -s, -b)] "
 	       "[-p check parents] [-b check bitmaps] [-s stats] [-h help]\n");
 	return err;
 }
