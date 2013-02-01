@@ -263,12 +263,12 @@ tapdisk_nbdserver_disable_client(td_nbdserver_client_t *client)
 }
 
 static void
-*get_in_addr(struct sockaddr *sa)
+*get_in_addr(struct sockaddr_storage *ss)
 {
-	if (sa->sa_family == AF_INET)
-		return &(((struct sockaddr_in*)sa)->sin_addr);
+	if (ss->ss_family == AF_INET)
+		return &(((struct sockaddr_in*)ss)->sin_addr);
 
-	return &(((struct sockaddr_in6*)sa)->sin6_addr);
+	return &(((struct sockaddr_in6*)ss)->sin6_addr);
 }
 
 static void
@@ -512,9 +512,7 @@ tapdisk_nbdserver_newclient(event_id_t id, char mode, void *data)
 		return;
 	}
 
-	inet_ntop(their_addr.ss_family,
-			get_in_addr((struct sockaddr *)&their_addr),
-			s, sizeof s);
+	inet_ntop(their_addr.ss_family, get_in_addr(&their_addr), s, sizeof s);
 
 	INFO("server: got connection from %s\n", s);
 
