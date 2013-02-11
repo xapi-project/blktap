@@ -3228,22 +3228,29 @@ __vhd_io_dynamic_read_link(vhd_context_t *ctx, char *map,
 {
 	off64_t off;
 	uint32_t blk, sec;
-	int err, cnt, map_off;
+	int err, cnt, map_off, i;
 	char *bitmap, *data, *src;
 
 	map_off = 0;
 
 	do {
-		blk    = sector / ctx->spb;
-		sec    = sector % ctx->spb;
-		off    = ctx->bat.bat[blk];
 		data   = NULL;
 		bitmap = NULL;
-
-		if (off == DD_BLK_UNUSED) {
-			cnt = MIN(secs, ctx->spb);
+		if (sector >= ctx->footer.curr_size >> VHD_SECTOR_SHIFT) {
+			cnt = secs;
+			for (i = 0; i < cnt; i++)
+				set_bit(map, map_off + i);
+			/* buf has already been zeroed out */
 			goto next;
 		}
+
+		blk = sector / ctx->spb;
+		sec = sector % ctx->spb;
+		cnt = MIN(secs, ctx->spb - sec);
+		off = ctx->bat.bat[blk];
+
+		if (off == DD_BLK_UNUSED)
+			goto next;
 
 		err = vhd_read_bitmap(ctx, blk, &bitmap);
 		if (err)
@@ -3255,7 +3262,6 @@ __vhd_io_dynamic_read_link(vhd_context_t *ctx, char *map,
 			return err;
 		}
 
-		cnt = MIN(secs, ctx->spb - sec);
 		src = data + vhd_sectors_to_bytes(sec);
 
 		__vhd_io_dynamic_copy_data(ctx,
