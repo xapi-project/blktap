@@ -720,10 +720,7 @@ size_t
 vhd_time_to_string(uint32_t timestamp, char *target)
 {
 	char *cr;
-	struct tm tm;
 	time_t unix_timestamp;
-
-	memset(&tm, 0, sizeof(struct tm));
 
 	unix_timestamp = (time_t)timestamp + VHD_EPOCH_START;
 	ctime_r(&unix_timestamp, target);
