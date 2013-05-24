@@ -241,10 +241,12 @@ tlog_close(void)
 }
 
 void
-tlog_precious(void)
+tlog_precious(int force_flush)
 {
 	if (!tapdisk_log.precious)
 		tlog_logfile_save();
+	else if (force_flush)
+		tapdisk_logfile_flush(&tapdisk_log.logfile);
 
 	tapdisk_log.precious = 1;
 }
