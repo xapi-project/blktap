@@ -95,6 +95,7 @@ struct td_vbd_handle {
 
 	struct list_head            next;
 
+	uint16_t                    req_timeout; /* in seconds */
 	struct timeval              ts;
 
 	uint64_t                    received;

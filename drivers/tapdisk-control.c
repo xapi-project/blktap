@@ -767,6 +767,11 @@ tapdisk_control_open_image(struct tapdisk_ctl_conn *conn,
 		goto fail_close;
 	}
 
+	if (request->u.params.req_timeout > 0) {
+		vbd->req_timeout = request->u.params.req_timeout;
+		DPRINTF("Set request timeout to %d s\n", vbd->req_timeout);
+	}
+
 	/*
 	 * For now, let's do this automatically on all 'open' calls In the 
 	 * future, we'll probably want a separate call to start the NBD server

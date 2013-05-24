@@ -102,7 +102,8 @@ tapdisk_vbd_create(uint16_t uuid)
 		return NULL;
 	}
 
-	vbd->uuid     = uuid;
+	vbd->uuid        = uuid;
+	vbd->req_timeout = TD_VBD_REQUEST_TIMEOUT;
 
 	INIT_LIST_HEAD(&vbd->images);
 	INIT_LIST_HEAD(&vbd->new_requests);
@@ -849,7 +850,7 @@ tapdisk_vbd_request_ttl(td_vbd_request_t *vreq,
 {
 	struct timeval delta;
 	timersub(now, &vreq->ts, &delta);
-	return TD_VBD_REQUEST_TIMEOUT - delta.tv_sec;
+	return vreq->vbd->req_timeout - delta.tv_sec;
 }
 
 static int
