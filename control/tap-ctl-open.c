@@ -41,7 +41,7 @@
 
 int
 tap_ctl_open(const int id, const int minor, const char *params, int flags,
-		const int prt_minor, const char *secondary)
+		const int prt_minor, const char *secondary, int timeout)
 {
 	int err;
 	tapdisk_message_t message;
@@ -51,6 +51,7 @@ tap_ctl_open(const int id, const int minor, const char *params, int flags,
 	message.cookie = minor;
 	message.u.params.devnum = minor;
 	message.u.params.prt_devnum = prt_minor;
+	message.u.params.req_timeout = timeout;
 	message.u.params.flags = flags;
 
 	err = snprintf(message.u.params.path,

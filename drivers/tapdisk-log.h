@@ -40,7 +40,7 @@
 
 int  tlog_open(const char *, int, int);
 void tlog_close(void);
-void tlog_precious(void);
+void tlog_precious(int);
 void tlog_vsyslog(int, const char *, va_list);
 void tlog_syslog(int, const char *, ...) __printf(2, 3);
 

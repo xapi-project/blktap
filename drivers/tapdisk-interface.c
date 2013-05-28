@@ -280,7 +280,7 @@ td_debug(td_image_t *image)
 __noreturn void
 td_panic(void)
 {
-	tlog_precious();
+	tlog_precious(1);
 	raise(SIGABRT);
 	_exit(-1); /* not reached */
 }

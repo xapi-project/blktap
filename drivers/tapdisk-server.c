@@ -130,7 +130,7 @@ tapdisk_server_debug(void)
 		tapdisk_vbd_debug(vbd);
 
 	DBG(TLOG_INFO, "debug log completed\n");
-	tlog_precious();
+	tlog_precious(1);
 }
 
 void
