@@ -367,7 +367,7 @@ static int
 tapdisk_lio_setup_aio(struct tqueue *queue, int qlen)
 {
 	struct lio *lio = queue->tio_data;
-	int err;
+	int err, old_err = 0;
 
 	lio->aio_ctx  =  0;
 	lio->event_fd = -1;
@@ -379,17 +379,20 @@ tapdisk_lio_setup_aio(struct tqueue *queue, int qlen)
 
 	err = !tapdisk_lio_check_resfd();
 	if (!err)
-		err = __lio_setup_aio_eventfd(queue, qlen);
+		err = old_err = __lio_setup_aio_eventfd(queue, qlen);
 	if (err)
 		err = __lio_setup_aio_poll(queue, qlen);
 
-	if (err == -EAGAIN)
+	/* __lio_setup_aio_poll seems to always fail with EINVAL on newer systems,
+	 * probably because it initializes the output parameter of io_setup to a
+	 * non-zero value and the kernel patch that understands this is missing */
+	if (err == -EAGAIN || (err && old_err == -EAGAIN))
 		goto fail_rsv;
 fail:
 	return err;
 
 fail_rsv:
-	DPRINTF("Couldn't setup AIO context. If you are trying to "
+	EPRINTF("Couldn't setup AIO context. If you are trying to "
 		"concurrently use a large number of blktap-based disks, you may "
 		"need to increase the system-wide aio request limit. "
 		"(e.g. 'echo 1048576 > /proc/sys/fs/aio-max-nr')\n");
