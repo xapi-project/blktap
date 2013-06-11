@@ -15,6 +15,18 @@
  * 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  */
 
+/* Driver to sit on top of another disk and log writes, in order
+ * to synchronize two distinct disks
+ *
+ * On receipt of a control request it can export a list of dirty
+ * sectors in the following format:
+ * struct writerange {
+ *   u64 sector;
+ *   u32 count;
+ * }
+ * terminated by { 0, 0 }
+ */
+
 #ifdef HAVE_CONFIG_H
 #include "config.h"
 #endif
