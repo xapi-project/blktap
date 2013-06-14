@@ -3451,6 +3451,9 @@ __vhd_io_allocate_block(vhd_context_t *ctx, uint32_t block)
 		max += gap;
 	}
 
+	if (max > UINT32_MAX)
+		return -EIO;
+
 	err = vhd_seek(ctx, off, SEEK_SET);
 	if (err)
 		return err;
