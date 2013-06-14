@@ -66,6 +66,7 @@
 #include <string.h>    /* for memset.                                 */
 #include <libaio.h>
 #include <sys/mman.h>
+#include <limits.h>
 
 #include "libvhd.h"
 #include "tapdisk.h"
@@ -237,8 +238,12 @@ struct vhd_state {
 	uint32_t                  spp;         /* sectors per page */
 	uint32_t                  spb;         /* sectors per block */
 	uint64_t                  first_db;    /* pointer to datablock 0 */
-	uint64_t                  next_db;     /* pointer to the next 
-						* (unallocated) datablock */
+
+	/**
+	 * Pointer to the next (unallocated) datablock. If greater than UINT_MAX,
+	 * there are no more blocks available.
+	 */
+	uint64_t                  next_db;
 
 	struct vhd_bat_state      bat;
 
@@ -405,7 +410,10 @@ find_next_free_block(struct vhd_state *s)
 	for (i = 0; i < s->bat.bat.entries; i++) {
 		entry = bat_entry(s, i);
 		if (entry != DD_BLK_UNUSED && entry >= s->next_db)
-			s->next_db = entry + s->spb + s->bm_secs;
+			s->next_db = (uint64_t)entry + (uint64_t)s->spb
+				+ (uint64_t)s->bm_secs;
+			if (s->next_db > UINT_MAX)
+				break;
 	}
 
 	return 0;
@@ -1189,7 +1197,10 @@ read_bitmap_cache(struct vhd_state *s, uint64_t sector, uint8_t op)
 	if (s->vhd.footer.type == HD_TYPE_FIXED) 
 		return VHD_BM_BIT_SET;
 
+	/* the extent the logical sector falls in */
 	blk = sector / s->spb;
+
+	/* offset within the extent the logical sector is located */
 	sec = sector % s->spb;
 
 	if (blk > s->vhd.header.max_bat_size) {
@@ -1308,6 +1319,14 @@ aio_write(struct vhd_state *s, struct vhd_request *req, uint64_t offset)
 	TRACE(s);
 }
 
+/**
+ * Reserves a new extent.
+ *
+ * @returns a 64-bit unsigned integer where the error code is stored in the
+ * upper 32 bits and the reserved block number is stored in the lower 32 bits.
+ * If an error is returned (the upper 32 bits are not zero), the lower 32 bits
+ * are undefined.
+ */
 static inline uint64_t
 reserve_new_block(struct vhd_state *s, uint32_t blk)
 {
@@ -1318,6 +1337,9 @@ reserve_new_block(struct vhd_state *s, uint32_t blk)
 	/* data region of segment should begin on page boundary */
 	if ((s->next_db + s->bm_secs) % s->spp)
 		gap = (s->spp - ((s->next_db + s->bm_secs) % s->spp));
+
+	if (s->next_db + gap > UINT_MAX)
+		return (uint64_t)EIO << 32;
 
 	s->bat.pbw_blk    = blk;
 	s->bat.pbw_offset = s->next_db + gap;
@@ -1464,6 +1486,10 @@ update_bat(struct vhd_state *s, uint32_t blk)
 
 	lock_bat(s);
 	lb_end = reserve_new_block(s, blk);
+	if (lb_end >> 32) {
+		unlock_bat(s);
+		return -(lb_end >> 32);
+	}
 	schedule_zero_bm_write(s, bm, lb_end);
 	set_vhd_flag(bm->tx.status, VHD_FLAG_TX_UPDATE_BAT);
 
@@ -1477,6 +1503,7 @@ allocate_block(struct vhd_state *s, uint32_t blk)
 	uint64_t offset, size;
 	struct vhd_bitmap *bm;
 	ssize_t count;
+	uint64_t next_db;
 
 	ASSERT(bat_entry(s, blk) == DD_BLK_UNUSED);
 
@@ -1487,16 +1514,22 @@ allocate_block(struct vhd_state *s, uint32_t blk)
 		return 0;
 	}
 
-	gap            = 0;
-	s->bat.pbw_blk = blk;
-	offset         = vhd_sectors_to_bytes(s->next_db);
+	gap     = 0;
+	offset  = vhd_sectors_to_bytes(s->next_db);
+	next_db = s->next_db;
 
 	/* data region of segment should begin on page boundary */
-	if ((s->next_db + s->bm_secs) % s->spp) {
-		gap = (s->spp - ((s->next_db + s->bm_secs) % s->spp));
-		s->next_db += gap;
+	if ((next_db + s->bm_secs) % s->spp) {
+		gap = (s->spp - ((next_db + s->bm_secs) % s->spp));
+		next_db += gap;
 	}
 
+	if (next_db > UINT_MAX)
+		return -EIO;
+
+	s->next_db = next_db;
+
+	s->bat.pbw_blk = blk;
 	s->bat.pbw_offset = s->next_db;
 
 	DBG(TLOG_DBG, "blk: 0x%04x, pbwo: 0x%08"PRIx64"\n",
