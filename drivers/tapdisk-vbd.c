@@ -787,6 +787,9 @@ tapdisk_vbd_pause(td_vbd_t *vbd)
 
 	INFO("pause completed\n");
 
+	if (!list_empty(&vbd->failed_requests))
+		INFO("warning: failed requests pending\n");
+
 	td_flag_clear(vbd->state, TD_VBD_PAUSE_REQUESTED);
 	td_flag_set(vbd->state, TD_VBD_PAUSED);
 
