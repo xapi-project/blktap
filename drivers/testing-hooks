@@ -1,0 +1,41 @@
+#!/usr/bin/python
+#
+# Copyright (C) Citrix Systems Inc.
+#
+# This program is free software; you can redistribute it and/or modify 
+# it under the terms of the GNU Lesser General Public License as published 
+# by the Free Software Foundation; version 2.1 only.
+#
+# This program is distributed in the hope that it will be useful, 
+# but WITHOUT ANY WARRANTY; without even the implied warranty of 
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the 
+# GNU Lesser General Public License for more details.
+#
+# You should have received a copy of the GNU Lesser General Public License
+# along with this program; if not, write to the Free Software Foundation, Inc.,
+# 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
+#
+# For testing purposes
+
+import os
+import sys
+import XenAPIPlugin
+
+FIST_FILE_PATH = "/tmp/fist_"
+
+def setFistPoint(session, args):
+    fistPoint = args["fistPoint"]
+    active = args["active"]
+    if active == "False":
+        active = False
+    fn = FIST_FILE_PATH + fistPoint
+    if active:
+        open(fn, "w").close()
+    else:
+        if os.path.exists(fn):
+            os.unlink(fn)
+    return str(True)
+
+
+if __name__ == "__main__":
+    XenAPIPlugin.dispatch({"setFistPoint": setFistPoint})

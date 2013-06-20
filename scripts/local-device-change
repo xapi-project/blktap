@@ -1,0 +1,84 @@
+#!/bin/sh
+#
+# Copyright (C) Citrix Systems Inc.
+#
+# This program is free software; you can redistribute it and/or modify 
+# it under the terms of the GNU Lesser General Public License as published 
+# by the Free Software Foundation; version 2.1 only.
+#
+# This program is distributed in the hope that it will be useful, 
+# but WITHOUT ANY WARRANTY; without even the implied warranty of 
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the 
+# GNU Lesser General Public License for more details.
+#
+# You should have received a copy of the GNU Lesser General Public License
+# along with this program; if not, write to the Free Software Foundation, Inc.,
+# 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
+#
+# Called from udev scripts to introduce/forget VDIs corresponding to local
+# hotplug devices.  Assumes the existence of two udev SRs: one with
+# sm_config:type=cd and one with block.
+
+DEVICE=$1 # foo
+# ACTION comes from the environment
+
+/usr/bin/logger "local-device-change DEVICE=$DEVICE ACTION=$ACTION"
+
+CDROMMON="/opt/xensource/libexec/cdrommon"
+
+. /etc/xensource-inventory
+
+function remove_vdi {
+    local R_VDI=$1
+    for VBD in `xe vbd-list params=uuid vdi-uuid=${R_VDI} currently-attached=true --minimal`
+      do
+      xe vbd-unplug uuid=${VBD} --force
+    done
+    xe vdi-forget uuid=${R_VDI}    
+}
+
+IFS=","
+for LOCAL_SR in `xe pbd-list host=${INSTALLATION_UUID} params=sr-uuid --minimal`
+do
+  case ${ACTION} in
+  add)
+    grep -q "^drive name:[	]*\W${DEVICE}\(\W\|$\)" /proc/sys/dev/cdrom/info
+    # is this a CD or not
+    if [ $? -eq 0 ]; then
+      ${CDROMMON} /dev/xapi/cd/${DEVICE}
+      for SR in `xe sr-list type=udev sm-config:type=cd uuid=${LOCAL_SR} params=uuid --minimal`
+      do
+        xe vdi-introduce uuid=`uuidgen` sr-uuid=${SR} type=user location=/dev/xapi/cd/${DEVICE}
+      done
+    else
+      for SR in `xe sr-list type=udev sm-config:type=block uuid=${LOCAL_SR} params=uuid --minimal`
+      do
+        xe vdi-introduce uuid=`uuidgen` sr-uuid=${SR} type=user location=/dev/xapi/block/${DEVICE}
+      done
+    fi
+    ;;
+  remove)
+    for VDI in `xe vdi-list params=uuid location=/dev/xapi/cd/${DEVICE} --minimal`
+    do
+      SR=`xe vdi-list params=sr-uuid uuid=${VDI} --minimal`
+      if [ "$SR" = "$LOCAL_SR" ]; then
+	  remove_vdi ${VDI}
+	  # Used to correct the SR's space utilisation
+          xe sr-scan uuid=${SR}
+      fi
+    done
+    for VDI in `xe vdi-list params=uuid location=/dev/xapi/block/${DEVICE} --minimal`
+    do
+      SR=`xe vdi-list params=sr-uuid uuid=${VDI} --minimal`
+      if [ "$SR" = "$LOCAL_SR" ]; then
+	  remove_vdi ${VDI}
+	  # Used to correct the SR's space utilisation
+          xe sr-scan uuid=${SR}
+      fi
+    done
+    ;;
+  *)
+    echo $"Usage: $0 (device)" 
+    exit 1
+  esac
+done

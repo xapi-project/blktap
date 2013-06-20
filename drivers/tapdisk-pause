@@ -1,0 +1,192 @@
+#!/usr/bin/python
+#
+# Copyright (C) Citrix Systems Inc.
+#
+# This program is free software; you can redistribute it and/or modify 
+# it under the terms of the GNU Lesser General Public License as published 
+# by the Free Software Foundation; version 2.1 only.
+#
+# This program is distributed in the hope that it will be useful, 
+# but WITHOUT ANY WARRANTY; without even the implied warranty of 
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the 
+# GNU Lesser General Public License for more details.
+#
+# You should have received a copy of the GNU Lesser General Public License
+# along with this program; if not, write to the Free Software Foundation, Inc.,
+# 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
+#
+# Pause/unpause tapdisk on the local host
+
+import os
+import sys
+import XenAPIPlugin
+sys.path.append("/opt/xensource/sm/")
+import blktap2, util
+from lock import Lock
+import xs_errors
+import XenAPI
+import lvhdutil
+import vhdutil
+import lvmcache
+
+TAPDEV_BACKPATH_PFX = "/dev/sm/backend"
+TAPDEV_PHYPATH_PFX = "/dev/sm/phy"
+
+def locking(excType, override=True):
+    def locking2(op):
+        def wrapper(self, *args):
+            self.lock.acquire()
+            try:
+                try:
+                    ret = op(self, *args)
+                except (util.SMException, XenAPI.Failure), e:
+                    util.logException("TAP-PAUSE:%s" % op)
+                    msg = str(e)
+                    if isinstance(e, util.CommandException):
+                        msg = "Command %s failed (%s): %s" % \
+                                (e.cmd, e.code, e.reason)
+                    if override:
+                        raise xs_errors.XenError(excType, opterr=msg)
+                    else:
+                        raise
+                except:
+                    util.logException("TAP-PAUSE:%s" % op)
+                    raise
+            finally:
+                self.lock.release()
+            return ret
+        return wrapper
+    return locking2
+
+def _getDevMajor_minor(dev):
+    st = os.stat(dev)
+    return [os.major(st.st_rdev),os.minor(st.st_rdev)]
+
+def _mkphylink(sr_uuid, vdi_uuid, path):
+    sympath = "/dev/sm/phy/%s/%s" % (sr_uuid,vdi_uuid)
+    cmd = ['ln', '-sf', path, sympath]
+    util.pread2(cmd)
+    return path
+
+def _pathRefresh():
+    # LVM rename check
+    realpath = os.path.realpath(self.phypath)
+    phypath = vdi_type = None
+    util.SMlog("Realpath: %s" % realpath)
+    if realpath.startswith("/dev/VG_XenStorage-") and \
+            not os.path.exists(realpath):
+        util.SMlog("Path inconsistent")
+        pfx = "/dev/VG_XenStorage-%s/" % self.sr_uuid
+        for ty in ["LV","VHD"]:
+            p = pfx + ty + "-" + self.vdi_uuid
+            util.SMlog("Testing path: %s" % p)
+            if os.path.exists(p):
+                _mkphylink(self.sr_uuid, self.vdi_uuid, p)
+                phypath = p
+                if ty == "LV": vdi_type = "aio"
+                else: vdi_type = "vhd"
+
+def tapPause(session, args):
+    tap = Tapdisk(session, args)
+    return tap.Pause()
+
+def tapUnpause(session, args):
+    tap = Tapdisk(session, args)
+    return tap.Unpause()
+    
+def tapRefresh(session, args):
+    tap = Tapdisk(session, args)
+    if tap.Pause() != "True":
+        return str(False)
+    return tap.Unpause()
+    
+
+class Tapdisk:
+    def __init__(self, session, args):
+        self.sr_uuid = args["sr_uuid"]
+        self.vdi_uuid = args["vdi_uuid"]
+        self.session = session
+        self.path = os.path.join(TAPDEV_BACKPATH_PFX,self.sr_uuid,self.vdi_uuid)
+        self.phypath = os.path.join(TAPDEV_PHYPATH_PFX,self.sr_uuid,self.vdi_uuid)
+        self.lock = Lock("vdi", self.vdi_uuid)
+        self.realpath = None
+        self.vdi_type = None
+        self.secondary = None
+        if args.has_key("secondary"):
+            self.secondary = args["secondary"]
+        self.activate_parents = False
+        if args.get("activate_parents") == "true":
+            self.activate_parents = True
+
+    def _pathRefresh(self):
+        # LVM rename check
+        try:
+            realpath = os.readlink(self.phypath)
+        except OSError, e:
+            util.SMlog("Phypath %s does not exist" % self.phypath)
+            return            
+        util.SMlog("Realpath: %s" % realpath)
+        if realpath.startswith("/dev/VG_XenStorage-") and \
+                not os.path.exists(realpath):
+            util.SMlog("Path inconsistent")
+            pfx = "/dev/VG_XenStorage-%s/" % self.sr_uuid
+            for ty in ["LV","VHD"]:
+                p = pfx + ty + "-" + self.vdi_uuid
+                util.SMlog("Testing path: %s" % p)
+                if os.path.exists(p):
+                    _mkphylink(self.sr_uuid, self.vdi_uuid, p)
+                    self.realpath = p
+                    if ty == "LV": self.vdi_type = "aio"
+                    else: self.vdi_type = "vhd"
+        
+    @locking("VDIUnavailable")
+    def Pause(self):
+        util.SMlog("Pause for %s" % self.vdi_uuid)
+        if not os.path.exists(self.path):
+            util.SMlog("No %s: nothing to pause" % self.path)
+            return str(True)
+        self.major, self.minor = _getDevMajor_minor(self.path)
+        if self.major != blktap2.Tapdisk.major():
+            util.SMlog("Non-tap major number: %d" % self.major)
+            return str(False)
+        tapargs = {"minor":self.minor}
+        util.SMlog("Calling tap pause with minor %d" % self.minor)
+        tapdisk = blktap2.Tapdisk.get(**tapargs)
+        tapdisk.pause()
+        return str(True)
+
+    @locking("VDIUnavailable")
+    def Unpause(self):
+        util.SMlog("Unpause for %s" % self.vdi_uuid)
+        if not os.path.exists(self.path):
+            util.SMlog("No %s: nothing to unpause" % self.path)
+            return str(True)
+        self._pathRefresh()
+        self.major, self.minor = _getDevMajor_minor(self.path)    
+        if self.major != blktap2.Tapdisk.major():
+            util.SMlog("Non-tap major number: %d" % self.major)
+            return str(False)
+        if self.activate_parents:
+            util.SMlog("Activating parents of %s" % self.vdi_uuid)
+            vg_name = lvhdutil.VG_PREFIX + self.sr_uuid
+            ns = lvhdutil.NS_PREFIX_LVM + self.sr_uuid
+            lvm_cache = lvmcache.LVMCache(vg_name)
+            lv_name = lvhdutil.LV_PREFIX[vhdutil.VDI_TYPE_VHD] + self.vdi_uuid
+            vdi_list = vhdutil.getParentChain(lv_name,
+                    lvhdutil.extractUuid, vg_name)
+            for uuid, lv_name in vdi_list.iteritems():
+                if uuid == self.vdi_uuid:
+                    continue
+                lvm_cache.activate(ns, uuid, lv_name, False)
+
+        tapargs = {"minor":self.minor}
+        util.SMlog("Calling tap unpause with minor %d" % self.minor)
+        tapdisk = blktap2.Tapdisk.get(**tapargs)
+        tapdisk.unpause(self.vdi_type, self.realpath, self.secondary)
+        return str(True)
+
+
+if __name__ == "__main__":
+    XenAPIPlugin.dispatch({"pause": tapPause,
+                           "unpause": tapUnpause,
+                           "refresh": tapRefresh})

@@ -1,0 +1,108 @@
+#!/bin/bash
+#
+# Copyright (C) Citrix Systems Inc.
+#
+# This program is free software; you can redistribute it and/or modify 
+# it under the terms of the GNU Lesser General Public License as published 
+# by the Free Software Foundation; version 2.1 only.
+#
+# This program is distributed in the hope that it will be useful, 
+# but WITHOUT ANY WARRANTY; without even the implied warranty of 
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the 
+# GNU Lesser General Public License for more details.
+#
+# You should have received a copy of the GNU Lesser General Public License
+# along with this program; if not, write to the Free Software Foundation, Inc.,
+# 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
+#
+#	/etc/rc.d/init.d/snapwatchd
+#
+# Starts the snapshot watch daemon
+#
+# chkconfig: 2345 24 76
+# description: Manage the snapshot watch daemon
+# processname: snapwatchd
+# pidfile: /var/run/snapwatchd.pid
+
+DAEMON=/opt/xensource/sm/snapwatchd/snapwatchd
+prog=`basename $DAEMON`
+pidfile=/var/run/${prog}.pid
+
+# Source function library.
+. /etc/init.d/functions
+
+RETVAL=0
+
+#
+# See how we were called.
+#
+
+start() {
+	test -x $DAEMON || exit 5
+	if [ -f $pidfile ]; then
+	    pid=`cat $pidfile` 
+	    echo "$prog already running with pid $pid"
+	    return 0
+	fi
+	echo -n $"Starting $prog daemon: "
+	daemon $DAEMON -d
+	RETVAL=$?
+	if [ $RETVAL -eq 0 ]; then
+	    for i in `pidof python`; do
+		line=`ps -h -p $i -o pid,command 2> /dev/null`
+		echo $line | grep $prog > /dev/null
+		if [ $? -eq 0 ]; then
+		    echo $i > $pidfile
+		    break
+		fi
+	    done
+	    success $"$base startup"
+	else
+	    failure $"$base startup"
+	fi
+	echo
+	return $RETVAL
+}
+
+stop() {
+	echo -n $"Stopping $prog daemon: "
+	test -e $pidfile || exit 5
+	PID=`cat $pidfile`
+	kill $PID
+	RETVAL=$?
+	[ $RETVAL -eq 0 ] && rm -f $pidfile
+	[ $RETVAL -eq 0 ] && success $"$base stop" || failure $"$base stop"
+	echo
+	return $RETVAL
+}
+
+restart() {
+	stop
+	start
+}	
+
+case "$1" in
+start)
+	start
+	;;
+stop)
+	stop
+	;;
+restart)
+	restart
+	;;
+condrestart)
+	if [ -f $pidfile ]; then
+	    restart
+	fi
+	;;
+status)
+	status $prog
+	RETVAL=$?
+	;;
+*)
+	echo $"Usage: $0 {start|stop|status|restart|condrestart|reload}"
+	RETVAL=3
+esac
+
+exit $RETVAL

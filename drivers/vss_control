@@ -1,0 +1,84 @@
+#!/usr/bin/python
+#
+# Copyright (C) Citrix Systems Inc.
+#
+# This program is free software; you can redistribute it and/or modify 
+# it under the terms of the GNU Lesser General Public License as published 
+# by the Free Software Foundation; version 2.1 only.
+#
+# This program is distributed in the hope that it will be useful, 
+# but WITHOUT ANY WARRANTY; without even the implied warranty of 
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the 
+# GNU Lesser General Public License for more details.
+#
+# You should have received a copy of the GNU Lesser General Public License
+# along with this program; if not, write to the Free Software Foundation, Inc.,
+# 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
+#
+# A plugin which is called to enable/disable VSS based quiesced VSS snapshots
+# for a particular VM.
+
+import os
+import sys
+import XenAPIPlugin
+sys.path.append("/opt/xensource/sm/")
+sys.path.append("/opt/xensource/sm/snapwatchd/")
+import util
+import xslib
+import time 
+
+def Print(message):
+    util.SMlog("vss_control - " + message)
+    
+def enable(session, args):
+    retVal = 'False'
+    Print("Entering vss_control enable with args: %s" % args)
+    try:
+	vm = args["vm-uuid"]
+	vm_ref = session.xenapi.VM.get_by_uuid(vm)
+	
+	# set the vm-data/allowvssprovider for the VM to true in XenCenter
+	domid = session.xenapi.VM.get_domid(vm_ref)
+        Print("Got the domain id as: %s" % domid)
+        xsh = xslib.xs_daemon_open()
+        xslib.setval(xsh, "/local/domain/%s/vm-data/allowvssprovider" % domid, "true")	
+	
+	# also set the xenstore-data parameter in the VM record, so the next time the VM reboots
+	# this setting is retained.
+	session.xenapi.VM.remove_from_xenstore_data(vm_ref, "vm-data/allowvssprovider")
+	session.xenapi.VM.add_to_xenstore_data(vm_ref, "vm-data/allowvssprovider", "true")	
+	retVal = 'True'
+	
+    except Exception, e:
+        retval = ("vss_control enable. Error: %s" % str(e))        
+    
+    return retVal
+
+def disable(session, args):
+    retVal = 'False'
+    Print("Entering vss_control disable with args: %s" % args)
+    try:
+	vm = args["vm-uuid"]
+	vm_ref = session.xenapi.VM.get_by_uuid(vm)
+	
+	# set the vm-data/allowvssprovider for the VM to false in XenCenter
+	domid = session.xenapi.VM.get_domid(vm_ref)
+        Print("Got the domain id as: %s" % domid)
+        xsh = xslib.xs_daemon_open()
+        xslib.setval(xsh, "/local/domain/%s/vm-data/allowvssprovider" % domid, "false")
+	
+	# set the xenstore-data parameter in the VM record.
+	session.xenapi.VM.remove_from_xenstore_data(vm_ref, "vm-data/allowvssprovider")
+	session.xenapi.VM.add_to_xenstore_data(vm_ref, "vm-data/allowvssprovider", "false")	
+	retVal = 'True'
+        
+    except Exception, e:
+        retval = ("vss_control disable. Error: %s" % str(e))    
+
+    return retVal
+
+if __name__ == "__main__":
+    Print("Entering vss_control")
+    XenAPIPlugin.dispatch({"enable": enable,
+			  "disable": disable})
+

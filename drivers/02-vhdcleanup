@@ -1,0 +1,77 @@
+#!/bin/sh
+#
+# Copyright (C) Citrix Systems Inc.
+#
+# This program is free software; you can redistribute it and/or modify 
+# it under the terms of the GNU Lesser General Public License as published 
+# by the Free Software Foundation; version 2.1 only.
+#
+# This program is distributed in the hope that it will be useful, 
+# but WITHOUT ANY WARRANTY; without even the implied warranty of 
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the 
+# GNU Lesser General Public License for more details.
+#
+# You should have received a copy of the GNU Lesser General Public License
+# along with this program; if not, write to the Free Software Foundation, Inc.,
+# 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
+#
+# on-master-start script to adjust VHD-cleanup setup when master changes
+
+# Source function library.
+. /etc/init.d/functions
+
+CLEANUP_SCRIPT="/opt/xensource/sm/cleanup.py"
+LVHD_UTIL_SCRIPT="/opt/xensource/sm/lvhdutil.py"
+
+start() {
+    echo -n $"Fixing refcounts on new master: "
+    for type in lvhdoiscsi lvhdohba lvmoiscsi lvmohba; do
+        srUuids=`xe sr-list type=$type params=uuid --minimal | sed "s/,/ /g"`
+        for uuid in $srUuids; do
+            python $LVHD_UTIL_SCRIPT fixrefcounts $uuid
+            # do a scan to handle any journaled interrupted operations:
+            # VDI inflate, VHD ops, VDI.clone
+            xe sr-scan uuid=$uuid
+            # kick off GC in case there is already work to do
+            $CLEANUP_SCRIPT -u $uuid -g
+        done
+    done
+	echo -n $"OK"
+	success $"OK"
+	echo
+	return 0
+}
+
+stop() {
+    echo -n $"Aborting running cleaners: "
+    for type in lvhd lvhdoiscsi lvhdohba ext nfs lvm lvmoiscsi lvmohba; do
+        srUuids=`xe sr-list type=$type params=uuid --minimal | sed "s/,/ /g"`
+        for uuid in $srUuids; do
+            $CLEANUP_SCRIPT -u $uuid -a
+        done
+    done
+	echo -n $"OK"
+	success $"OK"
+	echo
+	return 0
+}
+
+restart() {
+	stop
+	start
+}
+
+case "$1" in
+  start)
+	start
+	;;
+  stop)
+	stop
+	;;
+  restart)
+	restart
+	;;
+  *)
+	echo $"Usage: $0 {start|stop|restart}"
+	exit 1
+esac

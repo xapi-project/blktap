@@ -1,0 +1,53 @@
+All test*.sh files are test scripts. The rest files contain auxiliary functionality (TODO verify). Try to keep the list of files sorted. TODO create separate directories for tests and for auxiliary files.
+
+biotest.c: asynchronously writes & verifies blocks on a device (and file maybed?). TODO can be replaced by badblocks, xdd, etc.
+
+equal_functions: Dell EqualLogic auxiliary functions. Largely empty. 
+
+extoiscsi_functions.sh: EXToiSCSI auxiliary functions. Largely empty. Unused.
+
+faultinjection/: Doesn't compile. TODO investigate more.
+
+file_config.sh: Empty. Unused.
+
+file_functions.sh: Largely unimplemented. Unused.
+
+globals.sh: Contains variable definitions and imports all other auxiliary files.
+
+liscsi_config.sh: What's the "l" in front of iSCSI? Used by test_iscsi_refcount.sh.
+
+lvhd_functions.sh: Contains LVHD functionality, mostly empty. Unused.
+
+lvhd_test/: Does have code. It looks nobody uses it (neither sm.hg/tests nor xenrt.hg/).
+
+lvm_functions.sh: LVM auxiliary functions. Unused.
+
+lvmohba_functions: LVMoHBA functions. Largely empty. Unused.
+
+lvmoiscsi_functions.sh: LVMoiSCSI auxiliary functions. Largely empty. Unused.
+
+netapp_functions.sh: NetApp auxiliary functions. Largely empty. Unused.
+
+nfs_config.sh: Empty. Unused.
+
+nfs_functions.sh: NFS auxiliary functions, mostly empty. Unused.
+
+parallelise_stress_tests.py: unused
+
+performance_functions.sh: auxiliary functions, wrappers for bonni, postmark, etc.
+
+sshutil_test.py: basic EqualLogic tests, lots of hard-coded values, not referenced in xenrt.hg.
+
+test1.sh: Basic tests (SR/VDI create/destroy, integrity/performance/stress testssnapshots)
+
+test_dcopy.sh:
+
+test_iscsi_refcount.sh: iSCSI reference counting tests.
+
+test_iteration.sh: simple tests (create/destroy SR/VDI/VBD, plug/unplug VBDs)
+
+test_pool_vdi.sh: attach/detach & delete at random, with basic FS tests in between.
+
+test_stress_fs.sh: sfx and postmark on concurent VMs
+
+XE_api_library.sh: Sources globals.sh. TODO add rest

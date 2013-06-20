@@ -1,0 +1,76 @@
+#!/bin/bash
+#
+#	/etc/rc.d/init.d/mpathroot
+#
+# Update multipath info if we are running on multipath root.
+# NB this really should be some kind of multipath management daemon
+#
+# chkconfig: 2345 24 76
+# description: Manage the multipath root initial state
+
+# Source function library.
+. /etc/init.d/functions
+
+# Keep this in sync with init.d/xapi:
+XAPI_INIT_COMPLETE_COOKIE=/var/run/xapi_init_complete.cookie
+
+TAG=mpathroot
+
+wait_for_xapi() {
+    MAX_RETRIES=300
+    RETRY=0
+    logger -t "${TAG}" "Waiting for xapi to signal init complete"
+    while [ ${RETRY} -lt ${MAX_RETRIES} ]; do
+        if [ -e "${XAPI_INIT_COMPLETE_COOKIE}" ]; then
+            logger -t "${TAG}" "detected xapi init complete after ${RETRY} / ${MAX_RETRIES} s"
+            return 0
+        fi
+        sleep 1
+		echo -n "."
+        RETRY=$(( ${RETRY} + 1 ))
+    done
+    logger -t "${TAG}" "failed to detect xapi init complete after ${MAX_RETRIES}s"
+    echo "failed to detect xapi init complete after ${MAX_RETRIES}s"
+    return 1
+}
+
+start() {
+	ROOT_PART_MAJOR=$(stat --format=%t /dev/root)
+	DEVICE_MAPPER_MAJOR=$(sed -ne 's/^\([0-9]\+\) device-mapper$/\1/p' /proc/devices)
+	DEVICE_MAPPER_MAJOR_HEX=$(printf "%x" ${DEVICE_MAPPER_MAJOR})
+	if [ "$ROOT_PART_MAJOR" == "$DEVICE_MAPPER_MAJOR_HEX" ] ; then
+		logger -t "${TAG}" "Updating multipath root status"
+		echo -n $"Updating multipath root status: "
+		if wait_for_xapi; then
+		    /opt/xensource/sm/mpathcount.py
+			success $"OK"
+			exit 0
+		else
+			failure $"failed to contact xapi"
+			exit 1
+		fi
+    else
+		logger -t "${TAG}" "This system is not running a multipath root, so no status update required"
+		exit 0
+	fi
+}
+
+restart() {
+	start
+}	
+
+case "$1" in
+start)
+	start
+	;;
+stop)
+	;;
+restart)
+	restart
+	;;
+*)
+	echo $"Usage: $0 {start|stop|restart}"
+	exit 3
+esac
+
+exit 4

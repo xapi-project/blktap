@@ -1,0 +1,11 @@
+This directory contains unit tests for the Storage Manager, using the standard Python unit tests framework (unittest). The file structure is very tentative.
+
+To add a new unit test, have a look at vdi_tests.py. Also, you MUST add the new test case in rununittests.py.
+
+The build target "smunittests.tar" is currently unused, it's a placeholder
+for moving the unit tests out of the tests/ directory some time in the future.
+
+To run a specific unit test:
+./<test> <test params> <class>.<method>
+E.g:
+./vdi_tests.py <VM UUID> VDIBasicTest.test_attach_simultaneously

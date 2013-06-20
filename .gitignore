@@ -1,0 +1,11 @@
+.pc
+*~
+*.orig
+*.o
+*.swp
+*.pyc
+tests/faultinjection/pfilter
+tests/faultinjection/libipq.c
+tests/faultinjection/libipq/libipq.h
+*SR
+unittests/unittest.log

@@ -1,0 +1,101 @@
+#!/usr/bin/python
+#
+# Copyright (C) Citrix Systems Inc.
+#
+# This program is free software; you can redistribute it and/or modify 
+# it under the terms of the GNU Lesser General Public License as published 
+# by the Free Software Foundation; version 2.1 only.
+#
+# This program is distributed in the hope that it will be useful, 
+# but WITHOUT ANY WARRANTY; without even the implied warranty of 
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the 
+# GNU Lesser General Public License for more details.
+#
+# You should have received a copy of the GNU Lesser General Public License
+# along with this program; if not, write to the Free Software Foundation, Inc.,
+# 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
+#
+# A plugin for synchronizing slaves when something changes on the Master
+
+import sys
+import XenAPIPlugin
+sys.path.append("/opt/xensource/sm/")
+import util
+import lock
+from lvmcache import LVMCache
+
+def multi(session, args):
+    """Perform several actions in one call (to save on round trips)"""
+    util.SMlog("on-slave.multi: %s" % args)
+    vgName = args["vgName"]
+    lvmCache = LVMCache(vgName)
+    i = 1
+    while True:
+        action = args.get("action%d" % i)
+        if not action:
+            break
+        util.SMlog("on-slave.action %d: %s" % (i, action))
+        if action == "activate":
+            lvmCache.activate(args["ns%d" % i], args["uuid%d" % i],
+                    args["lvName%d" % i], False)
+        elif action == "deactivate":
+            try:
+                lvmCache.deactivate(args["ns%d" % i], args["uuid%d" % i],
+                        args["lvName%d" % i], False)
+            except util.SMException:
+                util.SMlog("on-slave.deactivate failed")
+        elif action == "activateNoRefcount":
+            lvmCache.activateNoRefcount(args["lvName%d" % i])
+        elif action == "deactivateNoRefcount":
+            try:
+                lvmCache.deactivateNoRefcount(args["lvName%d" % i])
+            except util.SMException:
+                util.SMlog("on-slave.deactivateNoRefcount failed")
+        elif action == "refresh":
+            lvmCache.activateNoRefcount(args["lvName%d" % i], True)
+        elif action == "cleanupLock":
+            lock.Lock.cleanup(args["uuid%d" % i], args["ns%d" % i])
+        else:
+            raise util.SMException("unrecognized action: %s" % action)
+        i += 1
+    return str(True)
+
+def _is_open(session, args):
+    """Check if VDI <args["vdiUuid"]> is open by a tapdisk on this host"""
+    import SRCommand, SR, NFSSR, EXTSR, LVHDSR, blktap2
+
+    util.SMlog("on-slave.is_open: %s" % args)
+    vdiUuid = args["vdiUuid"]
+    srRef = args["srRef"]
+    srRec = session.xenapi.SR.get_record(srRef)
+    srType = srRec["type"]
+
+    # FIXME: ugly hacks to create a VDI object without a real SRCommand to 
+    # avoid having to refactor the core files
+    if srType.startswith("lvm"):
+        srType = "lvhd"
+    cmd = SRCommand.SRCommand(None)
+    cmd.driver_info = {"capabilities": None}
+    cmd.dconf = {"server": None, "device": "/HACK"}
+    cmd.params = {"command": None}
+
+    driver = SR.driver(srType)
+    sr = driver(cmd, srRec["uuid"])
+    vdi = sr.vdi(vdiUuid)
+    tapdisk = blktap2.Tapdisk.find_by_path(vdi.path)
+    util.SMlog("Tapdisk for %s: %s" % (vdi.path, tapdisk))
+    if tapdisk:
+        return "True"
+    return "False"
+
+def is_open(session, args):
+    try:
+        return _is_open(session, args)
+    except:
+        util.logException("is_open")
+        raise
+
+if __name__ == "__main__":
+    XenAPIPlugin.dispatch({
+        "multi": multi,
+        "is_open": is_open})

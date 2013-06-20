@@ -1,0 +1,65 @@
+#!/usr/bin/python
+#
+# Copyright (C) Citrix Systems Inc.
+#
+# This program is free software; you can redistribute it and/or modify 
+# it under the terms of the GNU Lesser General Public License as published 
+# by the Free Software Foundation; version 2.1 only.
+#
+# This program is distributed in the hope that it will be useful, 
+# but WITHOUT ANY WARRANTY; without even the implied warranty of 
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the 
+# GNU Lesser General Public License for more details.
+#
+# You should have received a copy of the GNU Lesser General Public License
+# along with this program; if not, write to the Free Software Foundation, Inc.,
+# 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
+#
+# A plugin for synchronizing slaves when something changes on the Master
+
+import sys; sys.path.append("/opt/xensource/sm/")
+import util
+import os, glob, errno, re
+
+class NfsCheckException(Exception):
+    def __init__(self, path, pid, fd):
+        self.path = path
+        self.pid  = pid
+        self.fd   = fd
+        try:
+            self.exe = os.readlink("/proc/%d/exe" % pid)
+        except:
+            self.exe = None
+
+    def __str__(self):
+        return "File %s in use by pid %d (%s), fd %d" % \
+            (self.path, self.pid, self.exe, self.fd)
+
+    @classmethod
+    def fromProcFS(cls, path, target):
+        head, tail = os.path.split(path)
+        fd  = int(tail)
+        head, tail = os.path.split(os.path.dirname(head))
+        pid = int(tail)
+        return cls(target, pid, fd)
+
+def check(session, path):
+
+    util.SMlog("nfs-on-slave.check(%s)" % path)
+
+    ofds = glob.glob("/proc/[0-9]*/fd/*")
+    for ofd in ofds:
+        try:
+            target = os.readlink(ofd)
+            if target == path:
+                raise NfsCheckException.fromProcFS(ofd, target)
+        except OSError, e:
+            if e.errno == errno.ENOENT: continue
+            raise
+
+    return str(True)
+
+if __name__ == "__main__":
+    table = { "check": lambda session, args: check(session, args['path']) }
+    import XenAPIPlugin
+    XenAPIPlugin.dispatch(table)

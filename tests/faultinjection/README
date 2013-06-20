@@ -1,0 +1,28 @@
+
+Building pfilter
+==========================================================================
+
+The Makefile will build a 32-bit static binary which can be readily
+copied over to a running XenServer installation.
+
+The Makefile will download original libipq sources from the netfilter
+SVN and build them in place.
+
+The original libipq for which this tool was programmed is presently
+obsolescent. The newer libnetfilter_queue aims to provide a drop-in
+replacement. The libnetfilter code is based on nfnetlink_queue
+(CONFIG_NETFILTER_NETLINK_QUEUE) rather than the original ip_queue
+module (CONFIG_IP_NF_QUEUE). At least as of version 0.0.13, this does
+not appear to work very well.
+
+Running pfilter
+==========================================================================
+
+[wim@build ~]# make
+[wim@build ~]# scp pfilter root@tst05:/usr/sbin/pfilter
+
+[root@tst05 ~]# /usr/sbin/pfilter
+[root@tst05 ~]# iptables -A INPUT -s 172.24.0.100 -j QUEUE
+
+.... captures all packets from 172.24.0.100 for interception via ip_queue
+place pfilter as /usr/sbin/pfilter and invoke as /usr/sbin/pfilter

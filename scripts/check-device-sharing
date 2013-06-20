@@ -1,0 +1,53 @@
+#!/usr/bin/python
+#
+# Copyright (C) Citrix Systems Inc.
+#
+# This program is free software; you can redistribute it and/or modify 
+# it under the terms of the GNU Lesser General Public License as published 
+# by the Free Software Foundation; version 2.1 only.
+#
+# This program is distributed in the hope that it will be useful, 
+# but WITHOUT ANY WARRANTY; without even the implied warranty of 
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the 
+# GNU Lesser General Public License for more details.
+#
+# You should have received a copy of the GNU Lesser General Public License
+# along with this program; if not, write to the Free Software Foundation, Inc.,
+# 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
+#
+# Check a simple sharing constaint for dom0 devices before automatically
+# creating read/write devices in the udevSR: If attempting to create a
+# read/write VDI, make sure device can be opened O_EXCL | O_WRONLY <- this
+# should catch mounted filesystems/ in-use (eg root) devices
+
+import os, sys
+
+if __name__ == "__main__":
+    if len(sys.argv) != 2:
+        print "Usage:"
+        print "    %s <device>" % (sys.argv[0])
+        print "    -- return zero if the device (eg 'sda' 'sdb') is not in-use; non-zero otherwise"
+        sys.exit(2)
+
+    device = sys.argv[1]
+
+    # Don't assume /dev node exists: read the major/minor from sysfs and create
+    # a temporary device node. This allows the script to work when called from a udev rule.
+    dev = "/sys/block/%s/dev" % device
+    f = open(dev, "r")
+    major_minor = f.readlines()[0].split(":")
+    f.close()
+
+    # Need to create this in /dev since this is the only writable file system
+    # during the boot process when the udev rules are triggered
+    tmpdev = "/dev/check-%s.%d" % (device, os.getpid())
+    try:
+        try:
+            # Create a temporary device node so we can attempt to open it (exclusively)
+            os.system("/bin/mknod %s b %s %s" % (tmpdev, major_minor[0], major_minor[1]))
+            f = os.open(tmpdev, os.O_WRONLY | os.O_EXCL, 0)
+            os.close(f)
+        except:
+            sys.exit(1)
+    finally:
+        os.unlink(tmpdev)

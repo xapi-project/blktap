@@ -1,0 +1,60 @@
+#!/usr/bin/python
+#
+# Copyright (C) Citrix Systems Inc.
+#
+# This program is free software; you can redistribute it and/or modify 
+# it under the terms of the GNU Lesser General Public License as published 
+# by the Free Software Foundation; version 2.1 only.
+#
+# This program is distributed in the hope that it will be useful, 
+# but WITHOUT ANY WARRANTY; without even the implied warranty of 
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the 
+# GNU Lesser General Public License for more details.
+#
+# You should have received a copy of the GNU Lesser General Public License
+# along with this program; if not, write to the Free Software Foundation, Inc.,
+# 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
+#
+# Clean up old IntelliCache files
+
+import sys
+import XenAPIPlugin
+sys.path.append("/opt/xensource/sm/")
+import util
+import cleanup
+
+def clean(session, hours_old, sr_uuid = None):
+    """Delete all IntelliCache cache files that are not in use and are at 
+    least <hours_old> hours old in SR <sr_uuid>, or in all local SRs on this 
+    host if sr_uuid is not specified.
+    """
+    sr_uuids = []
+    if sr_uuid:
+        sr_ref = session.xenapi.SR.get_by_uuid(sr_uuid)
+        sr_rec = session.xenapi.SR.get_record(sr_ref)
+        if sr_rec["type"] != "ext":
+            raise util.SMException("Wrong SR type: %s != ext" % sr_rec["type"])
+        sr_uuids.append(sr_uuid)
+    else:
+        sr_recs = session.xenapi.SR.get_all_records_where(
+                'field "type" = "ext"')
+        for sr_ref, sr_rec in sr_recs.iteritems():
+            sr_uuids.append(sr_rec["uuid"])
+
+    ret = ""
+    for sr_uuid in sr_uuids:
+        numRemoved = cleanup.cache_cleanup(session, sr_uuid, hours_old)
+        ret += "Removed %s caches in SR %s\n" % (numRemoved, sr_uuid)
+    return ret
+
+def dispatch_clean(session, args):
+    hours_old = int(args["hours_old"])
+    sr_uuid = args.get("sr_uuid")
+    try:
+        return clean(session, hours_old, sr_uuid)
+    except:
+        util.logException("intellicache-clean")
+        return "Error: logs in /var/log/SMlog"
+
+if __name__ == "__main__":
+    XenAPIPlugin.dispatch({ "clean": dispatch_clean })

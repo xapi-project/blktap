@@ -1,0 +1,9 @@
+Code improvements:
+- use "set -u"
+- check for function failure using "func || my_exit"
+- use main()
+- files are read peculiarly
+- free/in use list reimplemented in multiple files
+- declare variables local, read only, etc
+- get rid of globals
+- move common functions to a single file
