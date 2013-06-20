@@ -125,8 +125,6 @@ install:
 	install -m 755 -d $(SM_STAGING)$(CRON_DEST)
 	install -m 644 $(CRON_JOBS:%=etc/cron.d/%) -t $(SM_STAGING)$(CRON_DEST)
 	ln -sf $(SM_DEST)lcache.py $(SM_STAGING)$(BIN_DEST)tapdisk-cache-stats
-	cp -rf XenCert $(SM_STAGING)$(DEBUG_DEST)
-	cp -rf diskdatatest/diskdatatest $(SM_STAGING)$(DEBUG_DEST)/XenCert/diskdatatest
 
 .PHONY: clean
 clean:
