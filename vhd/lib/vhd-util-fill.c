@@ -43,6 +43,10 @@
 
 #include "libvhd.h"
 
+#ifndef ULLONG_MAX
+#define ULLONG_MAX (~0ULL)
+#endif
+
 int
 vhd_init_bitmap(vhd_context_t *ctx, const uint32_t block)
 {
