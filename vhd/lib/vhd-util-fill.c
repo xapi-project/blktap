@@ -105,7 +105,7 @@ int
 vhd_io_allocate_blocks_fast(vhd_context_t *ctx, const uint32_t from_extent,
 		const uint32_t to_extent, const bool ignore_2tb_limit)
 {
-	off64_t off, max;
+	off64_t max;
 	int err, gap;
 	int i = 0;
 	int spp = getpagesize() >> VHD_SECTOR_SHIFT;
@@ -118,7 +118,6 @@ vhd_io_allocate_blocks_fast(vhd_context_t *ctx, const uint32_t from_extent,
 		return err;
 
 	gap   = 0;
-	off   = max;
 	max >>= VHD_SECTOR_SHIFT;
 
 	/* data region of segment should begin on page boundary */
@@ -206,7 +205,9 @@ vhd_util_fill(int argc, char **argv)
 
 	if (from_sector != ULLONG_MAX && to_sector != ULLONG_MAX) {
 		if (to_sector < from_sector) {
-			printf("invalid sector range %llu-%llu\n", from_sector, to_sector);
+			printf("invalid sector range %llu-%llu\n",
+					(unsigned long long)from_sector,
+					(unsigned long long)to_sector);
 			goto usage;
 		}
 	}
