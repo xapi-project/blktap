@@ -1144,7 +1144,9 @@ fistpoint = FistPoint( ["LVHDRT_finding_a_suitable_pair",
                         "LVHDRT_coaleaf_delay_2",
                         "LVHDRT_coaleaf_delay_3",
                         "testsm_clone_allow_raw",
-                        "xenrt_default_vdi_type_legacy"] )
+                        "xenrt_default_vdi_type_legacy",
+                        "blktap_activate_inject_failure",
+                        "blktap_activate_error_handling"] )
 
 def set_dirty(session, sr):
     try:
@@ -1575,6 +1577,9 @@ def splitXmlText( xmlData, segmentLen = DEFAULT_SEGMENT_LEN, showContd = False )
     returnData += remainingData
 
     return returnData
+
+def inject_failure():
+    raise Exception('injected failure')
 
 def open_atomic(path, mode=None):
     """Atomically creates a file if, and only if it does not already exist.
