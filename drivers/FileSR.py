@@ -326,7 +326,9 @@ class FileSR(SR.SR):
         if not lockRunning.acquireNoblock():
             if cleanup.should_preempt(self.session, self.uuid):
                 util.SMlog("Aborting currently-running coalesce of garbage VDI")
-                cleanup.abort(self.uuid)
+                if not cleanup.abort(self.uuid, soft=True):
+                    util.SMlog("The GC has already been scheduled to re-start") 
+                    return
             else:
                 util.SMlog("A GC instance already running, not kicking")
                 return

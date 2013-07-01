@@ -1613,3 +1613,29 @@ def splitXmlText( xmlData, segmentLen = DEFAULT_SEGMENT_LEN, showContd = False )
 
 def inject_failure():
     raise Exception('injected failure')
+
+def open_atomic(path, mode=None):
+    """Atomically creates a file if, and only if it does not already exist.
+    Leaves the file open and returns the file object.
+
+    path: the path to atomically open
+    mode: "r" (read), "w" (write), or "rw" (read/write)
+    returns: an open file object"""
+
+    assert path
+
+    flags = os.O_CREAT | os.O_EXCL
+    modes = {'r': os.O_RDONLY, 'w': os.O_WRONLY, 'rw': os.O_RDWR}
+    if mode:
+        if mode not in modes:
+            raise Exception('invalid access mode ' + mode)
+        flags |= modes[mode]
+    fd = os.open(path, flags)
+    try:
+        if mode:
+            return os.fdopen(fd, mode)
+        else:
+            return os.fdopen(fd)
+    except:
+        os.close(fd)
+        raise

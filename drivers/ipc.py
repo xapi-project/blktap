@@ -19,7 +19,7 @@
 
 import os
 import util
-
+import errno
 
 class IPCFlagException(util.SMException):
     pass
@@ -41,18 +41,34 @@ class IPCFlag:
         if not util.pathexists(self.nsDir):
             raise IPCFlagException("failed to create %s" % self.nsDir)
 
-    def set(self, name):
-        """Set the flag"""
-        if self.test(name):
+    def set(self, name, soft=False):
+        """Set the flag
+
+        name: the file to set
+        soft: If set to False and the file gets created while this function is
+        trying to set create, the file MAY be overwritten.
+
+        returns: True if the file is written, False otherwise."""
+        if not soft and self.test(name): # XXX this is broken!
             return
         flagFile = os.path.join(self.nsDir, name)
         try:
-            f = open(flagFile, "w")
+            if soft:
+                f = util.open_atomic(flagFile, "w")
+            else:
+                f = open(flagFile, "w")
             f.write("%s\n" % os.getpid())
             f.close()
             util.SMlog("IPCFlag: set %s:%s" % (self.ns, name))
-        except IOError:
-            raise IPCFlagException("failed to create %s" % flagFile)
+            return True
+        except OSError, e:
+            if e.errno == errno.EEXIST and soft:
+                return False
+            else:
+                raise IPCFlagException("failed to create %s: %s" \
+                        % (flagFile, e))
+        except IOError, e:
+            raise IPCFlagException("failed to create %s: %s" % (flagFile, e))
 
     def test(self, name):
         """Test the flag"""

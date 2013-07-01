@@ -2466,16 +2466,24 @@ def _gc(session, srUuid, dryRun):
         sr.logFilter.logState()
         del sr.xapi
 
-def _abort(srUuid):
-    """If successful, we return holding lockRunning; otherwise exception
-    raised."""
+def _abort(srUuid, soft=False):
+    """Aborts an GC/coalesce.
+
+    srUuid: the UUID of the SR whose GC/coalesce must be aborted
+    soft: If set to True and there is a pending abort signal, the function
+    doesn't do anything. If set to False, a new abort signal is issued.
+
+    returns: If soft is set to False, we return True holding lockRunning. If
+    soft is set to False and an abort signal is pending, we return False
+    without holding lockRunning. An exception is raised in case of error."""
     Util.log("=== SR %s: abort ===" % (srUuid))
     init(srUuid)
     if not lockRunning.acquireNoblock():
         gotLock = False
         Util.log("Aborting currently-running instance (SR %s)" % srUuid)
         abortFlag = IPCFlag(srUuid)
-        abortFlag.set(FLAG_TYPE_ABORT)
+        if not abortFlag.set(FLAG_TYPE_ABORT, soft):
+            return False
         for i in range(SR.LOCK_RETRY_ATTEMPTS):
             gotLock = lockRunning.acquireNoblock()
             if gotLock:
@@ -2485,6 +2493,7 @@ def _abort(srUuid):
         if not gotLock:
             raise util.SMException("SR %s: error aborting existing process" % \
                     srUuid)
+    return True
 
 def init(srUuid):
     global lockRunning
@@ -2530,12 +2539,15 @@ Debug:
 #
 #  API
 #
-def abort(srUuid):
+def abort(srUuid, soft=False):
     """Abort GC/coalesce if we are currently GC'ing or coalescing a VDI pair.
     """
-    _abort(srUuid)
-    Util.log("abort: releasing the process lock")
-    lockRunning.release()
+    if _abort(srUuid, soft):
+        Util.log("abort: releasing the process lock")
+        lockRunning.release()
+        return True
+    else:
+        return False
 
 def gc(session, srUuid, inBackground, dryRun = False):
     """Garbage collect all deleted VDIs in SR "srUuid". Fork & return 
