@@ -5,7 +5,8 @@ PREFIX ?= /opt/xensource/sm/snapwatchd
 INITDIR ?= /etc/rc.d/init.d
 DESTDIR ?= 
 
-PYTHON_INCLUDE ?= /usr/include/python2.4
+PYTHON_INCLUDE_DEFAULT := $(dir $(shell find /usr/include/ -maxdepth 2 -path \*/python\*/Python.h -type f | head -1))
+PYTHON_INCLUDE ?= $(PYTHON_INCLUDE_DEFAULT)
 
 CFLAGS ?= -O2
 CFLAGS += -I$(PYTHON_INCLUDE) -I$(XS_INCLUDE)
