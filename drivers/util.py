@@ -1166,7 +1166,9 @@ fistpoint = FistPoint( ["LVHDRT_finding_a_suitable_pair",
                         "LVHDRT_coaleaf_delay_2",
                         "LVHDRT_coaleaf_delay_3",
                         "testsm_clone_allow_raw",
-                        "xenrt_default_vdi_type_legacy"] )
+                        "xenrt_default_vdi_type_legacy",
+                        "blktap_activate_inject_failure",
+                        "blktap_activate_error_handling"] )
 
 def set_dirty(session, sr):
     try:
@@ -1598,3 +1600,5 @@ def splitXmlText( xmlData, segmentLen = DEFAULT_SEGMENT_LEN, showContd = False )
 
     return returnData
 
+def inject_failure():
+    raise Exception('injected failure')
