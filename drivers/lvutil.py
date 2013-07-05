@@ -35,7 +35,7 @@ import vhdutil
 
 MDVOLUME_NAME = 'MGT'
 VDI_UUID_TAG_PREFIX = 'vdi_'
-LVM_BIN = "/usr/sbin"
+LVM_BIN = os.path.isfile('/sbin/lvdisplay') and '/sbin' or '/usr/sbin'
 CMD_VGS       = os.path.join(LVM_BIN, "vgs")
 CMD_VGCREATE  = os.path.join(LVM_BIN, "vgcreate")
 CMD_VGREMOVE  = os.path.join(LVM_BIN, "vgremove")
