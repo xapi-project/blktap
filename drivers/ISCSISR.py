@@ -630,7 +630,9 @@ class ISCSISR(SR.SR):
             subentry.appendChild(textnode)
 
             try:
-                (addr, port) = iscsilib.parse_IP_port(address)
+                # We always expect a port so this holds
+                # regardless of IP version
+                (addr, port) = address.rsplit(':', 1)
             except:
                 addr = address
                 port = DEFAULT_PORT
