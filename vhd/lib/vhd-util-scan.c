@@ -36,6 +36,7 @@
 #include "list.h"
 #include "libvhd.h"
 #include "lvm-util.h"
+#include "canonpath.h"
 
 #define VHD_SCAN_FAST        0x01
 #define VHD_SCAN_PRETTY      0x02
@@ -446,7 +447,7 @@ copy_name(char *dst, const char *src)
 }
 
 /*
- * LVHD stores realpath(parent) in parent locators, so
+ * LVHD stores canonpath(parent) in parent locators, so
  * /dev/<vol-group>/<lv-name> becomes /dev/mapper/<vol--group>-<lv--name>
  */
 static int
@@ -749,7 +750,7 @@ vhd_util_scan_open(vhd_context_t *vhd, struct vhd_image *image)
 	else {
 		char __image_name[PATH_MAX];
 
-		image->name = realpath(target->name, __image_name);
+		image->name = canonpath(target->name, __image_name);
 		if (image->name)
 			image->name = strdup(__image_name);
 		if (!image->name) {
