@@ -87,8 +87,6 @@ install:
 	for i in $(SM_LIBS); do \
 	  install -m 755 drivers/$$i.py \
 	    $(SM_STAGING)$(SM_DEST); done
-	install -m 755 drivers/mpathHBA \
-	  $(SM_STAGING)$(SM_DEST)
 	for i in $(SM_DRIVERS); do \
 	  install -m 755 drivers/$${i}SR.py \
 	    $(SM_STAGING)$(SM_DEST); done

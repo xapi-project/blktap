@@ -153,7 +153,6 @@ rm -rf $RPM_BUILD_ROOT
 /opt/xensource/sm/srmetadata.py
 /opt/xensource/sm/srmetadata.pyc
 /opt/xensource/sm/srmetadata.pyo
-/opt/xensource/sm/mpathHBA
 /opt/xensource/sm/mpath_cli.py
 /opt/xensource/sm/mpath_cli.pyc
 /opt/xensource/sm/mpath_cli.pyo
