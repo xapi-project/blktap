@@ -220,12 +220,12 @@ def activate():
         
     # Start the updatempppathd daemon
     if not _is_mpp_daemon_running():
-        cmd = ["/etc/init.d/updatempppathd", "start"]
+        cmd = ["service", "updatempppathd", "start"]
         util.pread2(cmd)
 
     if not _is_mpath_daemon_running():
         util.SMlog("Warning: multipath daemon not running.  Starting daemon!")
-        cmd = ["/etc/init.d/multipathd", "start"]
+        cmd = ["service", "multipathd", "start"]
         util.pread2(cmd)
 
     for i in range(0,120):
@@ -244,7 +244,7 @@ def deactivate():
 
     # Stop the updatempppathd daemon
     if _is_mpp_daemon_running():
-        cmd = ["/etc/init.d/updatempppathd", "stop"]
+        cmd = ["service", "updatempppathd", "stop"]
         util.pread2(cmd)
 
     if _is_mpath_daemon_running():
