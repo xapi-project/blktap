@@ -574,7 +574,7 @@ class LVHDSR(SR.SR):
                 success = False
                     
         # now remove the directory where the symlinks are
-        # this should pass as the directry should be empty by now
+        # this should pass as the directory should be empty by now
         if success:
             try:
                 if util.pathexists(self.path):
