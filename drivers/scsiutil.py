@@ -140,7 +140,7 @@ def cacheSCSIidentifiers():
     return SCSI
 
 def scsi_dev_ctrl(ids, cmd):
-    f = -1
+    f = None
     for i in range(0,10):
         try:
             str = "scsi %s-single-device %s %s %s %s" % \
@@ -152,12 +152,12 @@ def scsi_dev_ctrl(ids, cmd):
             return
         except IOError, e:
             util.SMlog("SCSI_DEV_CTRL: Failure, %s [%d]" % (e.strerror,e.errno))
-            if f >= 0:
+            if f is not None:
                 f.close()
+                f = None
             if e.errno == errno.ENXIO:
                 util.SMlog("Device has disappeared already")
                 return
-            f = -1
             time.sleep(6)
             continue
     raise xs_errors.XenError('EIO', \
