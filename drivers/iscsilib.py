@@ -253,7 +253,10 @@ def is_iscsi_daemon_running():
 
 def stop_daemon():
     if is_iscsi_daemon_running():
-        cmd = ["/etc/init.d/open-iscsi", "stop"]
+        if os.path.exists("/etc/init.d/open-iscsi"):
+            cmd = ["/etc/init.d/open-iscsi", "stop"]
+        else:
+            cmd = ["service", "iscsid", "stop"]
         failuremessage = "Failed to stop iscsi daemon"
         exn_on_failure(cmd,failuremessage)
 
@@ -268,7 +271,10 @@ def restart_daemon():
             shutil.rmtree('/etc/iscsi/send_targets')
         except:
             pass
-    cmd = ["/etc/init.d/open-iscsi", "start"]
+    if os.path.exists("/etc/init.d/open-iscsi"):
+        cmd = ["/etc/init.d/open-iscsi", "start"]
+    else:
+        cmd = ["service", "iscsid", "force-start"]
     failuremessage = "Failed to start iscsi daemon"
     exn_on_failure(cmd,failuremessage)
 
