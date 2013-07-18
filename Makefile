@@ -72,7 +72,6 @@ SM_STAMP := $(MY_OBJ_DIR)/.staging_stamp
 	make -C dcopy 
 	make -C snapwatchd
 	make -C mpathroot
-	make -C diskdatatest
 
 .PHONY: install
 install: 
@@ -118,7 +117,6 @@ install:
 	$(MAKE) -C dcopy install DESTDIR=$(SM_STAGING)
 	$(MAKE) -C snapwatchd install DESTDIR=$(SM_STAGING)
 	$(MAKE) -C mpathroot install DESTDIR=$(SM_STAGING)
-	$(MAKE) -C diskdatatest
 	ln -sf $(SM_DEST)blktap2.py $(SM_STAGING)$(BIN_DEST)/blktap2
 	install -m 755 -d $(SM_STAGING)$(CRON_DEST)
 	install -m 644 $(CRON_JOBS:%=etc/cron.d/%) -t $(SM_STAGING)$(CRON_DEST)
