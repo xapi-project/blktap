@@ -36,7 +36,9 @@ CONFIGURATION = [ [ 'target', 'IP address or hostname of the iSCSI target (requi
                   [ 'incoming_chapuser', 'The incoming username to be used during bi-directional CHAP authentication (optional)' ], \
                   [ 'incoming_chappassword', 'The incoming password to be used during bi-directional CHAP authentication (optional)' ], \
                   [ 'port', 'The network port number on which to query the target (optional)' ], \
-                  [ 'multihomed', 'Enable multi-homing to this target, true or false (optional, defaults to same value as host.other_config:multipathing)' ] ]
+                  [ 'multihomed', 'Enable multi-homing to this target, true or false (optional, defaults to same value as host.other_config:multipathing)' ],
+                  [ 'force_tapdisk', 'Force use of tapdisk, true or false (optional, defaults to false)'],
+]
 
 DRIVER_INFO = {
     'name': 'iSCSI',
@@ -60,6 +62,11 @@ ISCSI_PROCNAME = "iscsi_tcp"
 
 class ISCSISR(SR.SR):
     """ISCSI storage repository"""
+
+    @property
+    def force_tapdisk(self):
+        return self.dconf.get('force_tapdisk', 'false') == 'true'
+
     def handles(type):
         if type == "iscsi":
             return True
@@ -97,7 +104,10 @@ class ISCSISR(SR.SR):
                 
 
     def load(self, sr_uuid):
-        self.sr_vditype = 'phy'
+        if self.force_tapdisk:
+            self.sr_vditype = 'aio'
+        else:
+            self.sr_vditype = 'phy'
         self.discoverentry = 0
         self.default_vdi_visibility = False
         
