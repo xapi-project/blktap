@@ -1,4 +1,4 @@
-/* 
+/*
  * Copyright (C) Citrix Systems Inc.
  *
  * This program is free software; you can redistribute it and/or
@@ -29,35 +29,20 @@
 #include "blktap2.h"
 
 int
-tap_ctl_create(const char *params, char **devname, int flags, int parent_minor,
+tap_ctl_create(const char *params, int flags, const char *prt_path,
 		char *secondary, int timeout)
 {
-	int err, id, minor;
-
-	err = tap_ctl_allocate(&minor, devname);
-	if (err)
-		return err;
+	int err, id;
 
 	id = tap_ctl_spawn();
-	if (id < 0) {
-		err = id;
-		goto destroy;
-	}
+	if (id < 0)
+		return id;
 
-	err = tap_ctl_attach(id, minor);
-	if (err)
-		goto destroy;
-
-	err = tap_ctl_open(id, minor, params, flags, parent_minor, secondary,
+	err = tap_ctl_open(id, params, flags, prt_path, secondary,
 			timeout);
 	if (err)
-		goto detach;
+		/* FIXME kill tapdisk */
+		return err;
 
 	return 0;
-
-detach:
-	tap_ctl_detach(id, minor);
-destroy:
-	tap_ctl_free(minor);
-	return err;
 }

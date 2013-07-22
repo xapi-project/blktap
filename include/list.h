@@ -1,4 +1,4 @@
-/* 
+/*
  * This is a subset of linux's list.h intended to be used in user-space.
  * Copyright (C) Citrix Systems Inc.
  *

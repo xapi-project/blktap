@@ -1,4 +1,4 @@
-/* 
+/*
  * Copyright (C) Citrix Systems Inc.
  *
  * This program is free software; you can redistribute it and/or
@@ -23,6 +23,10 @@
 #include <sys/time.h>
 #include <tapdisk-message.h>
 #include <list.h>
+
+#include <xen/xen.h>
+#include <xen/grant_table.h>
+#include <xen/event_channel.h>
 
 extern int tap_ctl_debug;
 
@@ -85,9 +89,9 @@ int tap_ctl_find_minor(const char *type, const char *path);
 int tap_ctl_allocate(int *minor, char **devname);
 int tap_ctl_free(const int minor);
 
-int tap_ctl_create(const char *params, char **devname, int flags, 
-		int prt_minor, char *secondary, int timeout);
-int tap_ctl_destroy(const int id, const int minor, int force,
+int tap_ctl_create(const char *params, int flags, const char *prt_path,
+		char *secondary, int timeout);
+int tap_ctl_destroy(const int id, const char *params, int force,
 		    struct timeval *timeout);
 
 int tap_ctl_spawn(void);
@@ -96,18 +100,42 @@ pid_t tap_ctl_get_pid(const int id);
 int tap_ctl_attach(const int id, const int minor);
 int tap_ctl_detach(const int id, const int minor);
 
-int tap_ctl_open(const int id, const int minor, const char *params, int flags,
-		const int prt_minor, const char *secondary, int timeout);
-int tap_ctl_close(const int id, const int minor, const int force,
+int tap_ctl_open(const int id, const char *params, int flags,
+		const char *prt_path, const char *secondary, int timeout);
+int tap_ctl_close(const int id, const char *params, const int force,
 		  struct timeval *timeout);
 
-int tap_ctl_pause(const int id, const int minor, struct timeval *timeout);
-int tap_ctl_unpause(const int id, const int minor, const char *params,
+int tap_ctl_pause(const int id, const char *params, struct timeval *timeout);
+int tap_ctl_unpause(const int id, const char *params1, const char *params2,
 		int flags, char *secondary);
 
-ssize_t tap_ctl_stats(pid_t pid, int minor, char *buf, size_t size);
-int tap_ctl_stats_fwrite(pid_t pid, int minor, FILE *out);
+ssize_t tap_ctl_stats(pid_t pid, const char *params, char *buf, size_t size);
+int tap_ctl_stats_fwrite(pid_t pid, const char *params, FILE *out);
 
 int tap_ctl_blk_major(void);
+
+int tap_ctl_connect_xenblkif(const pid_t pid, const char *params,
+        const domid_t domid, const int devid, const grant_ref_t * grefs,
+        const int order, const evtchn_port_t port, int proto,
+		const char *pool);
+
+int tap_ctl_disconnect_xenblkif(const pid_t pid, const domid_t domid,
+        const int devid, struct timeval *timeout);
+
+int tap_ctl_info(pid_t pid, const char *path, unsigned long long *sectors,
+        unsigned int *sector_size, unsigned int *info);
+
+/**
+ * Parses a type:/path/to/file string, storing the type and path to the output
+ * parameters. Upon successful completion the caller must free @type and @path,
+ * otherwise their values are undefined.
+ *
+ * @param params type:/path/to/file to parse
+ * @param type output parameter the receives the type
+ * @param path output paramter that receives the path
+ * @returns 0 on success
+ */
+int
+parse_params(const char *params, char **type, char **path);
 
 #endif

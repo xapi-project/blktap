@@ -1,4 +1,4 @@
-/* 
+/*
  * Copyright (C) Citrix Systems Inc.
  *
  * This program is free software; you can redistribute it and/or
@@ -24,18 +24,27 @@
 #include <stdlib.h>
 #include <unistd.h>
 #include <string.h>
+#include <assert.h>
 
 #include "tap-ctl.h"
 
 int
-tap_ctl_pause(const int id, const int minor, struct timeval *timeout)
+tap_ctl_pause(const int id, const char *params, struct timeval *timeout)
 {
 	int err;
 	tapdisk_message_t message;
 
+    assert(params);
+
+    if (strnlen(params, TAPDISK_MESSAGE_MAX_PATH_LENGTH)
+            >= TAPDISK_MESSAGE_MAX_PATH_LENGTH) {
+        return ENAMETOOLONG;
+    }
+
 	memset(&message, 0, sizeof(message));
 	message.type = TAPDISK_MESSAGE_PAUSE;
-	message.cookie = minor;
+
+	strncpy(message.u.params.path, params, TAPDISK_MESSAGE_MAX_PATH_LENGTH);
 
 	err = tap_ctl_connect_send_and_receive(id, &message, timeout);
 	if (err)

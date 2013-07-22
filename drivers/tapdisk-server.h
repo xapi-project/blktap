@@ -1,4 +1,4 @@
-/* 
+/*
  * Copyright (C) Citrix Systems Inc.
  *
  * This program is free software; you can redistribute it and/or
@@ -27,8 +27,21 @@ struct tap_disk *tapdisk_server_find_driver_interface(int);
 td_image_t *tapdisk_server_get_shared_image(td_image_t *);
 
 struct list_head *tapdisk_server_get_all_vbds(void);
-td_vbd_t *tapdisk_server_get_vbd(td_uuid_t);
+
+/**
+ * Returns the VBD that corresponds to the specified type:/path/to/file.
+ * Returns NULL if such a VBD does not exist.
+ */
+td_vbd_t *tapdisk_server_get_vbd(const char *params);
+
+/**
+ * Adds the VBD to end of the list of VBDs.
+ */
 void tapdisk_server_add_vbd(td_vbd_t *);
+
+/**
+ * Removes the VBDs from the list of VBDs.
+ */
 void tapdisk_server_remove_vbd(td_vbd_t *);
 
 void tapdisk_server_queue_tiocb(struct tiocb *);

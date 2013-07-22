@@ -1,4 +1,4 @@
-/* 
+/*
  * Copyright (C) Citrix Systems Inc.
  *
  * This program is free software; you can redistribute it and/or
@@ -25,6 +25,7 @@
 #include <stdlib.h>
 #include <sys/ioctl.h>
 #include <sys/signal.h>
+#include <assert.h>
 
 #include "tapdisk-syslog.h"
 #include "tapdisk-server.h"
@@ -77,12 +78,15 @@ tapdisk_server_get_all_vbds(void)
 }
 
 td_vbd_t *
-tapdisk_server_get_vbd(uint16_t uuid)
+tapdisk_server_get_vbd(const char *params)
 {
 	td_vbd_t *vbd, *tmp;
 
+	assert(params);
+
 	tapdisk_server_for_each_vbd(vbd, tmp)
-		if (vbd->uuid == uuid)
+		/* TODO VBDs without name? Should this be treated as a bug? */
+		if (!strcmp(vbd->name, params))
 			return vbd;
 
 	return NULL;

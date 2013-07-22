@@ -1,4 +1,4 @@
-/* 
+/*
  * Copyright (C) Citrix Systems Inc.
  *
  * This program is free software; you can redistribute it and/or
@@ -32,11 +32,11 @@
 #include <sys/ioctl.h>
 #include <sys/socket.h>
 #include <sys/mman.h>
+#include <assert.h>
 
 #include "list.h"
 #include "tapdisk.h"
 #include "tapdisk-vbd.h"
-#include "tapdisk-blktap.h"
 #include "tapdisk-utils.h"
 #include "tapdisk-server.h"
 #include "tapdisk-message.h"
@@ -93,13 +93,13 @@ struct tapdisk_ctl_conn {
 #define TAPDISK_MSG_VERBOSE    (1<<1) /* tell syslog about it */
 
 struct tapdisk_control_info {
-	void (*handler)(struct tapdisk_ctl_conn *, tapdisk_message_t *);
+	int (*handler)(struct tapdisk_ctl_conn *, tapdisk_message_t *,
+			tapdisk_message_t * const);
 	int flags;
 };
 
 struct tapdisk_control {
 	char              *path;
-	int                uuid;
 	int                socket;
 	int                event_id;
 	int                busy;
@@ -532,17 +532,19 @@ tapdisk_control_list_minors(struct tapdisk_ctl_conn *conn,
 }
 #endif
 
-static void
-tapdisk_control_list(struct tapdisk_ctl_conn *conn, tapdisk_message_t *request)
+static int
+tapdisk_control_list(struct tapdisk_ctl_conn *conn,
+		tapdisk_message_t *request, tapdisk_message_t * const response)
 {
 	td_vbd_t *vbd;
 	struct list_head *head;
-	tapdisk_message_t response;
 	int count;
 
-	memset(&response, 0, sizeof(response));
-	response.type = TAPDISK_MESSAGE_LIST_RSP;
-	response.cookie = request->cookie;
+    assert(conn);
+    assert(request);
+    assert(response);
+
+	response->type = TAPDISK_MESSAGE_LIST_RSP;
 
 	head = tapdisk_server_get_all_vbds();
 
@@ -551,164 +553,63 @@ tapdisk_control_list(struct tapdisk_ctl_conn *conn, tapdisk_message_t *request)
 		count++;
 
 	list_for_each_entry(vbd, head, next) {
-		response.u.list.count   = count--;
-		response.u.list.minor   = vbd->tap ? vbd->tap->minor : -1;
-		response.u.list.state   = vbd->state;
-		response.u.list.path[0] = 0;
+		response->u.list.count   = count--;
+		response->u.list.state   = vbd->state;
+		response->u.list.path[0] = 0;
 
 		if (vbd->name)
-			strncpy(response.u.list.path, vbd->name,
-				sizeof(response.u.list.path));
+			strncpy(response->u.list.path, vbd->name,
+				sizeof(response->u.list.path));
 
-		tapdisk_control_write_message(conn, &response);
+		tapdisk_control_write_message(conn, response);
 	}
 
-	response.u.list.count   = count;
-	response.u.list.minor   = -1;
-	response.u.list.path[0] = 0;
+	response->u.list.count   = count;
+	response->u.list.path[0] = 0;
 
-	tapdisk_control_write_message(conn, &response);
+	return 0;
 }
 
-static void
+static int
 tapdisk_control_get_pid(struct tapdisk_ctl_conn *conn,
-			tapdisk_message_t *request)
+			tapdisk_message_t *request, tapdisk_message_t * const response)
 {
-	tapdisk_message_t response;
+	assert(response);
 
-	memset(&response, 0, sizeof(response));
-	response.type = TAPDISK_MESSAGE_PID_RSP;
-	response.cookie = request->cookie;
-	response.u.tapdisk_pid = getpid();
+	response->type = TAPDISK_MESSAGE_PID_RSP;
+	response->u.tapdisk_pid = getpid();
 
-	tapdisk_control_write_message(conn, &response);
+	return 0;
 }
 
-static void
-tapdisk_control_attach_vbd(struct tapdisk_ctl_conn *conn,
-			   tapdisk_message_t *request)
-{
-	tapdisk_message_t response;
-	char *devname = NULL;
-	td_vbd_t *vbd;
-	int minor, err;
-
-	/*
-	 * TODO: check for max vbds per process
-	 */
-
-	vbd = tapdisk_server_get_vbd(request->cookie);
-	if (vbd) {
-		err = -EEXIST;
-		goto out;
-	}
-
-	minor = request->cookie;
-	if (minor < 0) {
-		err = -EINVAL;
-		goto out;
-	}
-
-	vbd = tapdisk_vbd_create(minor);
-	if (!vbd) {
-		err = -ENOMEM;
-		goto out;
-	}
-
-	err = asprintf(&devname, BLKTAP2_RING_DEVICE"%d", minor);
-	if (err == -1) {
-		devname = NULL;
-		err = -ENOMEM;
-		goto fail_vbd;
-	}
-
-	err = tapdisk_vbd_attach(vbd, devname, minor);
-	if (err) {
-		ERR(err, "failure attaching to %s", devname);
-		goto fail_vbd;
-	}
-
-	tapdisk_server_add_vbd(vbd);
-
-out:
-	if (devname)
-		free(devname);
-
-	memset(&response, 0, sizeof(response));
-	response.type = TAPDISK_MESSAGE_ATTACH_RSP;
-	response.cookie = request->cookie;
-	response.u.response.error = -err;
-
-	tapdisk_control_write_message(conn, &response);
-
-	return;
-
-fail_vbd:
-	tapdisk_vbd_detach(vbd);
-	free(vbd);
-	goto out;
-}
-
-
-static void
-tapdisk_control_detach_vbd(struct tapdisk_ctl_conn *conn,
-			   tapdisk_message_t *request)
-{
-	tapdisk_message_t response;
-	td_vbd_t *vbd;
-	int err;
-
-	vbd = tapdisk_server_get_vbd(request->cookie);
-	if (!vbd) {
-		err = -EINVAL;
-		goto out;
-	}
-
-	if (vbd->name) {
-		err = -EBUSY;
-		goto out;
-	}
-
-	tapdisk_vbd_detach(vbd);
-
-	if (list_empty(&vbd->images)) {
-		tapdisk_server_remove_vbd(vbd);
-		free(vbd);
-	}
-
-	err = 0;
-out:
-	memset(&response, 0, sizeof(response));
-	response.type = TAPDISK_MESSAGE_DETACH_RSP;
-	response.cookie = request->cookie;
-	response.u.response.error = -err;
-
-	tapdisk_control_write_message(conn, &response);
-}
-
-static void
+static int
 tapdisk_control_open_image(struct tapdisk_ctl_conn *conn,
-			   tapdisk_message_t *request)
+			   tapdisk_message_t *request, tapdisk_message_t * const response)
 {
 	int err;
 	td_vbd_t *vbd;
 	td_flag_t flags;
-	tapdisk_message_t response;
 	td_disk_info_t info;
+	int prt_path_len;
+	char *prt_path;
 
-	vbd = tapdisk_server_get_vbd(request->cookie);
+    assert(request);
+    assert(response);
+
+    prt_path_len = strnlen(request->u.params.prt_path,
+            TAPDISK_MESSAGE_MAX_PATH_LENGTH);
+    if (unlikely(prt_path_len == TAPDISK_MESSAGE_MAX_PATH_LENGTH)) {
+		err = -EINVAL;
+		goto out;
+    } else if (prt_path_len == 0)
+        prt_path = NULL;
+    else
+        prt_path = request->u.params.prt_path;
+
+    /* FIXME Check whether the image is already open by another VBD. */
+    vbd = tapdisk_vbd_create();
 	if (!vbd) {
-		err = -EINVAL;
-		goto out;
-	}
-
-	if (!vbd->tap) {
-		err = -EINVAL;
-		goto out;
-	}
-
-	if (vbd->name) {
-		err = -EALREADY;
+		err = -ENOMEM;
 		goto out;
 	}
 
@@ -739,20 +640,15 @@ tapdisk_control_open_image(struct tapdisk_ctl_conn *conn,
 		flags |= TD_OPEN_SECONDARY;
 	}
 
-	err = tapdisk_vbd_open_vdi(vbd, request->u.params.path, flags,
-				   request->u.params.prt_devnum);
-	if (err)
+	err = tapdisk_vbd_open_vdi(vbd, request->u.params.path, flags, prt_path);
+	if (err) {
+        EPRINTF("failed to open VDI: %s\n", strerror(-err));
 		goto out;
+	}
 
 	err = tapdisk_vbd_get_disk_info(vbd, &info);
-	if (err)
-		goto fail_close;
-
-	err = tapdisk_blktap_create_device(vbd->tap, &info,
-					   !!(flags & TD_OPEN_RDONLY));
-	if (err && err != -EEXIST) {
-		err = -errno;
-		EPRINTF("create device failed: %d\n", err);
+	if (err) {
+        EPRINTF("failed to get disk info: %s\n", strerror(-err));
 		goto fail_close;
 	}
 
@@ -762,7 +658,7 @@ tapdisk_control_open_image(struct tapdisk_ctl_conn *conn,
 	}
 
 	/*
-	 * For now, let's do this automatically on all 'open' calls In the 
+	 * For now, let's do this automatically on all 'open' calls. In the
 	 * future, we'll probably want a separate call to start the NBD server
 	 */
 	err = tapdisk_vbd_start_nbdserver(vbd);
@@ -771,25 +667,18 @@ tapdisk_control_open_image(struct tapdisk_ctl_conn *conn,
 		goto fail_close;
 	}
 
+	tapdisk_server_add_vbd(vbd);
+
 	err = 0;
 
 out:
-	memset(&response, 0, sizeof(response));
-	response.cookie = request->cookie;
-
-	if (err) {
-		response.type                = TAPDISK_MESSAGE_ERROR;
-		response.u.response.error    = -err;
-	} else {
-		response.u.image.sectors     = info.size;
-		response.u.image.sector_size = info.sector_size;
-		response.u.image.info        = info.info;
-		response.type                = TAPDISK_MESSAGE_OPEN_RSP;
+    if (!err) {
+        response->u.image.sectors = info.size;
+        response->u.image.sector_size = info.sector_size;
+        response->u.image.info = info.info;
+        response->type = TAPDISK_MESSAGE_OPEN_RSP;
 	}
-
-	tapdisk_control_write_message(conn, &response);
-
-	return;
+	return err;
 
 fail_close:
 	tapdisk_vbd_close_vdi(vbd);
@@ -802,19 +691,34 @@ fail_close:
 	goto out;
 }
 
-static void
+static int
 tapdisk_control_close_image(struct tapdisk_ctl_conn *conn,
-			    tapdisk_message_t *request)
+			    tapdisk_message_t *request, tapdisk_message_t * const response)
 {
-	tapdisk_message_t response;
 	td_vbd_t *vbd;
-	int err;
+	int err = 0;
+	int len;
 
-	vbd = tapdisk_server_get_vbd(request->cookie);
-	if (!vbd) {
-		err = -ENODEV;
-		goto out;
-	}
+    assert(conn);
+    assert(request);
+    assert(response);
+
+    len = strnlen(request->u.string.text, TAPDISK_MESSAGE_STRING_LENGTH);
+    if (len < 1) {
+        err = -EINVAL;
+        goto out;
+    }
+    if (len >= TAPDISK_MESSAGE_STRING_LENGTH) {
+        err = -ENAMETOOLONG;
+        goto out;
+    }
+
+	vbd = tapdisk_server_get_vbd(request->u.string.text);
+ 	if (!vbd) {
+        EPRINTF("no VBD \'%s\'", request->u.string.text);
+ 		err = -ENODEV;
+ 		goto out;
+ 	}
 
 	if (td_flag_test(vbd->state, TD_VBD_PAUSED))
 		EPRINTF("closing paused VBD %s", vbd->name);
@@ -826,32 +730,9 @@ tapdisk_control_close_image(struct tapdisk_ctl_conn *conn,
 	  tapdisk_nbdserver_pause(vbd->nbdserver);
 	}
 
-	do {
-		err = tapdisk_blktap_remove_device(vbd->tap);
 
-		if (err == -EBUSY)
-			EPRINTF("device %s still open\n", vbd->name);
-
-		if (!err || err != -EBUSY)
-			break;
-
+	while (!list_empty(&vbd->pending_requests))
 		tapdisk_server_iterate();
-
-	} while (conn->fd >= 0);
-
-	if (err)
-		ERR(err, "failure closing image\n");
-
-	if (err == -ENOTTY) {
-
-		while (!list_empty(&vbd->pending_requests))
-			tapdisk_server_iterate();
-
-		err = 0;
-	}
-
-	if (err)
-		goto out;
 
 	if (vbd->nbdserver) {
 		tapdisk_nbdserver_free(vbd->nbdserver);
@@ -861,42 +742,50 @@ tapdisk_control_close_image(struct tapdisk_ctl_conn *conn,
 	tapdisk_vbd_close_vdi(vbd);
 
 	/*
-	 * NB: vbd->name free should probably belong into close_vdi, but the 
-	 * current blktap1 reopen-stuff likely depends on a lifetime extended 
+	 * NB: vbd->name free should probably belong into close_vdi, but the
+	 * current blktap1 reopen-stuff likely depends on a lifetime extended
 	 * until shutdown
 	 */
 	free(vbd->name);
 	vbd->name = NULL;
 
-	if (!vbd->tap) {
-		tapdisk_server_remove_vbd(vbd);
-		free(vbd);
-	}
+	tapdisk_server_remove_vbd(vbd);
+	/* FIXME free vbd? */
 
 out:
-	memset(&response, 0, sizeof(response));
-	response.type = TAPDISK_MESSAGE_CLOSE_RSP;
-	response.cookie = request->cookie;
-	response.u.response.error = -err;
-
-	tapdisk_control_write_message(conn, &response);
+    if (!err) {
+        response->type = TAPDISK_MESSAGE_CLOSE_RSP;
+        response->u.response.error = -err;
+	}
+	return err;
 }
 
-static void
+static int
 tapdisk_control_pause_vbd(struct tapdisk_ctl_conn *conn,
-			  tapdisk_message_t *request)
+			  tapdisk_message_t *request, tapdisk_message_t * const response)
 {
 	int err;
 	td_vbd_t *vbd;
-	tapdisk_message_t response;
+	int len;
 
-	memset(&response, 0, sizeof(response));
+    assert(conn);
+    assert(request);
+    assert(response);
 
-	response.type = TAPDISK_MESSAGE_PAUSE_RSP;
-
-	vbd = tapdisk_server_get_vbd(request->cookie);
-	if (!vbd) {
+    len = strnlen(request->u.params.path, TAPDISK_MESSAGE_MAX_PATH_LENGTH);
+	if (len < 1) {
 		err = -EINVAL;
+		goto out;
+	}
+
+    if (len >= TAPDISK_MESSAGE_MAX_PATH_LENGTH) {
+        err = -ENAMETOOLONG;
+        goto out;
+    }
+
+	vbd = tapdisk_server_get_vbd(request->u.params.path);
+	if (!vbd) {
+		err = -ENODEV;
 		goto out;
 	}
 
@@ -911,35 +800,51 @@ tapdisk_control_pause_vbd(struct tapdisk_ctl_conn *conn,
 	} while (conn->fd >= 0);
 
 out:
-	response.cookie = request->cookie;
-	response.u.response.error = -err;
-	tapdisk_control_write_message(conn, &response);
+    if (!err) {
+        /* TODO useless? */
+    	response->u.response.error = -err;
+		response->type = TAPDISK_MESSAGE_PAUSE_RSP;
+	}
+    return err;
 }
 
-static void
+static int
 tapdisk_control_resume_vbd(struct tapdisk_ctl_conn *conn,
-			   tapdisk_message_t *request)
+			   tapdisk_message_t *request, tapdisk_message_t * const response)
 {
 	int err;
 	td_vbd_t *vbd;
-	tapdisk_message_t response;
 	const char *desc = NULL;
+	size_t len;
 
-	memset(&response, 0, sizeof(response));
+    assert(request);
+    assert(response);
 
-	response.type = TAPDISK_MESSAGE_RESUME_RSP;
+    len = strnlen(request->u.resume.params1, TAPDISK_MESSAGE_MAX_PATH_LENGTH);
+
+    /* TODO boilerplate */
+    if (len < 1) {
+        err = -EINVAL;
+        goto out;
+    }
+    if (len >= TAPDISK_MESSAGE_MAX_PATH_LENGTH) {
+        err = -ENAMETOOLONG;
+        goto out;
+    }
+
+    /* TODO validate secondary */
 
 	INFO("Resuming: flags=0x%08x secondary=%p\n",
-			request->u.params.flags, request->u.params.secondary);
+			request->u.resume.flags, request->u.resume.secondary);
 
-	vbd = tapdisk_server_get_vbd(request->cookie);
+	vbd = tapdisk_server_get_vbd(request->u.resume.params1);
 	if (!vbd) {
-		err = -EINVAL;
+		err = -ENODEV;
 		goto out;
 	}
 
-	if (request->u.params.flags & TAPDISK_MESSAGE_FLAG_SECONDARY) {
-		char *name = strdup(request->u.params.secondary);
+	if (request->u.resume.flags & TAPDISK_MESSAGE_FLAG_SECONDARY) {
+		char *name = strdup(request->u.resume.secondary);
 		if (!name) {
 			err = -errno;
 			goto out;
@@ -949,26 +854,32 @@ tapdisk_control_resume_vbd(struct tapdisk_ctl_conn *conn,
 		vbd->flags |= TD_OPEN_SECONDARY;
 	}
 
-	if (request->u.params.path[0])
-		desc = request->u.params.path;
+	if (request->u.resume.params2[0])
+		desc = request->u.resume.params2;
 
 	err = tapdisk_vbd_resume(vbd, desc);
 out:
-	response.cookie = request->cookie;
-	response.u.response.error = -err;
-	tapdisk_control_write_message(conn, &response);
+    if (!err) {
+        /* TODO useless? */
+        response->u.response.error = -err;
+		response->type = TAPDISK_MESSAGE_RESUME_RSP;
+	}
+    return err;
 }
 
-static void
+static int
 tapdisk_control_stats(struct tapdisk_ctl_conn *conn,
-		      tapdisk_message_t *request)
+		      tapdisk_message_t *request, tapdisk_message_t * const response)
 {
-	tapdisk_message_t response;
 	td_stats_t _st, *st = &_st;
 	td_vbd_t *vbd;
 	size_t rv;
 	void *buf;
 	int new_size;
+	size_t len;
+
+    assert(request);
+    assert(response);
 
 	buf = malloc(TD_CTL_SEND_BUFSZ);
 	if (!buf) {
@@ -976,11 +887,17 @@ tapdisk_control_stats(struct tapdisk_ctl_conn *conn,
 		goto out;
 	}
 
+    len = strnlen(request->u.params.path, TAPDISK_MESSAGE_MAX_PATH_LENGTH);
+
 	tapdisk_stats_init(st, buf, TD_CTL_SEND_BUFSZ);
 
-	if (request->cookie != (uint16_t)-1) {
+    if (len > 1) {
+        if (len >= TAPDISK_MESSAGE_MAX_PATH_LENGTH) {
+            rv = -ENAMETOOLONG;
+            goto out;
+        }
 
-		vbd = tapdisk_server_get_vbd(request->cookie);
+		vbd = tapdisk_server_get_vbd(request->u.params.path);
 		if (!vbd) {
 			rv = -ENODEV;
 			goto out;
@@ -1020,14 +937,157 @@ tapdisk_control_stats(struct tapdisk_ctl_conn *conn,
 	}
 out:
 	free(st->buf);
-	memset(&response, 0, sizeof(response));
-	response.type = TAPDISK_MESSAGE_STATS_RSP;
-	response.cookie = request->cookie;
-	response.u.info.length = rv;
-
-	tapdisk_control_write_message(conn, &response);
+    if (!rv) {
+        response->type = TAPDISK_MESSAGE_STATS_RSP;
+        response->u.info.length = rv;
+    }
+    /* TODO Should only be executed if err == 0? */
 	if (rv > 0)
 		conn->out.prod += rv;
+	return rv;
+}
+
+/**
+ * Message handler executed for TAPDISK_MESSAGE_XENBLKIF_CONNECT.
+ *
+ * This is the entry point for connecting the tapdisk to the shared ring. It
+ * also sets up the necessary structures/descriptors (TODO explain).
+ */
+static int
+tapdisk_control_xenblkif_connect(
+        struct tapdisk_ctl_conn *conn __attribute__((unused)),
+        tapdisk_message_t *request, tapdisk_message_t * const response)
+{
+    /*
+     * Get the block interface parameters (domain ID, device ID, etc.).
+     */
+    tapdisk_message_blkif_t *blkif;
+
+    td_vbd_t *vbd;
+    const char *pool;
+    size_t len;
+    int err;
+
+    assert(request);
+    assert(response);
+
+    len = strnlen(request->u.blkif.params, TAPDISK_MESSAGE_STRING_LENGTH);
+    /* TODO boilerplate */
+    if (len < 1) {
+        err = -EINVAL;
+        goto out;
+    }
+    if (len >= TAPDISK_MESSAGE_STRING_LENGTH) {
+        err = -ENAMETOOLONG;
+        goto out;
+    }
+
+    vbd = tapdisk_server_get_vbd(request->u.blkif.params);
+    if (!vbd) {
+        err = -ENODEV;
+		goto out;
+    }
+
+    blkif = &request->u.blkif;
+    len = strnlen(blkif->pool, sizeof(blkif->pool));
+    if (!len)
+        pool = NULL;
+    else if (len >= sizeof(blkif->pool)) {
+        err = -EINVAL;
+		goto out;
+    } else
+        pool = blkif->pool;
+
+    DPRINTF("connecting VBD domid=%d, devid=%d, pool %s, evt %d\n",
+            blkif->domid, blkif->devid, pool, blkif->port);
+
+    err = tapdisk_xenblkif_connect(blkif->domid, blkif->devid, blkif->gref,
+            blkif->order, blkif->port, blkif->proto, pool, vbd);
+out:
+    if (!err) {
+        response->type = TAPDISK_MESSAGE_XENBLKIF_CONNECT_RSP;
+        /* TODO Useless? */
+	    response->u.response.error = -err;
+    }
+    return err;
+}
+
+static int
+tapdisk_control_xenblkif_disconnect(
+        struct tapdisk_ctl_conn *conn __attribute__((unused)),
+        tapdisk_message_t * request, tapdisk_message_t * const response)
+{
+    tapdisk_message_blkif_t *blkif;
+	int err;
+
+    assert(request);
+    assert(response);
+
+    blkif = &request->u.blkif;
+
+    DPRINTF("disconnecting VBD domid=%d, devid=%d\n", blkif->domid,
+            blkif->devid);
+
+    err = tapdisk_xenblkif_disconnect(blkif->domid, blkif->devid);
+
+    if (!err) {
+        response->type = TAPDISK_MESSAGE_XENBLKIF_DISCONNECT_RSP;
+        /* TODO Useless? */
+        response->u.response.error = -err;
+    }
+    return err;
+}
+
+static int
+tapdisk_control_disk_info(
+        struct tapdisk_ctl_conn *conn __attribute__((unused)),
+        tapdisk_message_t * request, tapdisk_message_t * const response)
+{
+    tapdisk_message_image_t *image;
+    int err;
+    td_vbd_t *vbd;
+    td_disk_info_t info;
+    int len;
+
+    assert(request);
+    assert(response);
+
+    image = &response->u.image;
+    len = strnlen(request->u.string.text, TAPDISK_MESSAGE_STRING_LENGTH);
+
+    /* TODO boilerplate */
+    if (len < 1) {
+        err = -EINVAL;
+        goto out;
+    }
+    if (len >= TAPDISK_MESSAGE_STRING_LENGTH) {
+        err = -ENAMETOOLONG;
+        goto out;
+    }
+
+    DPRINTF("getting info vbd %s\n", request->u.string.text);
+
+    vbd = tapdisk_server_get_vbd(request->u.string.text);
+    if (!vbd) {
+        err = -ENODEV;
+        goto out;
+	}
+
+    err = tapdisk_vbd_get_disk_info(vbd, &info);
+    if (err) {
+        EPRINTF("tapdisk_vbd_get_disk_info failed %d\n", err);
+        goto out;
+    }
+
+    EPRINTF("got disk info: %ld %d\n", info.sector_size, err);
+out:
+    if (!err) {
+        response->type = TAPDISK_MESSAGE_DISK_INFO_RSP;
+        image->sectors = info.size;
+        image->sector_size = info.sector_size;
+        image->info = info.info;
+    }
+    return err;
 }
 
 struct tapdisk_control_info message_infos[] = {
@@ -1039,14 +1099,18 @@ struct tapdisk_control_info message_infos[] = {
 		.handler = tapdisk_control_list,
 		.flags   = TAPDISK_MSG_REENTER,
 	},
-	[TAPDISK_MESSAGE_ATTACH] = {
-		.handler = tapdisk_control_attach_vbd,
-		.flags   = TAPDISK_MSG_VERBOSE,
+    [TAPDISK_MESSAGE_XENBLKIF_CONNECT] = {
+		.handler = tapdisk_control_xenblkif_connect,
+		.flags = TAPDISK_MSG_VERBOSE
 	},
-	[TAPDISK_MESSAGE_DETACH] = {
-		.handler = tapdisk_control_detach_vbd,
-		.flags   = TAPDISK_MSG_VERBOSE,
-	},
+    [TAPDISK_MESSAGE_XENBLKIF_DISCONNECT] = {
+        .handler = tapdisk_control_xenblkif_disconnect,
+		.flags = TAPDISK_MSG_VERBOSE
+    },
+    [TAPDISK_MESSAGE_DISK_INFO] = {
+        .handler = tapdisk_control_disk_info,
+        .flags = TAPDISK_MSG_VERBOSE
+    },
 	[TAPDISK_MESSAGE_OPEN] = {
 		.handler = tapdisk_control_open_image,
 		.flags   = TAPDISK_MSG_VERBOSE,
@@ -1096,8 +1160,7 @@ tapdisk_control_handle_request(event_id_t id, char mode, void *private)
 		goto invalid;
 
 	if (conn->info->flags & TAPDISK_MSG_VERBOSE)
-		DBG("received '%s' message (uuid = %u)\n",
-		    tapdisk_message_name(message.type), message.cookie);
+		DBG("received '%s' message\n", tapdisk_message_name(message.type));
 
 	if (conn->in.busy)
 		goto busy;
@@ -1111,7 +1174,14 @@ tapdisk_control_handle_request(event_id_t id, char mode, void *private)
 	}
 	conn->in.busy = 1;
 
-	conn->info->handler(conn, &message);
+	memset(&response, 0, sizeof(response));
+
+    err = conn->info->handler(conn, &message, &response);
+    if (err) {
+        response.type = TAPDISK_MESSAGE_ERROR;
+        response.u.response.error = -err;
+    }
+    tapdisk_control_write_message(conn, &response);
 
 	conn->in.busy = 0;
 	if (excl)
