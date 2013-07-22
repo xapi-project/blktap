@@ -1,4 +1,4 @@
-/* 
+/*
  * Copyright (C) Citrix Systems Inc.
  *
  * This program is free software; you can redistribute it and/or
@@ -41,7 +41,6 @@ _tap_list_alloc(void)
 		return NULL;
 
 	tl->pid   = -1;
-	tl->minor = -1;
 	tl->state = -1;
 	tl->type  = NULL;
 	tl->path  = NULL;
@@ -70,7 +69,7 @@ _tap_list_free(tap_list_t *tl)
 }
 
 int
-_parse_params(const char *params, char **type, char **path)
+parse_params(const char *params, char **type, char **path)
 {
 	char *ptr;
 	size_t len;
@@ -106,67 +105,15 @@ tap_ctl_list_free(struct list_head *list)
 		_tap_list_free(tl);
 }
 
+/**
+ * Returns a list running tapdisks. tapdisks are searched for by looking for
+ * their control socket.
+ */
 static int
-_tap_ctl_find_minors(struct list_head *list)
-{
-	const char *pattern, *format;
-	glob_t glbuf = { 0 };
-	tap_list_t *tl;
-	int i, err;
-
-	INIT_LIST_HEAD(list);
-
-	pattern = BLKTAP2_SYSFS_DIR"/blktap*";
-	format  = BLKTAP2_SYSFS_DIR"/blktap%d";
-
-	err = glob(pattern, 0, NULL, &glbuf);
-	switch (err) {
-	case GLOB_NOMATCH:
-		goto done;
-
-	case GLOB_ABORTED:
-	case GLOB_NOSPACE:
-		err = -errno;
-		EPRINTF("%s: glob failed, err %d", pattern, err);
-		goto fail;
-	}
-
-	for (i = 0; i < glbuf.gl_pathc; ++i) {
-		int n;
-
-		tl = _tap_list_alloc();
-		if (!tl) {
-			err = -ENOMEM;
-			goto fail;
-		}
-
-		n = sscanf(glbuf.gl_pathv[i], format, &tl->minor);
-		if (n != 1) {
-			_tap_list_free(tl);
-			continue;
-		}
-
-		list_add_tail(&tl->entry, list);
-	}
-
-done:
-	err = 0;
-out:
-	if (glbuf.gl_pathv)
-		globfree(&glbuf);
-
-	return err;
-
-fail:
-	tap_ctl_list_free(list);
-	goto out;
-}
-
-int
 _tap_ctl_find_tapdisks(struct list_head *list)
 {
-	const char *pattern, *format;
 	glob_t glbuf = { 0 };
+	const char *pattern, *format;
 	int err, i, n_taps = 0;
 
 	pattern = BLKTAP2_CONTROL_DIR"/"BLKTAP2_CONTROL_SOCKET"*";
@@ -225,6 +172,13 @@ fail:
 	goto out;
 }
 
+/**
+ * Retrieves all the VBDs a tapdisk is serving.
+ *
+ * @param pid the process ID of the tapdisk whose VBDs should be retrieved
+ * @param list output parameter that receives the list of VBD
+ * @returns 0 on success, an error code otherwise
+ */
 int
 _tap_ctl_list_tapdisk(pid_t pid, struct list_head *list)
 {
@@ -239,7 +193,6 @@ _tap_ctl_list_tapdisk(pid_t pid, struct list_head *list)
 
 	memset(&message, 0, sizeof(message));
 	message.type   = TAPDISK_MESSAGE_LIST;
-	message.cookie = -1;
 
 	err = tap_ctl_write_message(sfd, &message, &timeout);
 	if (err)
@@ -264,12 +217,10 @@ _tap_ctl_list_tapdisk(pid_t pid, struct list_head *list)
 		}
 
 		tl->pid    = pid;
-		tl->minor  = message.u.list.minor;
 		tl->state  = message.u.list.state;
 
 		if (message.u.list.path[0] != 0) {
-			err = _parse_params(message.u.list.path,
-					    &tl->type, &tl->path);
+			err = parse_params(message.u.list.path, &tl->type, &tl->path);
 			if (err) {
 				_tap_list_free(tl);
 				goto fail;
@@ -292,59 +243,38 @@ fail:
 int
 tap_ctl_list(struct list_head *list)
 {
-	struct list_head minors, tapdisks, vbds;
-	tap_list_t *t, *next_t, *v, *next_v, *m, *next_m;
+	struct list_head tapdisks;
+	tap_list_t *t, *next_t;
 	int err;
 
-	/*
-	 * Find all minors, find all tapdisks, then list all minors
-	 * they attached to. Output is a 3-way outer join.
-	 */
-
-	err = _tap_ctl_find_minors(&minors);
-	if (err < 0)
-		goto fail;
-
 	err = _tap_ctl_find_tapdisks(&tapdisks);
-	if (err < 0)
-		goto fail;
+	if (err < 0) {
+		EPRINTF("error finding tapdisks: %s\n", strerror(-err));
+		goto out;
+	}
 
 	INIT_LIST_HEAD(list);
 
 	tap_list_for_each_entry_safe(t, next_t, &tapdisks) {
+		struct list_head vbds;
 
 		err = _tap_ctl_list_tapdisk(t->pid, &vbds);
 
-		if (err || list_empty(&vbds)) {
-			list_move_tail(&t->entry, list);
-			continue;
-		}
-
-		tap_list_for_each_entry_safe(v, next_v, &vbds) {
-
-			tap_list_for_each_entry_safe(m, next_m, &minors)
-				if (m->minor == v->minor) {
-					_tap_list_free(m);
-					break;
-				}
-
-			list_move_tail(&v->entry, list);
-		}
+		if (!err)
+			list_splice(&vbds, list);
+		else
+			EPRINTF("failed to get VBDs for tapdisk %d: %s\n", t->pid,
+					strerror(-err));
+            /* TODO Return the error or just continue? */
 
 		_tap_list_free(t);
 	}
 
-	/* orphaned minors */
-	list_splice_tail(&minors, list);
-
 	return 0;
 
-fail:
-	tap_ctl_list_free(list);
-
-	tap_ctl_list_free(&vbds);
-	tap_ctl_list_free(&tapdisks);
-	tap_ctl_list_free(&minors);
+out:
+	if (err)
+		tap_ctl_list_free(list);
 
 	return err;
 }
@@ -371,34 +301,4 @@ tap_ctl_list_pid(pid_t pid, struct list_head *list)
 		list_add_tail(&t->entry, list);
 
 	return 0;
-}
-
-int
-tap_ctl_find_minor(const char *type, const char *path)
-{
-	struct list_head list = LIST_HEAD_INIT(list);
-	tap_list_t *entry;
-	int minor, err;
-
-	err = tap_ctl_list(&list);
-	if (err)
-		return err;
-
-	minor = -1;
-
-	tap_list_for_each_entry(entry, &list) {
-
-		if (type && (!entry->type || strcmp(entry->type, type)))
-			continue;
-
-		if (path && (!entry->path || strcmp(entry->path, path)))
-			continue;
-
-		minor = entry->minor;
-		break;
-	}
-
-	tap_ctl_list_free(&list);
-
-	return minor >= 0 ? minor : -ENOENT;
 }

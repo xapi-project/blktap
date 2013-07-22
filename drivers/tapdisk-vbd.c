@@ -1,4 +1,4 @@
-/* 
+/*
  * Copyright (C) Citrix Systems Inc.
  *
  * This program is free software; you can redistribute it and/or
@@ -28,9 +28,9 @@
 #include <libgen.h>
 #include <sys/mman.h>
 #include <sys/ioctl.h>
+#include <assert.h>
 
 #include "libvhd.h"
-#include "tapdisk-blktap.h"
 #include "tapdisk-image.h"
 #include "tapdisk-driver.h"
 #include "tapdisk-server.h"
@@ -40,6 +40,7 @@
 #include "tapdisk-stats.h"
 #include "tapdisk-storage.h"
 #include "tapdisk-nbdserver.h"
+#include "td-stats.h"
 
 #define DBG(_level, _f, _a...) tlog_write(_level, _f, ##_a)
 #define ERR(_err, _f, _a...) tlog_error(_err, _f, ##_a)
@@ -47,7 +48,7 @@
 #define INFO(_f, _a...)            tlog_syslog(TLOG_INFO, "vbd: " _f, ##_a)
 #define ERROR(_f, _a...)           tlog_syslog(TLOG_WARN, "vbd: " _f, ##_a)
 
-#if 1                                                                        
+#if 1
 #define ASSERT(p)							\
 	do {								\
 		if (!(p)) {						\
@@ -58,7 +59,7 @@
 	} while (0)
 #else
 #define ASSERT(p) ((void)0)
-#endif 
+#endif
 
 #define TD_VBD_EIO_RETRIES          10
 #define TD_VBD_EIO_SLEEP            1
@@ -68,7 +69,7 @@ static void tapdisk_vbd_complete_vbd_request(td_vbd_t *, td_vbd_request_t *);
 static int  tapdisk_vbd_queue_ready(td_vbd_t *);
 static void tapdisk_vbd_check_queue_state(td_vbd_t *);
 
-/* 
+/*
  * initialization
  */
 
@@ -79,7 +80,7 @@ tapdisk_vbd_mark_progress(td_vbd_t *vbd)
 }
 
 td_vbd_t*
-tapdisk_vbd_create(uint16_t uuid)
+tapdisk_vbd_create(void)
 {
 	td_vbd_t *vbd;
 
@@ -89,7 +90,6 @@ tapdisk_vbd_create(uint16_t uuid)
 		return NULL;
 	}
 
-	vbd->uuid        = uuid;
 	vbd->req_timeout = TD_VBD_REQUEST_TIMEOUT;
 
 	INIT_LIST_HEAD(&vbd->images);
@@ -104,17 +104,21 @@ tapdisk_vbd_create(uint16_t uuid)
 }
 
 int
-tapdisk_vbd_initialize(int rfd, int wfd, uint16_t uuid)
+tapdisk_vbd_initialize(int rfd, int wfd, const char *params)
 {
 	td_vbd_t *vbd;
 
-	vbd = tapdisk_server_get_vbd(uuid);
+	assert(params);
+
+	vbd = tapdisk_server_get_vbd(params);
 	if (vbd) {
-		EPRINTF("duplicate vbds! %u\n", uuid);
+		EPRINTF("duplicate vbds! %s\n", params);
 		return -EEXIST;
 	}
 
-	vbd = tapdisk_vbd_create(uuid);
+	/* FIXME Shouldn't we be passing/storing params somewhere? */
+
+	vbd = tapdisk_vbd_create();
 
 	tapdisk_server_add_vbd(vbd);
 
@@ -332,7 +336,11 @@ static void signal_enospc(td_vbd_t *vbd)
 	int fd, err;
 	char *fn;
 
-	err = asprintf(&fn, BLKTAP2_ENOSPC_SIGNAL_FILE"%d", vbd->tap->minor);
+    /*
+	 * FIXME Some external tool is probably using this, figure out which and
+     * update it.
+	 */
+	err = asprintf(&fn, BLKTAP2_ENOSPC_SIGNAL_FILE"%s", vbd->name);
 	if (err == -1) {
 		EPRINTF("Failed to signal ENOSPC condition\n");
 		return;
@@ -431,7 +439,8 @@ fail:
 }
 
 int
-tapdisk_vbd_open_vdi(td_vbd_t *vbd, const char *name, td_flag_t flags, int prt_devnum)
+tapdisk_vbd_open_vdi(td_vbd_t *vbd, const char *params, td_flag_t flags,
+		const char *prt_path)
 {
 	char *tmp = vbd->name;
 	int err;
@@ -441,20 +450,20 @@ tapdisk_vbd_open_vdi(td_vbd_t *vbd, const char *name, td_flag_t flags, int prt_d
 		goto fail;
 	}
 
-	if (!name && !vbd->name) {
+	if (!params && !vbd->name) {
 		err = -EINVAL;
 		goto fail;
 	}
 
-	if (name) {
-		vbd->name = strdup(name);
+	if (params) {
+		vbd->name = strdup(params);
 		if (!vbd->name) {
 			err = -errno;
 			goto fail;
 		}
 	}
 
-	err = tapdisk_image_open_chain(vbd->name, flags, prt_devnum, &vbd->images);
+	err = tapdisk_image_open_chain(vbd->name, flags, prt_path, &vbd->images);
 	if (err)
 		goto fail;
 
@@ -510,27 +519,6 @@ fail:
 	vbd->flags = 0;
 
 	return err;
-}
-
-void
-tapdisk_vbd_detach(td_vbd_t *vbd)
-{
-	td_blktap_t *tap = vbd->tap;
-
-	if (tap) {
-		tapdisk_blktap_close(tap);
-		vbd->tap = NULL;
-	}
-}
-
-int
-tapdisk_vbd_attach(td_vbd_t *vbd, const char *devname, int minor)
-{
-
-	if (vbd->tap)
-		return -EALREADY;
-
-	return tapdisk_blktap_open(devname, vbd, &vbd->tap);
 }
 
 /*
@@ -610,7 +598,6 @@ tapdisk_vbd_shutdown(td_vbd_t *vbd)
 		vbd->kicked);
 
 	tapdisk_vbd_close_vdi(vbd);
-	tapdisk_vbd_detach(vbd);
 	tapdisk_server_remove_vbd(vbd);
 	free(vbd->name);
 	free(vbd);
@@ -809,7 +796,8 @@ tapdisk_vbd_resume(td_vbd_t *vbd, const char *name)
 	}
 
 	for (i = 0; i < TD_VBD_EIO_RETRIES; i++) {
-		err = tapdisk_vbd_open_vdi(vbd, name, vbd->flags | TD_OPEN_STRICT, -1);
+		err = tapdisk_vbd_open_vdi(vbd, name, vbd->flags | TD_OPEN_STRICT,
+				NULL);
 		if (!err)
 			break;
 
@@ -1475,7 +1463,7 @@ tapdisk_vbd_stats(td_vbd_t *vbd, td_stats_t *st)
 
 	if (vbd->tap) {
 		tapdisk_stats_field(st, "tap", "{");
-		tapdisk_blktap_stats(vbd->tap, st);
+		tapdisk_xenblkif_stats(vbd->tap, st);
 		tapdisk_stats_leave(st, '}');
 	}
 

@@ -1,4 +1,4 @@
-/* 
+/*
  * Copyright (C) Citrix Systems Inc.
  *
  * This program is free software; you can redistribute it and/or
@@ -23,23 +23,32 @@
 #include <string.h>
 #include <unistd.h>
 #include <sys/mman.h>
+#include <assert.h>
 
 #include "tap-ctl.h"
 
 int
-_tap_ctl_stats_connect_and_send(pid_t pid, int minor)
+_tap_ctl_stats_connect_and_send(pid_t pid, const char *params)
 {
 	struct timeval timeout = { .tv_sec = 10, .tv_usec = 0 };
 	tapdisk_message_t message;
 	int sfd, err;
 
-	err = tap_ctl_connect_id(pid, &sfd);
-	if (err)
-		return err;
+    assert(params);
+
+    if (strnlen(params, TAPDISK_MESSAGE_MAX_PATH_LENGTH)
+            >= TAPDISK_MESSAGE_MAX_PATH_LENGTH) {
+        return ENAMETOOLONG;
+    }
 
 	memset(&message, 0, sizeof(message));
 	message.type   = TAPDISK_MESSAGE_STATS;
-	message.cookie = minor;
+
+	strncpy(message.u.params.path, params, TAPDISK_MESSAGE_MAX_PATH_LENGTH);
+
+	err = tap_ctl_connect_id(pid, &sfd);
+	if (err)
+		return err;
 
 	err = tap_ctl_write_message(sfd, &message, &timeout);
 	if (err)
@@ -49,13 +58,15 @@ _tap_ctl_stats_connect_and_send(pid_t pid, int minor)
 }
 
 ssize_t
-tap_ctl_stats(pid_t pid, int minor, char *buf, size_t size)
+tap_ctl_stats(pid_t pid, const char *params, char *buf, size_t size)
 {
 	tapdisk_message_t message;
 	int sfd, err;
 	size_t len;
 
-	sfd = _tap_ctl_stats_connect_and_send(pid, minor);
+	assert(params);
+
+	sfd = _tap_ctl_stats_connect_and_send(pid, params);
 	if (sfd < 0)
 		return sfd;
 
@@ -83,12 +94,14 @@ out:
 }
 
 int
-tap_ctl_stats_fwrite(pid_t pid, int minor, FILE *stream)
+tap_ctl_stats_fwrite(pid_t pid, const char *params, FILE *stream)
 {
 	tapdisk_message_t message;
 	int sfd = -1, prot, flags, err;
 	size_t len, bufsz;
 	char *buf = MAP_FAILED;
+
+	assert(params);
 
 	prot  = PROT_READ|PROT_WRITE;
 	flags = MAP_ANONYMOUS|MAP_PRIVATE;
@@ -101,7 +114,7 @@ tap_ctl_stats_fwrite(pid_t pid, int minor, FILE *stream)
 		goto out;
 	}
 
-	sfd = _tap_ctl_stats_connect_and_send(pid, minor);
+	sfd = _tap_ctl_stats_connect_and_send(pid, params);
 	if (sfd < 0) {
 		err = sfd;
 		goto out;

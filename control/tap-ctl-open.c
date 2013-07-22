@@ -1,4 +1,4 @@
-/* 
+/*
  * Copyright (C) Citrix Systems Inc.
  *
  * This program is free software; you can redistribute it and/or
@@ -29,19 +29,21 @@
 #include "tap-ctl.h"
 
 int
-tap_ctl_open(const int id, const int minor, const char *params, int flags,
-		const int prt_minor, const char *secondary, int timeout)
+tap_ctl_open(const int id, const char *params, int flags,
+		const char *prt_path, const char *secondary, int timeout)
 {
 	int err;
 	tapdisk_message_t message;
 
 	memset(&message, 0, sizeof(message));
 	message.type = TAPDISK_MESSAGE_OPEN;
-	message.cookie = minor;
-	message.u.params.devnum = minor;
-	message.u.params.prt_devnum = prt_minor;
 	message.u.params.req_timeout = timeout;
 	message.u.params.flags = flags;
+	if (prt_path) {
+		if (strlen(prt_path) >= TAPDISK_MESSAGE_OPEN)
+			return ENAMETOOLONG;
+		strcpy(message.u.params.prt_path, prt_path);
+	}
 
 	err = snprintf(message.u.params.path,
 		       sizeof(message.u.params.path) - 1, "%s", params);
@@ -69,7 +71,7 @@ tap_ctl_open(const int id, const int minor, const char *params, int flags,
 		break;
 	case TAPDISK_MESSAGE_ERROR:
 		err = -message.u.response.error;
-		EPRINTF("open failed, err %d\n", err);
+		EPRINTF("open failed: %s\n", strerror(err));
 		break;
 	default:
 		EPRINTF("got unexpected result '%s' from %d\n",

@@ -1,4 +1,4 @@
-/* 
+/*
  * Copyright (C) Citrix Systems Inc.
  *
  * This program is free software; you can redistribute it and/or
@@ -25,39 +25,61 @@
 #include <unistd.h>
 #include <string.h>
 #include <getopt.h>
+#include <assert.h>
 
 #include "tap-ctl.h"
 
 int
-tap_ctl_unpause(const int id, const int minor, const char *params, int flags,
-		char *secondary)
+tap_ctl_unpause(const int id, const char *params1, const char *params2,
+        int flags, char *secondary)
 {
 	int err;
 	tapdisk_message_t message;
 
+    assert(params1);
+
 	memset(&message, 0, sizeof(message));
 	message.type = TAPDISK_MESSAGE_RESUME;
-	message.cookie = minor;
-	message.u.params.flags = flags;
+	message.u.resume.flags = flags;
 
-	if (params)
-		strncpy(message.u.params.path, params,
-			sizeof(message.u.params.path) - 1);
+    if (strnlen(params1, TAPDISK_MESSAGE_MAX_PATH_LENGTH)
+            >= TAPDISK_MESSAGE_MAX_PATH_LENGTH) {
+        /* TODO log error */
+        return ENAMETOOLONG;
+    }
+
+	strncpy(message.u.resume.params1, params1, TAPDISK_MESSAGE_MAX_PATH_LENGTH);
+
+    if (params2) {
+        if (strnlen(params2, TAPDISK_MESSAGE_MAX_PATH_LENGTH)
+                >= TAPDISK_MESSAGE_MAX_PATH_LENGTH) {
+            /* TODO log error */
+            return ENAMETOOLONG;
+        }
+	    strncpy(message.u.resume.params2, params2,
+                TAPDISK_MESSAGE_MAX_PATH_LENGTH);
+    } else {
+        message.u.resume.params2[0] = '\0';
+    }
+
 	if (secondary) {
-		err = snprintf(message.u.params.secondary,
-				sizeof(message.u.params.secondary) - 1, "%s",
-				secondary);
-		if (err >= sizeof(message.u.params.secondary)) {
-			EPRINTF("secondary image name too long\n");
+        if (strnlen(secondary, TAPDISK_MESSAGE_MAX_PATH_LENGTH)
+                >= TAPDISK_MESSAGE_MAX_PATH_LENGTH) {
+            /* TODO log error */
 			return ENAMETOOLONG;
 		}
+	    strncpy(message.u.resume.secondary, secondary,
+                TAPDISK_MESSAGE_MAX_PATH_LENGTH);
+    } else {
+        message.u.resume.secondary[0] = '\0';
 	}
 
 	err = tap_ctl_connect_send_and_receive(id, &message, NULL);
 	if (err)
 		return err;
 
-	if (message.type == TAPDISK_MESSAGE_RESUME_RSP)
+	if (message.type == TAPDISK_MESSAGE_RESUME_RSP
+            || message.type == TAPDISK_MESSAGE_ERROR)
 		err = message.u.response.error;
 	else {
 		err = EINVAL;

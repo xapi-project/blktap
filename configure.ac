@@ -73,5 +73,6 @@ vhd/lib/test/Makefile
 control/Makefile
 drivers/Makefile
 include/Makefile
+tapback/Makefile
 ])
 AC_OUTPUT

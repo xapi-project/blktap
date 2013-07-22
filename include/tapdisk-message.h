@@ -1,4 +1,4 @@
-/* 
+/*
  * Copyright (C) Citrix Systems Inc.
  *
  * This program is free software; you can redistribute it and/or
@@ -21,6 +21,11 @@
 #include <inttypes.h>
 #include <sys/types.h>
 
+/*
+ * TODO This is quite small since we don't allow path bigger than 256 chars. If
+ * we ever increase this, make sure tapdisk_message_t structures are not
+ * allocated on the stack.
+ */
 #define TAPDISK_MESSAGE_MAX_PATH_LENGTH  256
 #define TAPDISK_MESSAGE_STRING_LENGTH    256
 
@@ -46,14 +51,14 @@ typedef struct tapdisk_message_response  tapdisk_message_response_t;
 typedef struct tapdisk_message_minors    tapdisk_message_minors_t;
 typedef struct tapdisk_message_list      tapdisk_message_list_t;
 typedef struct tapdisk_message_stat      tapdisk_message_stat_t;
+typedef struct tapdisk_message_blkif     tapdisk_message_blkif_t;
 
 struct tapdisk_message_params {
 	tapdisk_message_flag_t           flags;
 
-	uint32_t                         devnum;
 	uint32_t                         domid;
 	char                             path[TAPDISK_MESSAGE_MAX_PATH_LENGTH];
-	uint32_t                         prt_devnum;
+	char                             prt_path[TAPDISK_MESSAGE_MAX_PATH_LENGTH];
 	uint16_t                         req_timeout;
 	char                             secondary[TAPDISK_MESSAGE_MAX_PATH_LENGTH];
 };
@@ -91,6 +96,78 @@ struct tapdisk_message_stat {
 	size_t                           length;
 };
 
+/**
+ * Tapdisk message containing all the necessary information required for the
+ * tapdisk to connect to a guest's blkfront.
+ */
+struct tapdisk_message_blkif {
+	/**
+	 * The domain ID of the guest to connect to.
+	 */
+	uint32_t domid;
+
+	/**
+	 * The device ID of the virtual block device.
+	 */
+	uint32_t devid;
+
+	/**
+	 * Grant references for the shared ring.
+	 * TODO Why 8 specifically?
+	 */
+	uint32_t gref[8];
+
+	/**
+	 * Number of pages in the ring, expressed as a page order.
+	 */
+	uint32_t order;
+
+	/**
+	 * Protocol to use: native, 32 bit, or 64 bit. Used for supporting a
+	 * 32-bit domU talking to a 64-bit dom0/domU and vice versa.
+	 */
+	uint32_t proto;
+
+	/**
+	 * TODO Page pool? Can be NULL.
+	 */
+	char pool[TAPDISK_MESSAGE_STRING_LENGTH];
+
+	/**
+	 * The event channel port.
+	 */
+	uint32_t port;
+
+    /**
+     * type:/path/to/file
+     */
+    char params[TAPDISK_MESSAGE_MAX_PATH_LENGTH];
+};
+
+/**
+ * Contains parameters for resuming a previously paused VBD.
+ */
+typedef struct tapdisk_message_resume {
+    /**
+     * TODO
+     */
+	tapdisk_message_flag_t flags;
+
+    /**
+     * The VDI (type:/path/to/file) to pause.
+     */
+    char params1[TAPDISK_MESSAGE_MAX_PATH_LENGTH];
+
+    /**
+     * A new VDI to use instead of the old one. Optional.
+     */
+    char params2[TAPDISK_MESSAGE_MAX_PATH_LENGTH];
+
+    /**
+     * TODO
+     */
+    char secondary[TAPDISK_MESSAGE_MAX_PATH_LENGTH];
+} tapdisk_message_resume_t;
 
 struct tapdisk_message {
 	uint16_t                         type;
@@ -105,6 +182,8 @@ struct tapdisk_message {
 		tapdisk_message_response_t response;
 		tapdisk_message_list_t   list;
 		tapdisk_message_stat_t   info;
+		tapdisk_message_blkif_t  blkif;
+        tapdisk_message_resume_t resume;
 	} u;
 };
 
@@ -132,6 +211,12 @@ enum tapdisk_message_id {
 	TAPDISK_MESSAGE_STATS,
 	TAPDISK_MESSAGE_STATS_RSP,
 	TAPDISK_MESSAGE_FORCE_SHUTDOWN,
+	TAPDISK_MESSAGE_XENBLKIF_CONNECT,
+	TAPDISK_MESSAGE_XENBLKIF_CONNECT_RSP,
+	TAPDISK_MESSAGE_XENBLKIF_DISCONNECT,
+	TAPDISK_MESSAGE_XENBLKIF_DISCONNECT_RSP,
+	TAPDISK_MESSAGE_DISK_INFO,
+	TAPDISK_MESSAGE_DISK_INFO_RSP,
 	TAPDISK_MESSAGE_EXIT,
 };
 
@@ -206,6 +291,24 @@ tapdisk_message_name(enum tapdisk_message_id id)
 
 	case TAPDISK_MESSAGE_STATS_RSP:
 		return "stats response";
+
+	case TAPDISK_MESSAGE_XENBLKIF_CONNECT:
+		return "sring connect";
+
+	case TAPDISK_MESSAGE_XENBLKIF_CONNECT_RSP:
+		return "sring connect rsp";
+
+	case TAPDISK_MESSAGE_XENBLKIF_DISCONNECT:
+		return "sring disconnect";
+
+	case TAPDISK_MESSAGE_XENBLKIF_DISCONNECT_RSP:
+		return "sring disconnect rsp";
+
+	case TAPDISK_MESSAGE_DISK_INFO:
+		return "disk info";
+
+	case TAPDISK_MESSAGE_DISK_INFO_RSP:
+		return "disk info rsp";
 
 	case TAPDISK_MESSAGE_EXIT:
 		return "exit";

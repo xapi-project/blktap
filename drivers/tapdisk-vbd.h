@@ -1,4 +1,4 @@
-/* 
+/*
  * Copyright (C) Citrix Systems Inc.
  *
  * This program is free software; you can redistribute it and/or
@@ -23,7 +23,7 @@
 #include "tapdisk.h"
 #include "scheduler.h"
 #include "tapdisk-image.h"
-#include "tapdisk-blktap.h"
+#include "td-blkif.h"
 
 #define TD_VBD_REQUEST_TIMEOUT      120
 #define TD_VBD_MAX_RETRIES          100
@@ -39,18 +39,22 @@
 #define TD_VBD_LOCKING              0x0080
 #define TD_VBD_LOG_DROPPED          0x0100
 
-#define TD_VBD_SECONDARY_DISABLED   0 
+#define TD_VBD_SECONDARY_DISABLED   0
 #define TD_VBD_SECONDARY_MIRROR     1
 #define TD_VBD_SECONDARY_STANDBY    2
 
 struct td_nbdserver;
 
 struct td_vbd_handle {
+    /**
+     * type:/path/to/file
+     */
 	char                       *name;
 
-	td_blktap_t                *tap;
-
-	td_uuid_t                   uuid;
+    /**
+     * shared ring
+     */
+    struct td_xenblkif         *tap;
 
 	td_flag_t                   flags;
 	td_flag_t                   state;
@@ -150,16 +154,26 @@ tapdisk_vbd_next_image(td_image_t *image)
 	return list_entry(image->next.next, td_image_t, next);
 }
 
-td_vbd_t *tapdisk_vbd_create(td_uuid_t);
-int tapdisk_vbd_initialize(int, int, td_uuid_t);
+td_vbd_t *tapdisk_vbd_create(void);
+int tapdisk_vbd_initialize(int, int, const char *);
 int tapdisk_vbd_open(td_vbd_t *, const char *, int, const char *, td_flag_t);
 int tapdisk_vbd_close(td_vbd_t *);
 
-int tapdisk_vbd_open_vdi(td_vbd_t *, const char *, td_flag_t, int);
+/**
+ * Opens a VDI.
+ *
+ * @params vbd output parameter that receives a handle to the opened VDI
+ * @param params type:/path/to/file
+ * @params flags TD_OPEN_* TODO which TD_OPEN_* flags are honored? How does
+ * each flag affect the behavior of this functions? Move TD_OPEN_* flag
+ * definitions close to this function (check if they're used only by this
+ * function)?
+ * @param prt_path parent /path/to/file (optional)
+ * @returns 0 on success
+ */
+int tapdisk_vbd_open_vdi(td_vbd_t * vbd, const char *params, td_flag_t flags,
+        const char *prt_path);
 void tapdisk_vbd_close_vdi(td_vbd_t *);
-
-int tapdisk_vbd_attach(td_vbd_t *, const char *, int);
-void tapdisk_vbd_detach(td_vbd_t *);
 
 int tapdisk_vbd_queue_request(td_vbd_t *, td_vbd_request_t *);
 void tapdisk_vbd_forward_request(td_request_t);

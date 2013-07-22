@@ -1,4 +1,4 @@
-/* 
+/*
  * Copyright (C) Citrix Systems Inc.
  *
  * This program is free software; you can redistribute it and/or
@@ -29,21 +29,16 @@
 #include "tap-ctl.h"
 #include "blktap2.h"
 
+/* FIXME Without VBD.detach, tap-ctl destroy is the same as tap-ctl close,
+ * merge them. */
+
 int
-tap_ctl_destroy(const int id, const int minor,
+tap_ctl_destroy(const int id, const char *params,
 		int force, struct timeval *timeout)
 {
 	int err;
 
-	err = tap_ctl_close(id, minor, 0, timeout);
-	if (err)
-		return err;
-
-	err = tap_ctl_detach(id, minor);
-	if (err)
-		return err;
-
-	err = tap_ctl_free(minor);
+	err = tap_ctl_close(id, params, 0, timeout);
 	if (err)
 		return err;
 

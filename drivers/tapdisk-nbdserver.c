@@ -1,4 +1,4 @@
-/* 
+/*
  * Copyright (C) Citrix Systems Inc.
  *
  * This program is free software; you can redistribute it and/or
@@ -512,6 +512,7 @@ tapdisk_nbdserver_alloc(td_vbd_t *vbd, td_disk_info_t info)
 {
 	td_nbdserver_t *server;
 	char fdreceiver_path[TAPDISK_NBDSERVER_MAX_PATH_LEN];
+	int i;
 
 	server = malloc(sizeof(*server));
 	if (!server) {
@@ -528,9 +529,20 @@ tapdisk_nbdserver_alloc(td_vbd_t *vbd, td_disk_info_t info)
 	server->vbd = vbd;
 	server->info = info;
 
-	snprintf(fdreceiver_path, TAPDISK_NBDSERVER_MAX_PATH_LEN, "%s%d.%d",
+	snprintf(fdreceiver_path, TAPDISK_NBDSERVER_MAX_PATH_LEN, "%s%d.%s",
 			TAPDISK_NBDSERVER_LISTEN_SOCK_PATH, getpid(), 
-			vbd->uuid);
+			vbd->name);
+
+    /*
+     * XXX The path we're supplying will be appended to the socket path, so it
+     * cannot contain the '/' character. We replace all '/' with '-'.
+     */
+    for (i = strlen(TAPDISK_NBDSERVER_LISTEN_SOCK_PATH);
+            fdreceiver_path[i] != '\0'; i++) {
+        if (fdreceiver_path[i] == '/') {
+            fdreceiver_path[i] = '-';
+        }
+    }
 
 	server->fdreceiver = td_fdreceiver_start(fdreceiver_path, 
 			tapdisk_nbdserver_fdreceiver_cb, server);

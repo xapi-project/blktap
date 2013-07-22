@@ -1,4 +1,4 @@
-/* 
+/*
  * Copyright (C) Citrix Systems Inc.
  *
  * This program is free software; you can redistribute it and/or
@@ -66,7 +66,8 @@ struct td_image_handle {
 int tapdisk_image_open(int, const char *, int, td_image_t **);
 void tapdisk_image_close(td_image_t *);
 
-int tapdisk_image_open_chain(const char *, int, int, struct list_head *);
+int tapdisk_image_open_chain(const char *, int, const char *,
+		struct list_head *);
 void tapdisk_image_close_chain(struct list_head *);
 int tapdisk_image_validate_chain(struct list_head *);
 

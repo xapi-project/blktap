@@ -1,4 +1,4 @@
-/* 
+/*
  * Copyright (C) Citrix Systems Inc.
  *
  * This program is free software; you can redistribute it and/or
@@ -40,7 +40,7 @@ static void
 tap_cli_list_usage(FILE *stream)
 {
 	fprintf(stream,
-		"usage: list [-h] [-p pid] [-m minor] [-t type] [-f file]\n");
+		"usage: list [-h] [-p pid] [-t type] [-f file]\n");
 }
 
 static void
@@ -52,9 +52,6 @@ tap_cli_list_row(tap_list_t *entry)
 
 	if (entry->pid != -1)
 		sprintf(pid_str, "%d", entry->pid);
-
-	if (entry->minor != -1)
-		sprintf(minor_str, "%d", entry->minor);
 
 	if (entry->state != -1)
 		sprintf(state_str, "%#x", entry->state);
@@ -74,11 +71,6 @@ tap_cli_list_dict(tap_list_t *entry)
 		d = printf("pid=%d", entry->pid);
 	}
 
-	if (entry->minor != -1) {
-		if (d) putc(' ', stdout);
-		d = printf("minor=%d", entry->minor);
-	}
-
 	if (entry->state != -1) {
 		if (d) putc(' ', stdout);
 		d = printf("state=%#x", entry->state);
@@ -96,21 +88,17 @@ int
 tap_cli_list(int argc, char **argv)
 {
 	struct list_head list = LIST_HEAD_INIT(list);
-	int c, minor, tty, err;
+	int c, tty, err;
 	const char *type, *file;
 	tap_list_t *entry;
 	pid_t pid;
 
 	pid   = -1;
-	minor = -1;
 	type  = NULL;
 	file  = NULL;
 
-	while ((c = getopt(argc, argv, "m:p:t:f:h")) != -1) {
+	while ((c = getopt(argc, argv, "p:t:f:h")) != -1) {
 		switch (c) {
-		case 'm':
-			minor = atoi(optarg);
-			break;
 		case 'p':
 			pid = atoi(optarg);
 			break;
@@ -138,8 +126,6 @@ tap_cli_list(int argc, char **argv)
 	tty = isatty(STDOUT_FILENO);
 
 	tap_list_for_each_entry(entry, &list) {
-		if (minor >= 0 && entry->minor != minor)
-			continue;
 
 		if (pid >= 0 && entry->pid != pid)
 			continue;
@@ -166,113 +152,35 @@ usage:
 }
 
 static void
-tap_cli_allocate_usage(FILE *stream)
-{
-	fprintf(stream, "usage: allocate [-d device name]>\n");
-}
-
-static int
-tap_cli_allocate(int argc, char **argv)
-{
-	char *devname;
-	int c, minor, err;
-
-	devname = NULL;
-
-	optind = 0;
-	while ((c = getopt(argc, argv, "d:h")) != -1) {
-		switch (c) {
-		case 'd':
-			devname = optarg;
-			break;
-		case '?':
-			goto usage;
-		case 'h':
-			tap_cli_allocate_usage(stdout);
-			return 0;
-		}
-	}
-
-	err = tap_ctl_allocate(&minor, &devname);
-	if (!err)
-		printf("%s\n", devname);
-
-	return err;
-
-usage:
-	tap_cli_allocate_usage(stderr);
-	return EINVAL;
-}
-
-static void
-tap_cli_free_usage(FILE *stream)
-{
-	fprintf(stream, "usage: free <-m minor>\n");
-}
-
-static int
-tap_cli_free(int argc, char **argv)
-{
-	int c, minor;
-
-	minor = -1;
-
-	optind = 0;
-	while ((c = getopt(argc, argv, "m:h")) != -1) {
-		switch (c) {
-		case 'm':
-			minor = atoi(optarg);
-			break;
-		case '?':
-			goto usage;
-		case 'h':
-			tap_cli_free_usage(stdout);
-			return 0;
-		}
-	}
-
-	if (minor == -1)
-		goto usage;
-
-	return tap_ctl_free(minor);
-
-usage:
-	tap_cli_free_usage(stderr);
-	return EINVAL;
-}
-
-static void
 tap_cli_create_usage(FILE *stream)
 {
-	fprintf(stream, "usage: create <-a args> [-d device name] [-R readonly] "
-		"[-e <minor> stack on existing tapdisk for the parent chain] "
-		"[-r turn on read caching into leaf node] [-2 <path> "
-		"use secondary image (in mirror mode if no -s)] [-s "
-		"fail over to the secondary image on ENOSPC] "
-		"[-t request timeout in seconds]\n");
+	fprintf(stream, "usage: create "
+			"<-a type:/path/to/file> "
+			"[-R readonly] "
+			"[-e <type:/path/to/file> stack on existing tapdisk for the parent chain] "
+			"[-r turn on read caching into leaf node] "
+			"[-2 <path> use secondary image (in mirror mode if no -s)] "
+			"[-s fail over to the secondary image on ENOSPC] "
+			"[-t request timeout in seconds]\n");
 }
 
 static int
 tap_cli_create(int argc, char **argv)
 {
-	int c, err, flags, prt_minor, timeout;
-	char *args, *devname, *secondary;
+	int c, flags, timeout;
+	char *args, *secondary, *prt_path;
 
 	args      = NULL;
-	devname   = NULL;
 	secondary = NULL;
-	prt_minor = -1;
+	prt_path  = NULL;
 	flags     = 0;
 	timeout   = 0;
 
 	optind = 0;
-	while ((c = getopt(argc, argv, "a:Rd:e:r2:st:h")) != -1) {
+	while ((c = getopt(argc, argv, "a:Re:r2:st:h")) != -1) {
 		switch (c) {
 		case 'a':
 			args = optarg;
-			break;
-		case 'd':
-			devname = optarg;
 			break;
 		case 'R':
 			flags |= TAPDISK_MESSAGE_FLAG_RDONLY;
@@ -282,7 +190,7 @@ tap_cli_create(int argc, char **argv)
 			break;
 		case 'e':
 			flags |= TAPDISK_MESSAGE_FLAG_REUSE_PRT;
-			prt_minor = atoi(optarg);
+			prt_path = optarg;
 			break;
 		case '2':
 			flags |= TAPDISK_MESSAGE_FLAG_SECONDARY;
@@ -305,12 +213,7 @@ tap_cli_create(int argc, char **argv)
 	if (!args)
 		goto usage;
 
-	err = tap_ctl_create(args, &devname, flags, prt_minor, secondary,
-			timeout);
-	if (!err)
-		printf("%s\n", devname);
-
-	return err;
+	return tap_ctl_create(args, flags, prt_path, secondary, timeout);
 
 usage:
 	tap_cli_create_usage(stderr);
@@ -320,7 +223,7 @@ usage:
 static void
 tap_cli_destroy_usage(FILE *stream)
 {
-	fprintf(stream, "usage: destroy <-p pid> <-m minor>\n");
+	fprintf(stream, "usage: destroy <-p pid> <-a type:/path/to/file>\n");
 }
 
 static struct timeval*
@@ -341,21 +244,22 @@ tap_cli_timeout(const char *optarg)
 static int
 tap_cli_destroy(int argc, char **argv)
 {
-	int c, pid, minor;
+	int c, pid;
 	struct timeval *timeout;
+	char *params;
 
 	pid     = -1;
-	minor   = -1;
+	params  = NULL;
 	timeout = NULL;
 
 	optind = 0;
-	while ((c = getopt(argc, argv, "p:m:t:h")) != -1) {
+	while ((c = getopt(argc, argv, "p:a:t:h")) != -1) {
 		switch (c) {
 		case 'p':
 			pid = atoi(optarg);
 			break;
-		case 'm':
-			minor = atoi(optarg);
+		case 'a':
+			params = optarg;
 			break;
 		case 't':
 			timeout = tap_cli_timeout(optarg);
@@ -370,10 +274,10 @@ tap_cli_destroy(int argc, char **argv)
 		}
 	}
 
-	if (pid == -1 || minor == -1)
+	if (pid == -1 || !params)
 		goto usage;
 
-	return tap_ctl_destroy(pid, minor, 0, timeout);
+	return tap_ctl_destroy(pid, params, 0, timeout);
 
 usage:
 	tap_cli_destroy_usage(stderr);
@@ -421,112 +325,32 @@ usage:
 }
 
 static void
-tap_cli_attach_usage(FILE *stream)
-{
-	fprintf(stream, "usage: attach <-p pid> <-m minor>\n");
-}
-
-static int
-tap_cli_attach(int argc, char **argv)
-{
-	int c, pid, minor;
-
-	pid   = -1;
-	minor = -1;
-
-	optind = 0;
-	while ((c = getopt(argc, argv, "p:m:h")) != -1) {
-		switch (c) {
-		case 'p':
-			pid = atoi(optarg);
-			break;
-		case 'm':
-			minor = atoi(optarg);
-			break;
-		case '?':
-			goto usage;
-		case 'h':
-			tap_cli_attach_usage(stderr);
-			return 0;
-		}
-	}
-
-	if (pid == -1 || minor == -1)
-		goto usage;
-
-	return tap_ctl_attach(pid, minor);
-
-usage:
-	tap_cli_attach_usage(stderr);
-	return EINVAL;
-}
-
-static void
-tap_cli_detach_usage(FILE *stream)
-{
-	fprintf(stream, "usage: detach <-p pid> <-m minor>\n");
-}
-
-static int
-tap_cli_detach(int argc, char **argv)
-{
-	int c, pid, minor;
-
-	pid   = -1;
-	minor = -1;
-
-	optind = 0;
-	while ((c = getopt(argc, argv, "p:m:h")) != -1) {
-		switch (c) {
-		case 'p':
-			pid = atoi(optarg);
-			break;
-		case 'm':
-			minor = atoi(optarg);
-			break;
-		case '?':
-			goto usage;
-		case 'h':
-			tap_cli_detach_usage(stdout);
-			return 0;
-		}
-	}
-
-	if (pid == -1 || minor == -1)
-		goto usage;
-
-	return tap_ctl_detach(pid, minor);
-
-usage:
-	tap_cli_detach_usage(stderr);
-	return EINVAL;
-}
-
-static void
 tap_cli_close_usage(FILE *stream)
 {
-	fprintf(stream, "usage: close <-p pid> <-m minor> [-f force]\n");
+	fprintf(stream, "usage: close <-p pid> <-a type:/path/to/file> "
+			"[-f force]\n");
 }
 
 static int
 tap_cli_close(int argc, char **argv)
 {
-	int c, pid, minor, force;
+	int c, pid, force;
 	struct timeval *timeout;
+	char *params;
 
 	pid     = -1;
-	minor   = -1;
+	params  = NULL;
 	force   = 0;
 	timeout = NULL;
 
 	optind = 0;
-	while ((c = getopt(argc, argv, "p:m:ft:h")) != -1) {
+	while ((c = getopt(argc, argv, "p:a:ft:h")) != -1) {
 		switch (c) {
 		case 'p':
 			pid = atoi(optarg);
 			break;
-		case 'm':
-			minor = atoi(optarg);
+		case 'a':
+			params = optarg;
 			break;
 		case 'f':
 			force = -1;
@@ -544,10 +368,10 @@ tap_cli_close(int argc, char **argv)
 		}
 	}
 
-	if (pid == -1 || minor == -1)
+	if (pid == -1 || !params)
 		goto usage;
 
-	return tap_ctl_close(pid, minor, force, timeout);
+	return tap_ctl_close(pid, params, force, timeout);
 
 usage:
 	tap_cli_close_usage(stderr);
@@ -557,27 +381,28 @@ usage:
 static void
 tap_cli_pause_usage(FILE *stream)
 {
-	fprintf(stream, "usage: pause <-p pid> <-m minor>\n");
+	fprintf(stream, "usage: pause <-p pid> <-a type:/path/to/file>\n");
 }
 
 static int
 tap_cli_pause(int argc, char **argv)
 {
-	int c, pid, minor;
+	int c, pid;
 	struct timeval *timeout;
+	char *params;
 
 	pid     = -1;
-	minor   = -1;
+	params  = NULL;
 	timeout = NULL;
 
 	optind = 0;
-	while ((c = getopt(argc, argv, "p:m:t:h")) != -1) {
+	while ((c = getopt(argc, argv, "p:a:t:h")) != -1) {
 		switch (c) {
 		case 'p':
 			pid = atoi(optarg);
 			break;
-		case 'm':
-			minor = atoi(optarg);
+		case 'a':
+			params = optarg;
 			break;
 		case 't':
 			timeout = tap_cli_timeout(optarg);
@@ -591,10 +416,10 @@ tap_cli_pause(int argc, char **argv)
 		}
 	}
 
-	if (pid == -1 || minor == -1)
+	if (pid == -1 || !params)
 		goto usage;
 
-	return tap_ctl_pause(pid, minor, timeout);
+	return tap_ctl_pause(pid, params, timeout);
 
 usage:
 	tap_cli_pause_usage(stderr);
@@ -604,34 +429,33 @@ usage:
 static void
 tap_cli_unpause_usage(FILE *stream)
 {
-	fprintf(stream, "usage: unpause <-p pid> <-m minor> [-a args] "
-			"[-2 secondary]\n");
+	fprintf(stream, "usage: unpause <-p pid> <-a type:/path/to/file> "
+			"[-b type:/path/to/file] [-2 secondary]\n");
 }
 
 int
 tap_cli_unpause(int argc, char **argv)
 {
-	const char *args;
-	char *secondary;
-	int c, pid, minor, flags;
+	char *secondary, *params1, *params2;
+	int c, pid, flags;
 
-	pid   = -1;
-	minor = -1;
-	args  = NULL;
+	pid       = -1;
+	params1   = NULL;
+	params2   = NULL;
 	secondary = NULL;
-	flags = 0;
+	flags     = 0;
 
 	optind = 0;
-	while ((c = getopt(argc, argv, "p:m:a:2:h")) != -1) {
+	while ((c = getopt(argc, argv, "p:a:b:2:h")) != -1) {
 		switch (c) {
 		case 'p':
 			pid = atoi(optarg);
 			break;
-		case 'm':
-			minor = atoi(optarg);
-			break;
 		case 'a':
-			args = optarg;
+			params1 = optarg;
+			break;
+		case 'b':
+			params2 = optarg;
 			break;
 		case '2':
 			flags |= TAPDISK_MESSAGE_FLAG_SECONDARY;
@@ -645,10 +469,10 @@ tap_cli_unpause(int argc, char **argv)
 		}
 	}
 
-	if (pid == -1 || minor == -1)
+	if (pid == -1 || !params1)
 		goto usage;
 
-	return tap_ctl_unpause(pid, minor, args, flags, secondary);
+	return tap_ctl_unpause(pid, params1, params2, flags, secondary);
 
 usage:
 	tap_cli_unpause_usage(stderr);
@@ -656,89 +480,37 @@ usage:
 }
 
 static void
-tap_cli_major_usage(FILE *stream)
-{
-	fprintf(stream, "usage: major [-h]\n");
-}
-
-static int
-tap_cli_major(int argc, char **argv)
-{
-	int c, chr, major;
-
-	chr = 0;
-
-	while ((c = getopt(argc, argv, "bch")) != -1) {
-		switch (c) {
-		case 'b':
-			chr = 0;
-			break;
-		case 'c':
-			chr = 1;
-			break;
-		case '?':
-			goto usage;
-		case 'h':
-			tap_cli_major_usage(stdout);
-			return 0;
-		default:
-			goto usage;
-		}
-	}
-
-	if (chr)
-		major = -EINVAL;
-	else
-		major = tap_ctl_blk_major();
-
-	if (major < 0)
-		return -major;
-
-	printf("%d\n", major);
-
-	return 0;
-
-usage:
-	tap_cli_major_usage(stderr);
-	return EINVAL;
-}
-
-static void
 tap_cli_open_usage(FILE *stream)
 {
-	fprintf(stream, "usage: open <-p pid> <-m minor> <-a args> [-R readonly] "
-		"[-e <minor> stack on existing tapdisk for the parent chain] "
-		"[-r turn on read caching into leaf node] [-2 <path> "
-		"use secondary image (in mirror mode if no -s)] [-s "
-		"fail over to the secondary image on ENOSPC] "
-		"[-t request timeout in seconds]\n");
+	fprintf(stream, "usage: open <-p pid> <-a args> [-R readonly] "
+			"[-e <type:/path/to/file> stack on existing tapdisk for the "
+			"parent chain] [-r turn on read caching into leaf node] [-2 "
+			"<path> use secondary image (in mirror mode if no -s)] [-s fail 2 "
+			"over to the secondary image on ENOSPC] [-t request timeout in "
+			"seconds]\n");
 }
 
 static int
 tap_cli_open(int argc, char **argv)
 {
-	const char *args, *secondary;
-	int c, pid, minor, flags, prt_minor, timeout;
+	const char *params, *prt_params, *secondary;
+	int c, pid, flags, timeout;
 
-	flags     = 0;
-	pid       = -1;
-	minor     = -1;
-	prt_minor = -1;
-	timeout   = 0;
-	args      = NULL;
-	secondary = NULL;
+	flags      = 0;
+	pid        = -1;
+	params     = NULL;
+	prt_params = NULL;
+	timeout    = 0;
+	secondary  = NULL;
 
 	optind = 0;
-	while ((c = getopt(argc, argv, "a:Rm:p:e:r2:st:h")) != -1) {
+	while ((c = getopt(argc, argv, "a:Rp:e:r2:st:h")) != -1) {
 		switch (c) {
 		case 'p':
 			pid = atoi(optarg);
 			break;
-		case 'm':
-			minor = atoi(optarg);
-			break;
 		case 'a':
-			args = optarg;
+			params = optarg;
 			break;
 		case 'R':
 			flags |= TAPDISK_MESSAGE_FLAG_RDONLY;
@@ -748,7 +520,7 @@ tap_cli_open(int argc, char **argv)
 			break;
 		case 'e':
 			flags |= TAPDISK_MESSAGE_FLAG_REUSE_PRT;
-			prt_minor = atoi(optarg);
+			prt_params = optarg;
 			break;
 		case '2':
 			flags |= TAPDISK_MESSAGE_FLAG_SECONDARY;
@@ -768,11 +540,10 @@ tap_cli_open(int argc, char **argv)
 		}
 	}
 
-	if (pid == -1 || minor == -1 || !args)
+	if (pid == -1 || !params)
 		goto usage;
 
-	return tap_ctl_open(pid, minor, args, flags, prt_minor, secondary,
-			timeout);
+	return tap_ctl_open(pid, params, flags, prt_params, secondary, timeout);
 
 usage:
 	tap_cli_open_usage(stderr);
@@ -789,19 +560,20 @@ static int
 tap_cli_stats(int argc, char **argv)
 {
 	pid_t pid;
-	int c, minor, err;
+	int c, err;
+	char *params;
 
 	pid     = -1;
-	minor   = -1;
+	params  = NULL;
 
 	optind = 0;
-	while ((c = getopt(argc, argv, "p:m:h")) != -1) {
+	while ((c = getopt(argc, argv, "p:a:h")) != -1) {
 		switch (c) {
 		case 'p':
 			pid = atoi(optarg);
 			break;
-		case 'm':
-			minor = atoi(optarg);
+		case 'a':
+			params = optarg;
 			break;
 		case '?':
 			goto usage;
@@ -811,10 +583,10 @@ tap_cli_stats(int argc, char **argv)
 		}
 	}
 
-	if (pid == -1 || minor == -1)
+	if (pid == -1 || !params)
 		goto usage;
 
-	err = tap_ctl_stats_fwrite(pid, minor, stdout);
+	err = tap_ctl_stats_fwrite(pid, params, stdout);
 	if (err)
 		return err;
 
@@ -827,48 +599,16 @@ usage:
 	return EINVAL;
 }
 
-static void
-tap_cli_check_usage(FILE *stream)
-{
-	fprintf(stream, "usage: check\n"
-		"(checks whether environment is suitable for tapdisk2)\n");
-}
-
-static int
-tap_cli_check(int argc, char **argv)
-{
-	int err;
-	const char *msg;
-
-	if (argc != 1)
-		goto usage;
-
-	err = tap_ctl_check(&msg);
-	printf("%s\n", msg);
-
-	return err;
-
-usage:
-	tap_cli_check_usage(stderr);
-	return EINVAL;
-}
-
 struct command commands[] = {
 	{ .name = "list",         .func = tap_cli_list          },
-	{ .name = "allocate",     .func = tap_cli_allocate      },
-	{ .name = "free",         .func = tap_cli_free          },
 	{ .name = "create",       .func = tap_cli_create        },
 	{ .name = "destroy",      .func = tap_cli_destroy       },
 	{ .name = "spawn",        .func = tap_cli_spawn         },
-	{ .name = "attach",       .func = tap_cli_attach        },
-	{ .name = "detach",       .func = tap_cli_detach        },
 	{ .name = "open",         .func = tap_cli_open          },
 	{ .name = "close",        .func = tap_cli_close         },
 	{ .name = "pause",        .func = tap_cli_pause         },
 	{ .name = "unpause",      .func = tap_cli_unpause       },
 	{ .name = "stats",        .func = tap_cli_stats         },
-	{ .name = "major",        .func = tap_cli_major         },
-	{ .name = "check",        .func = tap_cli_check         },
 };
 
 #define print_commands()					\
@@ -911,7 +651,6 @@ int
 main(int argc, char *argv[])
 {
 	char **cargv;
-	const char *msg;
 	struct command *cmd;
 	int cargc, i, cnt, ret;
 
@@ -936,12 +675,6 @@ main(int argc, char *argv[])
 	if (!cmd) {
 		EPRINTF("invalid COMMAND %s", argv[1]);
 		help();
-	}
-
-	ret = tap_ctl_check(&msg);
-	if (ret) {
-		printf("%s\n", msg);
-		return ret;
 	}
 
 	cargv = malloc(sizeof(char *) * cargc);
