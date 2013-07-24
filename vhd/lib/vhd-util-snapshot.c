@@ -27,6 +27,7 @@
 #include <limits.h>
 
 #include "libvhd.h"
+#include "canonpath.h"
 
 static int
 vhd_util_find_snapshot_target(const char *name, char **result, int *parent_raw)
@@ -157,7 +158,7 @@ vhd_util_snapshot(int argc, char **argv)
 		goto usage;
 	}
 
-	ppath = realpath(pname, __ppath);
+	ppath = canonpath(pname, __ppath);
 	if (!ppath)
 		return -errno;
 
