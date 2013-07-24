@@ -106,7 +106,7 @@ lvm_open_vg(const char *vgname, struct vg *vg)
 
 	memset(vg, 0, sizeof(*vg));
 
-	err = asprintf(&cmd, "/usr/sbin/vgs %s --noheadings --nosuffix --units=b "
+	err = asprintf(&cmd, "vgs %s --noheadings --nosuffix --units=b "
 		       "--options=vg_name,vg_extent_size,lv_count,pv_count,"
 		       "pv_name,pe_start --unbuffered 2> /dev/null", vgname);
 	if (err == -1)
@@ -211,7 +211,7 @@ lvm_scan_lvs(struct vg *vg)
 	FILE *scan;
 	int i, err;
 
-	err = asprintf(&cmd, "/usr/sbin/lvs %s --noheadings --nosuffix --units=b "
+	err = asprintf(&cmd, "lvs %s --noheadings --nosuffix --units=b "
 		       "--options=lv_name,lv_size,segtype,seg_count,seg_start,"
 		       "seg_size,devices --unbuffered 2> /dev/null", vg->name);
 	if (err == -1)

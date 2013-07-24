@@ -27,6 +27,7 @@
 #include <limits.h>
 
 #include "libvhd.h"
+#include "canonpath.h"
 
 static int
 __raw_io_write(int fd, char* buf, uint64_t sec, uint32_t secs)
@@ -225,13 +226,13 @@ vhd_util_pathcmp(const char *a, const char *b, int *cmp)
 	char *apath = NULL, __apath[PATH_MAX];
 	char *bpath = NULL, __bpath[PATH_MAX];
 
-	apath = realpath(a, __apath);
+	apath = canonpath(a, __apath);
 	if (!apath) {
 		err = -errno;
 		goto out;
 	}
 
-	bpath = realpath(b, __bpath);
+	bpath = canonpath(b, __bpath);
 	if (!bpath) {
 		err = -errno;
 		goto out;

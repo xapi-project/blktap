@@ -37,6 +37,7 @@
 
 #include "libvhd.h"
 #include "relative-path.h"
+#include "canonpath.h"
 
 /* VHD uses an epoch of 12:00AM, Jan 1, 2000. This is the Unix timestamp for 
  * the start of the VHD epoch. */
@@ -1265,7 +1266,7 @@ vhd_find_parent(vhd_context_t *ctx, const char *parent, char **_location)
 	}
 
 	/* check parent path relative to child's directory */
-	cpath = realpath(ctx->file, __cpath);
+	cpath = canonpath(ctx->file, __cpath);
 	if (!cpath) {
 		err = -errno;
 		goto out;
@@ -1279,7 +1280,7 @@ vhd_find_parent(vhd_context_t *ctx, const char *parent, char **_location)
 	}
 
 	if (!access(location, R_OK)) {
-		path = realpath(location, __location);
+		path = canonpath(location, __location);
 		if (path) {
 			*_location = strdup(path);
 			if (*_location)
@@ -1669,7 +1670,7 @@ vhd_parent_locator_write_at(vhd_context_t *ctx,
 		return -EINVAL;
 	}
 
-	absolute_path = realpath(parent, __parent);
+	absolute_path = canonpath(parent, __parent);
 	if (!absolute_path) {
 		err = -errno;
 		goto out;
@@ -2781,7 +2782,7 @@ vhd_change_parent(vhd_context_t *child, char *parent_path, int raw)
 		return -EINVAL;
 	}
 
-	ppath = realpath(parent_path, __parent_path);
+	ppath = canonpath(parent_path, __parent_path);
 	if (!ppath) {
 		VHDLOG("error resolving parent path %s for %s: %d\n",
 		       parent_path, child->file, errno);
