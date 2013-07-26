@@ -1,0 +1,8 @@
+diff -r d91ddfaf89c9 control/blktap.rules
+--- a/control/blktap.rules	Fri Jul 16 15:19:53 2010 -0700
++++ b/control/blktap.rules	Fri Jul 16 15:21:43 2010 -0700
+@@ -1,3 +1,3 @@
+ SUBSYSTEM=="misc",	KERNEL=="blktap-control",	NAME="blktap/control"
+ SUBSYSTEM=="blktap2",	KERNEL=="blktap[0-9]*",		NAME="blktap/%k"
+-SUBSYSTEM=="block",	KERNEL=="td[a-z]*",		NAME="%k"
++SUBSYSTEM=="block",	KERNEL=="td[a-z]*",		OPTIONS="ignore_device"
