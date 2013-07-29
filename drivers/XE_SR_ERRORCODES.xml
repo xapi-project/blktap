@@ -919,4 +919,10 @@
             <description>Unsupported kernel: neither 2.6 nor 3.x.</description>
             <value>448</value>
         </code>
+        <code>
+                <name>OCFSOneLUN</name>
+                <description>Only 1 LUN may be used with shared OCFS</description>
+                <value>449</value>
+        </code>
+
 </SM-errorcodes>
