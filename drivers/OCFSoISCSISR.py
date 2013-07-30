@@ -490,7 +490,7 @@ class OCFSoISCSISR(OCFSSR.OCFSSR):
         self.iscsi.detach(self.uuid)
         return out
 
-    def vdi(self, uuid):
+    def vdi(self, uuid, loadLocked=False):
         return OCFSoISCSIVDI(self, uuid)
     
 class OCFSoISCSIVDI(OCFSSR.OCFSFileVDI):
