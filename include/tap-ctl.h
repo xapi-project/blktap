@@ -44,11 +44,6 @@ extern int tap_ctl_debug;
 #endif
 
 void tap_ctl_version(int *major, int *minor);
-int tap_ctl_kernel_version(int *major, int *minor);
-
-int tap_ctl_check_blktap(const char **message);
-int tap_ctl_check_version(const char **message);
-int tap_ctl_check(const char **message);
 
 int tap_ctl_connect(const char *path, int *socket);
 int tap_ctl_connect_id(int id, int *socket);
@@ -84,11 +79,6 @@ int tap_ctl_list(struct list_head *list);
 int tap_ctl_list_pid(pid_t pid, struct list_head *list);
 void tap_ctl_list_free(struct list_head *list);
 
-int tap_ctl_find_minor(const char *type, const char *path);
-
-int tap_ctl_allocate(int *minor, char **devname);
-int tap_ctl_free(const int minor);
-
 int tap_ctl_create(const char *params, int flags, const char *prt_path,
 		char *secondary, int timeout);
 int tap_ctl_destroy(const int id, const char *params, int force,
@@ -97,31 +87,77 @@ int tap_ctl_destroy(const int id, const char *params, int force,
 int tap_ctl_spawn(void);
 pid_t tap_ctl_get_pid(const int id);
 
-int tap_ctl_attach(const int id, const int minor);
-int tap_ctl_detach(const int id, const int minor);
 
 int tap_ctl_open(const int id, const char *params, int flags,
 		const char *prt_path, const char *secondary, int timeout);
 int tap_ctl_close(const int id, const char *params, const int force,
 		  struct timeval *timeout);
 
+/**
+ * Pauses the VBD.
+ */
 int tap_ctl_pause(const int id, const char *params, struct timeval *timeout);
+
+/**
+ * Unpauses the VBD
+ *
+ * @param pid the process ID of the tapdisk
+ * @param params1 VDI (type:/path/to/file)
+ * @param params2 new VDI to use (type:/path/to/file), optional
+ * @param flags TODO
+ * @param secondary TODO
+ */
 int tap_ctl_unpause(const int id, const char *params1, const char *params2,
 		int flags, char *secondary);
 
 ssize_t tap_ctl_stats(pid_t pid, const char *params, char *buf, size_t size);
 int tap_ctl_stats_fwrite(pid_t pid, const char *params, FILE *out);
 
-int tap_ctl_blk_major(void);
-
+/**
+ * Instructs a tapdisk to connect to the shared ring.
+ *
+ * @param pid the process ID of the tapdisk that should connect to the shared
+ * ring
+ * @param path /path/to/vdi
+ * @param domid the domain ID of the guest VM
+ * @param devid the device ID
+ * @param grefs the grant references
+ * @param order number of grant references, expressed as a 2's order
+ * @param port event channel port
+ * @param proto the protocol: native (XENIO_BLKIF_PROTO_NATIVE),
+ * x86 (XENIO_BLKIF_PROTO_X86_32), or x64 (XENIO_BLKIF_PROTO_X86_64)
+ * @param pool a string used as an identifier to group two or more VBDs
+ * beloning to the same tapdisk process. For VBDs with the same pool name, a
+ * single event channel is used.
+ * @returns 0 on success, a negative error code otherwise
+ */
 int tap_ctl_connect_xenblkif(const pid_t pid, const char *params,
         const domid_t domid, const int devid, const grant_ref_t * grefs,
         const int order, const evtchn_port_t port, int proto,
 		const char *pool);
 
+/**
+ * Instructs a tapdisk to disconnect from the shared ring.
+ *
+ * @param pid process ID of the tapdisk
+ * @param domid the ID of the guest VM
+ * @param devid the device ID of the virtual block device
+ * @param timeout timeout to wait, if NULL the function will wait indefinitely
+ * @returns 0 on success, a negative error code otherwise
+ */
 int tap_ctl_disconnect_xenblkif(const pid_t pid, const domid_t domid,
         const int devid, struct timeval *timeout);
 
+/**
+ * Retrieves virtual disk information from a tapdisk.
+ *
+ * @pid the process ID of the tapdisk process
+ * @params type:/path/to/file
+ * @sectors output parameter that receives the number of sectors
+ * @sector_size output parameter that receives the size of the sector
+ * @info TODO ?
+ *
+ */
 int tap_ctl_info(pid_t pid, const char *path, unsigned long long *sectors,
         unsigned int *sector_size, unsigned int *info);
 

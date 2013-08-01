@@ -139,7 +139,7 @@ tapdisk_xenblkif_connect(domid_t domid, int devid, const grant_ref_t * grefs,
      */
     td_blkif->ring_n_pages = 1 << order;
     if (td_blkif->ring_n_pages > ARRAY_SIZE(td_blkif->ring_ref)) {
-        syslog(LOG_ERR, "too many pages (%u), max %lu\n",
+        syslog(LOG_ERR, "too many pages (%u), max %u\n",
                 td_blkif->ring_n_pages, ARRAY_SIZE(td_blkif->ring_ref));
         err = EINVAL;
         goto fail;

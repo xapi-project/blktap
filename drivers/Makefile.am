@@ -4,10 +4,6 @@ AM_CFLAGS += -Werror
 
 AM_CPPFLAGS  = -D_GNU_SOURCE
 AM_CPPFLAGS += -I$(top_srcdir)/include
-# FIXME the "../" is ugly
-AM_CPPFLAGS += -I$(top_srcdir)/../xen-4.2.hg/tools/include
-AM_CPPFLAGS += -I$(top_srcdir)/../xen-4.2.hg/tools/libxc
-AM_CPPFLAGS += -I$(top_srcdir)/../xen-4.2.hg/stubdom/ioemu/hw
 
 libexec_PROGRAMS = tapdisk
 
@@ -33,7 +29,6 @@ libtapdisk_la_SOURCES += tapdisk-control.c
 libtapdisk_la_SOURCES += tapdisk-control.h
 libtapdisk_la_SOURCES += tapdisk-vbd.c
 libtapdisk_la_SOURCES += tapdisk-vbd.h
-libtapdisk_la_SOURCES += linux-blktap.h
 libtapdisk_la_SOURCES += tapdisk-nbdserver.c
 libtapdisk_la_SOURCES += tapdisk-nbdserver.h
 libtapdisk_la_SOURCES += tapdisk-nbd.h
@@ -95,11 +90,7 @@ libtapdisk_la_SOURCES += td-ctx.c
 libtapdisk_la_SOURCES += td-ctx.h
 libtapdisk_la_SOURCES += td-stats.c
 libtapdisk_la_SOURCES += td-stats.h
-libtapdisk_la_SOURCES += xen_blkif.h
 
 libtapdisk_la_LIBADD  = ../vhd/lib/libvhd.la
 libtapdisk_la_LIBADD += -laio
-
-# shared ring linking with Xen
-libtapdisk_la_LIBADD += -L$(top_srcdir)/../xen-4.2.hg/tools/libxc
 libtapdisk_la_LIBADD += -lxenctrl

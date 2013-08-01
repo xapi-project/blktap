@@ -40,13 +40,15 @@ static void
 tap_cli_list_usage(FILE *stream)
 {
 	fprintf(stream,
-		"usage: list [-h] [-p pid] [-t type] [-f file]\n");
+		"usage: list [-h] [-p pid] [-t type] [-f file]\n"
+		"\n"
+		"Lists tapdisks in the following format:\n"
+		"%8s %4s %10s %s\n", "pid", "state", "type", "file");
 }
 
 static void
 tap_cli_list_row(tap_list_t *entry)
 {
-	char minor_str[10] = "-";
 	char state_str[10] = "-";
 	char pid_str[10]   = "-";
 
@@ -56,9 +58,8 @@ tap_cli_list_row(tap_list_t *entry)
 	if (entry->state != -1)
 		sprintf(state_str, "%#x", entry->state);
 
-	printf("%8s %4s %4s %10s %s\n",
-	       pid_str, minor_str, state_str,
-	       entry->type ? : "-", entry->path ? : "-");
+	printf("%8s %4s %10s %s\n",
+	       pid_str, state_str, entry->type ? : "-", entry->path ? : "-");
 }
 
 static void
@@ -697,6 +698,9 @@ main(int argc, char *argv[])
 	ret = cmd->func(cnt, cargv);
 
 	free(cargv);
+
+	if (ret)
+		fprintf(stderr, "%s\n", strerror(-ret));
 
 	return (ret >= 0 ? ret : -ret);
 }

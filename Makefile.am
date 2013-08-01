@@ -1,6 +1,8 @@
 
 # ACLOCAL_AMFLAGS = -I m4
 
+# FIXME run cppcheck
+
 SUBDIRS  = lvm
 SUBDIRS += $(MAYBE_part)
 SUBDIRS += vhd

@@ -28,6 +28,9 @@
 #include <libgen.h>
 #include <sys/mman.h>
 #include <sys/ioctl.h>
+#include <sys/types.h>
+#include <sys/socket.h>
+#include <sys/un.h>
 #include <assert.h>
 
 #include "libvhd.h"
@@ -827,6 +830,10 @@ tapdisk_vbd_request_ttl(td_vbd_request_t *vreq,
 			const struct timeval *now)
 {
 	struct timeval delta;
+
+	assert(vreq);
+	assert(vreq->vbd);
+
 	timersub(now, &vreq->ts, &delta);
 	return vreq->vbd->req_timeout - delta.tv_sec;
 }
@@ -1424,6 +1431,8 @@ tapdisk_vbd_start_nbdserver(td_vbd_t *vbd)
 {
 	td_disk_info_t info;
 	int err;
+	static const int len = 256;
+	char sockpath[len];
 
 	err = tapdisk_vbd_get_disk_info(vbd, &info);
 
@@ -1435,6 +1444,22 @@ tapdisk_vbd_start_nbdserver(td_vbd_t *vbd)
 	if (!vbd->nbdserver) {
 		EPRINTF("Error starting nbd server");
 		return -1;
+	}
+
+	/*
+	 * FIXME need to add the VBD identifier, e.g. some UUID, the file's path
+	 * etc.
+	 *
+	 * FIXME check return code
+	 */
+	snprintf(sockpath, len, "%s:%d", TAPDISK_NBDSERVER_SOCK_PATH, getpid());
+
+	err = tapdisk_nbdserver_listen_unix(vbd->nbdserver, sockpath);
+	if (err) {
+		tapdisk_nbdserver_free(vbd->nbdserver);
+		EPRINTF("failed to listen on the UNIX domain socket: %s\n",
+				strerror(-err));
+		return err;
 	}
 
 	return 0;

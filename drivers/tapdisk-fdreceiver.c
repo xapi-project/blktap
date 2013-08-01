@@ -38,7 +38,7 @@
 #define INFO(_f, _a...)            tlog_syslog(TLOG_INFO, "nbd: " _f, ##_a)
 #define ERROR(_f, _a...)           tlog_syslog(TLOG_WARN, "nbd: " _f, ##_a)
 
-static void 
+static void
 td_fdreceiver_recv_fd(event_id_t id, char mode, void *data)
 {
 	struct td_fdreceiver *fdreceiver = data;
@@ -76,7 +76,7 @@ td_fdreceiver_recv_fd(event_id_t id, char mode, void *data)
 
 	if (ret > 0 && msg.msg_controllen > 0) {
 		cmsg = CMSG_FIRSTHDR(&msg);
-		if (cmsg->cmsg_level == SOL_SOCKET && 
+		if (cmsg->cmsg_level == SOL_SOCKET &&
 				(cmsg->cmsg_type == SCM_RIGHTS)) {
 			fdp = (int*)CMSG_DATA(cmsg);
 			fd = *fdp;
@@ -90,10 +90,10 @@ td_fdreceiver_recv_fd(event_id_t id, char mode, void *data)
 	if (ret < numbytes)
 		numbytes = ret;
 
-	INFO("Recieved fd with message: %s", iobuf);
+	INFO("Received fd %d with message: %s", fd, iobuf);
 
 	/*
-	 * We're done with this connection, it was only transiently used to 
+	 * We're done with this connection, it was only transiently used to
 	 * connect the client
 	 */
 	close(fdreceiver->client_fd);
@@ -103,13 +103,13 @@ td_fdreceiver_recv_fd(event_id_t id, char mode, void *data)
 	fdreceiver->client_event_id = -1;
 
 	/*
-	 * It is the responsibility of this callback function to arrange that 
+	 * It is the responsibility of this callback function to arrange that
 	 * the fd is eventually closed
 	 */
 	fdreceiver->callback(fd, iobuf, fdreceiver->callback_data);
 }
 
-static void 
+static void
 td_fdreceiver_accept_fd(event_id_t id, char mode, void *data)
 {
 	struct sockaddr_storage their_addr;
@@ -193,10 +193,10 @@ td_fdreceiver_start(char *path, fd_cb_t callback, void *data)
 	fdreceiver->callback_data = data;
 
 	snprintf(local.sun_path, sizeof(local.sun_path), "%s", path);
-	local.sun_family = AF_UNIX;  
+	local.sun_family = AF_UNIX;
 
-	/* 
-	 * NB: here we unlink anything that was there before - be very careful 
+	/*
+	 * NB: here we unlink anything that was there before - be very careful
 	 * with the paths you pass to this function!
 	 */
 	unlink(local.sun_path);

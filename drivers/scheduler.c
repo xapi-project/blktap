@@ -1,4 +1,4 @@
-/* 
+/*
  * Copyright (C) Citrix Systems Inc.
  *
  * This program is free software; you can redistribute it and/or
@@ -24,6 +24,7 @@
 #include <unistd.h>
 #include <string.h>
 #include <sys/time.h>
+#include <assert.h>
 
 #include "tapdisk.h"
 #include "scheduler.h"
@@ -335,8 +336,11 @@ scheduler_wait_for_events(scheduler_t *s)
 	ret = select(s->max_fd + 1, &s->read_fds,
 		     &s->write_fds, &s->except_fds, &tv);
 
-	if (ret < 0)
+	if (ret < 0) {
+		ret = -errno;
+		assert(!ret);
 		goto out;
+	}
 
 	ret = scheduler_check_events(s, ret);
 	BUG_ON(ret);

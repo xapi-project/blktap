@@ -309,7 +309,7 @@ tapdisk_server_iterate(void)
 
 	ret = scheduler_wait_for_events(&server.scheduler);
 	if (ret < 0)
-		DBG(TLOG_WARN, "server wait returned %d\n", ret);
+		DBG(TLOG_WARN, "server wait returned %s\n", strerror(-ret));
 
 	tapdisk_server_check_vbds();
 	do {
