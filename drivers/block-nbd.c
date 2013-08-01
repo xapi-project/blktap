@@ -1,4 +1,4 @@
-/* 
+/*
  * Copyright (C) Citrix Systems Inc.
  *
  * This program is free software; you can redistribute it and/or
@@ -45,13 +45,13 @@
 
 #define N_PASSED_FDS 10
 #define TAPDISK_NBDCLIENT_MAX_PATH_LEN 256
-#define TAPDISK_NBDCLIENT_LISTEN_SOCK_PATH "/var/run/blktap-control/nbdclient"
+
 #define MAX_NBD_REQS TAPDISK_DATA_REQUESTS
 #define NBD_TIMEOUT 30
 
-/* 
+/*
  * We'll only ever have one nbdclient fd receiver per tapdisk process, so let's 
- * just store it here globally. We'll also keep track of the passed fds here 
+ * just store it here globally. We'll also keep track of the passed fds here
  * too.
  */
 

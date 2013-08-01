@@ -23,7 +23,7 @@
 #include "tapback.h"
 
 #include <xen/io/protocols.h>
-#include <xen_blkif.h>
+#include "xen_blkif.h"
 
 /**
  * Switches the back-end state of the device by writing to XenStore.

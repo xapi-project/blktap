@@ -11,6 +11,8 @@ vhd_HEADERS += list.h
 blktapdir = $(includedir)/blktap
 
 blktap_HEADERS  = blktap2.h
+blktap_HEADERS += blktap3.h
+blktap_HEADERS += xen_blkif.h
 blktap_HEADERS += blktaplib.h
 blktap_HEADERS += tapdisk-message.h
 blktap_HEADERS += tap-ctl.h

@@ -21,6 +21,7 @@
 #include <errno.h>
 #include <syslog.h>
 #include <xenctrl.h>
+#include <stdlib.h>
 
 #include "tapdisk-server.h"
 #include "td-ctx.h"

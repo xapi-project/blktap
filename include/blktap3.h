@@ -19,6 +19,8 @@
  * Commonly used headers and definitions.
  */
 
+// FIXME useless file?
+
 #ifndef __BLKTAP_3_H__
 #define __BLKTAP_3_H__
 

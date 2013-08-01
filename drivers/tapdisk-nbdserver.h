@@ -1,4 +1,4 @@
-/* 
+/*
  * Copyright (C) Citrix Systems Inc.
  *
  * This program is free software; you can redistribute it and/or
@@ -25,13 +25,26 @@ typedef struct td_nbdserver_client td_nbdserver_client_t;
 #include "blktap.h"
 #include "tapdisk-vbd.h"
 #include "list.h"
+#include "tapdisk-nbd.h"
 
 struct td_nbdserver {
 	td_vbd_t               *vbd;
 	td_disk_info_t          info;
 
-	int                     listening_fd;
-	int                     listening_event_id;
+	/**
+	 * Listening file descriptor for the file descriptor receiver.
+	 */
+	int                     fdrecv_listening_fd;
+
+	/**
+	 * Event ID for the file descriptor receiver.
+	 */
+	int                     fdrecv_listening_event_id;
+
+	/**
+	 * Socket for the UNIX domain socket.
+	 */
+	struct sockaddr_un		local;
 
 	struct td_fdreceiver   *fdreceiver;
 	struct list_head        clients;
@@ -54,7 +67,17 @@ struct td_nbdserver_client {
 };
 
 td_nbdserver_t *tapdisk_nbdserver_alloc(td_vbd_t *, td_disk_info_t);
-int tapdisk_nbdserver_listen(td_nbdserver_t *, int);
+
+/**
+ * Listen for connections on a TCP socket at the specified port.
+ */
+int tapdisk_nbdserver_listen_inet(td_nbdserver_t *server, const int port);
+
+/**
+ * Listen for connections on a UNIX domain socket at the specified path.
+ */
+int tapdisk_nbdserver_listen_unix(td_nbdserver_t *server, const char *sockpath);
+
 void tapdisk_nbdserver_free(td_nbdserver_t *);
 void tapdisk_nbdserver_pause(td_nbdserver_t *);
 int tapdisk_nbdserver_unpause(td_nbdserver_t *);

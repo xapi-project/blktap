@@ -66,7 +66,7 @@ tapback_xs_vread(struct xs_handle * const xs, xs_transaction_t xst,
      * We should be checking for extraneous NULLs before duplicating the
      * buffer, but this way logic is simplified.
      */
-    if (strrchr(data, '\0') - data != len)
+    if ((unsigned int)(strrchr(data, '\0') - data) != len)
         /* TODO log error */
         goto fail;
 

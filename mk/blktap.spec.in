@@ -53,6 +53,7 @@ make install DESTDIR=%{buildroot}
 %{_bindir}/vhd-util
 %{_bindir}/vhd-update
 %{_bindir}/vhd-index
+%{_bindir}/tapback
 %{_sbindir}/lvm-util
 %{_sbindir}/tap-ctl
 %{_sbindir}/td-util

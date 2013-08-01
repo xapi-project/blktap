@@ -27,6 +27,7 @@
 #include <arpa/inet.h>
 #include <sys/wait.h>
 #include <sys/un.h>
+#include <assert.h>
 
 #include "tapdisk.h"
 #include "tapdisk-server.h"
@@ -44,11 +45,10 @@
 
 #define NBD_SERVER_NUM_REQS TAPDISK_DATA_REQUESTS
 
-#define TAPDISK_NBDSERVER_LISTEN_SOCK_PATH "/var/run/blktap-control/nbdserver"
 #define TAPDISK_NBDSERVER_MAX_PATH_LEN 256
 
 /*
- * Server 
+ * Server
  */
 
 #define INFO(_f, _a...)            tlog_syslog(TLOG_INFO, "nbd: " _f, ##_a)
@@ -289,8 +289,8 @@ __tapdisk_nbdserver_request_cb(td_vbd_request_t *vreq, int error,
 					vreq->iov->base + (len - tosend),
 					tosend, 0);
 			if (sent <= 0) {
-				ERROR("Short send or error in "
-						"callback: %d", sent);
+				sent = errno;
+				ERROR("Short send/error in callback: %s", strerror(sent));
 				goto finish;
 			}
 
@@ -346,8 +346,9 @@ tapdisk_nbdserver_clientcb(event_id_t id, char mode, void *data)
 			goto fail;
 		}
 		if (rc < 0) {
-			ERROR("Bad return in nbdserver_clientcb. Closing "
-					"connection");
+			rc = errno;
+			ERROR("failed to receive from client: %s. Closing connection",
+					strerror(rc));
 			goto fail;
 		}
 		n += rc;
@@ -455,9 +456,14 @@ tapdisk_nbdserver_newclient_fd(td_nbdserver_t *server, int new_fd)
 	rc = send(new_fd, buffer, 152, 0);
 
 	if (rc < 152) {
+		int err = errno;
 		close(new_fd);
-		INFO("Short write in negotiation!");
-	}	
+		if (rc == -1)
+			INFO("Short write in negotiation: %s", strerror(err));
+		else
+			INFO("Short write in negotiation: wrote %d bytes instead of 152\n",
+					rc);
+	}
 
 	INFO("About to alloc client");
 	td_nbdserver_client_t *client = tapdisk_nbdserver_alloc_client(server);
@@ -473,7 +479,7 @@ tapdisk_nbdserver_newclient_fd(td_nbdserver_t *server, int new_fd)
 	}
 }
 
-static void 
+static void
 tapdisk_nbdserver_fdreceiver_cb(int fd, char *msg, void *data)
 {
 	td_nbdserver_t *server = data;
@@ -516,8 +522,7 @@ tapdisk_nbdserver_alloc(td_vbd_t *vbd, td_disk_info_t info)
 
 	server = malloc(sizeof(*server));
 	if (!server) {
-		ERROR("Failed to allocate memory for nbdserver, errno = %d",
-				errno);
+		ERROR("Failed to allocate memory for nbdserver: %s", strerror(errno));
 		return NULL;
 	}
 
@@ -530,7 +535,7 @@ tapdisk_nbdserver_alloc(td_vbd_t *vbd, td_disk_info_t info)
 	server->info = info;
 
 	snprintf(fdreceiver_path, TAPDISK_NBDSERVER_MAX_PATH_LEN, "%s%d.%s",
-			TAPDISK_NBDSERVER_LISTEN_SOCK_PATH, getpid(), 
+			TAPDISK_NBDSERVER_LISTEN_SOCK_PATH, getpid(),
 			vbd->name);
 
     /*
@@ -544,7 +549,7 @@ tapdisk_nbdserver_alloc(td_vbd_t *vbd, td_disk_info_t info)
         }
     }
 
-	server->fdreceiver = td_fdreceiver_start(fdreceiver_path, 
+	server->fdreceiver = td_fdreceiver_start(fdreceiver_path,
 			tapdisk_nbdserver_fdreceiver_cb, server);
 
 	if (!server->fdreceiver) {
@@ -558,7 +563,7 @@ tapdisk_nbdserver_alloc(td_vbd_t *vbd, td_disk_info_t info)
 }
 
 int
-tapdisk_nbdserver_listen(td_nbdserver_t *server, int port)
+tapdisk_nbdserver_listen_inet(td_nbdserver_t *server, const int port)
 {
 	struct addrinfo hints, *servinfo, *p;
 	char portstr[10];
@@ -627,6 +632,65 @@ tapdisk_nbdserver_listen(td_nbdserver_t *server, int port)
 	return 0;
 }
 
+/*
+ * FIXME we use server->listening_fd which is used for listening for fd
+ * reception, XSM won't work!
+ */
+int
+tapdisk_nbdserver_listen_unix(td_nbdserver_t *server, const char *sockpath)
+{
+	size_t len = 0;
+	int err = 0;
+
+	assert(server);
+	assert(sockpath);
+
+	assert(server->listening_fd == -1);
+
+	server->listening_fd = socket(AF_UNIX, SOCK_STREAM, 0);
+	if (server->listening_fd == -1) {
+		err = -errno;
+		ERROR("failed to create UNIX domain socket: %s\n", strerror(-err));
+		goto out;
+    }
+
+	server->local.sun_family = AF_UNIX;
+    strcpy(server->local.sun_path, sockpath);
+    unlink(server->local.sun_path); /* FIXME check return code */
+    len = strlen(server->local.sun_path) + sizeof(server->local.sun_family);
+	err = bind(server->listening_fd, (struct sockaddr *)&server->local, len);
+    if (err == -1) {
+		err = -errno;
+		ERROR("failed to bind: %s\n", strerror(-err));
+		goto out;
+    }
+
+	err = listen(server->listening_fd, 10);
+	if (err == -1) {
+		err = -errno;
+		ERROR("failed to listen: %s\n", strerror(-err));
+		goto out;
+	}
+
+	tapdisk_nbdserver_unpause(server);
+
+	if (server->listening_event_id < 0) {
+		ERROR("failed to unpause the NBD server: %s\n",
+				strerror(-server->listening_event_id));
+		err = server->listening_event_id;
+		server->listening_event_id = -1;
+		goto out;
+	}
+
+	INFO("Successfully started NBD server");
+
+out:
+	if (err)
+		if (server->listening_fd != -1)
+			close(server->listening_fd);
+	return err;
+}
+
 void
 tapdisk_nbdserver_pause(td_nbdserver_t *server)
 {
@@ -635,7 +699,7 @@ tapdisk_nbdserver_pause(td_nbdserver_t *server)
 	INFO("NBD server pause(%p)", server);
 
 	list_for_each_entry_safe(pos, q, &server->clients, clientlist){
-		if (pos->paused != 1 && pos->client_event_id >= 0) { 
+		if (pos->paused != 1 && pos->client_event_id >= 0) {
 			tapdisk_nbdserver_disable_client(pos);
 			pos->paused = 1;
 		}
@@ -645,7 +709,7 @@ tapdisk_nbdserver_pause(td_nbdserver_t *server)
 		tapdisk_server_unregister_event(server->listening_event_id);
 }
 
-int 
+int
 tapdisk_nbdserver_unpause(td_nbdserver_t *server)
 {
 	struct td_nbdserver_client *pos, *q;
@@ -665,14 +729,14 @@ tapdisk_nbdserver_unpause(td_nbdserver_t *server)
 			tapdisk_server_register_event(SCHEDULER_POLL_READ_FD,
 					server->listening_fd, 0,
 					tapdisk_nbdserver_newclient,
-					server);	
+					server);
 		INFO("registering for listening_fd");
 	}
 
 	return server->listening_event_id;
 }
 
-void 
+void
 tapdisk_nbdserver_free(td_nbdserver_t *server)
 {
 	struct td_nbdserver_client *pos, *q;

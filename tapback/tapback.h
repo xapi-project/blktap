@@ -57,16 +57,9 @@ void (*tapback_vlog) (int prio, const char *fmt, va_list ap);
 
 /*
  * Pre-defined XenStore path components used for running the XenBus protocol.
- *
- * To avoid confusion with blktap2, we'll use a new kind of device for libxl
- * defining it in tools/libxl/libxl_types_internal.idl. This will be done by
- * the patch that adds libxl support for blktap3. The temporary back-end name
- * is "xenio". Once blktap3 becomes the default back-end, its back-end name
- * should be "vbd" and "xenio" will be removed. TODO When that patch is sent,
- * use the definition from there instead of hard-coding it here.
  */
 #define XENSTORE_BACKEND        "backend"
-#define BLKTAP3_BACKEND_NAME    "vbd3"
+#define BLKTAP3_BACKEND_NAME    "vbd"
 #define BLKTAP3_BACKEND_PATH    XENSTORE_BACKEND"/"BLKTAP3_BACKEND_NAME
 #define BLKTAP3_BACKEND_TOKEN   XENSTORE_BACKEND"-"BLKTAP3_BACKEND_NAME
 #define BLKTAP3_FRONTEND_TOKEN  "otherend-state"
