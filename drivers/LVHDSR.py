@@ -567,14 +567,15 @@ class LVHDSR(SR.SR):
             try:
                 lvname = os.path.basename(fileName.replace('-','/').\
                                           replace('//', '-'))
-                os.unlink(os.path.join(self.path, lvname))
+                lvname = os.path.join(self.path, lvname)
+                util.silent_noent(lvname)
             except Exception, e:
                 util.SMlog("LVHDSR.detach: failed to remove the symlink for " \
                            "file %s. Error: %s" % (fileName, str(e)))
                 success = False
                     
         # now remove the directory where the symlinks are
-        # this should pass as the directry should be empty by now
+        # this should pass as the directory should be empty by now
         if success:
             try:
                 if util.pathexists(self.path):

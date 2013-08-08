@@ -381,6 +381,13 @@ def pathexists(path):
             raise CommandException(errno.EIO, "os.stat(%s)" % path, "failed")
         return False
 
+def silent_noent(fn, func=os.unlink):
+    try:
+        func(fn)
+    except OSError, e:
+        if e.errno != errno.ENOENT:
+            raise
+
 def create_secret(session, secret):
     ref = session.xenapi.secret.create({'value' : secret})
     return session.xenapi.secret.get_uuid(ref)
