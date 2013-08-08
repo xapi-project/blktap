@@ -402,8 +402,12 @@ class LVHDoISCSISR(LVHDSR.LVHDSR):
                         util.SMlog("Got %d sg devices - expecting %d" % (len(sgdevs),nluns))
                         time.sleep(1)
 
-                util.pread2(["/sbin/udevsettle"])
+                if os.path.exists("/sbin/udevsettle"):
+                    util.pread2(["/sbin/udevsettle"])
+                else:
+                    util.pread2(["/sbin/udevadm","settle"])
             except:
+                util.SMlog("Generic exception caught. Pass")
                 pass # Make sure we don't break the probe...
 
         self.iscsi.print_LUNs()
