@@ -73,7 +73,6 @@ rm -rf $RPM_BUILD_ROOT
 /opt/xensource/sm/ISOSR.py
 /opt/xensource/sm/ISOSR.pyc
 /opt/xensource/sm/ISOSR.pyo
-/opt/xensource/sm/OCFSSR
 /opt/xensource/sm/OCFSSR.py
 /opt/xensource/sm/OCFSSR.pyc
 /opt/xensource/sm/OCFSSR.pyo
