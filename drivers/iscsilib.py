@@ -354,7 +354,13 @@ def _checkTGT(tgtIQN, tgt=''):
         return False
     failuremessage = "Failure occured querying iscsi daemon"
     cmd = ["iscsiadm", "-m", "session"]
-    (stdout,stderr) = exn_on_failure(cmd, failuremessage)
+    try:
+        (stdout,stderr) = exn_on_failure(cmd, failuremessage)
+    # Recent versions of iscsiadm return error it this list is empty.
+    # Quick and dirty handling
+    except Exception, e:
+        util.SMlog("%s failed with %s" %(cmd, e.args))
+        stdout = ""
     for line in stdout.split('\n'):
         if match_targetIQN(tgtIQN, line) and match_session(line):
             if len(tgt):
@@ -377,7 +383,13 @@ def _checkAnyTGT():
     rootIQNs = get_rootdisk_IQNs()
     failuremessage = "Failure occured querying iscsi daemon"
     cmd = ["iscsiadm", "-m", "session"]
-    (stdout,stderr) = exn_on_failure(cmd, failuremessage)
+    try:
+        (stdout,stderr) = exn_on_failure(cmd, failuremessage)
+    # Recent versions of iscsiadm return error it this list is empty.
+    # Quick and dirty handling
+    except Exception, e:
+        util.SMlog("%s failed with %s" %(cmd, e.args))
+        stdout = ""
     for e in filter(match_session, stdout.split('\n')): 
         iqn = e.split()[-1]
         if not iqn in rootIQNs:
