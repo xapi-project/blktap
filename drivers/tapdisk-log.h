@@ -46,8 +46,8 @@ void __tlog_error(const char *fmt, ...) __printf(1, 2);
 	__tlog_write(_level, "%s: " _f,  __func__, ##_a)
 
 #define tlog_error(_err, _f, _a...)			\
-	__tlog_error("ERROR: errno %d at %s: " _f,	\
-		     (int)_err, __func__, ##_a)
+	__tlog_error("ERROR: %s at %s: " _f,	\
+		     strerror(-_err), __func__, ##_a)
 
 #define tlog_drv_error(_drv, _err, _f, _a ...) do {	\
 	if (tapdisk_driver_log_pass(_drv, __func__))	\
