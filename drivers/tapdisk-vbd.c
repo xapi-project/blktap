@@ -1434,8 +1434,6 @@ tapdisk_vbd_start_nbdserver(td_vbd_t *vbd)
 {
 	td_disk_info_t info;
 	int err;
-	static const int len = 256;
-	char sockpath[len];
 
 	err = tapdisk_vbd_get_disk_info(vbd, &info);
 
@@ -1449,15 +1447,7 @@ tapdisk_vbd_start_nbdserver(td_vbd_t *vbd)
 		return -1;
 	}
 
-	/*
-	 * FIXME need to add the VBD identifier, e.g. some UUID, the file's path
-	 * etc.
-	 *
-	 * FIXME check return code
-	 */
-	snprintf(sockpath, len, "%s:%d", TAPDISK_NBDSERVER_SOCK_PATH, getpid());
-
-	err = tapdisk_nbdserver_listen_unix(vbd->nbdserver, sockpath);
+	err = tapdisk_nbdserver_listen_unix(vbd->nbdserver);
 	if (err) {
 		tapdisk_nbdserver_free(vbd->nbdserver);
 		EPRINTF("failed to listen on the UNIX domain socket: %s\n",

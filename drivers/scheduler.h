@@ -1,4 +1,4 @@
-/* 
+/*
  * Copyright (C) Citrix Systems Inc.
  *
  * This program is free software; you can redistribute it and/or
@@ -45,9 +45,16 @@ typedef struct scheduler {
 } scheduler_t;
 
 void scheduler_initialize(scheduler_t *);
+
+/**
+ * Registers an event.
+ *
+ * Returns the event ID (a positive integer) or a negative error code.
+ */
 event_id_t scheduler_register_event(scheduler_t *, char mode,
 				    int fd, int timeout,
 				    event_cb_t cb, void *private);
+
 void scheduler_unregister_event(scheduler_t *,  event_id_t);
 void scheduler_mask_event(scheduler_t *, event_id_t, int masked);
 void scheduler_set_max_timeout(scheduler_t *, int);

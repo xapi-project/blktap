@@ -41,12 +41,28 @@ struct td_nbdserver {
 	 */
 	int                     fdrecv_listening_event_id;
 
+	struct td_fdreceiver   *fdreceiver;
+
+	/**
+	 * Listening file descriptor for the NBD server on the UNIX domain socket.
+	 */
+	int                     unix_listening_fd;
+
+	/**
+	 * Event ID for the file descriptor receiver.
+	 */
+	int                     unix_listening_event_id;
+
 	/**
 	 * Socket for the UNIX domain socket.
 	 */
 	struct sockaddr_un		local;
 
-	struct td_fdreceiver   *fdreceiver;
+	/**
+	 * UNIX domain socket path.
+	 */
+	char                    sockpath[TAPDISK_NBDSERVER_MAX_PATH_LEN];
+
 	struct list_head        clients;
 };
 
@@ -74,9 +90,9 @@ td_nbdserver_t *tapdisk_nbdserver_alloc(td_vbd_t *, td_disk_info_t);
 int tapdisk_nbdserver_listen_inet(td_nbdserver_t *server, const int port);
 
 /**
- * Listen for connections on a UNIX domain socket at the specified path.
+ * Listen for connections on a UNIX domain socket.
  */
-int tapdisk_nbdserver_listen_unix(td_nbdserver_t *server, const char *sockpath);
+int tapdisk_nbdserver_listen_unix(td_nbdserver_t *server);
 
 void tapdisk_nbdserver_free(td_nbdserver_t *);
 void tapdisk_nbdserver_pause(td_nbdserver_t *);

@@ -91,7 +91,6 @@ struct nbd_reply {
 	char handle[8];		/* handle you got from request	*/
 };
 
-
 /*
  * XXX The following are not part of the original NBD header file.
  */
@@ -100,8 +99,11 @@ struct nbd_reply {
  * FIXME rename to something more appropriate, e.g. nbdclt-fdrecv,
  * nbdsrv-fdrecv
  */
+#define TAPDISK_NBDSERVER_MAX_PATH_LEN 256
+
 #define TAPDISK_NBDCLIENT_LISTEN_SOCK_PATH BLKTAP2_CONTROL_DIR"/nbdclient"
 #define TAPDISK_NBDSERVER_LISTEN_SOCK_PATH BLKTAP2_CONTROL_DIR"/nbdserver"
 
 #define TAPDISK_NBDSERVER_SOCK_PATH BLKTAP2_CONTROL_DIR"/nbd"
+
 #endif
