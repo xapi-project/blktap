@@ -74,7 +74,7 @@ class OCFSoHBASR(OCFSSR.OCFSSR):
         super(OCFSoHBASR, self).attach(sr_uuid)
         self._setMultipathableFlag(SCSIid=self.SCSIid)
 
-    def vdi(self, uuid):
+    def vdi(self, uuid, loadLocked=False):
         return OCFSoHBAVDI(self, uuid)
     
 class OCFSoHBAVDI(OCFSSR.OCFSFileVDI):
