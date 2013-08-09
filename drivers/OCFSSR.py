@@ -120,6 +120,8 @@ class OCFSSR(FileSR.FileSR):
         
 
     def create(self, sr_uuid, size):
+        if util.pathexists(self.blockdevice):
+            util.zeroOut(self.blockdevice, 0, 1024*1024)
         cmd = ['mkfs', '-t', 'ocfs2', '-b', '4K', '-C', '1M', '-N', '16', '-F', self.blockdevice ]
         try:
             ret = util.pread(cmd)
