@@ -120,7 +120,6 @@ class OCFSSR(FileSR.FileSR):
         
 
     def create(self, sr_uuid, size):
-        util.zeroOut(self.blockdevice, 0, 1024*1024)
         cmd = ['mkfs', '-t', 'ocfs2', '-b', '4K', '-C', '1M', '-N', '16', '-F', self.blockdevice ]
         try:
             ret = util.pread(cmd)
@@ -133,9 +132,6 @@ class OCFSSR(FileSR.FileSR):
         self.attach(sr_uuid)
         super(OCFSSR, self).delete(sr_uuid)
         self.detach(sr_uuid)
-
-        # Erase the filesystem metadata
-        util.zeroOut(self.blockdevice, 0, 1024*1024)
 
     def vdi(self, uuid, loadLocked = False):
         if not loadLocked:
