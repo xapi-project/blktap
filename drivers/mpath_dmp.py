@@ -172,6 +172,13 @@ def map_by_scsibus(sid,npaths=0):
     __map_explicit(devices)
     
 def refresh(sid,npaths):
+    # Fix udev bug (?): make sure it updates /dev/disk/by-id
+    # Trigger the old way, if possible
+    if os.path.exists("/sbin/udevtrigger"):
+        util.pread2(["/sbin/udevtrigger"]) 
+    else:
+        util.pread2(["/sbin/udevadm","trigger"])
+
     # Refresh the multipath status
     util.SMlog("Refreshing LUN %s" % sid)
     if len(sid):
