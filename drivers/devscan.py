@@ -28,6 +28,7 @@ SYSFS_PATH2='/sys/class/scsi_disk'
 SYSFS_PATH3='/sys/class/fc_transport'
 
 MODULE_INFO = {
+    'aacraid': 'Adaptec Raid Driver',
     'brocade': 'Brocade HBA Driver',
     'cxgb3': 'Chelsio T3 HBA Driver',
     'cxgb4': 'Chelsio T4 HBA Driver',
