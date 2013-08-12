@@ -113,7 +113,7 @@ class OCFSoISCSISR(OCFSSR.OCFSSR):
                         util.SMlog("Discovery for IP %s returned %s" % (tgt,map))
                         for i in range(0,len(map)):
                             (portal,tpgt,iqn) = map[i]
-                            (ipaddr,port) = portal.split(',')[0].split(':')
+                            (ipaddr, port) = iscsilib.parse_IP_port(portal)
                             try:
                                 util._testHost(ipaddr, long(port), 'ISCSITarget')
                             except:
@@ -180,6 +180,8 @@ class OCFSoISCSISR(OCFSSR.OCFSSR):
         if len(self.iscsiSRs) == 1:
             pass
         else:
+            target_success = False
+            attempt_discovery = False
             for iii in range(0, len(self.iscsiSRs)):
                 # Check we didn't leave any iscsi session open
                 # If exceptions happened before, the cleanup function has worked on the right target.
@@ -195,18 +197,39 @@ class OCFSoISCSISR(OCFSSR.OCFSSR):
                 util.SMlog("iscsci data: targetIQN %s, portal %s" % (self.iscsi.targetIQN, self.iscsi.target))
                 iscsilib.ensure_daemon_running_ok(self.iscsi.localIQN)
                 if not iscsilib._checkTGT(self.iscsi.targetIQN):
-                    # Ensure iscsi db has been populated
-                    map = iscsilib.discovery(self.iscsi.target, self.iscsi.port, self.iscsi.chapuser, \
-                                             self.iscsi.chappassword, targetIQN=self.iscsi.targetIQN)
-                    if len(map) == 0:
-                        raise xs_errors.XenError('ISCSIDiscovery',
-                                                  opterr='check target settings')
+                    attempt_discovery = True
+                    try:
+                        # Ensure iscsi db has been populated
+                        map = iscsilib.discovery(
+                                  self.iscsi.target,
+                                  self.iscsi.port,
+                                  self.iscsi.chapuser,
+                                  self.iscsi.chappassword,
+                                  targetIQN=self.iscsi.targetIQN)
+                        if len(map) == 0:
+                            util.SMlog("Discovery for iscsi data targetIQN %s,"
+                                       " portal %s returned empty list"
+                                       " Trying another path if available" %
+                                       (self.iscsi.targetIQN,
+                                        self.iscsi.target))
+                            continue
+                    except:
+                        util.SMlog("Discovery failed for iscsi data targetIQN"
+                                   " %s, portal %s. Trying another path if"
+                                   " available" %
+                                   (self.iscsi.targetIQN, self.iscsi.target))
+                        continue
                     try:
                         iscsilib.login(self.iscsi.target, self.iscsi.targetIQN, self.iscsi.chapuser, \
                                        self.iscsi.chappassword, self.iscsi.incoming_chapuser, \
                                        self.iscsi.incoming_chappassword)
                     except:
-                        raise xs_errors.XenError('ISCSILogin')
+                        util.SMlog("Login failed for iscsi data targetIQN %s,"
+                                   " portal %s. Trying another path"
+                                   " if available" %
+                                   (self.iscsi.targetIQN, self.iscsi.target))
+                        continue
+                    target_success = True;
                     forced_login = True
                 # A session should be active.
                 if not util.wait_for_path(self.iscsi.path, ISCSISR.MAX_TIMEOUT):
@@ -219,11 +242,20 @@ class OCFSoISCSISR(OCFSSR.OCFSSR):
                 for file in filter(self.iscsi.match_lun, util.listdir(self.iscsi.path)):
                     lun_path = os.path.join(self.iscsi.path,file)
                     lun_dev = scsiutil.getdev(lun_path)
-                    lun_scsiid = scsiutil.getSCSIid(lun_dev)
+                    try:
+                        lun_scsiid = scsiutil.getSCSIid(lun_dev)
+                    except:
+                        util.SMlog("getSCSIid failed on %s in iscsi %s: LUN"
+                                   " offline or iscsi path down" %
+                                    (lun_dev, self.iscsi.path))
+                        continue
                     util.SMlog("dev from lun %s %s" %(lun_dev, lun_scsiid))
                     if lun_scsiid == self.SCSIid:
                         util.SMlog("lun match in %s" %self.iscsi.path)
                         dev_match = True
+                        # No more need to raise ISCSITarget exception.
+                        # Resetting attempt_discovery
+                        attempt_discovery = False
                         break
                 if dev_match:
                     if iii == 0:
@@ -257,9 +289,19 @@ class OCFSoISCSISR(OCFSSR.OCFSSR):
                     except:
                         pass
                     break
+            if not target_success and attempt_discovery:
+                raise xs_errors.XenError('ISCSITarget')
+
+            # Check for any unneeded open iscsi sessions
+            if forced_login == True:
+                try:
+                    iscsilib.ensure_daemon_running_ok(self.iscsi.localIQN)
+                    iscsilib.logout(self.iscsi.target, self.iscsi.targetIQN)
+                    forced_login = False
+                except:
+                    raise xs_errors.XenError('ISCSILogout')
 
         self._pathrefresh(OCFSoISCSISR)
-
         OCFSSR.OCFSSR.load(self, sr_uuid)
 
     def print_LUNs_XML(self):
@@ -459,27 +501,19 @@ class OCFSoISCSISR(OCFSSR.OCFSSR):
     def probe(self):
         self.uuid = util.gen_uuid()
 
-# When multipathing is enabled, since we don't refcount the multipath maps,
-# we should not attempt to do the iscsi.attach/detach when the map is already present,
-# as this will remove it (which may well be in use).
         if self.mpath == 'true' and self.dconf.has_key('SCSIid'):
+            # When multipathing is enabled, since we don't refcount the 
+            # multipath maps, we should not attempt to do the iscsi.attach/
+            # detach when the map is already present, as this will remove it 
+            # (which may well be in use).
             maps = []
-            mpp_lun = False
             try:
-                if (mpp_luncheck.is_RdacLun(self.dconf['SCSIid'])):
-                    mpp_lun = True
-                    link=glob.glob('/dev/disk/mpInuse/%s-*' % self.dconf['SCSIid'])
-                else:
-                    maps = mpath_cli.list_maps()
+                maps = mpath_cli.list_maps()
             except:
                 pass
 
-            if (mpp_lun):
-                if (len(link)):
-                    raise xs_errors.XenError('SRInUse')
-            else:
-                if self.dconf['SCSIid'] in maps:
-                    raise xs_errors.XenError('SRInUse')
+            if self.dconf['SCSIid'] in maps:
+                raise xs_errors.XenError('SRInUse')
 
         self.iscsi.attach(self.uuid)
         if not self.iscsi._attach_LUN_bySCSIid(self.SCSIid):
