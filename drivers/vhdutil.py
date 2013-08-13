@@ -177,8 +177,8 @@ def hasParent(path):
     return vhd_type == "Differencing"
 
 def setParent(path, parentPath, parentRaw):
-    realPPath = util.get_real_path(parentPath)
-    cmd = [VHD_UTIL, "modify", OPT_LOG_ERR, "-p", realPPath, "-n", path]
+    normpath = os.path.normpath(parentPath)
+    cmd = [VHD_UTIL, "modify", OPT_LOG_ERR, "-p", normpath, "-n", path]
     if parentRaw:
         cmd.append("-m")
     ioretry(cmd)
