@@ -20,6 +20,7 @@ import xs_errors
 import vhdutil
 from lock import Lock
 import cleanup
+import xml.dom.minidom
 
 CAPABILITIES = ["SR_PROBE","SR_UPDATE", "SR_CACHING",
                 "VDI_CREATE","VDI_DELETE","VDI_ATTACH","VDI_DETACH",
@@ -95,9 +96,11 @@ class OCFSSR(FileSR.FileSR):
             self.mount(self.path, self.blockdevice)
         return super(OCFSSR, self).attach(sr_uuid)
 
-
     def probe(self):
-        pass
+        # We are not storing sr-uuid in the remote disk, return NULL during a 
+        # probe
+        dom = xml.dom.minidom.Document()
+        return dom.toprettyxml()
 
     def detach(self, sr_uuid):
         """Detach the SR: Unmounts and removes the mountpoint"""

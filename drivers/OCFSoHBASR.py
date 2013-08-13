@@ -108,7 +108,7 @@ class OCFSoHBASR(OCFSSR.OCFSSR):
                 self.mpathmodule.refresh(self.SCSIid,0)
                 self._pathrefresh(OCFSoHBASR)
                 self._setMultipathableFlag(SCSIid=self.SCSIid)
-        super(OCFSoHBASR, self).attach(sr_uuid)
+        super(OCFSoHBASR, self).scan(sr_uuid)
 
     def probe(self):
         if self.mpath == "true" and self.dconf.has_key('SCSIid'):
