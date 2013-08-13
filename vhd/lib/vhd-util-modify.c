@@ -24,8 +24,10 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
+#include <limits.h>
 
 #include "libvhd.h"
+#include "canonpath.h"
 
 TEST_FAIL_EXTERN_VARS;
 
@@ -66,6 +68,7 @@ vhd_util_modify(int argc, char **argv)
 	int err, c, size, parent, parent_raw, kill_data;
 	off64_t newsize = 0;
 	char *newparent = NULL;
+	char *cpath, __cpath[PATH_MAX];
 
 	name       = NULL;
 	size       = 0;
@@ -135,10 +138,11 @@ vhd_util_modify(int argc, char **argv)
 
 	if (parent) {
 		TEST_FAIL_AT(FAIL_REPARENT_BEGIN);
-		err = vhd_change_parent(&vhd, newparent, parent_raw);
+		cpath = canonpath(newparent, __cpath);
+		err = vhd_change_parent(&vhd, cpath, parent_raw);
 		if (err) {
 			printf("failed to set parent to '%s': %d\n",
-					newparent, err);
+					cpath, err);
 			goto done;
 		}
 		TEST_FAIL_AT(FAIL_REPARENT_END);
