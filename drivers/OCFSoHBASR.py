@@ -1,15 +1,19 @@
-#!/usr/bin/env python
-# Copyright (C) 2008-2013 Citrix Ltd.
+#!/usr/bin/python
 #
-# This program is free software; you can redistribute it and/or modify
-# it under the terms of the GNU Lesser General Public License as published
+# Copyright (C) Citrix Systems Inc.
+#
+# This program is free software; you can redistribute it and/or modify 
+# it under the terms of the GNU Lesser General Public License as published 
 # by the Free Software Foundation; version 2.1 only.
 #
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+# This program is distributed in the hope that it will be useful, 
+# but WITHOUT ANY WARRANTY; without even the implied warranty of 
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the 
 # GNU Lesser General Public License for more details.
 #
+# You should have received a copy of the GNU Lesser General Public License
+# along with this program; if not, write to the Free Software Foundation, Inc.,
+# 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
 #
 # OCFSoHBASR: OCFS over Hardware HBA LUN driver, e.g. Fibre Channel or hardware
 # based iSCSI
@@ -31,9 +35,9 @@ CONFIGURATION = [ [ 'SCSIid', 'The scsi_id of the destination LUN' ] ]
 
 DRIVER_INFO = {
     'name': 'OCFS over FC',
-    'description': 'SR plugin which represents disks as Logical Volumes within a Volume Group created on an HBA LUN, e.g. hardware-based iSCSI or FC support',
+    'description': 'SR plugin which represents disks as Files on an HBA LUN, e.g. hardware-based iSCSI or FC support',
     'vendor': 'Citrix Systems Inc',
-    'copyright': '(C) 2008-2013 Citrix Systems Inc',
+    'copyright': '(C) Citrix Systems Inc',
     'driver_version': '1.0',
     'required_api_version': '1.0',
     'capabilities': CAPABILITIES,
