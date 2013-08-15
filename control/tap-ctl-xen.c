@@ -36,22 +36,20 @@
 #include "tap-ctl.h"
 
 int
-tap_ctl_connect_xenblkif(const pid_t pid, const char *params,
-        const domid_t domid, const int devid, const grant_ref_t * grefs,
-        const int order, const evtchn_port_t port, int proto, const char *pool)
+tap_ctl_connect_xenblkif(const pid_t pid, const domid_t domid, const int devid,
+	   	const grant_ref_t * grefs, const int order, const evtchn_port_t port,
+		int proto, const char *pool, const char *uuid)
 {
     tapdisk_message_t message;
     int i, err;
 
-    if (!params)
+    if (!uuid || uuid[0] == '\0'
+			|| strlen(uuid) >= TAPDISK_MAX_VBD_UUID_LENGTH)
         return -EINVAL;
-    if (strnlen(params, TAPDISK_MESSAGE_STRING_LENGTH)
-            >= TAPDISK_MESSAGE_STRING_LENGTH)
-        return -ENAMETOOLONG;
 
-    memset(&message, 0, sizeof(message));
+	memset(&message, 0, sizeof(message));
     message.type = TAPDISK_MESSAGE_XENBLKIF_CONNECT;
-    strcpy(message.u.blkif.params, params);
+    strcpy(message.u.blkif.uuid, uuid);
 
     message.u.blkif.domid = domid;
     message.u.blkif.devid = devid;
@@ -66,12 +64,15 @@ tap_ctl_connect_xenblkif(const pid_t pid, const char *params,
         message.u.blkif.pool[0] = 0;
 
     err = tap_ctl_connect_send_and_receive(pid, &message, NULL);
-    if (err)
+    if (err || message.type == TAPDISK_MESSAGE_ERROR) {
+		if (!err)
+			err = message.u.response.error;
         /*
          * TODO include more info
          */
         EPRINTF("failed to connect tapdisk %d to the ring: %s\n", pid,
                 strerror(-err));
+	}
     return err;
 }
 

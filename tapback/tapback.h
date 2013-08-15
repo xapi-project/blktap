@@ -84,7 +84,7 @@ typedef struct vbd {
 
     /**
      * The device ID. Same as vbd.name, we keep it around because the tapdisk
-     * control libreary wants it as an int and not as a string.
+     * control library wants it as an int and not as a string.
      */
     int devid;
 
@@ -144,25 +144,9 @@ typedef struct vbd {
      */
     unsigned int info;
 
-    /**
-     * type:/path/to/file
-     */
-    char *params;
-
-    /**
-     * /path/to/file
-     */
-    char *path;
-
-    /**
-     * type (vhd, aio, etc.)
-     */
-    char *type;
+	char uuid[TAPDISK_MAX_VBD_UUID_LENGTH];
 
 } vbd_t;
-
-//FIXME
-//TAILQ_HEAD(tqh_vbd, vbd);
 
 /**
  * The collection of all necessary handles and descriptors.

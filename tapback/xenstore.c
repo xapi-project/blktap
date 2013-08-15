@@ -45,8 +45,6 @@ tapback_xs_vread(struct xs_handle * const xs, xs_transaction_t xst,
     if (!data)
         return NULL;
 
-    assert(len > 0);
-
     /*
      * Make sure the returned string is NULL-terminated.
      */

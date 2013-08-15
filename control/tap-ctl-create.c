@@ -30,7 +30,7 @@
 
 int
 tap_ctl_create(const char *params, int flags, const char *prt_path,
-		char *secondary, int timeout)
+		char *secondary, int timeout, const char *uuid)
 {
 	int err, id;
 
@@ -39,7 +39,7 @@ tap_ctl_create(const char *params, int flags, const char *prt_path,
 		return id;
 
 	err = tap_ctl_open(id, params, flags, prt_path, secondary,
-			timeout);
+			timeout, uuid);
 	if (err)
 		/* FIXME kill tapdisk */
 		return err;

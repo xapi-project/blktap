@@ -23,8 +23,8 @@
 
 #include "tap-ctl.h"
 
-int tap_ctl_info(pid_t pid, const char *path, unsigned long long *sectors,
-        unsigned int *sector_size, unsigned int *info)
+int tap_ctl_info(pid_t pid, unsigned long long *sectors,
+		unsigned int *sector_size, unsigned int *info, const char *uuid)
 {
     tapdisk_message_t message;
     int err;
@@ -33,15 +33,14 @@ int tap_ctl_info(pid_t pid, const char *path, unsigned long long *sectors,
     assert(sector_size);
     assert(info);
 
-    if (!path)
+    if (!uuid || uuid[0] == '\0'
+			|| strnlen(uuid, TAPDISK_MAX_VBD_UUID_LENGTH)
+				>= TAPDISK_MAX_VBD_UUID_LENGTH)
         return EINVAL;
-    if (strnlen(path, TAPDISK_MESSAGE_STRING_LENGTH)
-            >= TAPDISK_MESSAGE_STRING_LENGTH)
-        return ENAMETOOLONG;
 
     memset(&message, 0, sizeof(message));
     message.type = TAPDISK_MESSAGE_DISK_INFO;
-    strcpy(message.u.string.text, path);
+    strcpy(message.u.params.uuid, uuid);
 
     err = tap_ctl_connect_send_and_receive(pid, &message, NULL);
     if (err) {

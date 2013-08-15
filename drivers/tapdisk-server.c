@@ -78,15 +78,14 @@ tapdisk_server_get_all_vbds(void)
 }
 
 td_vbd_t *
-tapdisk_server_get_vbd(const char *params)
+tapdisk_server_get_vbd(const char *uuid)
 {
 	td_vbd_t *vbd, *tmp;
 
-	assert(params);
+	assert(uuid);
 
 	tapdisk_server_for_each_vbd(vbd, tmp)
-		/* TODO VBDs without name? Should this be treated as a bug? */
-		if (!strcmp(vbd->name, params))
+		if (!strcmp(vbd->uuid, uuid))
 			return vbd;
 
 	return NULL;

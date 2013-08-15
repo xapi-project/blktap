@@ -91,7 +91,12 @@ again:
         goto fail;
     }
 
-    DBG("path = %s\n", path);
+	{
+		char *s = tapback_xs_read(blktap3_daemon.xs, blktap3_daemon.xst, "%s",
+				path);
+	    DBG("%s -> \'%s\'\n", path, s ? s : "removed");
+		free(s);
+	}
 
     /*
      * The token indicates which XenStore watch triggered, the front-end one or
@@ -121,8 +126,10 @@ again:
         /*
          * This is OK according to xs_transaction_end's semantics.
          */
-        if (EAGAIN == errno)
+        if (EAGAIN == errno) {
+			DBG("restarting transaction\n");
             goto again;
+		}
         DBG("error ending transaction: %s\n", strerror(err));
     }
 
@@ -302,6 +309,12 @@ int main(int argc, char **argv)
     const char *prog = NULL;
     int opt_debug = 0;
     int err = 0;
+
+	if(access("/dev/xen/gntdev", F_OK ) == -1) {
+		WARN("grant device does not exist\n");
+		err = EINVAL;
+		goto fail;
+	}
 
     prog = basename(argv[0]);
 

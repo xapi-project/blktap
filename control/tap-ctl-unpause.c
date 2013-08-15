@@ -30,36 +30,32 @@
 #include "tap-ctl.h"
 
 int
-tap_ctl_unpause(const int id, const char *params1, const char *params2,
-        int flags, char *secondary)
+tap_ctl_unpause(const int id, int flags, char *secondary, const char *uuid,
+		const char *new_params)
 {
 	int err;
 	tapdisk_message_t message;
-
-    assert(params1);
 
 	memset(&message, 0, sizeof(message));
 	message.type = TAPDISK_MESSAGE_RESUME;
 	message.u.resume.flags = flags;
 
-    if (strnlen(params1, TAPDISK_MESSAGE_MAX_PATH_LENGTH)
-            >= TAPDISK_MESSAGE_MAX_PATH_LENGTH) {
-        /* TODO log error */
-        return ENAMETOOLONG;
-    }
+	if (!uuid || uuid[0] == '\0'
+			|| strlen(uuid) >= TAPDISK_MAX_VBD_UUID_LENGTH) {
+		EPRINTF("missing/invalid UUID\n");
+		return EINVAL;
+	}
+	strcpy(message.u.resume.uuid, uuid);
 
-	strncpy(message.u.resume.params1, params1, TAPDISK_MESSAGE_MAX_PATH_LENGTH);
-
-    if (params2) {
-        if (strnlen(params2, TAPDISK_MESSAGE_MAX_PATH_LENGTH)
-                >= TAPDISK_MESSAGE_MAX_PATH_LENGTH) {
+    if (new_params) {
+        if (strlen(new_params) >= TAPDISK_MESSAGE_MAX_PATH_LENGTH) {
             /* TODO log error */
             return ENAMETOOLONG;
         }
-	    strncpy(message.u.resume.params2, params2,
+	    strncpy(message.u.resume.new_params, new_params,
                 TAPDISK_MESSAGE_MAX_PATH_LENGTH);
     } else {
-        message.u.resume.params2[0] = '\0';
+        message.u.resume.new_params[0] = '\0';
     }
 
 	if (secondary) {

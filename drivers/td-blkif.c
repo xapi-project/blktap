@@ -23,6 +23,7 @@
 #include <syslog.h>
 #include <sys/mman.h>
 #include <xenctrl.h>
+#include <unistd.h>
 
 #include "blktap3.h"
 #include "tapdisk.h"
@@ -205,6 +206,8 @@ tapdisk_xenblkif_connect(domid_t domid, int devid, const grant_ref_t * grefs,
      * Bind to the remote port.
      * TODO elaborate
      */
+	/* FIXME without this sleep xc_evtchn_bind_interdomain fails */
+	sleep(1);
     td_blkif->port = xc_evtchn_bind_interdomain(td_blkif->ctx->xce_handle,
             td_blkif->domid, port);
     if (td_blkif->port == -1) {
@@ -232,4 +235,3 @@ fail:
 
     return err;
 }
-

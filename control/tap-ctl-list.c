@@ -40,10 +40,11 @@ _tap_list_alloc(void)
 	if (!tl)
 		return NULL;
 
-	tl->pid   = -1;
-	tl->state = -1;
-	tl->type  = NULL;
-	tl->path  = NULL;
+	tl->uuid[0] = '\0';
+	tl->pid     = -1;
+	tl->state   = -1;
+	tl->type    = NULL;
+	tl->path    = NULL;
 
 	INIT_LIST_HEAD(&tl->entry);
 
@@ -218,6 +219,8 @@ _tap_ctl_list_tapdisk(pid_t pid, struct list_head *list)
 
 		tl->pid    = pid;
 		tl->state  = message.u.list.state;
+
+		strcpy(tl->uuid, message.u.list.uuid);
 
 		if (message.u.list.path[0] != 0) {
 			err = parse_params(message.u.list.path, &tl->type, &tl->path);

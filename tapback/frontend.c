@@ -192,16 +192,18 @@ blkback_connect_tap(vbd_t * const bdev,
 
         /*
          * Create the shared ring and ask the tapdisk to connect to it.
+		 *
+		 * FIXME write sectors, sector size etc. to xenstore before connecting?
          */
-        if ((err = tap_ctl_connect_xenblkif(bdev->tap.pid, bdev->params,
-                        bdev->domid, bdev->devid, gref, order, port, proto,
-                        NULL))) {
+		if ((err = tap_ctl_connect_xenblkif(bdev->tap.pid, bdev->domid,
+						bdev->devid, gref, order, port, proto, NULL,
+						bdev->uuid))) {
             WARN("tapdisk failed to connect to the shared ring: %s\n",
-                    strerror(err));
+                    strerror(-err));
             goto fail;
         }
-        DBG("tapdisk pid=%d, path=%s connected to shared ring\n",
-                bdev->tap.pid, bdev->path);
+        DBG("tapdisk pid=%d, uuid=%s connected to shared ring\n",
+                bdev->tap.pid, bdev->uuid);
 
         bdev->connected = true;
     }
@@ -280,8 +282,8 @@ backend_close(vbd_t * const bdev,
         return 0;
     }
 
-    DBG("disconnecting domid=%d devid=%d from tapdisk pid=%d %s:%s\n",
-        bdev->domid, bdev->devid, bdev->tap.pid, bdev->type, bdev->path);
+    DBG("disconnecting %d/%d from tapdisk[%d] vbd=%s\n",
+        bdev->domid, bdev->devid, bdev->tap.pid, bdev->uuid);
 
     if ((err = -tap_ctl_disconnect_xenblkif(bdev->tap.pid, bdev->domid,
                     bdev->devid, NULL))){
@@ -353,14 +355,14 @@ blkback_frontend_changed(vbd_t * const xbdev, const XenbusState state)
     assert(xbdev);
     assert(state <= XenbusStateReconfigured);
 
-    DBG("front-end domid=%d, devid=%s went into state %s\n",
+    DBG("front-end %d/%s went into state %s\n",
             xbdev->domid, xbdev->name, XenbusState2str(state));
 
     if (frontend_state_change_map[state].fn)
         return frontend_state_change_map[state].fn(xbdev,
                 frontend_state_change_map[state].state);
     else
-        DBG("ignoring front-end's domid=%d, devid=%s transition to state %s\n",
+        DBG("ignoring front-end's %d/%s transition to state %s\n",
                 xbdev->domid, xbdev->name, XenbusState2str(state));
     return 0;
 }
@@ -393,7 +395,7 @@ tapback_backend_handle_otherend_watch(const char * const path)
         return ENODEV;
     }
 
-    DBG("device: domid=%d name=%s\n", device->domid, device->name);
+    DBG("device: %d/%s\n", device->domid, device->name);
 
     /*
      * Read the new front-end's state.

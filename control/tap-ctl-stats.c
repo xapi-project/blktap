@@ -28,23 +28,22 @@
 #include "tap-ctl.h"
 
 int
-_tap_ctl_stats_connect_and_send(pid_t pid, const char *params)
+_tap_ctl_stats_connect_and_send(pid_t pid, const char *uuid)
 {
 	struct timeval timeout = { .tv_sec = 10, .tv_usec = 0 };
 	tapdisk_message_t message;
 	int sfd, err;
 
-    assert(params);
-
-    if (strnlen(params, TAPDISK_MESSAGE_MAX_PATH_LENGTH)
-            >= TAPDISK_MESSAGE_MAX_PATH_LENGTH) {
-        return ENAMETOOLONG;
-    }
-
 	memset(&message, 0, sizeof(message));
-	message.type   = TAPDISK_MESSAGE_STATS;
+	message.type = TAPDISK_MESSAGE_STATS;
 
-	strncpy(message.u.params.path, params, TAPDISK_MESSAGE_MAX_PATH_LENGTH);
+	if (uuid) {
+		if (uuid[0] == '\0' || strnlen(uuid, TAPDISK_MAX_VBD_UUID_LENGTH)
+				>= TAPDISK_MAX_VBD_UUID_LENGTH) {
+			return ENAMETOOLONG;
+		}
+		strcpy(message.u.params.uuid, uuid);
+	}
 
 	err = tap_ctl_connect_id(pid, &sfd);
 	if (err)
@@ -58,15 +57,15 @@ _tap_ctl_stats_connect_and_send(pid_t pid, const char *params)
 }
 
 ssize_t
-tap_ctl_stats(pid_t pid, const char *params, char *buf, size_t size)
+tap_ctl_stats(pid_t pid, char *buf, size_t size, const char *uuid)
 {
 	tapdisk_message_t message;
 	int sfd, err;
 	size_t len;
 
-	assert(params);
+	assert(uuid);
 
-	sfd = _tap_ctl_stats_connect_and_send(pid, params);
+	sfd = _tap_ctl_stats_connect_and_send(pid, uuid);
 	if (sfd < 0)
 		return sfd;
 
@@ -74,7 +73,7 @@ tap_ctl_stats(pid_t pid, const char *params, char *buf, size_t size)
 	if (err)
 		return err;
 
-	len= message.u.info.length;
+	len = message.u.info.length;
 	if (len < 0) {
 		err = len;
 		goto out;
@@ -94,14 +93,12 @@ out:
 }
 
 int
-tap_ctl_stats_fwrite(pid_t pid, const char *params, FILE *stream)
+tap_ctl_stats_fwrite(pid_t pid, FILE *stream, const char *uuid)
 {
 	tapdisk_message_t message;
 	int sfd = -1, prot, flags, err;
 	size_t len, bufsz;
 	char *buf = MAP_FAILED;
-
-	assert(params);
 
 	prot  = PROT_READ|PROT_WRITE;
 	flags = MAP_ANONYMOUS|MAP_PRIVATE;
@@ -114,7 +111,7 @@ tap_ctl_stats_fwrite(pid_t pid, const char *params, FILE *stream)
 		goto out;
 	}
 
-	sfd = _tap_ctl_stats_connect_and_send(pid, params);
+	sfd = _tap_ctl_stats_connect_and_send(pid, uuid);
 	if (sfd < 0) {
 		err = sfd;
 		goto out;

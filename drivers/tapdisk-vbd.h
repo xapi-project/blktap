@@ -46,6 +46,9 @@
 struct td_nbdserver;
 
 struct td_vbd_handle {
+
+	char                       *uuid;
+
     /**
      * type:/path/to/file
      */
@@ -154,8 +157,8 @@ tapdisk_vbd_next_image(td_image_t *image)
 	return list_entry(image->next.next, td_image_t, next);
 }
 
-td_vbd_t *tapdisk_vbd_create(void);
-int tapdisk_vbd_initialize(int, int, const char *);
+td_vbd_t *tapdisk_vbd_create(const char *uuid);
+int tapdisk_vbd_initialize(int, int, const char *, const char *);
 int tapdisk_vbd_open(td_vbd_t *, const char *, int, const char *, td_flag_t);
 int tapdisk_vbd_close(td_vbd_t *);
 

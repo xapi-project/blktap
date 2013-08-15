@@ -33,12 +33,12 @@
  * merge them. */
 
 int
-tap_ctl_destroy(const int id, const char *params,
-		int force, struct timeval *timeout)
+tap_ctl_destroy(const int id, int force, struct timeval *timeout,
+		const char *uuid)
 {
 	int err;
 
-	err = tap_ctl_close(id, params, 0, timeout);
+	err = tap_ctl_close(id, 0, timeout, uuid);
 	if (err)
 		return err;
 

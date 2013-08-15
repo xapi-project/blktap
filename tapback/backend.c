@@ -50,29 +50,16 @@ tapback_device_unwatch_frontend_state(vbd_t * const device)
 static void
 tapback_backend_destroy_device(vbd_t * const device)
 {
-    int err;
-
     assert(device);
 
-    DBG("removing device %d/%s\n", device->domid, device->devid);
+    DBG("removing device %d/%d\n", device->domid, device->devid);
 
 	list_del(&device->backend_entry);
 
     tapback_device_unwatch_frontend_state(device);
 
-    /*
-     * kill the tapdisk
-     */
-    err = tap_ctl_destroy(device->tap.pid, device->params, 0, NULL);
-    if (err)
-        WARN("failed to destroy tapdisk %d %s: %s (error ignored)\n",
-                device->tap.pid, device->params, strerror(-err));
-
     free(device->frontend_path);
     free(device->name);
-    free(device->type);
-    free(device->path);
-    free(device->params);
     free(device);
 }
 
@@ -80,7 +67,7 @@ tapback_backend_destroy_device(vbd_t * const device)
  * Retrieves the tapdisk designated to serve this device, storing this
  * information in the supplied VBD handle.
  *
- * @param param <type>:/path/to/file
+ * @param uuid
  * @param tap output parameter that receives the tapdisk process information.
  * The parameter is undefined when the function returns a non-zero value.
  * @returns 0 if a suitable tapdisk is found, ESRCH if no suitable tapdisk is
@@ -91,15 +78,13 @@ tapback_backend_destroy_device(vbd_t * const device)
  * XXX Only called by blkback_probe.
  */
 static inline int
-blkback_find_tapdisk(const char *type, const char *path, tap_list_t *tap)
+blkback_find_tapdisk(const char *uuid, tap_list_t *tap)
 {
     struct list_head list;
     tap_list_t *_tap;
     int err;
 
-    assert(type);
-    assert(path);
-    assert(tap);
+    assert(uuid);
 
     err = tap_ctl_list(&list);
     if (err) {
@@ -110,8 +95,7 @@ blkback_find_tapdisk(const char *type, const char *path, tap_list_t *tap)
     err = ESRCH;
     if (!list_empty(&list)) {
         tap_list_for_each_entry(_tap, &list) {
-            if (_tap->type && !strcmp(_tap->type, type) && _tap->path
-                    && !strcmp(_tap->path, path)) {
+            if (!strcmp(_tap->uuid, uuid)) {
                 err = 0;
                 memcpy(tap, _tap, sizeof(tap));
                 break;
@@ -141,16 +125,20 @@ tapback_backend_create_device(const domid_t domid, const char * const name)
 {
     vbd_t *device = NULL;
     int err = 0;
+	char *uuid = NULL;
 
     assert(name);
 
-    DBG("creating device domid=%d, devid=%s\n", domid, name);
+    DBG("creating device %d/%s\n", domid, name);
 
     if (!(device = calloc(1, sizeof(*device)))) {
         WARN("error allocating memory\n");
         err = -errno;
         goto out;
     }
+
+	/* TODO check for errors */
+	device->devid = atoi(name);
 
     device->domid = domid;
 
@@ -173,47 +161,29 @@ tapback_backend_create_device(const domid_t domid, const char * const name)
 
     /*
      * Get the file path backing the VBD.
+	 *
+	 * FIXME No need to allocate the string since we already supply it.
      */
-    device->params = tapback_xs_read(blktap3_daemon.xs, blktap3_daemon.xst,
-            "%s/%d/%s/params", BLKTAP3_BACKEND_PATH, domid, name);
-    if (!device->params) {
+    uuid = tapback_xs_read(blktap3_daemon.xs, blktap3_daemon.xst,
+            "%s/%d/%s/sm-data/vdi-uuid", BLKTAP3_BACKEND_PATH, domid, name);
+    if (!uuid) {
         err = errno;
         WARN("failed to read backing file: %s\n", strerror(err));
         goto out;
     }
-    DBG("need to find tapdisk serving \'%s\'\n", device->params);
+	if (uuid[0] == '\0' || strlen(uuid) >= TAPDISK_MAX_VBD_UUID_LENGTH) {
+		err = EINVAL;
+		WARN("invalid/missing UUID\n");
+		goto out;
+	}
+	strcpy(device->uuid, uuid);
 
-    err = parse_params(device->params, &device->type, &device->path);
-    if (err) {
-        WARN("failed to parse params \'%s\': %s\n", device->params,
-                strerror(-err));
-        goto out;
-    }
+    DBG("need to find tapdisk serving \'%s\'\n", device->uuid);
 
-    err = blkback_find_tapdisk(device->type, device->path, &device->tap);
-    if (!err) {
-        DBG("found tapdisk pid=%d\n", device->tap.pid);
-    } else if (err == ESRCH) {
-        /* TODO replace with tap_ctl_create */
-        DBG("no such tapdisk\n");
-        err = tap_ctl_spawn();
-        if (err <= 0) {
-            WARN("failed to create tapdisk: %s\n", strerror(-err));
-            goto out;
-        }
-        device->tap.pid = err;
-        DBG("spawned tapdisk pid=%d\n", device->tap.pid);
-        err = tap_ctl_open(device->tap.pid, device->params, 0, NULL, NULL, 0);
-        if (err) {
-            WARN("failed to open %s on tapdisk pid=%d: %s\n", device->params,
-                    device->tap.pid, strerror(-err));
-            /* TODO The error handler assumes that there a device has been
-             * opened, so tapdisk will complain that there is no such image.
-             */
-            goto out;
-        }
-        DBG("opened %s on tapdisk pid=%d\n", device->params, device->tap.pid);
-    } else  {
+    err = blkback_find_tapdisk(device->uuid, &device->tap);
+    if (!err)
+        DBG("found tapdisk[%d]\n", device->tap.pid);
+    else  {
         WARN("error looking for tapdisk: %s\n", strerror(err));
         goto out;
     }
@@ -221,8 +191,8 @@ tapback_backend_create_device(const domid_t domid, const char * const name)
     /*
      * get the VBD parameters from the tapdisk
      */
-    if ((err = tap_ctl_info(device->tap.pid, device->params, &device->sectors,
-                    &device->sector_size, &device->info))) {
+    if ((err = tap_ctl_info(device->tap.pid, &device->sectors,
+                    &device->sector_size, &device->info, device->uuid))) {
         WARN("error retrieving disk characteristics: %s\n", strerror(-err));
         goto out;
     }
@@ -254,9 +224,9 @@ tapback_backend_create_device(const domid_t domid, const char * const name)
     }
 
 out:
+	free(uuid);
     if (err) {
-        WARN("error creating device: domid=%d name=%s err=%d (%s)\n",
-                domid, name, err, strerror(err));
+        WARN("error creating device %d/%s: %s\n", domid, name, strerror(err));
         if (device)
             tapback_backend_destroy_device(device);
     }
@@ -280,7 +250,7 @@ tapback_backend_probe_device(const domid_t domid, const char * const devname)
 
     assert(devname);
 
-    DBG("probing device domid=%d name=%s\n", domid, devname);
+    DBG("probing device %d/%s\n", domid, devname);
 
     /*
      * Ask XenStore if the device _should_ exist.
