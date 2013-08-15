@@ -61,7 +61,7 @@ char *tap_ctl_socket_name(int id);
 
 typedef struct {
 	pid_t       pid;
-	int         minor;
+	char        uuid[TAPDISK_MAX_VBD_UUID_LENGTH];
 	int         state;
 	char       *type;
 	char       *path;
@@ -80,45 +80,45 @@ int tap_ctl_list_pid(pid_t pid, struct list_head *list);
 void tap_ctl_list_free(struct list_head *list);
 
 int tap_ctl_create(const char *params, int flags, const char *prt_path,
-		char *secondary, int timeout);
-int tap_ctl_destroy(const int id, const char *params, int force,
-		    struct timeval *timeout);
+		char *secondary, int timeout, const char *uuid);
+int tap_ctl_destroy(const int id, int force, struct timeval *timeout,
+		const char *uuid);
 
 int tap_ctl_spawn(void);
 pid_t tap_ctl_get_pid(const int id);
 
 
 int tap_ctl_open(const int id, const char *params, int flags,
-		const char *prt_path, const char *secondary, int timeout);
-int tap_ctl_close(const int id, const char *params, const int force,
-		  struct timeval *timeout);
+		const char *prt_path, const char *secondary, int timeout,
+		const char *uuid);
+int tap_ctl_close(const int id, const int force, struct timeval *timeout,
+		const char *uuid);
 
 /**
  * Pauses the VBD.
  */
-int tap_ctl_pause(const int id, const char *params, struct timeval *timeout);
+int tap_ctl_pause(const int id, struct timeval *timeout, const char *uuid);
 
 /**
  * Unpauses the VBD
  *
  * @param pid the process ID of the tapdisk
- * @param params1 VDI (type:/path/to/file)
- * @param params2 new VDI to use (type:/path/to/file), optional
  * @param flags TODO
  * @param secondary TODO
+ * @param uuid
+ * @param new_params the new VDI to use (type:/path/to/file), optional
  */
-int tap_ctl_unpause(const int id, const char *params1, const char *params2,
-		int flags, char *secondary);
+int tap_ctl_unpause(const int id, int flags, char *secondary, const char *uuid,
+		const char *new_params);
 
-ssize_t tap_ctl_stats(pid_t pid, const char *params, char *buf, size_t size);
-int tap_ctl_stats_fwrite(pid_t pid, const char *params, FILE *out);
+ssize_t tap_ctl_stats(pid_t pid, char *buf, size_t size, const char *uuid);
+int tap_ctl_stats_fwrite(pid_t pid, FILE *out, const char *uuid);
 
 /**
  * Instructs a tapdisk to connect to the shared ring.
  *
  * @param pid the process ID of the tapdisk that should connect to the shared
  * ring
- * @param path /path/to/vdi
  * @param domid the domain ID of the guest VM
  * @param devid the device ID
  * @param grefs the grant references
@@ -129,12 +129,12 @@ int tap_ctl_stats_fwrite(pid_t pid, const char *params, FILE *out);
  * @param pool a string used as an identifier to group two or more VBDs
  * beloning to the same tapdisk process. For VBDs with the same pool name, a
  * single event channel is used.
+ * @param uuid
  * @returns 0 on success, a negative error code otherwise
  */
-int tap_ctl_connect_xenblkif(const pid_t pid, const char *params,
-        const domid_t domid, const int devid, const grant_ref_t * grefs,
-        const int order, const evtchn_port_t port, int proto,
-		const char *pool);
+int tap_ctl_connect_xenblkif(const pid_t pid, const domid_t domid, const int
+		devid, const grant_ref_t * grefs, const int order, const evtchn_port_t
+		port, int proto, const char *pool, const char *uuid);
 
 /**
  * Instructs a tapdisk to disconnect from the shared ring.
@@ -151,15 +151,15 @@ int tap_ctl_disconnect_xenblkif(const pid_t pid, const domid_t domid,
 /**
  * Retrieves virtual disk information from a tapdisk.
  *
- * @pid the process ID of the tapdisk process
- * @params type:/path/to/file
- * @sectors output parameter that receives the number of sectors
- * @sector_size output parameter that receives the size of the sector
- * @info TODO ?
+ * @param pid the process ID of the tapdisk process
+ * @param sectors output parameter that receives the number of sectors
+ * @param sector_size output parameter that receives the size of the sector
+ * @param info TODO ?
+ * @param uuid
  *
  */
-int tap_ctl_info(pid_t pid, const char *path, unsigned long long *sectors,
-        unsigned int *sector_size, unsigned int *info);
+int tap_ctl_info(pid_t pid, unsigned long long *sectors, unsigned int
+		*sector_size, unsigned int *info, const char *uuid);
 
 /**
  * Parses a type:/path/to/file string, storing the type and path to the output

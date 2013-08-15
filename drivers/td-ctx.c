@@ -231,7 +231,6 @@ xenio_blkif_get_requests(struct td_xenblkif * const blkif,
 
     assert(blkif);
     assert(reqs);
-    assert(count > 0);
 
     ring = &blkif->rings.common;
 
@@ -345,7 +344,7 @@ tapdisk_xenio_ctx_open(const char *pool)
     list_add(&ctx->entry, &_td_xenio_ctxs);
 
     ctx->xce_handle = xc_evtchn_open(NULL, 0);
-    if (ctx->xce_handle == NULL) {
+    if (!ctx->xce_handle) {
         err = errno;
         syslog(LOG_ERR, "failed to open the event channel driver: %s\n",
                 strerror(err));
@@ -353,7 +352,7 @@ tapdisk_xenio_ctx_open(const char *pool)
     }
 
     ctx->xcg_handle = xc_gnttab_open(NULL, 0);
-    if (ctx->xcg_handle == NULL) {
+    if (!ctx->xcg_handle) {
         err = errno;
         syslog(LOG_ERR, "failed to open the grant table driver: %s\n",
                 strerror(err));

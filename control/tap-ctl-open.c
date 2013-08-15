@@ -30,15 +30,27 @@
 
 int
 tap_ctl_open(const int id, const char *params, int flags,
-		const char *prt_path, const char *secondary, int timeout)
+		const char *prt_path, const char *secondary, int timeout,
+		const char *uuid)
 {
 	int err;
 	tapdisk_message_t message;
+
+	if (!uuid || strlen(uuid) >= TAPDISK_MAX_VBD_UUID_LENGTH) {
+		EPRINTF("missing/invalid UUID\n");
+		return EINVAL;
+	}
+
+	if (!params || strlen(params) >= TAPDISK_MESSAGE_MAX_PATH_LENGTH) {
+		EPRINTF("missing/invalid type:/file/to/path\n");
+		return EINVAL;
+	}
 
 	memset(&message, 0, sizeof(message));
 	message.type = TAPDISK_MESSAGE_OPEN;
 	message.u.params.req_timeout = timeout;
 	message.u.params.flags = flags;
+	strcpy(message.u.params.uuid, uuid);
 	if (prt_path) {
 		if (strlen(prt_path) >= TAPDISK_MESSAGE_OPEN)
 			return ENAMETOOLONG;

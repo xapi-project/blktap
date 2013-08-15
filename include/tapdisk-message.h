@@ -32,6 +32,11 @@
 #define TAPDISK_MESSAGE_MAX_MINORS \
 	((TAPDISK_MESSAGE_MAX_PATH_LENGTH / sizeof(int)) - 1)
 
+/*
+ * FIXME In struct vbd we use a pointer, use an array of this size instead.
+ */
+#define TAPDISK_MAX_VBD_UUID_LENGTH      256
+
 #define TAPDISK_MESSAGE_FLAG_SHARED      0x001
 #define TAPDISK_MESSAGE_FLAG_RDONLY      0x002
 #define TAPDISK_MESSAGE_FLAG_ADD_CACHE   0x004
@@ -51,9 +56,9 @@ typedef struct tapdisk_message_response  tapdisk_message_response_t;
 typedef struct tapdisk_message_minors    tapdisk_message_minors_t;
 typedef struct tapdisk_message_list      tapdisk_message_list_t;
 typedef struct tapdisk_message_stat      tapdisk_message_stat_t;
-typedef struct tapdisk_message_blkif     tapdisk_message_blkif_t;
 
 struct tapdisk_message_params {
+	char                             uuid[TAPDISK_MAX_VBD_UUID_LENGTH];
 	tapdisk_message_flag_t           flags;
 
 	uint32_t                         domid;
@@ -84,15 +89,15 @@ struct tapdisk_message_minors {
 };
 
 struct tapdisk_message_list {
+	char                             uuid[TAPDISK_MAX_VBD_UUID_LENGTH];
 	int                              count;
-	int                              minor;
 	int                              state;
 	char                             path[TAPDISK_MESSAGE_MAX_PATH_LENGTH];
 };
 
 struct tapdisk_message_stat {
 	uint16_t                         type;
-	uint16_t                         cookie;
+	uint16_t                         cookie; /* FIXME remove? */
 	size_t                           length;
 };
 
@@ -100,7 +105,8 @@ struct tapdisk_message_stat {
  * Tapdisk message containing all the necessary information required for the
  * tapdisk to connect to a guest's blkfront.
  */
-struct tapdisk_message_blkif {
+typedef struct tapdisk_message_blkif {
+	char uuid[TAPDISK_MAX_VBD_UUID_LENGTH];
 	/**
 	 * The domain ID of the guest to connect to.
 	 */
@@ -137,31 +143,23 @@ struct tapdisk_message_blkif {
 	 * The event channel port.
 	 */
 	uint32_t port;
-
-    /**
-     * type:/path/to/file
-     */
-    char params[TAPDISK_MESSAGE_MAX_PATH_LENGTH];
-};
+} tapdisk_message_blkif_t;
 
 /**
  * Contains parameters for resuming a previously paused VBD.
  */
 typedef struct tapdisk_message_resume {
+	char uuid[TAPDISK_MAX_VBD_UUID_LENGTH];
+
     /**
      * TODO
      */
 	tapdisk_message_flag_t flags;
 
     /**
-     * The VDI (type:/path/to/file) to pause.
-     */
-    char params1[TAPDISK_MESSAGE_MAX_PATH_LENGTH];
-
-    /**
      * A new VDI to use instead of the old one. Optional.
      */
-    char params2[TAPDISK_MESSAGE_MAX_PATH_LENGTH];
+    char new_params[TAPDISK_MESSAGE_MAX_PATH_LENGTH];
 
     /**
      * TODO
@@ -169,21 +167,27 @@ typedef struct tapdisk_message_resume {
     char secondary[TAPDISK_MESSAGE_MAX_PATH_LENGTH];
 } tapdisk_message_resume_t;
 
+typedef struct tapdisk_message_close {
+	char uuid[TAPDISK_MAX_VBD_UUID_LENGTH];
+} tapdisk_message_close_t, tapdisk_message_pause_t;
+
 struct tapdisk_message {
-	uint16_t                         type;
-	uint16_t                         cookie;
+	uint16_t                       type;
+	uint16_t                       cookie; /* FIXME remove? */
 
 	union {
-		pid_t                    tapdisk_pid;
-		tapdisk_message_image_t  image;
-		tapdisk_message_params_t params;
-		tapdisk_message_string_t string;
-		tapdisk_message_minors_t minors;
+		pid_t                      tapdisk_pid;
+		tapdisk_message_image_t    image;
+		tapdisk_message_params_t   params;
+		tapdisk_message_string_t   string;
+		tapdisk_message_minors_t   minors;
 		tapdisk_message_response_t response;
-		tapdisk_message_list_t   list;
-		tapdisk_message_stat_t   info;
-		tapdisk_message_blkif_t  blkif;
-        tapdisk_message_resume_t resume;
+		tapdisk_message_list_t     list;
+		tapdisk_message_stat_t     info;
+		tapdisk_message_blkif_t    blkif;
+		tapdisk_message_pause_t    pause;
+        tapdisk_message_resume_t   resume;
+		tapdisk_message_close_t    close;
 	} u;
 };
 

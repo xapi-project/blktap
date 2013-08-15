@@ -69,3 +69,5 @@ tags
 
 # diff/patch
 *.orig
+
+mk/config.log

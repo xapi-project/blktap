@@ -29,22 +29,22 @@
 #include "tap-ctl.h"
 
 int
-tap_ctl_pause(const int id, const char *params, struct timeval *timeout)
+tap_ctl_pause(const int id, struct timeval *timeout, const char *uuid)
 {
 	int err;
 	tapdisk_message_t message;
 
-    assert(params);
-
-    if (strnlen(params, TAPDISK_MESSAGE_MAX_PATH_LENGTH)
-            >= TAPDISK_MESSAGE_MAX_PATH_LENGTH) {
-        return ENAMETOOLONG;
+    if (!uuid || uuid[0] == '\0'
+			|| strnlen(uuid, TAPDISK_MAX_VBD_UUID_LENGTH)
+	            >= TAPDISK_MAX_VBD_UUID_LENGTH) {
+		EPRINTF("missing/invalid UUID\n");
+		return EINVAL;
     }
 
 	memset(&message, 0, sizeof(message));
 	message.type = TAPDISK_MESSAGE_PAUSE;
 
-	strncpy(message.u.params.path, params, TAPDISK_MESSAGE_MAX_PATH_LENGTH);
+	strcpy(message.u.pause.uuid, uuid);
 
 	err = tap_ctl_connect_send_and_receive(id, &message, timeout);
 	if (err)

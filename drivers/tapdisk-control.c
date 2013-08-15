@@ -553,6 +553,7 @@ tapdisk_control_list(struct tapdisk_ctl_conn *conn,
 		count++;
 
 	list_for_each_entry(vbd, head, next) {
+		strcpy(response->u.list.uuid, vbd->uuid);
 		response->u.list.count   = count--;
 		response->u.list.state   = vbd->state;
 		response->u.list.path[0] = 0;
@@ -590,25 +591,36 @@ tapdisk_control_open_image(struct tapdisk_ctl_conn *conn,
 	td_vbd_t *vbd;
 	td_flag_t flags;
 	td_disk_info_t info;
-	int prt_path_len;
 	char *prt_path;
+	char *uuid;
 
     assert(request);
     assert(response);
 
-    prt_path_len = strnlen(request->u.params.prt_path,
-            TAPDISK_MESSAGE_MAX_PATH_LENGTH);
-    if (unlikely(prt_path_len == TAPDISK_MESSAGE_MAX_PATH_LENGTH)) {
+	uuid = request->u.params.uuid;
+
+    if (uuid[0] == '\0'
+			|| strnlen(uuid, TAPDISK_MAX_VBD_UUID_LENGTH)
+				>= TAPDISK_MAX_VBD_UUID_LENGTH) {
+		/* TODO log error */
+        err = -EINVAL;
+        goto out;
+    }
+
+    if (unlikely(strnlen(request->u.params.prt_path,
+					TAPDISK_MESSAGE_MAX_PATH_LENGTH)
+				>= TAPDISK_MESSAGE_MAX_PATH_LENGTH)) {
+		/* TODO log error */
 		err = -EINVAL;
 		goto out;
-    } else if (prt_path_len == 0)
+    } else if (request->u.params.prt_path[0] == '\0')
         prt_path = NULL;
     else
         prt_path = request->u.params.prt_path;
 
-    /* FIXME Check whether the image is already open by another VBD. */
-    vbd = tapdisk_vbd_create();
+    vbd = tapdisk_vbd_create(request->u.params.uuid);
 	if (!vbd) {
+		/* TODO log error */
 		err = -ENOMEM;
 		goto out;
 	}
@@ -642,19 +654,22 @@ tapdisk_control_open_image(struct tapdisk_ctl_conn *conn,
 
 	err = tapdisk_vbd_open_vdi(vbd, request->u.params.path, flags, prt_path);
 	if (err) {
-        EPRINTF("failed to open VDI: %s\n", strerror(-err));
+        EPRINTF("%s: failed to open VDI %s: %s\n", vbd->uuid,
+				request->u.params.path, strerror(-err));
 		goto out;
 	}
 
 	err = tapdisk_vbd_get_disk_info(vbd, &info);
 	if (err) {
-        EPRINTF("failed to get disk info: %s\n", strerror(-err));
+        EPRINTF("%s: failed to get disk info: %s\n", vbd->uuid,
+				strerror(-err));
 		goto fail_close;
 	}
 
 	if (request->u.params.req_timeout > 0) {
 		vbd->req_timeout = request->u.params.req_timeout;
-		DPRINTF("Set request timeout to %d s\n", vbd->req_timeout);
+		DPRINTF("%s: Set request timeout to %d s\n", vbd->uuid,
+				vbd->req_timeout);
 	}
 
 	/*
@@ -663,7 +678,7 @@ tapdisk_control_open_image(struct tapdisk_ctl_conn *conn,
 	 */
 	err = tapdisk_vbd_start_nbdserver(vbd);
 	if (err) {
-		EPRINTF("failed to start nbdserver: %d\n",err);
+		EPRINTF("%s: failed to start NBD server: %d\n", vbd->uuid, err);
 		goto fail_close;
 	}
 
@@ -697,34 +712,34 @@ tapdisk_control_close_image(struct tapdisk_ctl_conn *conn,
 {
 	td_vbd_t *vbd;
 	int err = 0;
-	int len;
+	char *uuid;
 
     assert(conn);
     assert(request);
     assert(response);
 
-    len = strnlen(request->u.string.text, TAPDISK_MESSAGE_STRING_LENGTH);
-    if (len < 1) {
+	uuid = request->u.close.uuid;
+
+    if (uuid[0] == '\0'
+			|| strnlen(uuid, TAPDISK_MAX_VBD_UUID_LENGTH)
+				>= TAPDISK_MAX_VBD_UUID_LENGTH) {
+		/* TODO log error */
         err = -EINVAL;
         goto out;
     }
-    if (len >= TAPDISK_MESSAGE_STRING_LENGTH) {
-        err = -ENAMETOOLONG;
-        goto out;
-    }
 
-	vbd = tapdisk_server_get_vbd(request->u.string.text);
+	vbd = tapdisk_server_get_vbd(request->u.close.uuid);
  	if (!vbd) {
-        EPRINTF("no VBD \'%s\'", request->u.string.text);
+        EPRINTF("%s: VBD does not exist", request->u.close.uuid);
  		err = -ENODEV;
  		goto out;
  	}
 
 	if (td_flag_test(vbd->state, TD_VBD_PAUSED))
-		EPRINTF("closing paused VBD %s", vbd->name);
+		EPRINTF("%s: closing paused VBD", vbd->uuid);
 
 	if (!list_empty(&vbd->failed_requests))
-		EPRINTF("closing VBD with failed requests\n");
+		EPRINTF("%s: closing VBD with failed requests\n", vbd->uuid);
 
 	if(vbd->nbdserver) {
 	  tapdisk_nbdserver_pause(vbd->nbdserver);
@@ -766,25 +781,25 @@ tapdisk_control_pause_vbd(struct tapdisk_ctl_conn *conn,
 {
 	int err;
 	td_vbd_t *vbd;
-	int len;
+	char *uuid;
 
     assert(conn);
     assert(request);
     assert(response);
 
-    len = strnlen(request->u.params.path, TAPDISK_MESSAGE_MAX_PATH_LENGTH);
-	if (len < 1) {
-		err = -EINVAL;
-		goto out;
-	}
+	uuid = request->u.pause.uuid;
 
-    if (len >= TAPDISK_MESSAGE_MAX_PATH_LENGTH) {
-        err = -ENAMETOOLONG;
+	if (uuid[0] == '\0'
+			|| strnlen(uuid, TAPDISK_MAX_VBD_UUID_LENGTH)
+				>= TAPDISK_MAX_VBD_UUID_LENGTH) {
+		/* TODO log error */
+        err = -EINVAL;
         goto out;
     }
 
-	vbd = tapdisk_server_get_vbd(request->u.params.path);
+	vbd = tapdisk_server_get_vbd(uuid);
 	if (!vbd) {
+		/* TODO log error */
 		err = -ENODEV;
 		goto out;
 	}
@@ -815,33 +830,32 @@ tapdisk_control_resume_vbd(struct tapdisk_ctl_conn *conn,
 	int err;
 	td_vbd_t *vbd;
 	const char *desc = NULL;
-	size_t len;
+	char *uuid;
 
     assert(request);
     assert(response);
 
-    len = strnlen(request->u.resume.params1, TAPDISK_MESSAGE_MAX_PATH_LENGTH);
+	uuid = request->u.resume.uuid;
 
-    /* TODO boilerplate */
-    if (len < 1) {
+	if (uuid[0] == '\0'
+			|| strnlen(uuid, TAPDISK_MAX_VBD_UUID_LENGTH)
+				>= TAPDISK_MAX_VBD_UUID_LENGTH) {
+		/* TODO log error */
         err = -EINVAL;
-        goto out;
-    }
-    if (len >= TAPDISK_MESSAGE_MAX_PATH_LENGTH) {
-        err = -ENAMETOOLONG;
         goto out;
     }
 
     /* TODO validate secondary */
 
-	INFO("Resuming: flags=0x%08x secondary=%p\n",
-			request->u.resume.flags, request->u.resume.secondary);
-
-	vbd = tapdisk_server_get_vbd(request->u.resume.params1);
+	vbd = tapdisk_server_get_vbd(uuid);
 	if (!vbd) {
+		/* TODO log error */
 		err = -ENODEV;
 		goto out;
 	}
+
+	INFO("%s: resuming: flags=0x%08x secondary=%p\n", vbd->uuid,
+			request->u.resume.flags, request->u.resume.secondary);
 
 	if (request->u.resume.flags & TAPDISK_MESSAGE_FLAG_SECONDARY) {
 		char *name = strdup(request->u.resume.secondary);
@@ -849,13 +863,15 @@ tapdisk_control_resume_vbd(struct tapdisk_ctl_conn *conn,
 			err = -errno;
 			goto out;
 		}
-		INFO("Resuming with secondary '%s'\n", name);
+		INFO("%s: resuming with secondary '%s'\n", vbd->uuid, name);
 		vbd->secondary_name = name;
 		vbd->flags |= TD_OPEN_SECONDARY;
+
+		/* TODO If an error occurs below we're not undoing this. */
 	}
 
-	if (request->u.resume.params2[0])
-		desc = request->u.resume.params2;
+	if (request->u.resume.new_params[0]) /* TODO validate length */
+		desc = request->u.resume.new_params;
 
 	err = tapdisk_vbd_resume(vbd, desc);
 out:
@@ -876,10 +892,12 @@ tapdisk_control_stats(struct tapdisk_ctl_conn *conn,
 	size_t rv;
 	void *buf;
 	int new_size;
-	size_t len;
+	char *uuid;
 
     assert(request);
     assert(response);
+
+	uuid = request->u.params.uuid;
 
 	buf = malloc(TD_CTL_SEND_BUFSZ);
 	if (!buf) {
@@ -887,17 +905,17 @@ tapdisk_control_stats(struct tapdisk_ctl_conn *conn,
 		goto out;
 	}
 
-    len = strnlen(request->u.params.path, TAPDISK_MESSAGE_MAX_PATH_LENGTH);
-
 	tapdisk_stats_init(st, buf, TD_CTL_SEND_BUFSZ);
 
-    if (len > 1) {
-        if (len >= TAPDISK_MESSAGE_MAX_PATH_LENGTH) {
-            rv = -ENAMETOOLONG;
-            goto out;
-        }
+    if (uuid[0] != '\0') {
+		if (strnlen(uuid, TAPDISK_MAX_VBD_UUID_LENGTH)
+				>= TAPDISK_MAX_VBD_UUID_LENGTH) {
+			/* TODO log error */
+		    rv = -EINVAL;
+	        goto out;
+	    }
 
-		vbd = tapdisk_server_get_vbd(request->u.params.path);
+		vbd = tapdisk_server_get_vbd(uuid);
 		if (!vbd) {
 			rv = -ENODEV;
 			goto out;
@@ -967,22 +985,22 @@ tapdisk_control_xenblkif_connect(
     const char *pool;
     size_t len;
     int err;
+	char *uuid;
 
     assert(request);
     assert(response);
 
-    len = strnlen(request->u.blkif.params, TAPDISK_MESSAGE_STRING_LENGTH);
-    /* TODO boilerplate */
-    if (len < 1) {
+	uuid = request->u.blkif.uuid;
+
+	if (uuid[0] == '\0'
+			|| strnlen(uuid, TAPDISK_MAX_VBD_UUID_LENGTH)
+				>= TAPDISK_MAX_VBD_UUID_LENGTH) {
+		/* TODO log error */
         err = -EINVAL;
         goto out;
     }
-    if (len >= TAPDISK_MESSAGE_STRING_LENGTH) {
-        err = -ENAMETOOLONG;
-        goto out;
-    }
 
-    vbd = tapdisk_server_get_vbd(request->u.blkif.params);
+    vbd = tapdisk_server_get_vbd(uuid);
     if (!vbd) {
         err = -ENODEV;
 		goto out;
@@ -998,8 +1016,8 @@ tapdisk_control_xenblkif_connect(
     } else
         pool = blkif->pool;
 
-    DPRINTF("connecting VBD domid=%d, devid=%d, pool %s, evt %d\n",
-            blkif->domid, blkif->devid, pool, blkif->port);
+    DPRINTF("%s: connecting VBD domid=%d, devid=%d, pool %s, evt %d\n",
+            vbd->uuid, blkif->domid, blkif->devid, pool, blkif->port);
 
     err = tapdisk_xenblkif_connect(blkif->domid, blkif->devid, blkif->gref,
             blkif->order, blkif->port, blkif->proto, pool, vbd);
@@ -1008,7 +1026,10 @@ out:
         response->type = TAPDISK_MESSAGE_XENBLKIF_CONNECT_RSP;
         /* TODO Useless? */
 	    response->u.response.error = -err;
-    }
+    } else
+		EPRINTF("%s: failed to connect to the shared ring: %s\n", vbd->uuid,
+				strerror(-err));
+
     return err;
 }
 
@@ -1047,27 +1068,24 @@ tapdisk_control_disk_info(
     int err;
     td_vbd_t *vbd;
     td_disk_info_t info;
-    int len;
+	char *uuid;
 
     assert(request);
     assert(response);
 
-    image = &response->u.image;
-    len = strnlen(request->u.string.text, TAPDISK_MESSAGE_STRING_LENGTH);
+	uuid = request->u.params.uuid;
 
-    /* TODO boilerplate */
-    if (len < 1) {
+	if (uuid[0] == '\0'
+			|| strnlen(uuid, TAPDISK_MAX_VBD_UUID_LENGTH)
+				>= TAPDISK_MAX_VBD_UUID_LENGTH) {
+		/* TODO log error */
         err = -EINVAL;
         goto out;
     }
-    if (len >= TAPDISK_MESSAGE_STRING_LENGTH) {
-        err = -ENAMETOOLONG;
-        goto out;
-    }
 
-    DPRINTF("getting info vbd %s\n", request->u.string.text);
+    image = &response->u.image;
 
-    vbd = tapdisk_server_get_vbd(request->u.string.text);
+    vbd = tapdisk_server_get_vbd(uuid);
     if (!vbd) {
         err = -ENODEV;
         goto out;
@@ -1075,11 +1093,12 @@ tapdisk_control_disk_info(
 
     err = tapdisk_vbd_get_disk_info(vbd, &info);
     if (err) {
-        EPRINTF("tapdisk_vbd_get_disk_info failed %d\n", err);
+        EPRINTF("%s: failed to get info: %s\n", vbd->uuid, strerror(-err));
         goto out;
     }
 
-    EPRINTF("got disk info: %ld %d\n", info.sector_size, err);
+    DPRINTF("%s: got disk info: sector size=%ld sectors=%llu\n", vbd->uuid,
+			info.sector_size, image->sectors);
 out:
     if (!err) {
         response->type = TAPDISK_MESSAGE_DISK_INFO_RSP;
