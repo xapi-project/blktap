@@ -120,7 +120,7 @@ class OCFSSR(FileSR.FileSR):
         except util.CommandException, inst:
                 raise xs_errors.XenError('OCFSUnMount', \
                       opterr='Failed to umount FS. Errno is %d' % \
-                      os.strerror((inst.code)(
+                      os.strerror(inst.code))
 
         return super(OCFSSR, self).detach(sr_uuid)
         
