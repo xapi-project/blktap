@@ -2402,7 +2402,7 @@ def normalizeType(type):
     if type in ["lvm", "lvmoiscsi", "lvmohba"]:
         # temporary while LVHD is symlinked as LVM
         type = SR.TYPE_LVHD
-    if type in ["ext", "nfs"]:
+    if type in ["ext", "nfs", "ocfsoiscsi", "ocfsohba"]:
         type = SR.TYPE_FILE
     if not type in SR.TYPES:
         raise util.SMException("Unsupported SR type: %s" % type)

@@ -919,4 +919,24 @@
             <description>Unsupported kernel: neither 2.6 nor 3.x.</description>
             <value>448</value>
         </code>
+        <code>
+                <name>OCFSOneLUN</name>
+                <description>Only 1 LUN may be used with shared OCFS</description>
+                <value>449</value>
+        </code>
+        <code>
+                <name>OCFSMount</name>
+                <description>OCFS mount error</description>
+                <value>450</value>
+        </code>
+        <code>
+                <name>OCFSUnMount</name>
+                <description>OCFS unmount error</description>
+                <value>451</value>
+        </code>
+        <code>
+                <name>OCFSFilesystem</name>
+                <description>OCFS filesystem creation error</description>
+                <value>452</value>
+        </code>
 </SM-errorcodes>
