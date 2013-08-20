@@ -117,22 +117,34 @@ def discovery(target, port, chapuser, chappass, targetIQN="any",
     save_rootdisk_nodes()
 
     if ':' in target:
-    	targetstring = "[%s]:%s" % (target,str(port))
+        targetstring = "[%s]:%s" % (target,str(port))
     else:
-    	targetstring = "%s:%s" % (target,str(port))
-    if chapuser!="" and chappass!="":
-        cmd = ["iscsiadm", "-m", "discovery", "-t", "st", "-p", 
-               targetstring, "-X", chapuser, "-x", chappass]
-    else:
-        cmd = ["iscsiadm", "-m", "discovery", "-t", "st", "-p", 
-               targetstring]
+        targetstring = "%s:%s" % (target,str(port))
+    cmd_base = ["-t", "st", "-p", targetstring]
     for interface in interfaceArray:
-        cmd.append("-I")
-        cmd.append(interface)
-    failuremessage = ("Discovery failed. Check target settings and "
-                      "username/password (if applicable)")
+        cmd_base.append("-I")
+        cmd_base.append(interface)
+    cmd_disc = ["iscsiadm", "-m", "discovery"] + cmd_base
+    cmd_discdb = ["iscsiadm", "-m", "discoverydb"] + cmd_base
+    auth_args =  ["-n", "discovery.sendtargets.auth.authmethod", "-v", "CHAP",
+                  "-n", "discovery.sendtargets.auth.username", "-v", chapuser,
+                  "-n", "discovery.sendtargets.auth.password", "-v", chappass]
+    fail_msg = "Discovery failed. Check target settings and " \
+               "username/password (if applicable)"
     try:
-        (stdout,stderr) = exn_on_failure(cmd, failuremessage)
+        if chapuser!="" and chappass!="":
+            # Unfortunately older version of iscsiadm won't fail on new modes
+            # it doesn't recognize (rc=0), so we have to test it out
+            support_discdb = "discoverydb" in util.pread2(["iscsiadm", "-h"])
+            if support_discdb:
+                exn_on_failure(cmd_discdb + ["-o", "new"], fail_msg)
+                exn_on_failure(cmd_discdb + ["-o", "update"] + auth_args, fail_msg)
+                cmd = cmd_discdb + ["--discover"]
+            else:
+                cmd = cmd_disc + ["-X", chapuser, "-x", chappass]
+        else:
+            cmd = cmd_disc
+        (stdout,stderr) = exn_on_failure(cmd, fail_msg)
     except:
         restore_rootdisk_nodes()
         raise xs_errors.XenError('ISCSILogin')
