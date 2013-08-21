@@ -981,7 +981,7 @@ tapdisk_control_xenblkif_connect(
      */
     tapdisk_message_blkif_t *blkif;
 
-    td_vbd_t *vbd;
+    td_vbd_t *vbd = NULL;
     const char *pool;
     size_t len;
     int err;
