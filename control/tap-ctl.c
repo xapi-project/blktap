@@ -219,6 +219,7 @@ tap_cli_create(int argc, char **argv)
 			break;
 		case 'n':
 			uuid = optarg;
+			break;
 		case '?':
 			goto usage;
 		case 'h':
