@@ -225,9 +225,13 @@ class OCFSoISCSISR(OCFSSR.OCFSSR):
                                    (self.iscsi.targetIQN, self.iscsi.target))
                         continue
                     try:
-                        iscsilib.login(self.iscsi.target, self.iscsi.targetIQN, self.iscsi.chapuser, \
-                                       self.iscsi.chappassword, self.iscsi.incoming_chapuser, \
-                                       self.iscsi.incoming_chappassword)
+                        iscsilib.login(self.iscsi.target,
+                                       self.iscsi.targetIQN,
+                                       self.iscsi.chapuser,
+                                       self.iscsi.chappassword,
+                                       self.iscsi.incoming_chapuser,
+                                       self.iscsi.incoming_chappassword,
+                                       self.mpath == "true")
                     except:
                         util.SMlog("Login failed for iscsi data targetIQN %s,"
                                    " portal %s. Trying another path"
