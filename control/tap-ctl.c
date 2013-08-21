@@ -721,7 +721,8 @@ main(int argc, char *argv[])
 	free(cargv);
 
 	if (ret)
-		fprintf(stderr, "%s\n", strerror(-ret));
+		/* FIXME errors are not always returned as negative numbers */
+		fprintf(stderr, "%s\n", strerror(abs(ret)));
 
 	return (ret >= 0 ? ret : -ret);
 }
