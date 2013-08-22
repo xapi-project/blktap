@@ -219,6 +219,7 @@ tap_cli_create(int argc, char **argv)
 			break;
 		case 'n':
 			uuid = optarg;
+			break;
 		case '?':
 			goto usage;
 		case 'h':
@@ -721,7 +722,8 @@ main(int argc, char *argv[])
 	free(cargv);
 
 	if (ret)
-		fprintf(stderr, "%s\n", strerror(-ret));
+		/* FIXME errors are not always returned as negative numbers */
+		fprintf(stderr, "%s\n", strerror(abs(ret)));
 
 	return (ret >= 0 ? ret : -ret);
 }
