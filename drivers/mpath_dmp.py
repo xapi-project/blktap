@@ -228,6 +228,7 @@ def refresh(sid,npaths):
 def _refresh_DMP(sid, npaths):
     map_by_scsibus(sid,npaths)
     path = os.path.join(DEVMAPPERPATH, sid)
+    util.wait_for_path(path, 10)
     if not os.path.exists(path):
         raise xs_errors.XenError('DMP failed to activate mapper path')
     lvm_path = "/dev/disk/by-scsid/"+sid+"/mapper"
