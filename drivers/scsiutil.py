@@ -87,8 +87,16 @@ def SCSIid_sanitise(str):
 
 def getSCSIid(path):
     dev = rawdev(path)
-    cmd = ["scsi_id", "-g", "-s", "/block/%s" % dev]
-    return SCSIid_sanitise(util.pread2(cmd)[:-1])
+    cmd_fallback = ["scsi_id", "-g", "-s", "/block/%s" % dev]
+    cmd_new = ["scsi_id", "-g", "--device", "/dev/%s" % dev]
+    for cmd in cmd_new, cmd_fallback:
+        try:
+            scsi_id = SCSIid_sanitise(util.pread2(cmd)[:-1])
+            return scsi_id
+        except Exception, e:
+            util.SMlog("%s failed with %s" %(cmd, e.args))
+            to_raise = e
+    raise to_raise
 
 def compareSCSIid_2_6_18(SCSIid, path):
     serial = getserial(path)
