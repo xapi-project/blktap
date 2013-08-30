@@ -62,6 +62,7 @@ make install DESTDIR=%{buildroot}
 %{_sbindir}/vhdpartx
 %{_libexecdir}/tapdisk
 %{_sysconfdir}/udev/rules.d/blktap.rules
+%{_sysconfdir}/rc.d/init.d/tapback
 
 %files devel
 %defattr(-,root,root,-)
@@ -70,5 +71,8 @@ make install DESTDIR=%{buildroot}
 %{_libdir}/*.la
 %{_includedir}/vhd/*
 %{_includedir}/blktap/*
+
+%post
+[ ! -x /sbin/chkconfig ] || chkconfig --add tapback
 
 %changelog
