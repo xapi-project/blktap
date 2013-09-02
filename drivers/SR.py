@@ -107,12 +107,6 @@ class SR(object):
             if 'sr_ref' in self.srcmd.params:
                 self.sr_ref = self.srcmd.params['sr_ref']
 
-	    if 'device_config' in self.srcmd.params:
-		if self.srcmd.params['device_config'].has_key('SCSIid'):
-		    dev_path = '/dev/disk/by-scsid/'+self.srcmd.params['device_config']['SCSIid']
-		    os.environ['LVM_DEVICE'] = dev_path
-		    util.SMlog('Setting LVM_DEVICE to %s' % dev_path)
-
         except Exception, e:
             raise e
             raise xs_errors.XenError('SRBadXML')
