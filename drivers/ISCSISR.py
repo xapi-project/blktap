@@ -311,7 +311,11 @@ class ISCSISR(SR.SR):
                                 continue
                             util._testHost(ipaddr, long(port), 'ISCSITarget')
                             util.SMlog("Logging in to [%s:%s]" % (ipaddr,port))
-                            iscsilib.login(portal, iqn, self.chapuser, self.chappassword, self.incoming_chapuser, self.incoming_chappassword)
+                            iscsilib.login(portal, iqn, self.chapuser,
+                                           self.chappassword,
+                                           self.incoming_chapuser,
+                                           self.incoming_chappassword,
+                                           self.mpath == "true")
                             npaths = npaths + 1
                         except Exception, e:
                             # Exceptions thrown in login are acknowledged, 

@@ -214,7 +214,9 @@ def activate():
     util.SMlog("MPATH: multipath activate called")
     cmd = ['ln', '-sf', iscsi_mpath_file, iscsi_file]
     try:
-        util.pread2(cmd)
+        if os.path.exists(iscsi_mpath_file):
+            # Only do this if using our customized open-iscsi package
+            util.pread2(cmd)
     except util.CommandException, ce:
         if not ce.reason.endswith(': File exists'):
             raise
@@ -247,7 +249,9 @@ def activate():
 def deactivate():
     util.SMlog("MPATH: multipath deactivate called")
     cmd = ['ln', '-sf', iscsi_default_file, iscsi_file]
-    util.pread2(cmd)
+    if os.path.exists(iscsi_default_file):
+        # Only do this if using our customized open-iscsi package
+        util.pread2(cmd)
 
     # Stop the updatempppathd daemon
     if _is_mpp_daemon_running():
