@@ -350,6 +350,7 @@ int main(int argc, char **argv)
     else {
         blkback_ident = BLKTAP3_BACKEND_TOKEN;
         openlog(blkback_ident, 0, LOG_DAEMON);
+        setlogmask(LOG_UPTO(LOG_INFO));
     }
 
     if (!opt_debug) {
