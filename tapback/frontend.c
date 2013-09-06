@@ -82,6 +82,7 @@ blkback_connect_tap(vbd_t * const bdev,
     int err = 0;
     char *proto_str = NULL;
     char *persistent_grants_str = NULL;
+	bool do_connect = true;
 
     assert(bdev);
 
@@ -198,42 +199,52 @@ blkback_connect_tap(vbd_t * const bdev,
 		if ((err = tap_ctl_connect_xenblkif(bdev->tap.pid, bdev->domid,
 						bdev->devid, gref, order, port, proto, NULL,
 						bdev->uuid))) {
-            WARN("tapdisk failed to connect to the shared ring: %s\n",
-                    strerror(-err));
-            goto fail;
-        }
-        DBG("tapdisk pid=%d, uuid=%s connected to shared ring\n",
-                bdev->tap.pid, bdev->uuid);
+			if (err == -EALREADY) {
+				INFO("tapdisk already connected to the shared ring\n");
+				do_connect = false;
+				err = 0;
+			} else {
+	            WARN("tapdisk failed to connect to the shared ring: %s\n",
+		                strerror(-err));
+			    goto fail;
+			}
+        } else {
+	        DBG("tapdisk pid=%d, uuid=%s connected to shared ring\n",
+		            bdev->tap.pid, bdev->uuid);
+		}
 
         bdev->connected = true;
     }
 
-    /*
-     * Write the number of sectors, sector size, and info to the back-end path
-     * in XenStore so that the front-end creates a VBD with the appropriate
-     * characteristics.
-     */
-    if ((err = tapback_device_printf(bdev, "sector-size", true, "%u",
-                    bdev->sector_size))) {
-        WARN("Failed to write sector-size.\n");
-        goto fail;
-    }
+	if (do_connect) {
+		/*
+		 * Write the number of sectors, sector size, and info to the back-end
+		 * path in XenStore so that the front-end creates a VBD with the
+		 * appropriate characteristics.
+		 */
+		if ((err = tapback_device_printf(bdev, "sector-size", true, "%u",
+						bdev->sector_size))) {
+			WARN("Failed to write sector-size.\n");
+			goto fail;
+		}
 
-    if ((err = tapback_device_printf(bdev, "sectors", true, "%llu",
-                    bdev->sectors))) {
-        WARN("Failed to write sectors.\n");
-        goto fail;
-    }
+		if ((err = tapback_device_printf(bdev, "sectors", true, "%llu",
+						bdev->sectors))) {
+			WARN("Failed to write sectors.\n");
+			goto fail;
+		}
 
-    if ((err = tapback_device_printf(bdev, "info", true, "%u", bdev->info))) {
-        WARN("Failed to write info.\n");
-        goto fail;
-    }
+		if ((err = tapback_device_printf(bdev, "info", true, "%u",
+						bdev->info))) {
+			WARN("Failed to write info.\n");
+			goto fail;
+		}
 
-    if ((err = tapback_device_switch_state(bdev, XenbusStateConnected))) {
-        WARN("failed to switch back-end state to connected: %s\n",
-                strerror(err));
-    }
+		if ((err = tapback_device_switch_state(bdev, XenbusStateConnected))) {
+			WARN("failed to switch back-end state to connected: %s\n",
+					strerror(err));
+		}
+	}
 
 fail:
     if (err && bdev->connected) {
@@ -262,15 +273,17 @@ fail:
  *
  * @param xbdev the VBD whose tapdisk should be disconnected
  * @param state unused
- * @returns 0 on success, an error code otherwise
+ * @returns 0 on success, a positive error code otherwise
  *
  * XXX Only called by blkback_frontend_changed.
  */
 static inline int
 backend_close(vbd_t * const bdev,
-        const XenbusState state __attribute__((unused)))
+		const XenbusState state __attribute__((unused)))
 {
     int err = 0;
+	bool result = false;
+	char *path = NULL;
 
     assert(bdev);
 
@@ -286,7 +299,7 @@ backend_close(vbd_t * const bdev,
         bdev->domid, bdev->devid, bdev->tap.pid, bdev->uuid);
 
     if ((err = -tap_ctl_disconnect_xenblkif(bdev->tap.pid, bdev->domid,
-                    bdev->devid, NULL))){
+                    bdev->devid, NULL))) {
 
         /*
          * TODO I don't see how tap_ctl_disconnect_xenblkif can return
@@ -303,6 +316,46 @@ backend_close(vbd_t * const bdev,
     }
 
     bdev->connected = false;
+
+	/*
+	 * FIXME CP-5952: temporary hack
+	 */
+	err = asprintf(&path, "/xapi/%d/hotplug/%s/%d/hotplug", bdev->domid,
+			BLKTAP3_BACKEND_NAME, bdev->devid);
+	if (err == -1) {
+		err = errno;
+		WARN("failed to asprintf: %s\n", strerror(err));
+		return err;
+	}
+	err = 0;
+
+	result = xs_rm(blktap3_daemon.xs, blktap3_daemon.xst, path);
+	if (!result) {
+		err = errno;
+		WARN("failed to remove %s: %s\n", path, strerror(err));
+	}
+	free(path);
+	if (err)
+		return err;
+
+	err = asprintf(&path, "%s/%s/%d/%d/hotplug-status", XENSTORE_BACKEND,
+			BLKTAP3_BACKEND_NAME, bdev->domid, bdev->devid);
+	if (err == -1) {
+		err = errno;
+		WARN("failed to asprintf for %d/%d: %s\n", bdev->domid,
+				bdev->devid, strerror(err));
+		return err;
+	}
+	err = 0;
+	result = xs_rm(blktap3_daemon.xs, blktap3_daemon.xst, path);
+	if (!result) {
+		err = errno;
+		WARN("failed to remove %s for %d/%d: %s\n", path, bdev->domid,
+				bdev->devid, strerror(err));
+	}
+	free(path);
+	if (err)
+		return err;
 
     return tapback_device_switch_state(bdev, XenbusStateClosed);
 }
