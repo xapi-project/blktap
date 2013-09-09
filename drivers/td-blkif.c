@@ -20,7 +20,6 @@
 #include <assert.h>
 #include <stdlib.h>
 #include <errno.h>
-#include <syslog.h>
 #include <sys/mman.h>
 #include <xenctrl.h>
 #include <unistd.h>
@@ -34,6 +33,8 @@
 
 /* FIXME redundant */
 #define ARRAY_SIZE(a) (sizeof(a) / sizeof(a)[0])
+
+#define ERROR(_f, _a...)           tlog_syslog(TLOG_WARN, "td-blkif: " _f, ##_a)
 
 struct td_xenblkif *
 tapdisk_xenblkif_find(const domid_t domid, const int devid)
@@ -140,7 +141,7 @@ tapdisk_xenblkif_connect(domid_t domid, int devid, const grant_ref_t * grefs,
      */
     td_blkif->ring_n_pages = 1 << order;
     if (td_blkif->ring_n_pages > ARRAY_SIZE(td_blkif->ring_ref)) {
-        syslog(LOG_ERR, "too many pages (%u), max %u\n",
+        ERROR("too many pages (%u), max %u\n",
                 td_blkif->ring_n_pages, ARRAY_SIZE(td_blkif->ring_ref));
         err = EINVAL;
         goto fail;
@@ -162,7 +163,7 @@ tapdisk_xenblkif_connect(domid_t domid, int devid, const grant_ref_t * grefs,
             PROT_READ | PROT_WRITE);
     if (!sring) {
         err = errno;
-        syslog(LOG_ERR, "failed to map domain's %d grant references: %s\n",
+        ERROR("failed to map domain's %d grant references: %s\n",
                 domid, strerror(err));
         goto fail;
     }
@@ -197,7 +198,7 @@ tapdisk_xenblkif_connect(domid_t domid, int devid, const grant_ref_t * grefs,
                 break;
             }
         default:
-            syslog(LOG_ERR, "unsupported protocol 0x%x\n", td_blkif->proto);
+            ERROR("unsupported protocol 0x%x\n", td_blkif->proto);
             err = EPROTONOSUPPORT;
             goto fail;
     }
@@ -212,7 +213,7 @@ tapdisk_xenblkif_connect(domid_t domid, int devid, const grant_ref_t * grefs,
             td_blkif->domid, port);
     if (td_blkif->port == -1) {
         err = errno;
-        syslog(LOG_ERR, "failed to bind to event channel port %d of domain "
+        ERROR("failed to bind to event channel port %d of domain "
                 "%d: %s\n", port, td_blkif->domid, strerror(err));
         goto fail;
     }
