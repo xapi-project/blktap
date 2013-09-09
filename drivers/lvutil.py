@@ -352,7 +352,7 @@ def createVG(root, vgname):
                 pass
             raise xs_errors.XenError('LVMGroupCreate')
     try:
-        cmd = [CMD_VGCHANGE, "-an", "--master", vgname]
+        cmd = [CMD_VGCHANGE, "-an", vgname]
         util.pread2(cmd)
     except util.CommandException, inst:
         raise xs_errors.XenError('LVMUnMount', \
@@ -394,7 +394,7 @@ def setActiveVG(path, active):
     val = "n"
     if active:
         val = "y"
-    cmd = [CMD_VGCHANGE, "-a" + val, "--master", path]
+    cmd = [CMD_VGCHANGE, "-a" + val, path]
     text = util.pread2(cmd)
 
 def create(name, size, vgname, tag = None, activate = True):
