@@ -496,41 +496,6 @@ tapdisk_control_validate_request(tapdisk_message_t *request)
 	return 0;
 }
 
-#if 0
-static void
-tapdisk_control_list_minors(struct tapdisk_ctl_conn *conn,
-			    tapdisk_message_t *request)
-{
-	int i;
-	td_vbd_t *vbd;
-	struct list_head *head;
-	tapdisk_message_t response;
-
-	i = 0;
-	memset(&response, 0, sizeof(response));
-	response.type = TAPDISK_MESSAGE_LIST_MINORS_RSP;
-	response.cookie = request->cookie;
-
-	head = tapdisk_server_get_all_vbds();
-
-	list_for_each_entry(vbd, head, next) {
-		td_blktap_t *tap = vbd->tap;
-		if (!tap)
-			continue;
-
-		response.u.minors.list[i++] = tap->minor;
-		if (i >= TAPDISK_MESSAGE_MAX_MINORS) {
-			response.type = TAPDISK_MESSAGE_ERROR;
-			response.u.response.error = ERANGE;
-			break;
-		}
-	}
-
-	response.u.minors.count = i;
-	tapdisk_ctl_conn_write(conn, &response, 2);
-}
-#endif
-
 static int
 tapdisk_control_list(struct tapdisk_ctl_conn *conn,
 		tapdisk_message_t *request, tapdisk_message_t * const response)

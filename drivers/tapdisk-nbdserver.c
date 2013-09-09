@@ -549,12 +549,13 @@ tapdisk_nbdserver_alloc(td_vbd_t *vbd, td_disk_info_t info)
 {
 	td_nbdserver_t *server;
 	char fdreceiver_path[TAPDISK_NBDSERVER_MAX_PATH_LEN];
-	int i;
+	int err = 0;
 
 	server = malloc(sizeof(*server));
 	if (!server) {
-		ERROR("Failed to allocate memory for nbdserver: %s", strerror(errno));
-		return NULL;
+		err = errno;
+		ERROR("Failed to allocate memory for nbdserver: %s", strerror(err));
+		goto out;
 	}
 
 	memset(server, 0, sizeof(*server));
@@ -569,39 +570,35 @@ tapdisk_nbdserver_alloc(td_vbd_t *vbd, td_disk_info_t info)
 
 	snprintf(fdreceiver_path, TAPDISK_NBDSERVER_MAX_PATH_LEN, "%s%d.%s",
 			TAPDISK_NBDSERVER_LISTEN_SOCK_PATH, getpid(),
-			vbd->name);
-
-    /*
-     * XXX The path we're supplying will be appended to the socket path, so it
-     * cannot contain the '/' character. We replace all '/' with '-'.
-     */
-    for (i = strlen(TAPDISK_NBDSERVER_LISTEN_SOCK_PATH);
-            fdreceiver_path[i] != '\0'; i++) {
-        if (fdreceiver_path[i] == '/') {
-            fdreceiver_path[i] = '-';
-        }
-    }
+			vbd->uuid);
 
 	server->fdreceiver = td_fdreceiver_start(fdreceiver_path,
 			tapdisk_nbdserver_fdreceiver_cb, server);
 
 	if (!server->fdreceiver) {
 		ERROR("Error setting up fd receiver");
-		tapdisk_server_unregister_event(server->fdrecv_listening_event_id);
-		close(server->fdrecv_listening_fd);
-		return NULL;
+		goto out;
 	}
 
-	/*
-	 * FIXME need to add the VBD identifier, e.g. some UUID, the file's path
-	 * etc.
-	 *
-	 * FIXME check return code
-	 */
-	snprintf(server->sockpath, TAPDISK_NBDSERVER_MAX_PATH_LEN, "%s%d",
-			TAPDISK_NBDSERVER_SOCK_PATH, getpid());
+	if (-1 == snprintf(server->sockpath, TAPDISK_NBDSERVER_MAX_PATH_LEN,
+				"%s%d.%s", TAPDISK_NBDSERVER_SOCK_PATH, getpid(), vbd->uuid))
+	{
+		err = errno;
+		ERROR("failed to snprintf %s...%s: %s", TAPDISK_NBDSERVER_SOCK_PATH,
+				vbd->uuid, strerror(err));
+		goto out;
+	}
 
-	return server;
+out:
+	if (err) {
+		if (server) {
+			tapdisk_server_unregister_event(server->fdrecv_listening_event_id);
+			close(server->fdrecv_listening_fd);
+			free(server);
+		}
+		return NULL;
+	} else
+		return server;
 }
 
 int
