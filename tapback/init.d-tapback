@@ -1,0 +1,123 @@
+#!/bin/bash
+#
+# tapback        Start/Stop the tapback daemon
+#
+# chkconfig: 2345 22 76
+# description: tapback daemon for blktap3
+# processname: tapback
+
+# Source function library.
+. /etc/init.d/functions
+
+# name
+NAME="tapback"
+
+# location of the executable:
+TAPBACK="/usr/bin/tapback"
+
+# sock file
+SOCK_FILE="/var/run/tapback.sock"
+
+# lock file
+LOCK_FILE="/var/lock/subsys/tapback"
+
+# Do two things: make LOCK_FILE and SOCK_FILE consistent with current running
+# status (cleanup if necessary, e.g. abnormal exit leftover), and return
+# current running status (0: stop, 1: running; >1: running with issues)
+check_running() {
+	if [ -e ${SOCK_FILE} ]; then
+		PID=$(lsof -t ${SOCK_FILE} 2>/dev/null | head -n 1)
+		if [ -n "${PID}" ]; then
+			[ -e ${LOCK_FILE} ] || touch ${LOCK_FILE}
+			kill -0 ${PID} 2>/dev/null
+			if [ $? -eq 0 ]; then
+				return 1
+			else
+				return 2
+			fi
+		fi
+		rm -f ${SOCK_FILE}
+	fi
+	[ -e ${LOCK_FILE} ] && rm -f ${LOCK_FILE}
+	return 0
+}
+
+get_status() {
+	check_running
+	status ${TAPBACK}
+}
+
+start() {
+	echo -n "Starting the ${NAME} deamon: "
+	check_running
+	RUNNING=$?
+	if [ ${RUNNING} -eq 0 ]; then
+		${TAPBACK} >/dev/null 2>&1 </dev/null
+		for gap in 0.1 0.2 0.5 1 2 5; do
+			check_running
+			RUNNING=$?
+			if [ ${RUNNING} -ne 0 ]; then break; fi
+			sleep $gap
+		done
+	fi
+	if [ ${RUNNING} -eq 0 ]; then
+		echo -n $"fail to start ${NAME}."
+		failure $"fail to start ${NAME}."
+		RETVAL=1
+	elif [ ${RUNNING} -eq 1 ]; then
+		success
+		RETVAL=0
+	else
+		echo -n $"${NAME} start but is not responsive"
+		failure $"${NAME} start but is not responsive"
+		RETVAL=1
+	fi
+	echo
+	return ${RETVAL}
+}
+
+stop() {
+	echo -n $"Stopping the ${NAME} daemon: "
+	check_running
+	RUNNING=$?
+	if [ ${RUNNING} -ne 0 ]; then
+		killproc ${TAPBACK}
+		# RETVAL=$?
+		check_running
+		RUNNING=$?
+	fi
+	if [ ${RUNNING} -eq 0 ]; then
+		success
+		RETVAL=0
+	else
+		echo -n $"fail to stop ${NAME}."
+		failure $"fail to stop ${NAME}."
+		RETVAL=1
+	fi
+	echo
+	return ${RETVAL}
+}
+
+restart() {
+	stop
+	start
+}
+
+
+case "$1" in
+	start)
+		start
+		;;
+	stop)
+		stop
+		;;
+	restart)
+		restart
+		;;
+	status)
+		get_status
+		;;
+	*)
+		echo $"Usage: $0 {start|stop|restart|status}"
+		exit 1
+esac
