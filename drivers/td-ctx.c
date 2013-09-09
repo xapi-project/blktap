@@ -19,12 +19,13 @@
 
 #include <assert.h>
 #include <errno.h>
-#include <syslog.h>
 #include <xenctrl.h>
 #include <stdlib.h>
 
 #include "tapdisk-server.h"
 #include "td-ctx.h"
+
+#define ERROR(_f, _a...)           tlog_syslog(TLOG_WARN, "td-ctx: " _f, ##_a)
 
 LIST_HEAD(_td_xenio_ctxs);
 
@@ -334,7 +335,7 @@ tapdisk_xenio_ctx_open(const char *pool)
     ctx = calloc(1, sizeof(*ctx));
     if (!ctx) {
         err = errno;
-        syslog(LOG_ERR, "cannot allocate memory");
+        ERROR("cannot allocate memory");
         goto fail;
     }
 
@@ -346,7 +347,7 @@ tapdisk_xenio_ctx_open(const char *pool)
     ctx->xce_handle = xc_evtchn_open(NULL, 0);
     if (!ctx->xce_handle) {
         err = errno;
-        syslog(LOG_ERR, "failed to open the event channel driver: %s\n",
+        ERROR("failed to open the event channel driver: %s\n",
                 strerror(err));
         goto fail;
     }
@@ -354,7 +355,7 @@ tapdisk_xenio_ctx_open(const char *pool)
     ctx->xcg_handle = xc_gnttab_open(NULL, 0);
     if (!ctx->xcg_handle) {
         err = errno;
-        syslog(LOG_ERR, "failed to open the grant table driver: %s\n",
+        ERROR("failed to open the grant table driver: %s\n",
                 strerror(err));
         goto fail;
     }
@@ -362,7 +363,7 @@ tapdisk_xenio_ctx_open(const char *pool)
     fd = xc_evtchn_fd(ctx->xce_handle);
     if (fd < 0) {
         err = errno;
-        syslog(LOG_ERR, "failed to get the event channel file descriptor: %s\n",
+        ERROR("failed to get the event channel file descriptor: %s\n",
                 strerror(err));
         goto fail;
     }
@@ -371,7 +372,7 @@ tapdisk_xenio_ctx_open(const char *pool)
         fd, 0, tapdisk_xenio_ctx_ring_event, ctx);
     if (ctx->ring_event < 0) {
         err = -ctx->ring_event;
-        syslog(LOG_ERR, "failed to register event: %s\n", strerror(err));
+        ERROR("failed to register event: %s\n", strerror(err));
         goto fail;
     }
 
