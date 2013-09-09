@@ -354,7 +354,8 @@ static void signal_enospc(td_vbd_t *vbd)
 
     /*
 	 * FIXME Some external tool is probably using this, figure out which and
-     * update it.
+     * update it. AFAIK xapi doesn't use this, I've sent a mail to xs-devel
+	 * querying users of this path.
 	 */
 	err = asprintf(&fn, BLKTAP2_ENOSPC_SIGNAL_FILE"%s", vbd->uuid);
 	if (err == -1) {
@@ -536,32 +537,6 @@ fail:
 
 	return err;
 }
-
-/*
-int
-tapdisk_vbd_open(td_vbd_t *vbd, const char *name,
-		 int minor, const char *ring, td_flag_t flags)
-{
-	int err;
-
-	err = tapdisk_vbd_open_vdi(vbd, name, flags, -1);
-	if (err)
-		goto out;
-
-	err = tapdisk_vbd_attach(vbd, ring, minor);
-	if (err)
-		goto out;
-
-	return 0;
-
-out:
-	tapdisk_vbd_detach(vbd);
-	tapdisk_vbd_close_vdi(vbd);
-	free(vbd->name);
-	vbd->name = NULL;
-	return err;
-}
-*/
 
 static void
 tapdisk_vbd_queue_count(td_vbd_t *vbd, int *new,

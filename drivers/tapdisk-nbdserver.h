@@ -22,7 +22,7 @@ typedef struct td_nbdserver td_nbdserver_t;
 typedef struct td_nbdserver_req td_nbdserver_req_t;
 typedef struct td_nbdserver_client td_nbdserver_client_t;
 
-#include "blktap.h"
+#include "blktap2.h"
 #include "tapdisk-vbd.h"
 #include "list.h"
 #include "tapdisk-nbd.h"
