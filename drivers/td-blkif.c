@@ -113,7 +113,7 @@ tapdisk_xenblkif_connect(domid_t domid, int devid, const grant_ref_t * grefs,
      */
     if (tapdisk_xenblkif_find(domid, devid)) {
         /* TODO log error */
-        return EEXIST;
+        return -EALREADY;
     }
 
     err = tapdisk_xenio_ctx_get(pool, &td_ctx);
@@ -142,7 +142,7 @@ tapdisk_xenblkif_connect(domid_t domid, int devid, const grant_ref_t * grefs,
     if (td_blkif->ring_n_pages > ARRAY_SIZE(td_blkif->ring_ref)) {
         syslog(LOG_ERR, "too many pages (%u), max %u\n",
                 td_blkif->ring_n_pages, ARRAY_SIZE(td_blkif->ring_ref));
-        err = EINVAL;
+        err = -EINVAL;
         goto fail;
     }
 
@@ -198,7 +198,7 @@ tapdisk_xenblkif_connect(domid_t domid, int devid, const grant_ref_t * grefs,
             }
         default:
             syslog(LOG_ERR, "unsupported protocol 0x%x\n", td_blkif->proto);
-            err = EPROTONOSUPPORT;
+            err = -EPROTONOSUPPORT;
             goto fail;
     }
 

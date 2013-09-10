@@ -66,7 +66,7 @@ tap_ctl_connect_xenblkif(const pid_t pid, const domid_t domid, const int devid,
     err = tap_ctl_connect_send_and_receive(pid, &message, NULL);
     if (err || message.type == TAPDISK_MESSAGE_ERROR) {
 		if (!err)
-			err = message.u.response.error;
+			err = -message.u.response.error;
         /*
          * TODO include more info
          */
