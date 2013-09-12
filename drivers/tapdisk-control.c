@@ -900,10 +900,10 @@ tapdisk_control_stats(struct tapdisk_ctl_conn *conn,
 
 	rv = tapdisk_stats_length(st);
 
-	if (rv > conn->out.bufsz - sizeof(response)) {
+	if (rv > conn->out.bufsz - sizeof(*response)) {
 		ASSERT(conn->out.prod == conn->out.buf);
 		ASSERT(conn->out.cons == conn->out.buf);
-		new_size = rv + sizeof(response);
+		new_size = rv + sizeof(*response);
 		buf = realloc(conn->out.buf, new_size);
 		if (!buf) {
 			rv = -ENOMEM;
@@ -915,18 +915,18 @@ tapdisk_control_stats(struct tapdisk_ctl_conn *conn,
 		conn->out.cons = buf;
 	}
 	if (rv > 0) {
-		memcpy(conn->out.buf + sizeof(response), st->buf, rv);
+		memcpy(conn->out.buf + sizeof(*response), st->buf, rv);
 	}
 out:
 	free(st->buf);
-    if (!rv) {
+    if (rv > 0) {
         response->type = TAPDISK_MESSAGE_STATS_RSP;
         response->u.info.length = rv;
-    }
-    /* TODO Should only be executed if err == 0? */
-	if (rv > 0)
+		tapdisk_control_write_message(conn, response);
 		conn->out.prod += rv;
-	return rv;
+		return 0;
+	} else
+		return rv;
 }
 
 /**
@@ -1164,7 +1164,8 @@ tapdisk_control_handle_request(event_id_t id, char mode, void *private)
         response.type = TAPDISK_MESSAGE_ERROR;
         response.u.response.error = -err;
     }
-    tapdisk_control_write_message(conn, &response);
+	if (err || response.type != TAPDISK_MESSAGE_STATS_RSP)
+	    tapdisk_control_write_message(conn, &response);
 
 	conn->in.busy = 0;
 	if (excl)
