@@ -47,6 +47,10 @@ struct td_nbdserver;
 
 struct td_vbd_handle {
 
+	/**
+	 * The identifier of the VBD. Can be anything, preferably a printable
+	 * string. If it's a UUID, so much the better.
+	 */
 	char                       *uuid;
 
     /**
@@ -62,6 +66,9 @@ struct td_vbd_handle {
 	td_flag_t                   flags;
 	td_flag_t                   state;
 
+	/**
+	 * List of images: the leaf is that head, the tree root is at the tail.
+	 */
 	struct list_head            images;
 
 	int                         parent_devnum;

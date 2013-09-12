@@ -609,7 +609,7 @@ tap_cli_stats(int argc, char **argv)
 		}
 	}
 
-	if (pid == -1 || !uuid)
+	if (pid == -1)
 		goto usage;
 
 	err = tap_ctl_stats_fwrite(pid, stdout, uuid);
