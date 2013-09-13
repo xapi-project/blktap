@@ -31,7 +31,6 @@
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <sys/un.h>
-#include <assert.h>
 
 #include "libvhd.h"
 #include "tapdisk-image.h"
@@ -87,7 +86,7 @@ tapdisk_vbd_create(const char *uuid)
 {
 	td_vbd_t *vbd;
 
-	assert(uuid);
+	ASSERT(uuid);
 
 	vbd = calloc(1, sizeof(td_vbd_t));
 	if (!vbd) {
@@ -119,8 +118,8 @@ tapdisk_vbd_initialize(int rfd, int wfd, const char *params, const char *uuid)
 {
 	td_vbd_t *vbd;
 
-	assert(params);
-	assert(uuid);
+	ASSERT(params);
+	ASSERT(uuid);
 
 	/*
 	 * FIXME check for images opened multiple times? This may not really make
@@ -845,8 +844,8 @@ tapdisk_vbd_request_ttl(td_vbd_request_t *vreq,
 {
 	struct timeval delta;
 
-	assert(vreq);
-	assert(vreq->vbd);
+	ASSERT(vreq);
+	ASSERT(vreq->vbd);
 
 	timersub(now, &vreq->ts, &delta);
 	return vreq->vbd->req_timeout - delta.tv_sec;

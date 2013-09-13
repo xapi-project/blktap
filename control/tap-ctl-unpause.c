@@ -25,7 +25,6 @@
 #include <unistd.h>
 #include <string.h>
 #include <getopt.h>
-#include <assert.h>
 
 #include "tap-ctl.h"
 

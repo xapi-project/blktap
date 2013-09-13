@@ -21,19 +21,28 @@
 
 #include "td-req.h"
 #include "td-blkif.h"
-#include <assert.h>
 #include <stdlib.h>
 #include <errno.h>
 #include "td-ctx.h"
 #include <syslog.h>
 #include <inttypes.h>
 #include "tapdisk-vbd.h"
+#include "tapdisk-log.h"
 
 /*
  * TODO needed for PROT_READ/PROT_WRITE, probably some xen header supplies them
  * too
  */
 #include <sys/mman.h>
+
+#define ASSERT(p)                                      \
+    do {                                               \
+        if (!(p)) {                                    \
+            EPRINTF("%s:%d: FAILED ASSERTION: '%s'\n", \
+                     __FILE__, __LINE__, #p);          \
+            abort();                                   \
+        }                                              \
+    } while (0)
 
 /**
  * Puts the request back to the free list of this block interface.
@@ -45,9 +54,9 @@ static void
 tapdisk_xenblkif_free_request(struct td_xenblkif * const blkif,
         struct td_xenblkif_req * const tapreq)
 {
-    assert(blkif);
-    assert(tapreq);
-    assert(blkif->n_reqs_free <= blkif->ring_size);
+    ASSERT(blkif);
+    ASSERT(tapreq);
+    ASSERT(blkif->n_reqs_free <= blkif->ring_size);
 
     blkif->reqs_free[blkif->ring_size - (++blkif->n_reqs_free)] = &tapreq->msg;
 }
@@ -61,7 +70,7 @@ tapdisk_xenblkif_free_request(struct td_xenblkif * const blkif,
 static int
 td_blkif_ring_size(const struct td_xenblkif * const blkif)
 {
-    assert(blkif);
+    ASSERT(blkif);
 
     switch (blkif->proto) {
         case BLKIF_PROTOCOL_NATIVE:
@@ -91,11 +100,11 @@ xenio_blkif_munmap_one(struct td_xenblkif * const blkif,
     struct td_xenio_ctx *ctx;
     int err;
 
-    assert(blkif);
-    assert(req);
+    ASSERT(blkif);
+    ASSERT(req);
 
     ctx = blkif->ctx;
-    assert(ctx);
+    ASSERT(ctx);
 
     err = xc_gnttab_munmap(ctx->xcg_handle, req->vma, req->nr_segments);
     if (err) {
@@ -162,9 +171,9 @@ xenio_blkif_put_response(struct td_xenblkif * const blkif,
     if (req) {
         blkif_response_t * msg = xenio_blkif_get_response(blkif,
                 ring->rsp_prod_pvt);
-        assert(msg);
+        ASSERT(msg);
 
-        assert(status == BLKIF_RSP_EOPNOTSUPP || status == BLKIF_RSP_ERROR
+        ASSERT(status == BLKIF_RSP_EOPNOTSUPP || status == BLKIF_RSP_ERROR
                 || status == BLKIF_RSP_OKAY);
 
         msg->id = req->id;
@@ -204,8 +213,8 @@ static void
 tapdisk_xenblkif_complete_request(struct td_xenblkif * const blkif,
         struct td_xenblkif_req* tapreq, const int error, const int final)
 {
-    assert(blkif);
-    assert(tapreq);
+    ASSERT(blkif);
+    ASSERT(tapreq);
 
     if (tapreq->vma) {
         xenio_blkif_munmap_one(blkif, tapreq);
@@ -238,8 +247,8 @@ __tapdisk_xenblkif_request_cb(struct td_vbd_request * const vreq,
     struct td_xenblkif_req *tapreq;
     struct td_xenblkif * const blkif = token;
 
-    assert(vreq);
-    assert(blkif);
+    ASSERT(vreq);
+    ASSERT(blkif);
 
     tapreq = containerof(vreq, struct td_xenblkif_req, vreq);
 
@@ -270,10 +279,10 @@ tapdisk_xenblkif_make_vbd_request(struct td_xenblkif * const blkif,
     int prot;
     grant_ref_t gref[BLKIF_MAX_SEGMENTS_PER_REQUEST];
 
-    assert(tapreq);
+    ASSERT(tapreq);
 
     vreq = &tapreq->vreq;
-    assert(vreq);
+    ASSERT(vreq);
 
     switch (tapreq->msg.operation) {
     case BLKIF_OP_READ:
@@ -400,9 +409,9 @@ tapdisk_xenblkif_queue_request(struct td_xenblkif * const blkif,
 {
     int err;
 
-    assert(blkif);
-    assert(msg);
-    assert(tapreq);
+    ASSERT(blkif);
+    ASSERT(msg);
+    ASSERT(tapreq);
 
     err = tapdisk_xenblkif_make_vbd_request(blkif, tapreq);
     if (err) {
@@ -429,19 +438,19 @@ tapdisk_xenblkif_queue_requests(struct td_xenblkif * const blkif,
     int err;
     int nr_errors = 0;
 
-    assert(blkif);
-    assert(reqs);
-    assert(nr_reqs >= 0);
+    ASSERT(blkif);
+    ASSERT(reqs);
+    ASSERT(nr_reqs >= 0);
 
     for (i = 0; i < nr_reqs; i++) { /* for each request from the ring... */
         blkif_request_t *msg = reqs[i];
         struct td_xenblkif_req *tapreq;
 
-        assert(msg);
+        ASSERT(msg);
 
         tapreq = msg_to_tapreq(msg);
 
-        assert(tapreq);
+        ASSERT(tapreq);
 
         err = tapdisk_xenblkif_queue_request(blkif, msg, tapreq);
         if (err) {
@@ -458,7 +467,7 @@ tapdisk_xenblkif_queue_requests(struct td_xenblkif * const blkif,
 void
 tapdisk_xenblkif_reqs_free(struct td_xenblkif * const blkif)
 {
-    assert(blkif);
+    ASSERT(blkif);
 
     free(blkif->reqs);
     blkif->reqs = NULL;
@@ -473,10 +482,10 @@ tapdisk_xenblkif_reqs_init(struct td_xenblkif *td_blkif)
     int i = 0;
     int err = 0;
 
-    assert(td_blkif);
+    ASSERT(td_blkif);
 
     td_blkif->ring_size = td_blkif_ring_size(td_blkif);
-    assert(td_blkif->ring_size > 0);
+    ASSERT(td_blkif->ring_size > 0);
 
     td_blkif->reqs =
         malloc(td_blkif->ring_size * sizeof(struct td_xenblkif_req));

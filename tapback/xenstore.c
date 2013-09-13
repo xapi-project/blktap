@@ -19,7 +19,6 @@
 
 #include <stdarg.h>
 #include <stdio.h>
-#include <assert.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -33,11 +32,11 @@ tapback_xs_vread(struct xs_handle * const xs, xs_transaction_t xst,
     char *path, *data = NULL;
     unsigned int len = 0;
 
-    assert(xs);
+    ASSERT(xs);
 
     if (vasprintf(&path, fmt, ap) == -1)
         goto fail;
-    assert(path);
+    ASSERT(path);
 
     data = xs_read(xs, xst, path, &len);
     free(path);
@@ -82,7 +81,7 @@ tapback_xs_read(struct xs_handle * const xs, xs_transaction_t xst,
     va_list ap;
     char *s;
 
-    assert(xs);
+    ASSERT(xs);
 
     va_start(ap, fmt);
     s = tapback_xs_vread(xs, xst, fmt, ap);
@@ -94,8 +93,8 @@ tapback_xs_read(struct xs_handle * const xs, xs_transaction_t xst,
 char *
 tapback_device_read(const vbd_t * const device, const char * const path)
 {
-    assert(device);
-    assert(path);
+    ASSERT(device);
+    ASSERT(path);
 
     return tapback_xs_read(blktap3_daemon.xs, blktap3_daemon.xst,
             "%s/%d/%s/%s", BLKTAP3_BACKEND_PATH, device->domid, device->name,
@@ -106,8 +105,8 @@ char *
 tapback_device_read_otherend(vbd_t * const device,
         const char * const path)
 {
-    assert(device);
-    assert(path);
+    ASSERT(device);
+    ASSERT(path);
 
     return tapback_xs_read(blktap3_daemon.xs, blktap3_daemon.xst, "%s/%s",
             device->frontend_path, path);
@@ -122,8 +121,8 @@ tapback_device_scanf_otherend(vbd_t * const device,
     int n = 0;
     char *s = NULL;
 
-    assert(device);
-    assert(path);
+    ASSERT(device);
+    ASSERT(path);
 
     if (!(s = tapback_device_read_otherend(device, path)))
         return -1;
@@ -145,8 +144,8 @@ tapback_device_printf(vbd_t * const device, const char * const key,
     char *path = NULL, *val = NULL;
     bool nerr = false;
 
-    assert(device);
-    assert(key);
+    ASSERT(device);
+    ASSERT(key);
 
     if (-1 == asprintf(&path, "%s/%d/%s/%s", BLKTAP3_BACKEND_PATH,
                 device->domid, device->name, key)) {
