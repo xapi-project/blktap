@@ -32,7 +32,7 @@
 static void
 tapback_device_unwatch_frontend_state(vbd_t * const device)
 {
-    assert(device);
+    ASSERT(device);
 
     if (device->frontend_state_path)
         xs_unwatch(blktap3_daemon.xs, device->frontend_state_path,
@@ -50,7 +50,7 @@ tapback_device_unwatch_frontend_state(vbd_t * const device)
 static void
 tapback_backend_destroy_device(vbd_t * const device)
 {
-    assert(device);
+    ASSERT(device);
 
     DBG("removing device %d/%d\n", device->domid, device->devid);
 
@@ -84,7 +84,7 @@ blkback_find_tapdisk(const char *uuid, tap_list_t *tap)
     tap_list_t *_tap;
     int err;
 
-    assert(uuid);
+    ASSERT(uuid);
 
     err = tap_ctl_list(&list);
     if (err) {
@@ -127,7 +127,7 @@ tapback_backend_create_device(const domid_t domid, const char * const name)
     int err = 0;
 	char *uuid = NULL;
 
-    assert(name);
+    ASSERT(name);
 
     DBG("creating device %d/%s\n", domid, name);
 
@@ -209,7 +209,7 @@ tapback_backend_create_device(const domid_t domid, const char * const name)
         err = -errno;
         goto out;
     }
-    assert(device->frontend_state_path);
+    ASSERT(device->frontend_state_path);
 
     /*
      * We use the same token for all front-end watches. We don't have to use a
@@ -248,7 +248,7 @@ tapback_backend_probe_device(const domid_t domid, const char * const devname)
     vbd_t *device = NULL;
     char * s = NULL;
 
-    assert(devname);
+    ASSERT(devname);
 
     DBG("probing device %d/%s\n", domid, devname);
 
@@ -408,14 +408,14 @@ tapback_backend_handle_backend_watch(char * const path)
     char *s = NULL, *end = NULL, *name = NULL;
     domid_t domid = 0;
 
-    assert(path);
+    ASSERT(path);
 
     s = strtok(path, "/");
-    assert(!strcmp(s, XENSTORE_BACKEND));
+    ASSERT(!strcmp(s, XENSTORE_BACKEND));
     if (!(s = strtok(NULL, "/")))
         return tapback_backend_scan();
 
-    assert(!strcmp(s, BLKTAP3_BACKEND_NAME));
+    ASSERT(!strcmp(s, BLKTAP3_BACKEND_NAME));
     if (!(s = strtok(NULL, "/")))
         return tapback_backend_scan();
 

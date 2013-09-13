@@ -29,6 +29,7 @@
 #include <sys/un.h>
 
 #include "tapdisk.h"
+#include "tapdisk-log.h"
 #include "tapdisk-server.h"
 #include "tapdisk-driver.h"
 #include "tapdisk-interface.h"
@@ -53,9 +54,9 @@
 #define ASSERT(p)                                      \
     do {                                               \
         if (!(p)) {                                    \
-            EPRINTF("Assertion '%s' failed, line %d, " \
-                "file %s", #p, __LINE__, __FILE__);    \
-            *(int*)0 = 0;                              \
+            EPRINTF("%s:%d: FAILED ASSERTION: '%s'\n", \
+                     __FILE__, __LINE__, #p);          \
+            abort();                                   \
         }                                              \
     } while (0)
 

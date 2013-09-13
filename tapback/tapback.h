@@ -23,7 +23,6 @@
 #include <stdio.h>
 #include <stdint.h>
 #include <stdlib.h>
-#include <assert.h>
 #include <string.h>
 #include <stdbool.h>
 
@@ -54,6 +53,15 @@ void (*tapback_vlog) (int prio, const char *fmt, va_list ap);
     if (unlikely(_cond)) {          \
         printf(fmt, ##__VA_ARGS__); \
     }
+
+#define ASSERT(p)                                               \
+    do {                                                        \
+        if (!(p)) {                                             \
+            WARN("tapback-err:%s:%d: FAILED ASSERTION: '%s'\n", \
+                  __FILE__, __LINE__, #p);                      \
+            abort();                                            \
+        }                                                       \
+    } while (0)
 
 /*
  * Pre-defined XenStore path components used for running the XenBus protocol.

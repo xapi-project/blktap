@@ -20,6 +20,7 @@
 #endif
 
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
 #include <sys/mman.h>
@@ -29,9 +30,9 @@
 #define ASSERT(p)                                      \
     do {                                               \
         if (!(p)) {                                    \
-            EPRINTF("Assertion '%s' failed, line %d, " \
-                "file %s", #p, __LINE__, __FILE__);    \
-            *(int*)0 = 0;                              \
+            EPRINTF("%s:%d: FAILED ASSERTION: '%s'\n", \
+                     __FILE__, __LINE__, #p);          \
+            abort();                                   \
         }                                              \
     } while (0)
 

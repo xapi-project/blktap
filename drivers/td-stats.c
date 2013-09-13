@@ -17,18 +17,28 @@
  * USA.
  */
 
-#include <assert.h>
+#include <stdlib.h>
 #include <xenctrl.h>
 
+#include "tapdisk-log.h"
 #include "td-stats.h"
 #include "td-ctx.h"
+
+#define ASSERT(p)                                      \
+    do {                                               \
+        if (!(p)) {                                    \
+            EPRINTF("%s:%d: FAILED ASSERTION: '%s'\n", \
+                     __FILE__, __LINE__, #p);          \
+            abort();                                   \
+        }                                              \
+    } while (0)
 
 static inline void
 __tapdisk_xenblkif_stats(struct td_xenblkif * blkif, td_stats_t * st)
 {
-    assert(blkif);
-    assert(st);
-    assert(blkif->ctx);
+    ASSERT(blkif);
+    ASSERT(st);
+    ASSERT(blkif->ctx);
 
     tapdisk_stats_field(st, "pool", blkif->ctx->pool);
     tapdisk_stats_field(st, "domid", "d", blkif->domid);

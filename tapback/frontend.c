@@ -38,7 +38,7 @@ tapback_device_switch_state(vbd_t * const device,
 {
     int err;
 
-    assert(device);
+    ASSERT(device);
 
     /*
      * TODO Ensure @state contains a legitimate XenbusState value.
@@ -84,7 +84,7 @@ blkback_connect_tap(vbd_t * const bdev,
     char *persistent_grants_str = NULL;
 	bool do_connect = true;
 
-    assert(bdev);
+    ASSERT(bdev);
 
     if (bdev->connected) {
         DBG("front-end already connected to tapdisk.\n");
@@ -285,7 +285,7 @@ backend_close(vbd_t * const bdev,
 	bool result = false;
 	char *path = NULL;
 
-    assert(bdev);
+    ASSERT(bdev);
 
     if (!bdev->connected) {
         /*
@@ -405,8 +405,8 @@ blkback_frontend_changed(vbd_t * const xbdev, const XenbusState state)
         [XenbusStateReconfigured] = {NULL, 0}
     };
 
-    assert(xbdev);
-    assert(state <= XenbusStateReconfigured);
+    ASSERT(xbdev);
+    ASSERT(state <= XenbusStateReconfigured);
 
     DBG("front-end %d/%s went into state %s\n",
             xbdev->domid, xbdev->name, XenbusState2str(state));
@@ -427,7 +427,7 @@ tapback_backend_handle_otherend_watch(const char * const path)
     int err = 0, state = 0;
     char *s = NULL, *end = NULL;
 
-    assert(path);
+    ASSERT(path);
 
     /*
      * Find the device that has the same front-end state path.

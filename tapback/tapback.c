@@ -158,7 +158,7 @@ tapback_backend_destroy(void)
 static void
 signal_cb(int signum) {
 
-    assert(signum == SIGINT || signum == SIGTERM);
+    ASSERT(signum == SIGINT || signum == SIGTERM);
 
     /* TODO Check whether there are active VBDs? */
     tapback_backend_destroy();
@@ -295,8 +295,8 @@ blkback_vlog_fprintf(const int prio, const char * const fmt, va_list ap)
 static void
 usage(FILE * const stream, const char * const prog)
 {
-    assert(stream);
-    assert(prog);
+    ASSERT(stream);
+    ASSERT(prog);
 
     fprintf(stream,
             "usage: %s\n"

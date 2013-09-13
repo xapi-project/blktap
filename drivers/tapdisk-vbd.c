@@ -31,7 +31,6 @@
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <sys/un.h>
-#include <assert.h>
 
 #include "libvhd.h"
 #include "tapdisk-image.h"

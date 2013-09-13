@@ -17,15 +17,23 @@
  * USA.
  */
 
-#include <assert.h>
 #include <errno.h>
 #include <xenctrl.h>
 #include <stdlib.h>
 
 #include "tapdisk-server.h"
 #include "td-ctx.h"
+#include "tapdisk-log.h"
 
 #define ERROR(_f, _a...)           tlog_syslog(TLOG_WARN, "td-ctx: " _f, ##_a)
+#define ASSERT(p)                                      \
+    do {                                               \
+        if (!(p)) {                                    \
+            EPRINTF("%s:%d: FAILED ASSERTION: '%s'\n", \
+                     __FILE__, __LINE__, #p);          \
+            abort();                                   \
+        }                                              \
+    } while (0)
 
 LIST_HEAD(_td_xenio_ctxs);
 
@@ -35,7 +43,7 @@ LIST_HEAD(_td_xenio_ctxs);
 static void
 tapdisk_xenio_ctx_close(struct td_xenio_ctx * const ctx)
 {
-    assert(ctx);
+    ASSERT(ctx);
 
     if (ctx->ring_event >= 0) {
         tapdisk_server_unregister_event(ctx->ring_event);
@@ -67,7 +75,7 @@ xenio_pending_blkif(struct td_xenio_ctx * const ctx)
     struct td_xenblkif *blkif;
     int err;
 
-    assert(ctx);
+    ASSERT(ctx);
 
     /*
      * Get the local port for which there is a pending event.
@@ -127,8 +135,8 @@ xenio_blkif_get_request(struct td_xenblkif * const blkif,
 {
     blkif_back_rings_t * rings;
 
-    assert(blkif);
-    assert(dst);
+    ASSERT(blkif);
+    ASSERT(dst);
 
     rings = &blkif->rings;
 
@@ -161,7 +169,7 @@ xenio_blkif_get_request(struct td_xenblkif * const blkif,
             /*
              * TODO log error
              */
-            assert(0);
+            ASSERT(0);
     }
 }
 
@@ -185,8 +193,8 @@ __xenio_blkif_get_requests(struct td_xenblkif * const blkif,
     RING_IDX rp, rc;
     unsigned int n;
 
-    assert(blkif);
-    assert(reqs);
+    ASSERT(blkif);
+    ASSERT(reqs);
 
     if (!count)
         return 0;
@@ -230,8 +238,8 @@ xenio_blkif_get_requests(struct td_xenblkif * const blkif,
     int n = 0;
     int work = 0;
 
-    assert(blkif);
-    assert(reqs);
+    ASSERT(blkif);
+    ASSERT(reqs);
 
     ring = &blkif->rings.common;
 
@@ -269,7 +277,7 @@ tapdisk_xenio_ctx_ring_event(event_id_t id __attribute__((unused)),
     int start;
     blkif_request_t **reqs;
 
-    assert(ctx);
+    ASSERT(ctx);
 
     blkif = xenio_pending_blkif(ctx);
     if (!blkif) {
@@ -287,11 +295,11 @@ tapdisk_xenio_ctx_ring_event(event_id_t id __attribute__((unused)),
     do {
         reqs = &blkif->reqs_free[blkif->ring_size - blkif->n_reqs_free];
 
-        assert(reqs);
+        ASSERT(reqs);
 
         n_reqs = xenio_blkif_get_requests(blkif, reqs, blkif->n_reqs_free,
                 final);
-        assert(n_reqs >= 0);
+        ASSERT(n_reqs >= 0);
         if (!n_reqs)
             break;
 
