@@ -18,10 +18,19 @@
  */
 
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
-#include <assert.h>
 
 #include "tap-ctl.h"
+
+#define ASSERT(p)                                      \
+    do {                                               \
+        if (!(p)) {                                    \
+            EPRINTF("%s:%d: FAILED ASSERTION: '%s'\n", \
+                     __FILE__, __LINE__, #p);          \
+            abort();                                   \
+        }                                              \
+    } while (0)
 
 int tap_ctl_info(pid_t pid, unsigned long long *sectors,
 		unsigned int *sector_size, unsigned int *info, const char *uuid)
@@ -29,9 +38,9 @@ int tap_ctl_info(pid_t pid, unsigned long long *sectors,
     tapdisk_message_t message;
     int err;
 
-    assert(sectors);
-    assert(sector_size);
-    assert(info);
+    ASSERT(sectors);
+    ASSERT(sector_size);
+    ASSERT(info);
 
     if (!uuid || uuid[0] == '\0'
 			|| strnlen(uuid, TAPDISK_MAX_VBD_UUID_LENGTH)

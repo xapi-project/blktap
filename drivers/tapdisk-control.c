@@ -32,7 +32,6 @@
 #include <sys/ioctl.h>
 #include <sys/socket.h>
 #include <sys/mman.h>
-#include <assert.h>
 
 #include "list.h"
 #include "tapdisk.h"
@@ -540,9 +539,9 @@ tapdisk_control_list(struct tapdisk_ctl_conn *conn,
 	struct list_head *head;
 	int count;
 
-    assert(conn);
-    assert(request);
-    assert(response);
+    ASSERT(conn);
+    ASSERT(request);
+    ASSERT(response);
 
 	response->type = TAPDISK_MESSAGE_LIST_RSP;
 
@@ -575,7 +574,7 @@ static int
 tapdisk_control_get_pid(struct tapdisk_ctl_conn *conn,
 			tapdisk_message_t *request, tapdisk_message_t * const response)
 {
-	assert(response);
+	ASSERT(response);
 
 	response->type = TAPDISK_MESSAGE_PID_RSP;
 	response->u.tapdisk_pid = getpid();
@@ -594,8 +593,8 @@ tapdisk_control_open_image(struct tapdisk_ctl_conn *conn,
 	char *prt_path;
 	char *uuid;
 
-    assert(request);
-    assert(response);
+    ASSERT(request);
+    ASSERT(response);
 
 	uuid = request->u.params.uuid;
 
@@ -714,9 +713,9 @@ tapdisk_control_close_image(struct tapdisk_ctl_conn *conn,
 	int err = 0;
 	char *uuid;
 
-    assert(conn);
-    assert(request);
-    assert(response);
+    ASSERT(conn);
+    ASSERT(request);
+    ASSERT(response);
 
 	uuid = request->u.close.uuid;
 
@@ -783,9 +782,9 @@ tapdisk_control_pause_vbd(struct tapdisk_ctl_conn *conn,
 	td_vbd_t *vbd;
 	char *uuid;
 
-    assert(conn);
-    assert(request);
-    assert(response);
+    ASSERT(conn);
+    ASSERT(request);
+    ASSERT(response);
 
 	uuid = request->u.pause.uuid;
 
@@ -832,8 +831,8 @@ tapdisk_control_resume_vbd(struct tapdisk_ctl_conn *conn,
 	const char *desc = NULL;
 	char *uuid;
 
-    assert(request);
-    assert(response);
+    ASSERT(request);
+    ASSERT(response);
 
 	uuid = request->u.resume.uuid;
 
@@ -894,8 +893,8 @@ tapdisk_control_stats(struct tapdisk_ctl_conn *conn,
 	int new_size;
 	char *uuid;
 
-    assert(request);
-    assert(response);
+    ASSERT(request);
+    ASSERT(response);
 
 	uuid = request->u.params.uuid;
 
@@ -987,8 +986,8 @@ tapdisk_control_xenblkif_connect(
     int err;
 	char *uuid;
 
-    assert(request);
-    assert(response);
+    ASSERT(request);
+    ASSERT(response);
 
 	uuid = request->u.blkif.uuid;
 
@@ -1041,8 +1040,8 @@ tapdisk_control_xenblkif_disconnect(
     tapdisk_message_blkif_t *blkif;
 	int err;
 
-    assert(request);
-    assert(response);
+    ASSERT(request);
+    ASSERT(response);
 
     blkif = &request->u.blkif;
 
@@ -1070,8 +1069,8 @@ tapdisk_control_disk_info(
     td_disk_info_t info;
 	char *uuid;
 
-    assert(request);
-    assert(response);
+    ASSERT(request);
+    ASSERT(response);
 
 	uuid = request->u.params.uuid;
 

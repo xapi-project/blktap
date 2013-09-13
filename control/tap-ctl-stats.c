@@ -20,12 +20,21 @@
 #endif
 
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
 #include <sys/mman.h>
-#include <assert.h>
 
 #include "tap-ctl.h"
+
+#define ASSERT(p)                                      \
+    do {                                               \
+        if (!(p)) {                                    \
+            EPRINTF("%s:%d: FAILED ASSERTION: '%s'\n", \
+                     __FILE__, __LINE__, #p);          \
+            abort();                                   \
+        }                                              \
+    } while (0)
 
 int
 _tap_ctl_stats_connect_and_send(pid_t pid, const char *uuid)
@@ -63,7 +72,7 @@ tap_ctl_stats(pid_t pid, char *buf, size_t size, const char *uuid)
 	int sfd, err;
 	size_t len;
 
-	assert(uuid);
+	ASSERT(uuid);
 
 	sfd = _tap_ctl_stats_connect_and_send(pid, uuid);
 	if (sfd < 0)

@@ -17,7 +17,6 @@
  * USA.
  */
 
-#include <assert.h>
 #include <stdlib.h>
 #include <errno.h>
 #include <sys/mman.h>
@@ -26,6 +25,7 @@
 
 #include "blktap3.h"
 #include "tapdisk.h"
+#include "tapdisk-log.h"
 
 #include "td-blkif.h"
 #include "td-ctx.h"
@@ -33,8 +33,15 @@
 
 /* FIXME redundant */
 #define ARRAY_SIZE(a) (sizeof(a) / sizeof(a)[0])
-
 #define ERROR(_f, _a...)           tlog_syslog(TLOG_WARN, "td-blkif: " _f, ##_a)
+#define ASSERT(p)                                      \
+    do {                                               \
+        if (!(p)) {                                    \
+            EPRINTF("%s:%d: FAILED ASSERTION: '%s'\n", \
+                     __FILE__, __LINE__, #p);          \
+            abort();                                   \
+        }                                              \
+    } while (0)
 
 struct td_xenblkif *
 tapdisk_xenblkif_find(const domid_t domid, const int devid)
@@ -56,7 +63,7 @@ tapdisk_xenblkif_find(const domid_t domid, const int devid)
 void
 tapdisk_xenblkif_destroy(struct td_xenblkif * blkif)
 {
-    assert(blkif);
+    ASSERT(blkif);
 
     tapdisk_xenblkif_reqs_free(blkif);
 
@@ -106,8 +113,8 @@ tapdisk_xenblkif_connect(domid_t domid, int devid, const grant_ref_t * grefs,
     void *sring;
     size_t sz;
 
-    assert(grefs);
-    assert(vbd);
+    ASSERT(grefs);
+    ASSERT(vbd);
 
     /*
      * Already connected?
