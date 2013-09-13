@@ -27,7 +27,6 @@
 #include <arpa/inet.h>
 #include <sys/wait.h>
 #include <sys/un.h>
-#include <assert.h>
 
 #include "tapdisk.h"
 #include "tapdisk-server.h"
@@ -51,6 +50,14 @@
 
 #define INFO(_f, _a...)            tlog_syslog(TLOG_INFO, "nbd: " _f, ##_a)
 #define ERROR(_f, _a...)           tlog_syslog(TLOG_WARN, "nbd: " _f, ##_a)
+#define ASSERT(p)                                      \
+    do {                                               \
+        if (!(p)) {                                    \
+            EPRINTF("Assertion '%s' failed, line %d, " \
+                "file %s", #p, __LINE__, __FILE__);    \
+            *(int*)0 = 0;                              \
+        }                                              \
+    } while (0)
 
 struct td_nbdserver_req {
 	td_vbd_request_t        vreq;
@@ -523,7 +530,7 @@ tapdisk_nbdserver_newclient_unix(event_id_t id, char mode, void *data)
 	size_t t = sizeof(remote);
 	td_nbdserver_t *server = data;
 
-	assert(server);
+	ASSERT(server);
 
 	new_fd = accept(server->unix_listening_fd, (struct sockaddr *)&remote, &t);
 	if (new_fd == -1) {
@@ -672,9 +679,9 @@ tapdisk_nbdserver_listen_unix(td_nbdserver_t *server)
 	size_t len = 0;
 	int err = 0;
 
-	assert(server);
+	ASSERT(server);
 
-	assert(server->unix_listening_fd == -1);
+	ASSERT(server->unix_listening_fd == -1);
 
 	server->unix_listening_fd = socket(AF_UNIX, SOCK_STREAM, 0);
 	if (server->unix_listening_fd == -1) {

@@ -25,7 +25,6 @@
 #include <stdlib.h>
 #include <sys/ioctl.h>
 #include <sys/signal.h>
-#include <assert.h>
 
 #include "tapdisk-syslog.h"
 #include "tapdisk-server.h"
@@ -37,6 +36,14 @@
 #define ERR(_err, _f, _a...)         tlog_error(_err, _f, ##_a)
 
 #define TAPDISK_TIOCBS              (TAPDISK_DATA_REQUESTS + 50)
+#define ASSERT(p)                                      \
+    do {                                               \
+        if (!(p)) {                                    \
+            EPRINTF("Assertion '%s' failed, line %d, " \
+                "file %s", #p, __LINE__, __FILE__);    \
+            *(int*)0 = 0;                              \
+        }                                              \
+    } while (0)
 
 typedef struct tapdisk_server {
 	int                          run;
@@ -82,7 +89,7 @@ tapdisk_server_get_vbd(const char *uuid)
 {
 	td_vbd_t *vbd, *tmp;
 
-	assert(uuid);
+	ASSERT(uuid);
 
 	tapdisk_server_for_each_vbd(vbd, tmp)
 		if (!strcmp(vbd->uuid, uuid))

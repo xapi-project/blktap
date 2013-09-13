@@ -24,7 +24,6 @@
 #include <unistd.h>
 #include <string.h>
 #include <sys/time.h>
-#include <assert.h>
 
 #include "tapdisk.h"
 #include "scheduler.h"
@@ -45,6 +44,14 @@
 	list_for_each_entry(event, &(s)->events, next)
 #define scheduler_for_each_event_safe(s, event, tmp)	\
 	list_for_each_entry_safe(event, tmp, &(s)->events, next)
+#define ASSERT(p)                                      \
+    do {                                               \
+        if (!(p)) {                                    \
+            EPRINTF("Assertion '%s' failed, line %d, " \
+                "file %s", #p, __LINE__, __FILE__);    \
+            *(int*)0 = 0;                              \
+        }                                              \
+    } while (0)
 
 typedef struct event {
 	char                         mode;
@@ -338,7 +345,7 @@ scheduler_wait_for_events(scheduler_t *s)
 
 	if (ret < 0) {
 		ret = -errno;
-		assert(!ret);
+		ASSERT(!ret);
 		goto out;
 	}
 
