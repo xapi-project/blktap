@@ -397,13 +397,11 @@ def setActiveVG(path, active):
     cmd = [CMD_VGCHANGE, "-a" + val, path]
     text = util.pread2(cmd)
 
-def create(name, size, vgname, tag = None, activate = True):
+def create(name, size, vgname, tag = None):
     size_mb = size / 1024 / 1024
     cmd = [CMD_LVCREATE, "-n", name, "-L", str(size_mb), vgname]
     if tag:
         cmd.extend(["--addtag", tag])
-    if not activate:
-        cmd.extend(["--inactive", "--zero=n"])
     util.pread2(cmd)
 
 def remove(path):

@@ -43,7 +43,7 @@ class Journaler:
             raise JournalerException("Journal already exists for '%s:%s': %s" \
                     % (type, id, valExisting))
         lvName = self._getNameLV(type, id, val)
-        self.lvmCache.create(lvName, self.LV_SIZE, self.LV_TAG, False)
+        self.lvmCache.create(lvName, self.LV_SIZE, self.LV_TAG)
 
     def remove(self, type, id):
         """Remove the entry of type "type" for "id". Error if the entry doesn't

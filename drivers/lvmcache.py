@@ -97,11 +97,11 @@ class LVMCache:
     # lvutil functions
     #
     @lazyInit
-    def create(self, lvName, size, tag = None, activate = True):
-        lvutil.create(lvName, size, self.vgName, tag, activate)
+    def create(self, lvName, size, tag = None):
+        lvutil.create(lvName, size, self.vgName, tag)
         lvInfo = LVInfo(lvName)
         lvInfo.size = size
-        lvInfo.active = activate
+        lvInfo.active = True
         self.lvs[lvName] = lvInfo
         if tag:
             self._addTag(lvName, tag)

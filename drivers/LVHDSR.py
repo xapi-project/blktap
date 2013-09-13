@@ -45,11 +45,14 @@ from srmetadata import ALLOCATION_TAG, NAME_LABEL_TAG, NAME_DESCRIPTION_TAG, \
     UUID_TAG, IS_A_SNAPSHOT_TAG, SNAPSHOT_OF_TAG, TYPE_TAG, VDI_TYPE_TAG, \
     READ_ONLY_TAG, MANAGED_TAG, SNAPSHOT_TIME_TAG, METADATA_OF_POOL_TAG, \
     requiresUpgrade, LVMMetadataHandler, METADATA_OBJECT_TYPE_VDI, \
-    METADATA_OBJECT_TYPE_SR, METADATA_UPDATE_OBJECT_TYPE_TAG
+    METADATA_OBJECT_TYPE_SR, METADATA_UPDATE_OBJECT_TYPE_TAG, open_file, \
+    close, get_min_blk_size_wrapper, xs_file_read_wrapper, \
+    xs_file_write_wrapper
 from metadata import retrieveXMLfromFile, _parseXML
 from xmlrpclib import DateTime
 import glob
 DEV_MAPPER_ROOT = os.path.join('/dev/mapper', lvhdutil.VG_PREFIX)
+from xslib import xs_file_write, xs_file_read, close_file
 
 geneology = {}
 CAPABILITIES = ["SR_PROBE","SR_UPDATE",
@@ -801,7 +804,7 @@ class LVHDSR(SR.SR):
         entries = self.journaler.getAll(LVHDVDI.JRN_CLONE)
         for uuid, val in entries.iteritems():
             util.fistpoint.activate("LVHDRT_clone_vdi_before_undo_clone",self.uuid)
-            self._handleInterruptedCloneOp(uuid, val)
+            self._handleInterruptedCloneOp(uuid)
             util.fistpoint.activate("LVHDRT_clone_vdi_after_undo_clone",self.uuid)
             self.journaler.remove(LVHDVDI.JRN_CLONE, uuid)
 
@@ -812,15 +815,25 @@ class LVHDSR(SR.SR):
             cleanup.gc_force(self.session, self.uuid)
             self.lvmCache.refresh()
 
-    def _handleInterruptedCloneOp(self, origUuid, jval, forceUndo = False):
+    def _handleInterruptedCloneOp(self, clonUuid, forceUndo = False):
         """Either roll back or finalize the interrupted snapshot/clone
         operation. Rolling back is unsafe if the leaf VHDs have already been
         in use and written to. However, it is always safe to roll back while
         we're still in the context of the failed snapshot operation since the
         VBD is paused for the duration of the operation"""
-        util.SMlog("*** INTERRUPTED CLONE OP: for %s (%s)" % (origUuid, jval))
+        util.SMlog("*** INTERRUPTED CLONE OP: for %s " % clonUuid)
         lvs = lvhdutil.getLVInfo(self.lvmCache)
-        baseUuid, clonUuid = jval.split("_")
+
+        self.cloneFile = "clone_%s_1" % clonUuid
+        self.cloneFilePath = os.path.join(self.path, self.cloneFile)
+        util.SMlog('Trying to delete clone file %s' % self.cloneFilePath)
+
+        fd =  open_file(self.cloneFilePath)
+        min_block_size = get_min_blk_size_wrapper(fd)
+        clone_data = xs_file_read_wrapper(fd, 0, min_block_size, min_block_size)
+        close(fd)
+
+        origUuid, baseUuid, clonUuid = clone_data.split("_")
 
         # is there a "base copy" VDI?
         if not lvs.get(baseUuid):
@@ -1591,8 +1604,17 @@ class LVHDVDI(VDI.VDI):
         clonUuid = ""
         if snapType == self.SNAPSHOT_DOUBLE:
             clonUuid = util.gen_uuid()
-        jval = "%s_%s" % (baseUuid, clonUuid)
-        self.sr.journaler.create(self.JRN_CLONE, origUuid, jval)
+
+        clone_data = "%s_%s_%s" % (origUuid, baseUuid, clonUuid)
+        self.sr.journaler.create(self.JRN_CLONE, clonUuid, "1")
+        self.cloneFile = "clone_%s_1" % (clonUuid)
+        self.cloneFilePath = os.path.join(self.sr.path, self.cloneFile)
+        fd =  open_file(self.cloneFilePath, True)
+        min_block_size = get_min_blk_size_wrapper(fd)
+        xs_file_write_wrapper(fd, 0, min_block_size, clone_data, \
+                len(clone_data))
+        close(fd)
+
         util.fistpoint.activate("LVHDRT_clone_vdi_after_create_journal",self.sr.uuid)
 
         try:
@@ -1644,12 +1666,11 @@ class LVHDVDI(VDI.VDI):
 
         except (util.SMException, XenAPI.Failure), e:
             util.logException("LVHDVDI._snapshot")
-            self._failClone(origUuid, jval, str(e))
+            self._failClone(clonUuid, str(e))
         util.fistpoint.activate("LVHDRT_clone_vdi_before_remove_journal",self.sr.uuid)
-        self.sr.journaler.remove(self.JRN_CLONE, origUuid)
+        self.sr.journaler.remove(self.JRN_CLONE, clonUuid)
 
         return self._finishSnapshot(snapVDI, snapVDI2, cloneOp, snapType)
-
 
     def _createSnap(self, snapUuid, snapSizeLV, isNew):
         """Snapshot self and return the snapshot VDI object"""
@@ -1940,8 +1961,8 @@ class LVHDVDI(VDI.VDI):
                 # operation
                 self.sr.lvActivator.add(uuid, lvName, binaryParam)
 
-    def _failClone(self, uuid, jval, msg):
-        self.sr._handleInterruptedCloneOp(uuid, jval, True)
+    def _failClone(self, uuid, msg):
+        self.sr._handleInterruptedCloneOp(uuid, True)
         self.sr.journaler.remove(self.JRN_CLONE, uuid)
         raise xs_errors.XenError('VDIClone', opterr=msg)
 
