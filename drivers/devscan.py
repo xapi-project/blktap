@@ -33,6 +33,7 @@ MODULE_INFO = {
     'cxgb3': 'Chelsio T3 HBA Driver',
     'cxgb4': 'Chelsio T4 HBA Driver',
     'csiostor': 'Chelsio T4/T5 FCoE Driver',
+    'fnic' : 'Cisco FCoE HBA driver',
     'qlogic': 'QLogic HBA Driver',
     'lpfc': 'Emulex Device Driver for Fibre Channel HBAs',
     'mptfc': 'LSI Logic Fusion MPT Fibre Channel Driver',
