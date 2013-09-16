@@ -398,9 +398,6 @@ tdnbd_queue_request(struct tdnbd_data *prv, int type, uint64_t offset,
 		req->timeout_event = -1;
 	}
 
-	INFO("request: %s timeout event ID %d", req->nreq.handle,
-			req->timeout_event);
-
 	req->nreq.magic = htonl(NBD_REQUEST_MAGIC);
 	req->nreq.type = htonl(type);
 	req->nreq.from = htonll(offset);
