@@ -96,7 +96,7 @@ struct nbd_reply {
  */
 
 /*
- * FIXME rename to something more appropriate, e.g. nbdclt-fdrecv,
+ * TODO rename to something more appropriate, e.g. nbdclt-fdrecv,
  * nbdsrv-fdrecv
  */
 #define TAPDISK_NBDSERVER_MAX_PATH_LEN 256

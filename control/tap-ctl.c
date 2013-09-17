@@ -576,7 +576,10 @@ usage:
 static void
 tap_cli_stats_usage(FILE *stream)
 {
-	fprintf(stream, "usage: stats <-p pid> <-n UUID>\n");
+	fprintf(stream, "usage: stats <-p pid> <-n UUID>\n"
+			"\n"
+			"Prints a Python dictionary with the VBD stats. The images are "
+			"listed in reverse order (leaf to root)\n");
 }
 
 static int
@@ -606,7 +609,7 @@ tap_cli_stats(int argc, char **argv)
 		}
 	}
 
-	if (pid == -1 || !uuid)
+	if (pid == -1)
 		goto usage;
 
 	err = tap_ctl_stats_fwrite(pid, stdout, uuid);

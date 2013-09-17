@@ -294,10 +294,12 @@ __tapdisk_image_open_chain(int type, const char *name, int flags,
 	list_add_tail(&image->next, &head);
 
 	if (unlikely(prt_path)) {
-		err = tapdisk_image_open(DISK_TYPE_AIO, prt_path,
+		err = tapdisk_image_open(DISK_TYPE_NBD, prt_path,
 					 flags|TD_OPEN_RDONLY, &image);
-		if (err)
+		if (err) {
+			ERR(err, "failed to open parent NBD %s\n", prt_path);
 			goto fail;
+		}
 
 		list_add_tail(&image->next, &head);
 		goto done;

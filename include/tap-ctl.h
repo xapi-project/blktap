@@ -43,8 +43,6 @@ extern int tap_ctl_debug;
 				  strerror(errno))
 #endif
 
-void tap_ctl_version(int *major, int *minor);
-
 int tap_ctl_connect(const char *path, int *socket);
 int tap_ctl_connect_id(int id, int *socket);
 int tap_ctl_read_raw(int fd, void *buf, size_t sz, struct timeval *timeout);

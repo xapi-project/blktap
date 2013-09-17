@@ -52,7 +52,7 @@ tap_ctl_open(const int id, const char *params, int flags,
 	message.u.params.flags = flags;
 	strcpy(message.u.params.uuid, uuid);
 	if (prt_path) {
-		if (strlen(prt_path) >= TAPDISK_MESSAGE_OPEN)
+		if (strlen(prt_path) >= TAPDISK_MESSAGE_MAX_PATH_LENGTH)
 			return ENAMETOOLONG;
 		strcpy(message.u.params.prt_path, prt_path);
 	}

@@ -22,7 +22,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include "blktap.h"
+#include "blktap2.h"
 #include "tapback.h"
 
 char *
