@@ -134,6 +134,10 @@ def doexec(args, inputtext=None):
     """Execute a subprocess, then return its return code, stdout and stderr"""
     proc = subprocess.Popen(args,stdin=subprocess.PIPE,stdout=subprocess.PIPE,stderr=subprocess.PIPE,close_fds=True)
     (stdout,stderr) = proc.communicate(inputtext)
+    # Workaround for a pylint bug, can be removed after upgrade to
+    # python 3.x or maybe a newer version of pylint in the future
+    stdout = str(stdout)
+    stderr = str(stderr)
     rc = proc.returncode
     return (rc,stdout,stderr)
 
