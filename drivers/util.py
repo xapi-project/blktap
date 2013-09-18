@@ -650,7 +650,7 @@ def get_nfs_timeout(session, sr_uuid):
         other_config = session.xenapi.SR.get_other_config(sr_ref)
         str_val = other_config.get("nfs-timeout")
     except XenAPI.Failure:
-        util.SMlog("Failed to get SR.other-config:nfs-timeout, ignoring")
+        SMlog("Failed to get SR.other-config:nfs-timeout, ignoring")
         return 0
 
     if not str_val:
@@ -661,7 +661,7 @@ def get_nfs_timeout(session, sr_uuid):
         if nfs_timeout < 1:
             raise ValueError
     except ValueError:
-        util.SMlog("Invalid nfs-timeout value: %s" % str_val)
+        SMlog("Invalid nfs-timeout value: %s" % str_val)
         return 0
 
     return nfs_timeout
