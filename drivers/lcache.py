@@ -221,6 +221,8 @@ class CacheFileSR(object):
         return list(found)
 
     def xapi_vfs_stats(self):
+        import util
+
         f =  self.statvfs()
         if not f.f_frsize:
             raise util.SMException("Cache FS does not report utilization.")
