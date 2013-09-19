@@ -246,6 +246,7 @@ class CacheFileSR(object):
 
     @classmethod
     def _fast_find_tapdisks(cls):
+        import errno
 
         # NB. we're only about to gather stats here, so take the
         # fastpath, bypassing agent based VBD[currently-attached] ->
