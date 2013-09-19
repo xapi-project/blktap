@@ -44,7 +44,7 @@ class CachingTap(object):
 
         def __assert(cond):
             if not cond:
-                raise self.NotACachingTapdisk(tapdisk, stats)
+                raise cls.NotACachingTapdisk(tapdisk, stats)
 
         if _type == 'vhd':
             # parent
