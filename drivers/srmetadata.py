@@ -553,8 +553,8 @@ class MetadataHandler:
         value = ''
            
         # Find the offset depending on what we are updating
-        if set(Dict.keys()) - set(ATOMIC_UPDATE_PARAMS_AND_OFFSET.keys()) == \
-            set([]):
+        diff = set(Dict.keys()) - set(ATOMIC_UPDATE_PARAMS_AND_OFFSET.keys())
+        if diff == set([]):
             offset = SECTOR_SIZE * 2       
             (lower, upper) = getBlockAlignedRange(get_min_blk_size_wrapper( \
                 self.fd), offset, SECTOR_SIZE * 2)
