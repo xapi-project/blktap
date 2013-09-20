@@ -3,6 +3,7 @@ SUBDIRS = lib
 
 AM_CFLAGS  = -Wall
 AM_CFLAGS += -Werror
+AM_CFLAGS += -static
 
 AM_CPPFLAGS  = -D_GNU_SOURCE
 AM_CPPFLAGS += -I$(top_srcdir)/include
