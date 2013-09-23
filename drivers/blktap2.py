@@ -1065,6 +1065,14 @@ class VDI(object):
         # before VDI.activate. Therefore those link steps where we
         # relink existing devices under deterministic path names.
 
+        BASEDIR = None
+
+        def _mklink(self, target):
+            raise NotImplementedError("_mklink is not defined")
+
+        def _equals(self, target):
+            raise NotImplementedError("_equals is not defined")
+
         def __init__(self, path):
             self._path = path
 
