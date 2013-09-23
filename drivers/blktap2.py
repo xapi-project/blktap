@@ -469,7 +469,12 @@ def mkdirs(path, mode=0777):
             if e.errno != errno.EEXIST:
                 raise
 
-class KObject(object): pass
+class KObject(object):
+
+    SYSFS_CLASSTYPE = None
+
+    def sysfs_devname(self):
+        raise NotImplementedError("sysfs_devname is undefined")
 
 class Attribute(object):
 
