@@ -1277,7 +1277,7 @@ class LVHDVDI(VDI.VDI):
                                 IS_A_SNAPSHOT_TAG: 0,
                                 SNAPSHOT_OF_TAG: '',
                                 SNAPSHOT_TIME_TAG: '',
-                                TYPE_TAG: self.ty,
+                                TYPE_TAG: self.type,
                                 VDI_TYPE_TAG: self.vdi_type,
                                 READ_ONLY_TAG: int(self.read_only),
                                 MANAGED_TAG: int(self.managed),
