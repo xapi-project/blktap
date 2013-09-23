@@ -71,13 +71,44 @@ CRON_DEST := /etc/cron.d/
 SM_STAGING := $(DESTDIR)
 SM_STAMP := $(MY_OBJ_DIR)/.staging_stamp
 
+SM_PY_FILES = $(foreach LIB, $(SM_LIBS), drivers/$(LIB).py) $(foreach DRIVER, $(SM_DRIVERS), drivers/$(DRIVER)SR.py)
+
 .PHONY: build
+build:
 	make -C dcopy 
 	make -C snapwatchd
 	make -C mpathroot
 
+.PHONY: precommit
+precommit: build
+	@ QUIT=0; \
+	CHANGED=$$(git status --porcelain $(SM_PY_FILES) | awk '{print $$2}'); \
+	for i in $$CHANGED; do \
+		echo Checking $${i} ...; \
+		RESULT=$$(PYTHONPATH=./snapwatchd:./drivers:$$PAYTHONPATH pylint --rcfile=tests/pylintrc $${i} | tee /dev/tty); \
+		[ -z "$$RESULT" ] || QUIT=1; \
+	done; \
+	if [ $$QUIT -ne 0 ]; then \
+		exit 1; \
+	fi; \
+	echo "Precommit succeeded with no outstanding issues found."
+
+
+.PHONY: precheck
+precheck: build
+	@ QUIT=0; \
+	for i in $(SM_PY_FILES); do \
+		echo Checking $${i} ...; \
+		RESULT=$$(PYTHONPATH=./snapwatchd:./drivers:$$PAYTHONPATH pylint --rcfile=tests/pylintrc $${i} | tee /dev/tty); \
+		[ -z "$$RESULT" ] || QUIT=1; \
+	done; \
+	if [ $$QUIT -ne 0 ]; then \
+		exit 1; \
+	fi; \
+	echo "Precheck succeeded with no outstanding issues found."
+
 .PHONY: install
-install: 
+install: precheck
 	mkdir -p $(SM_STAGING)
 	$(call mkdir_clean,$(SM_STAGING))
 	mkdir -p $(SM_STAGING)$(SM_DEST)
@@ -86,12 +117,9 @@ install:
 	mkdir -p $(SM_STAGING)$(MASTER_SCRIPT_DEST)
 	mkdir -p $(SM_STAGING)$(PLUGIN_SCRIPT_DEST)
 	mkdir -p $(SM_STAGING)/sbin
-	for i in $(SM_LIBS); do \
-	  install -m 755 drivers/$$i.py \
-	    $(SM_STAGING)$(SM_DEST); done
-	for i in $(SM_DRIVERS); do \
-	  install -m 755 drivers/$${i}SR.py \
-	    $(SM_STAGING)$(SM_DEST); done
+	for i in $(SM_PY_FILES); do \
+	  install -m 755 $$i $(SM_STAGING)$(SM_DEST); \
+	done
 	for i in $(SM_XML); do \
 	  install -m 755 drivers/$$i.xml \
 	    $(SM_STAGING)$(SM_DEST); done
