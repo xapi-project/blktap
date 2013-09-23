@@ -58,7 +58,7 @@ def locking(excType, override=True):
             try:
                 try:
                     ret = op(self, *args)
-                except (util.SMException, XenAPI.Failure), e:
+                except (util.CommandException, util.SMException, XenAPI.Failure), e:
                     util.logException("BLKTAP2:%s" % op)
                     msg = str(e)
                     if isinstance(e, util.CommandException):
