@@ -2008,6 +2008,8 @@ class PagePool(KObject):
 
 class BusDevice(KObject):
 
+    SYSFS_BUSTYPE = None
+
     @classmethod
     def sysfs_bus_path(cls):
         return "/sys/bus/%s" % cls.SYSFS_BUSTYPE
