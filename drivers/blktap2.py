@@ -2025,6 +2025,8 @@ class XenbusDevice(BusDevice):
 
     XBT_NIL = ""
 
+    XENBUS_DEVTYPE = None
+
     def __init__(self, domid, devid):
         self.domid = int(domid)
         self.devid = int(devid)
