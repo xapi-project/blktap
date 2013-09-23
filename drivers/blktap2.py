@@ -2172,6 +2172,7 @@ class Blkback(XenBackendDevice):
         self._q_events = None
 
     class XenstoreValueError(Exception):
+        KEY = None
         def __init__(self, vbd, _str):
             self.vbd = vbd
             self.str = _str
