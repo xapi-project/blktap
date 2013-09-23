@@ -473,6 +473,8 @@ class KObject(object): pass
 
 class Attribute(object):
 
+    SYSFS_NODENAME = None
+
     def __init__(self, path):
         self.path = path
 
