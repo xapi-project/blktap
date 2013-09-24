@@ -22,6 +22,7 @@
 #include <endian.h>
 #include <byteswap.h>
 #include <uuid/uuid.h>
+#include <stdbool.h>
 
 #include "vhd.h"
 #include "list.h"
@@ -63,6 +64,7 @@
 #define VHD_OPEN_IGNORE_DISABLED   0x00010
 #define VHD_OPEN_CACHED            0x00020
 #define VHD_OPEN_IO_WRITE_SPARSE   0x00040
+#define VHD_OPEN_USE_BKP_FOOTER    0x00080
 
 #define VHD_FLAG_CREAT_FILE_SIZE_FIXED   0x00001
 #define VHD_FLAG_CREAT_PARENT_RAW        0x00002
@@ -312,7 +314,7 @@ int vhd_change_parent(vhd_context_t *, char *parent_path, int raw);
 int vhd_macx_encode_location(char *name, char **out, int *outlen);
 int vhd_w2u_encode_location(char *name, char **out, int *outlen);
 
-int vhd_read_footer(vhd_context_t *, vhd_footer_t *);
+int vhd_read_footer(vhd_context_t *, vhd_footer_t *, bool use_bkp_footer);
 int vhd_read_footer_at(vhd_context_t *, vhd_footer_t *, off64_t);
 int vhd_read_footer_strict(vhd_context_t *, vhd_footer_t *);
 int vhd_read_header(vhd_context_t *, vhd_header_t *);
