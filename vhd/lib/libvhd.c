@@ -769,7 +769,7 @@ vhd_get_footer(vhd_context_t *ctx)
 	if (!vhd_validate_footer(&ctx->footer))
 		return 0;
 
-	return vhd_read_footer(ctx, &ctx->footer);
+	return vhd_read_footer(ctx, &ctx->footer, false);
 }
 
 int
@@ -935,7 +935,7 @@ out:
 }
 
 int
-vhd_read_footer(vhd_context_t *ctx, vhd_footer_t *footer)
+vhd_read_footer(vhd_context_t *ctx, vhd_footer_t *footer, bool use_bkp_footer)
 {
 	int err;
 	off64_t off;
@@ -948,13 +948,15 @@ vhd_read_footer(vhd_context_t *ctx, vhd_footer_t *footer)
 	if (off == (off64_t)-1)
 		return -errno;
 
-	err = vhd_read_footer_at(ctx, footer, off - 512);
-	if (err != -EINVAL)
-		return err;
+	if (!use_bkp_footer) {
+		err = vhd_read_footer_at(ctx, footer, off - 512);
+		if (err != -EINVAL)
+			return err;
 
-	err = vhd_read_short_footer(ctx, footer);
-	if (err != -EINVAL)
-		return err;
+		err = vhd_read_short_footer(ctx, footer);
+		if (err != -EINVAL)
+			return err;
+	}
 
 	/* 
 	 * Disable the enforcement of VHD_OPEN_STRICT until we figure out how 
@@ -2523,7 +2525,8 @@ vhd_open(vhd_context_t *ctx, const char *file, int flags)
 		return 0;
 	}
 
-	err = vhd_read_footer(ctx, &ctx->footer);
+	err = vhd_read_footer(ctx, &ctx->footer,
+			(flags & VHD_OPEN_USE_BKP_FOOTER) == VHD_OPEN_USE_BKP_FOOTER);
 	if (err)
 		goto fail;
 
