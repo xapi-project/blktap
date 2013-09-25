@@ -425,7 +425,14 @@ class FileVDI(VDI.VDI):
                 return
 
             try:
-                diskinfo = util.ioretry(lambda: self._query_info(self.path))
+                # If the VDI is activated in R/W mode, the VHD footer won't be
+                # valid, use the back-up one instead.
+                vdi_ref = self.sr.srcmd.params['vdi_ref']
+                sm_config = self.session.xenapi.VDI.get_sm_config(vdi_ref)
+                use_bkp_footer = util.attached_as(sm_config) == 'RW'
+                diskinfo = util.ioretry(lambda: self._query_info(self.path,
+                    use_bkp_footer))
+
                 if diskinfo.has_key('parent'):
                     self.parent = diskinfo['parent']
                     self.sm_config_override = {'vhd-parent':self.parent}
@@ -841,9 +848,12 @@ class FileVDI(VDI.VDI):
         ls = parent.split('/')
         return ls[len(ls) - 1].replace(vhdutil.FILE_EXTN_VHD, '')
 
-    def _query_info(self, path):
+    def _query_info(self, path, use_bkp_footer=False):
         diskinfo = {}
-        cmd = [SR.TAPDISK_UTIL, "query", vhdutil.VDI_TYPE_VHD, "-vpf", path]
+        qopts = '-vpf'
+        if use_bkp_footer:
+            qopts += 'b'
+        cmd = [SR.TAPDISK_UTIL, "query", vhdutil.VDI_TYPE_VHD, qopts, path]
         txt = util.pread(cmd).split('\n')
         diskinfo['size'] = txt[0]
         lst = [txt[1].split('/')[-1].replace(vhdutil.FILE_EXTN_VHD, "")]
