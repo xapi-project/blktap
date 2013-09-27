@@ -29,6 +29,7 @@ import exceptions
 import traceback
 import base64
 import zlib
+import errno
 
 import XenAPI
 import util
@@ -61,6 +62,12 @@ FLAG_TYPE_ABORT = "abort"     # flag to request aborting of GC/coalesce
 LOCK_TYPE_RUNNING = "running" 
 lockRunning = None
 
+# Default coalesce error rate limit, in messages per minute. A zero value
+# disables throttling, and a negative value disables error reporting.
+DEFAULT_COALESCE_ERR_RATE = 1.0/60
+
+COALESCE_LAST_ERR_TAG = 'last-coalesce-error'
+COALESCE_ERR_RATE_TAG = 'coalesce-error-rate'
 
 class AbortException(util.SMException):
     pass
@@ -687,10 +694,80 @@ class VDI:
         Util.doexec(cmd, 0)
         return True
 
+    def _reportCoalesceError(vdi, ce):
+        """Reports a coalesce error to XenCenter.
+
+        vdi: the VDI object on which the coalesce error occured
+        ce: the CommandException that was raised"""
+
+        msg_name = os.strerror(ce.code)
+        if ce.code == errno.ENOSPC:
+            # TODO We could add more information here, e.g. exactly how much
+            # space is required for the particular coalesce, as well as actions
+            # to be taken by the user and consequences of not taking these
+            # actions.
+            msg_body = 'Run out of space while coalescing.'
+        elif ce.code == errno.EIO:
+            msg_body = 'I/O error while coalescing.'
+        else:
+            msg_body = ''
+        util.SMlog('Coalesce failed on SR %s: %s (%s)'
+                % (vdi.sr.uuid, msg_name, msg_body))
+
+        # Create a XenCenter message, but don't spam.
+        xapi = vdi.sr.xapi.session.xenapi
+        sr_ref = xapi.SR.get_by_uuid(vdi.sr.uuid)
+        oth_cfg = xapi.SR.get_other_config(sr_ref)
+        if COALESCE_ERR_RATE_TAG in oth_cfg:
+            coalesce_err_rate = float(oth_cfg[COALESCE_ERR_RATE_TAG])
+        else:
+            coalesce_err_rate = DEFAULT_COALESCE_ERR_RATE
+
+        xcmsg = False
+        if coalesce_err_rate == 0:
+            xcmsg = True
+        elif coalesce_err_rate > 0:
+            now = datetime.datetime.now()
+            sm_cfg = xapi.SR.get_sm_config(sr_ref)
+            if COALESCE_LAST_ERR_TAG in sm_cfg:
+                # seconds per message (minimum distance in time between two
+                # messages in seconds)
+                spm = datetime.timedelta(seconds=(1.0/coalesce_err_rate)*60)
+                last = datetime.datetime.fromtimestamp(
+                        float(sm_cfg[COALESCE_LAST_ERR_TAG]))
+                if now - last >= spm:
+                    xapi.SR.remove_from_sm_config(sr_ref,
+                            COALESCE_LAST_ERR_TAG)
+                    xcmsg = True
+            else:
+                xcmsg = True
+            if xcmsg:
+                xapi.SR.add_to_sm_config(sr_ref, COALESCE_LAST_ERR_TAG,
+                        str(now.strftime('%s')))
+        if xcmsg:
+            xapi.message.create(msg_name, "3", "SR", vdi.sr.uuid, msg_body)
+    _reportCoalesceError = staticmethod(_reportCoalesceError)
+
+    def _doCoalesceVHD(vdi):
+        try:
+            vhdutil.coalesce(vdi.path)
+        except util.CommandException, ce:
+            # We use try/except for the following piece of code because it runs
+            # in a separate process context and errors will not be caught and
+            # reported by anyone.
+            try:
+                VDI._reportCoalesceError(vdi, ce)
+            except Exception, e:
+                util.SMlog('failed to create XenCenter message: %s' % e)
+            raise ce
+        except:
+            raise
+    _doCoalesceVHD = staticmethod(_doCoalesceVHD)
+
     def _coalesceVHD(self, timeOut):
         Util.log("  Running VHD coalesce on %s" % self)
         abortTest = lambda:IPCFlag(self.sr.uuid).test(FLAG_TYPE_ABORT)
-        Util.runAbortable(lambda: vhdutil.coalesce(self.path), None,
+        Util.runAbortable(lambda: VDI._doCoalesceVHD(self), None,
                 self.sr.uuid, abortTest, VDI.POLL_INTERVAL, timeOut)
         util.fistpoint.activate("LVHDRT_coalescing_VHD_data",self.sr.uuid)
 
