@@ -229,6 +229,7 @@ rm -rf $RPM_BUILD_ROOT
 /opt/xensource/sm/xs_errors.pyc
 /opt/xensource/sm/xs_errors.pyo
 /sbin/mpathutil
+%config /etc/udev/rules.d/40-multipath.rules
 
 
 %changelog

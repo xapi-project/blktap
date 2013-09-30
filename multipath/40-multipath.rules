@@ -1,0 +1,12 @@
+SUBSYSTEM!="block", GOTO="end_mpath"
+RUN+="socket:/org/kernel/dm/multipath_event"
+KERNEL!="dm-*", GOTO="end_mpath"
+ACTION=="add", PROGRAM=="/bin/bash -c '/sbin/dmsetup info -c -o name --noheadings -j %M -m %m | /bin/grep VG_XenStorage'", OPTIONS+="ignore_device"
+ACTION=="add", PROGRAM=="/bin/bash -c '/sbin/dmsetup info -c -o name --noheadings -j %M -m %m | /bin/grep XSLocalEXT'", OPTIONS+="ignore_device"
+KERNEL=="dm-*", ACTION=="add", PROGRAM=="/sbin/dmsetup info -c -o name --noheadings -j %M -m %m", RESULT=="?*", SYMLINK+="disk/by-scsid/%c/mapper"
+ACTION=="change", PROGRAM!="/sbin/dmsetup info -c --noheadings -j %M -m %m", GOTO="end_mpath"
+PROGRAM!="/sbin/dmsetup info -c -o uuid,name --separator ' ' --noheadings -j %M -m %m", GOTO="end_mpath"
+RESULT!="mpath-*", GOTO="end_mpath"
+# ENV is necessary otherwise the child process of mpathcount cannot find multipathd executable
+ACTION=="change", ENV{PATH}="/sbin:/bin:/usr/sbin:/usr/bin", RUN+="/opt/xensource/sm/mpathcount.py %c{2}"
+LABEL="end_mpath"

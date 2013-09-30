@@ -56,6 +56,8 @@ SM_LIBS += lcache
 SM_LIBS += resetvdis
 SM_LIBS += B_util
 
+UDEV_RULES = 40-multipath
+
 CRON_JOBS += ringwatch
 
 SM_XML := XE_SR_ERRORCODES
@@ -67,6 +69,7 @@ MASTER_SCRIPT_DEST := /etc/xensource/master.d/
 PLUGIN_SCRIPT_DEST := /etc/xapi.d/plugins/
 LIBEXEC := /opt/xensource/libexec/
 CRON_DEST := /etc/cron.d/
+UDEV_RULES_DIR := /etc/udev/rules.d/
 
 SM_STAGING := $(DESTDIR)
 SM_STAMP := $(MY_OBJ_DIR)/.staging_stamp
@@ -112,6 +115,7 @@ install: precheck
 	mkdir -p $(SM_STAGING)
 	$(call mkdir_clean,$(SM_STAGING))
 	mkdir -p $(SM_STAGING)$(SM_DEST)
+	mkdir -p $(SM_STAGING)$(UDEV_RULES_DIR)
 	mkdir -p $(SM_STAGING)$(DEBUG_DEST)
 	mkdir -p $(SM_STAGING)$(BIN_DEST)
 	mkdir -p $(SM_STAGING)$(MASTER_SCRIPT_DEST)
@@ -120,6 +124,9 @@ install: precheck
 	for i in $(SM_PY_FILES); do \
 	  install -m 755 $$i $(SM_STAGING)$(SM_DEST); \
 	done
+	for i in $(UDEV_RULES); do \
+	  install -m 644 multipath/$$i.rules \
+	    $(SM_STAGING)$(UDEV_RULES_DIR); done
 	for i in $(SM_XML); do \
 	  install -m 755 drivers/$$i.xml \
 	    $(SM_STAGING)$(SM_DEST); done

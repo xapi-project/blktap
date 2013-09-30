@@ -104,9 +104,12 @@ def match_dmpLUN(s):
 
 def match_pathup(s):
     s = re.sub('\]',' ',re.sub('\[','',s)).split()
-    dm_status = s[-1]
-    path_status = s[-2]
-    for val in [dm_status, path_status]:
+    # The new multipath has a different output. Fixed it
+    dm_status = s[-2]
+    path_status = s[-3]
+    # path_status is more reliable, at least for failures initiated or spotted by multipath
+    # To be tested for failures during high I/O when dm should spot errors first
+    for val in [path_status]:
         if val in ['faulty','shaky','failed']:
             return False
     return True
