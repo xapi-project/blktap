@@ -28,7 +28,6 @@ import copy, os
 MOUNT_BASE = '/var/run/sr-mount'
 DEFAULT_TAP = 'vhd'
 TAPDISK_UTIL = '/usr/sbin/td-util'
-MASTER_LVM_CONF = '/etc/lvm/master'
 
 # LUN per VDI key for XenCenter
 LUNPERVDI = "LUNperVDI"
@@ -109,8 +108,10 @@ class SR(object):
                 self.sr_ref = self.srcmd.params['sr_ref']
 
 	    if 'device_config' in self.srcmd.params:
-                if self.dconf.get("SRmaster") == "true":
-                    os.environ['LVM_SYSTEM_DIR'] = MASTER_LVM_CONF
+		if self.srcmd.params['device_config'].has_key('SCSIid'):
+		    dev_path = '/dev/disk/by-scsid/'+self.srcmd.params['device_config']['SCSIid']
+		    os.environ['LVM_DEVICE'] = dev_path
+		    util.SMlog('Setting LVM_DEVICE to %s' % dev_path)
 
         except Exception, e:
             raise e

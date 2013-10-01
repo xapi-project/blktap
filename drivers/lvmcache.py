@@ -97,11 +97,11 @@ class LVMCache:
     # lvutil functions
     #
     @lazyInit
-    def create(self, lvName, size, tag = None):
-        lvutil.create(lvName, size, self.vgName, tag)
+    def create(self, lvName, size, tag = None, activate = True):
+        lvutil.create(lvName, size, self.vgName, tag, activate)
         lvInfo = LVInfo(lvName)
         lvInfo.size = size
-        lvInfo.active = True
+        lvInfo.active = activate
         self.lvs[lvName] = lvInfo
         if tag:
             self._addTag(lvName, tag)
@@ -217,9 +217,8 @@ class LVMCache:
     @lazyInit
     def setReadonly(self, lvName, readonly):
         path = self._getPath(lvName)
-        if self.lvs[lvName].readonly != readonly: 
-            lvutil.setReadonly(path, readonly)
-            self.lvs[lvName].readonly = readonly
+        lvutil.setReadonly(path, readonly)
+        self.lvs[lvName].readonly = readonly
 
     @lazyInit
     def changeOpen(self, lvName, inc):

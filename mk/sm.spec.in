@@ -28,11 +28,6 @@ rm -rf $RPM_BUILD_ROOT
 
 %post
 [ ! -x /sbin/chkconfig ] || chkconfig --add mpathroot
-cp /etc/lvm/lvm.conf /etc/lvm/lvm.conf.orig
-mkdir /etc/lvm/master
-cp /etc/lvm/lvm.conf /etc/lvm/master/lvm.conf
-sed -i 's/metadata_read_only =.*/metadata_read_only = 1/' /etc/lvm/lvm.conf
-sed -i 's/metadata_read_only =.*/metadata_read_only = 0/' /etc/lvm/master/lvm.conf
 
 %files
 %defattr(-,root,root,-)
@@ -234,6 +229,7 @@ sed -i 's/metadata_read_only =.*/metadata_read_only = 0/' /etc/lvm/master/lvm.co
 /opt/xensource/sm/xs_errors.pyc
 /opt/xensource/sm/xs_errors.pyo
 /sbin/mpathutil
+
 
 %changelog
 
