@@ -108,7 +108,7 @@ class SRCommand:
     def run(self, sr):
         try:
             return self._run_locked(sr)
-        except (util.SMException, XenAPI.Failure), e:
+        except (util.CommandException, util.SMException, XenAPI.Failure), e:
             util.logException(self.cmd)
             msg = str(e)
             if isinstance(e, util.CommandException):

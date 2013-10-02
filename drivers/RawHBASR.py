@@ -245,7 +245,7 @@ class RawHBASR(HBASR.HBASR):
             pbd_ref = util.find_my_pbd(self.session, self.host_ref, self.sr_ref)
         except:
             util.SMlog("No pbd for sr_ref %s on host_ref %s"
-                       %(sr_ref, host_ref))
+                       %(self.sr_ref, self.host_ref))
             return
         try:
             self.session.xenapi.PBD.add_to_other_config(pbd_ref, key, value)
@@ -264,7 +264,7 @@ class RawHBASR(HBASR.HBASR):
             pbd_ref = util.find_my_pbd(self.session, self.host_ref, self.sr_ref)
         except:
             util.SMlog("No pbd for sr_ref %s on host_ref %s"
-                       %(sr_ref, host_ref))
+                       %(self.sr_ref, self.host_ref))
         for key in ["multipathed"]:
             try:
                 self.session.xenapi.PBD.remove_from_other_config(pbd_ref, key)

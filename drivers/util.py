@@ -134,6 +134,10 @@ def doexec(args, inputtext=None):
     """Execute a subprocess, then return its return code, stdout and stderr"""
     proc = subprocess.Popen(args,stdin=subprocess.PIPE,stdout=subprocess.PIPE,stderr=subprocess.PIPE,close_fds=True)
     (stdout,stderr) = proc.communicate(inputtext)
+    # Workaround for a pylint bug, can be removed after upgrade to
+    # python 3.x or maybe a newer version of pylint in the future
+    stdout = str(stdout)
+    stderr = str(stderr)
     rc = proc.returncode
     return (rc,stdout,stderr)
 
@@ -650,7 +654,7 @@ def get_nfs_timeout(session, sr_uuid):
         other_config = session.xenapi.SR.get_other_config(sr_ref)
         str_val = other_config.get("nfs-timeout")
     except XenAPI.Failure:
-        util.SMlog("Failed to get SR.other-config:nfs-timeout, ignoring")
+        SMlog("Failed to get SR.other-config:nfs-timeout, ignoring")
         return 0
 
     if not str_val:
@@ -661,7 +665,7 @@ def get_nfs_timeout(session, sr_uuid):
         if nfs_timeout < 1:
             raise ValueError
     except ValueError:
-        util.SMlog("Invalid nfs-timeout value: %s" % str_val)
+        SMlog("Invalid nfs-timeout value: %s" % str_val)
         return 0
 
     return nfs_timeout

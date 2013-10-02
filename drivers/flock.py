@@ -69,6 +69,8 @@ class FcntlLockBase:
     """Abstract base class for either reader or writer locks. A respective
     definition of LOCK_TYPE (fcntl.{F_RDLCK|F_WRLCK}) determines the
     type."""
+
+    LOCK_TYPE = None
     
     if __debug__:
         ERROR_ISLOCKED = "Attempt to acquire lock held."

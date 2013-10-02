@@ -97,7 +97,7 @@ class SR(object):
                 if 'subtask_of' in self.srcmd.params:
                     self.session.transport.add_extra_header('Subtask-of', self.srcmd.params['subtask_of'])
             else:
-                self.session = ""
+                self.session = None
 
             if 'host_ref' not in self.srcmd.params:
                 self.host_ref = ""
@@ -467,7 +467,8 @@ class SR(object):
             self.mpathmodule.deactivate()
 
     def _pathrefresh(self, obj):
-        self.dconf['device'] = self.mpathmodule.path(self.SCSIid)
+        SCSIid = getattr(self, 'SCSIid')
+        self.dconf['device'] = self.mpathmodule.path(SCSIid)
         super(obj, self).load(self.uuid)
 
     def _setMultipathableFlag(self, SCSIid=''):
@@ -559,7 +560,7 @@ class ScanRecord:
                 self.sr.forget_vdi(vdi['uuid'])
             except XenAPI.Failure, e:
                 if e.details == "HANDLE_INVALID" or e.details == "UUID_INVALID":
-                   util.SMlog("VDI %s not found, ignoring exception" % uuid)
+                   util.SMlog("VDI %s not found, ignoring exception" % vdi['uuid'])
                 else:
                    raise
 

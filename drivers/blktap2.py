@@ -58,7 +58,7 @@ def locking(excType, override=True):
             try:
                 try:
                     ret = op(self, *args)
-                except (util.SMException, XenAPI.Failure), e:
+                except (util.CommandException, util.SMException, XenAPI.Failure), e:
                     util.logException("BLKTAP2:%s" % op)
                     msg = str(e)
                     if isinstance(e, util.CommandException):
@@ -469,9 +469,16 @@ def mkdirs(path, mode=0777):
             if e.errno != errno.EEXIST:
                 raise
 
-class KObject(object): pass
+class KObject(object):
+
+    SYSFS_CLASSTYPE = None
+
+    def sysfs_devname(self):
+        raise NotImplementedError("sysfs_devname is undefined")
 
 class Attribute(object):
+
+    SYSFS_NODENAME = None
 
     def __init__(self, path):
         self.path = path
@@ -1058,6 +1065,14 @@ class VDI(object):
         # before VDI.activate. Therefore those link steps where we
         # relink existing devices under deterministic path names.
 
+        BASEDIR = None
+
+        def _mklink(self, target):
+            raise NotImplementedError("_mklink is not defined")
+
+        def _equals(self, target):
+            raise NotImplementedError("_equals is not defined")
+
         def __init__(self, path):
             self._path = path
 
@@ -1135,7 +1150,7 @@ class VDI(object):
 
             st = self._real_stat(target)
             if not S_ISBLK(st.st_mode):
-                raise cls.NotABlockDevice(target, st)
+                raise self.NotABlockDevice(target, st)
 
             os.mknod(self.path(), st.st_mode, st.st_rdev)
 
@@ -1993,6 +2008,8 @@ class PagePool(KObject):
 
 class BusDevice(KObject):
 
+    SYSFS_BUSTYPE = None
+
     @classmethod
     def sysfs_bus_path(cls):
         return "/sys/bus/%s" % cls.SYSFS_BUSTYPE
@@ -2007,6 +2024,8 @@ class XenbusDevice(BusDevice):
     """Xenbus device, in XS and sysfs"""
 
     XBT_NIL = ""
+
+    XENBUS_DEVTYPE = None
 
     def __init__(self, domid, devid):
         self.domid = int(domid)
@@ -2153,6 +2172,7 @@ class Blkback(XenBackendDevice):
         self._q_events = None
 
     class XenstoreValueError(Exception):
+        KEY = None
         def __init__(self, vbd, _str):
             self.vbd = vbd
             self.str = _str

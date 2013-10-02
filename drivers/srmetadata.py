@@ -244,8 +244,12 @@ def requiresUpgrade(path):
 
 # ----------------- # General helper functions - end # -----------------
 class MetadataHandler:
+
+    VDI_INFO_SIZE_IN_SECTORS = None
+
     # constructor
     def __init__(self, path = None, write = True):
+
         self.fd = -1
         self.path = path
         if self.path != None:
@@ -254,6 +258,9 @@ class MetadataHandler:
     def __del__(self):
         if self.fd != -1:
             close(self.fd)
+
+    def spaceAvailableForVdis(self, count):
+        raise NotImplementedError("spaceAvailableForVdis is undefined")
             
     # common utility functions
     def getMetadata(self,params = {}):
@@ -546,8 +553,8 @@ class MetadataHandler:
         value = ''
            
         # Find the offset depending on what we are updating
-        if set(Dict.keys()) - set(ATOMIC_UPDATE_PARAMS_AND_OFFSET.keys()) == \
-            set([]):
+        diff = set(Dict.keys()) - set(ATOMIC_UPDATE_PARAMS_AND_OFFSET.keys())
+        if diff == set([]):
             offset = SECTOR_SIZE * 2       
             (lower, upper) = getBlockAlignedRange(get_min_blk_size_wrapper( \
                 self.fd), offset, SECTOR_SIZE * 2)

@@ -20,7 +20,7 @@
 
 import SR, VDI, OCFSSR, ISCSISR, SRCommand, util, scsiutil
 import statvfs
-import os, sys
+import os, sys, time
 import xs_errors
 import xmlrpclib
 import mpath_cli, iscsilib

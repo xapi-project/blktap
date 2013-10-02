@@ -44,7 +44,7 @@ class CachingTap(object):
 
         def __assert(cond):
             if not cond:
-                raise self.NotACachingTapdisk(tapdisk, stats)
+                raise cls.NotACachingTapdisk(tapdisk, stats)
 
         if _type == 'vhd':
             # parent
@@ -221,6 +221,8 @@ class CacheFileSR(object):
         return list(found)
 
     def xapi_vfs_stats(self):
+        import util
+
         f =  self.statvfs()
         if not f.f_frsize:
             raise util.SMException("Cache FS does not report utilization.")
@@ -244,6 +246,7 @@ class CacheFileSR(object):
 
     @classmethod
     def _fast_find_tapdisks(cls):
+        import errno
 
         # NB. we're only about to gather stats here, so take the
         # fastpath, bypassing agent based VBD[currently-attached] ->

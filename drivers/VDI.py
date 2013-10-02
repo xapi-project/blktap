@@ -102,6 +102,8 @@ class VDI(object):
         self.managed = True
         self.sm_config_override = {}
         self.sm_config_keep = []
+        self.path = None
+        self.type = None
 
         self.load(uuid)
 
