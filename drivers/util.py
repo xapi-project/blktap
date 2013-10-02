@@ -1214,8 +1214,12 @@ def findRunningProcessOrOpenFile(name, process = True):
             try:
                 fd_dir = os.path.join('/proc', pid, 'fd')
                 files = os.listdir(fd_dir)
-            except Exception, e:
-                raise Exception(str(e))
+            except OSError, e:
+                if e.errno == errno.ENOENT:
+                    # Ignore pid that are no longer valid
+                    continue
+                else:
+                    raise
             
             for file in files:
                 try:
