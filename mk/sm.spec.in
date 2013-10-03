@@ -28,6 +28,10 @@ rm -rf $RPM_BUILD_ROOT
 
 %post
 [ ! -x /sbin/chkconfig ] || chkconfig --add mpathroot
+[ ! -x /sbin/chkconfig ] || chkconfig --add sm-multipath
+
+%preun
+[ ! -x /sbin/chkconfig ] || chkconfig --del sm-multipath
 
 %files
 %defattr(-,root,root,-)
@@ -229,6 +233,7 @@ rm -rf $RPM_BUILD_ROOT
 /opt/xensource/sm/xs_errors.pyc
 /opt/xensource/sm/xs_errors.pyo
 /sbin/mpathutil
+/etc/rc.d/init.d/sm-multipath
 %config /etc/udev/rules.d/40-multipath.rules
 
 

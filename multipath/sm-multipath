@@ -1,0 +1,86 @@
+#!/bin/bash
+#
+# sm-multipath	 Support function for multipath in SM
+#
+# chkconfig: 2345 16 77
+# description: Create proper symlinks in /dev/ if root is multipathed
+
+### BEGIN INIT INFO
+# Provides: sm-multipath
+# Required-Start:
+# Required-Stop:
+# Default-Start:
+# Default-Stop:
+# Short-Description: Support function for multipath in SM
+# Description: Create proper symlinks in /dev/ if
+#         root is multipathed
+### END INIT INFO
+
+DAEMON=/sbin/multipathd
+prog=sm-multipath
+initdir=/etc/rc.d/init.d
+
+. $initdir/functions
+
+RETVAL=0
+
+#
+# See how we were called.
+#
+
+start() {
+	test -x $DAEMON || exit 5
+	echo -n $"Multipath check for root device: "
+	$DAEMON -k"show top" &>/dev/null
+	RETVAL=$?
+	[ $RETVAL -eq 0 ] || failure || exit 0
+	success
+
+	# Create an mpInuse symlink for the root device if that is multipath.
+	DEVICE_MAPPER_MAJOR=$(sed -ne 's/^\([0-9]\+\) device-mapper$/\1/p' /proc/devices)
+	DEVICE_MAPPER_MAJOR_HEX=$(printf "%x" ${DEVICE_MAPPER_MAJOR})
+	ROOT_PART_MAJOR=$(stat --format=%t /dev/root)
+	if [ "$ROOT_PART_MAJOR" == "$DEVICE_MAPPER_MAJOR_HEX" ] ; then
+		ROOT_PART_MINOR=$(stat --format=%T /dev/root)
+		ROOT_PART_SLAVE=$(/bin/ls /sys/block/dm-$ROOT_PART_MINOR/slaves)
+		ROOT_DISK_MINOR=${ROOT_PART_SLAVE#dm-}
+		MPATH_NODES="$(dmsetup ls --target multipath --exec ls)"
+		for n in $MPATH_NODES ; do
+			NODE_MINOR="$(stat --format=%T $n)"
+			if [ "$ROOT_DISK_MINOR" = "$NODE_MINOR" ] ; then
+				mkdir -p /dev/disk/mpInuse
+				ln -sf $n /dev/disk/mpInuse
+			fi
+		done
+	fi
+
+	echo
+}
+
+stop() {
+	echo -n $"Stopping $prog daemon: "
+	success
+	echo
+}
+
+restart() {
+	stop
+	start
+}
+
+case "$1" in
+start)
+	start
+	;;
+stop)
+	stop
+	;;
+restart)
+	restart
+	;;
+*)
+	echo $"Usage: $0 {start|stop|status|restart|condrestart|reload}"
+	RETVAL=2
+esac
+
+exit $RETVAL

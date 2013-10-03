@@ -57,6 +57,7 @@ SM_LIBS += resetvdis
 SM_LIBS += B_util
 
 UDEV_RULES = 40-multipath
+MPATH_DAEMON = sm-multipath
 
 CRON_JOBS += ringwatch
 
@@ -70,6 +71,7 @@ PLUGIN_SCRIPT_DEST := /etc/xapi.d/plugins/
 LIBEXEC := /opt/xensource/libexec/
 CRON_DEST := /etc/cron.d/
 UDEV_RULES_DIR := /etc/udev/rules.d/
+INIT_DIR := /etc/rc.d/init.d/
 
 SM_STAGING := $(DESTDIR)
 SM_STAMP := $(MY_OBJ_DIR)/.staging_stamp
@@ -116,6 +118,7 @@ install: precheck
 	$(call mkdir_clean,$(SM_STAGING))
 	mkdir -p $(SM_STAGING)$(SM_DEST)
 	mkdir -p $(SM_STAGING)$(UDEV_RULES_DIR)
+	mkdir -p $(SM_STAGING)$(INIT_DIR)
 	mkdir -p $(SM_STAGING)$(DEBUG_DEST)
 	mkdir -p $(SM_STAGING)$(BIN_DEST)
 	mkdir -p $(SM_STAGING)$(MASTER_SCRIPT_DEST)
@@ -124,6 +127,8 @@ install: precheck
 	for i in $(SM_PY_FILES); do \
 	  install -m 755 $$i $(SM_STAGING)$(SM_DEST); \
 	done
+	install -m 755 multipath/$(MPATH_DAEMON) \
+	  $(SM_STAGING)/$(INIT_DIR)
 	for i in $(UDEV_RULES); do \
 	  install -m 644 multipath/$$i.rules \
 	    $(SM_STAGING)$(UDEV_RULES_DIR); done
