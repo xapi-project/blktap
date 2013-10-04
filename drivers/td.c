@@ -399,8 +399,9 @@ td_query(int type, int argc, char *argv[])
 {
 	char *name;
 	int c, size = 0, parent = 0, fields = 0, depth = 0, err = 0;
+	int flags = VHD_OPEN_RDONLY;
 
-	while ((c = getopt(argc, argv, "hvpfd")) != -1) {
+	while ((c = getopt(argc, argv, "hvpfdb")) != -1) {
 		switch(c) {
 		case 'v':
 			size = 1;
@@ -417,6 +418,9 @@ td_query(int type, int argc, char *argv[])
 		case 'h':
 			err = 0;
 			goto usage;
+		case 'b':
+			flags |= VHD_OPEN_USE_BKP_FOOTER;
+			break;
 		default:
 			err = EINVAL;
 			goto usage;
@@ -438,7 +442,7 @@ td_query(int type, int argc, char *argv[])
 	if (type == TD_TYPE_VHD) {
 		vhd_context_t vhd;
 
-		err = vhd_open(&vhd, name, VHD_OPEN_RDONLY);
+		err = vhd_open(&vhd, name, flags);
 		if (err) {
 			printf("failed opening %s: %d\n", name, err);
 			return err;
@@ -531,7 +535,8 @@ td_query(int type, int argc, char *argv[])
 
  usage:
 	fprintf(stderr, "usage: td-util query %s [-h help] [-v virtsize] "
-		"[-p parent] [-f fields]  <FILENAME>\n", td_disk_types[type]);
+		"[-p parent] [-f fields] [-b don't trust the footer, use the back-up "
+		"one instead] <FILENAME>\n", td_disk_types[type]);
 	return err;
 }
 

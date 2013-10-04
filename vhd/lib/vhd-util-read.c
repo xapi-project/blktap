@@ -309,7 +309,7 @@ vhd_dump_headers(const char *name, int hex)
 
 	vhd.file = strdup(name);
 
-	vhd_read_footer(&vhd, &vhd.footer);
+	vhd_read_footer(&vhd, &vhd.footer, false);
 	vhd_read_header(&vhd, &vhd.header);
 
 	vhd_print_footer(&vhd.footer, hex);
