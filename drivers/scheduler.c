@@ -345,6 +345,7 @@ scheduler_wait_for_events(scheduler_t *s)
 
 	if (ret < 0) {
 		ret = -errno;
+		EPRINTF("select failed with %s\n", strerror(errno));
 		ASSERT(!ret);
 		goto out;
 	}

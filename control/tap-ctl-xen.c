@@ -38,18 +38,14 @@
 int
 tap_ctl_connect_xenblkif(const pid_t pid, const domid_t domid, const int devid,
 	   	const grant_ref_t * grefs, const int order, const evtchn_port_t port,
-		int proto, const char *pool, const char *uuid)
+		int proto, const char *pool, const int minor)
 {
     tapdisk_message_t message;
     int i, err;
 
-    if (!uuid || uuid[0] == '\0'
-			|| strlen(uuid) >= TAPDISK_MAX_VBD_UUID_LENGTH)
-        return -EINVAL;
-
 	memset(&message, 0, sizeof(message));
     message.type = TAPDISK_MESSAGE_XENBLKIF_CONNECT;
-    strcpy(message.u.blkif.uuid, uuid);
+    message.cookie = minor;
 
     message.u.blkif.domid = domid;
     message.u.blkif.devid = devid;

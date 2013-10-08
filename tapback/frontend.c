@@ -198,7 +198,7 @@ blkback_connect_tap(vbd_t * const bdev,
          */
 		if ((err = tap_ctl_connect_xenblkif(bdev->tap.pid, bdev->domid,
 						bdev->devid, gref, order, port, proto, NULL,
-						bdev->uuid))) {
+						bdev->minor))) {
 			if (err == -EALREADY) {
 				INFO("tapdisk already connected to the shared ring\n");
 				do_connect = false;
@@ -209,8 +209,8 @@ blkback_connect_tap(vbd_t * const bdev,
 			    goto fail;
 			}
         } else {
-	        DBG("tapdisk pid=%d, uuid=%s connected to shared ring\n",
-		            bdev->tap.pid, bdev->uuid);
+	        DBG("tapdisk pid=%d, minor=%d connected to shared ring\n",
+		            bdev->tap.pid, bdev->minor);
 		}
 
         bdev->connected = true;
@@ -266,60 +266,18 @@ fail:
 }
 
 /**
- * Callback that is executed when the front-end goes to StateClosed.
- *
- * Instructs the tapdisk to disconnect itself from the shared ring and switches
- * the back-end state to StateClosed.
- *
- * @param xbdev the VBD whose tapdisk should be disconnected
- * @param state unused
- * @returns 0 on success, a positive error code otherwise
- *
- * XXX Only called by blkback_frontend_changed.
+ * Removes the XenStore paths XAPI waits for to complete the VM.shutdown
+ * operation.
  */
-static inline int
-backend_close(vbd_t * const bdev,
-		const XenbusState state __attribute__((unused)))
-{
-    int err = 0;
-	bool result = false;
+static int
+rm_hotplug_paths(vbd_t * const bdev) {
+
+	int err = 0;
 	char *path = NULL;
+	bool result = false;
 
-    ASSERT(bdev);
+	ASSERT(bdev);
 
-    if (!bdev->connected) {
-        /*
-         * TODO Is this safe? Shouldn't we report an error?
-         */
-        DBG("tapdisk not connected\n");
-        return 0;
-    }
-
-    DBG("disconnecting %d/%d from tapdisk[%d] vbd=%s\n",
-        bdev->domid, bdev->devid, bdev->tap.pid, bdev->uuid);
-
-    if ((err = -tap_ctl_disconnect_xenblkif(bdev->tap.pid, bdev->domid,
-                    bdev->devid, NULL))) {
-
-        /*
-         * TODO I don't see how tap_ctl_disconnect_xenblkif can return
-         * ESRCH, so this is probably wrong. Probably there's another error
-         * code indicating that there's no tapdisk process.
-         */
-        if (errno == ESRCH) {
-            WARN("tapdisk not running\n");
-        } else {
-            WARN("error disconnecting tapdisk from front-end: %s\n",
-                    strerror(err));
-            return err;
-        }
-    }
-
-    bdev->connected = false;
-
-	/*
-	 * FIXME CP-5952: temporary hack
-	 */
 	err = asprintf(&path, "/xapi/%d/hotplug/%s/%d/hotplug", bdev->domid,
 			BLKTAP3_BACKEND_NAME, bdev->devid);
 	if (err == -1) {
@@ -328,7 +286,6 @@ backend_close(vbd_t * const bdev,
 		return err;
 	}
 	err = 0;
-
 	result = xs_rm(blktap3_daemon.xs, blktap3_daemon.xst, path);
 	if (!result) {
 		err = errno;
@@ -354,8 +311,64 @@ backend_close(vbd_t * const bdev,
 				bdev->devid, strerror(err));
 	}
 	free(path);
-	if (err)
+	return err;
+}
+
+/**
+ * Callback that is executed when the front-end goes to StateClosed.
+ *
+ * Instructs the tapdisk to disconnect itself from the shared ring and switches
+ * the back-end state to StateClosed.
+ *
+ * @param xbdev the VBD whose tapdisk should be disconnected
+ * @param state unused
+ * @returns 0 on success, a positive error code otherwise
+ *
+ * XXX Only called by blkback_frontend_changed.
+ */
+static inline int
+backend_close(vbd_t * const bdev,
+		const XenbusState state __attribute__((unused)))
+{
+    int err = 0;
+
+    ASSERT(bdev);
+
+    if (!bdev->connected) {
+        /*
+         * TODO Is this safe? Shouldn't we report an error?
+         */
+        DBG("tapdisk not connected\n");
+        return 0;
+    }
+
+    DBG("disconnecting %d/%d from tapdisk[%d] vbd=%d\n",
+        bdev->domid, bdev->devid, bdev->tap.pid, bdev->minor);
+
+    if ((err = -tap_ctl_disconnect_xenblkif(bdev->tap.pid, bdev->domid,
+                    bdev->devid, NULL))) {
+
+        /*
+         * TODO I don't see how tap_ctl_disconnect_xenblkif can return
+         * ESRCH, so this is probably wrong. Probably there's another error
+         * code indicating that there's no tapdisk process.
+         */
+        if (errno == ESRCH) {
+            WARN("tapdisk not running\n");
+        } else {
+            WARN("error disconnecting tapdisk from front-end: %s\n",
+                    strerror(err));
+            return err;
+        }
+    }
+
+    bdev->connected = false;
+
+	err = rm_hotplug_paths(bdev);
+	if (err) {
+		WARN("failed to remove XAPI hotplug paths: %s\n", strerror(err));
 		return err;
+	}
 
     return tapback_device_switch_state(bdev, XenbusStateClosed);
 }
@@ -442,7 +455,8 @@ tapback_backend_handle_otherend_watch(const char * const path)
      * TODO Instead of this linear search we could do better (hash table etc).
      */
     tapback_backend_find_device(device,
-            !strcmp(device->frontend_state_path, path));
+            device->frontend_state_path &&
+			!strcmp(device->frontend_state_path, path));
     if (!device) {
         WARN("path \'%s\' does not correspond to a known device\n", path);
         return ENODEV;
@@ -453,20 +467,36 @@ tapback_backend_handle_otherend_watch(const char * const path)
     /*
      * Read the new front-end's state.
      */
-    if (!(s = tapback_xs_read(blktap3_daemon.xs, blktap3_daemon.xst, "%s",
-                    device->frontend_state_path))) {
+	s = tapback_xs_read(blktap3_daemon.xs, blktap3_daemon.xst, "%s",
+			device->frontend_state_path);
+    if (!s) {
         err = errno;
-        goto fail;
+		/*
+		 * If the state path got removed, we must re-try removing the XAPI
+		 * hotplug paths because they might not got removed when we switched
+		 * to state Closed because of a restarted transaction.
+		 */
+		if (err == ENOENT) {
+			err = rm_hotplug_paths(device);
+			if (err && err != ENOENT) {
+				WARN("failed to remove XAPI hotplug paths: %s\n",
+						strerror(err));
+			} else {
+				err = 0;
+				goto out;
+			}
+		}
+        goto out;
     }
     state = strtol(s, &end, 0);
     if (*end != 0 || end == s) {
         err = EINVAL;
-        goto fail;
+        goto out;
     }
 
     err = blkback_frontend_changed(device, state);
 
-fail:
+out:
     free(s);
     return err;
 }

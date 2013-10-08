@@ -29,44 +29,28 @@
 #include "tap-ctl.h"
 
 int
-tap_ctl_unpause(const int id, int flags, char *secondary, const char *uuid,
-		const char *new_params)
+tap_ctl_unpause(const int id, const int minor, const char *params, int flags,
+		char *secondary)
 {
 	int err;
 	tapdisk_message_t message;
 
 	memset(&message, 0, sizeof(message));
 	message.type = TAPDISK_MESSAGE_RESUME;
-	message.u.resume.flags = flags;
+	message.cookie = minor;
+	message.u.params.flags = flags;
 
-	if (!uuid || uuid[0] == '\0'
-			|| strlen(uuid) >= TAPDISK_MAX_VBD_UUID_LENGTH) {
-		EPRINTF("missing/invalid UUID\n");
-		return EINVAL;
-	}
-	strcpy(message.u.resume.uuid, uuid);
-
-    if (new_params) {
-        if (strlen(new_params) >= TAPDISK_MESSAGE_MAX_PATH_LENGTH) {
-            /* TODO log error */
-            return ENAMETOOLONG;
-        }
-	    strncpy(message.u.resume.new_params, new_params,
-                TAPDISK_MESSAGE_MAX_PATH_LENGTH);
-    } else {
-        message.u.resume.new_params[0] = '\0';
-    }
-
+	if (params)
+		strncpy(message.u.params.path, params,
+			sizeof(message.u.params.path) - 1);
 	if (secondary) {
-        if (strnlen(secondary, TAPDISK_MESSAGE_MAX_PATH_LENGTH)
-                >= TAPDISK_MESSAGE_MAX_PATH_LENGTH) {
-            /* TODO log error */
+		err = snprintf(message.u.params.secondary,
+				sizeof(message.u.params.secondary) - 1, "%s",
+				secondary);
+		if (err >= sizeof(message.u.params.secondary)) {
+			EPRINTF("secondary image name too long\n");
 			return ENAMETOOLONG;
 		}
-	    strncpy(message.u.resume.secondary, secondary,
-                TAPDISK_MESSAGE_MAX_PATH_LENGTH);
-    } else {
-        message.u.resume.secondary[0] = '\0';
 	}
 
 	err = tap_ctl_connect_send_and_receive(id, &message, NULL);

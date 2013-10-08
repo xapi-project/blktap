@@ -29,20 +29,35 @@
 #include "blktap2.h"
 
 int
-tap_ctl_create(const char *params, int flags, const char *prt_path,
-		char *secondary, int timeout, const char *uuid)
+tap_ctl_create(const char *params, char **devname, int flags, int parent_minor,
+		char *secondary, int timeout)
 {
-	int err, id;
+	int err, id, minor;
 
-	id = tap_ctl_spawn();
-	if (id < 0)
-		return id;
-
-	err = tap_ctl_open(id, params, flags, prt_path, secondary,
-			timeout, uuid);
+	err = tap_ctl_allocate(&minor, devname);
 	if (err)
-		/* FIXME kill tapdisk */
 		return err;
 
+	id = tap_ctl_spawn();
+	if (id < 0) {
+		err = id;
+		goto destroy;
+	}
+
+	err = tap_ctl_attach(id, minor);
+	if (err)
+		goto destroy;
+
+	err = tap_ctl_open(id, minor, params, flags, parent_minor, secondary,
+			timeout);
+	if (err)
+		goto detach;
+
 	return 0;
+
+detach:
+	tap_ctl_detach(id, minor);
+destroy:
+	tap_ctl_free(minor);
+	return err;
 }

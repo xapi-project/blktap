@@ -85,14 +85,12 @@ tapdisk_server_get_all_vbds(void)
 }
 
 td_vbd_t *
-tapdisk_server_get_vbd(const char *uuid)
+tapdisk_server_get_vbd(uint16_t uuid)
 {
 	td_vbd_t *vbd, *tmp;
 
-	ASSERT(uuid);
-
 	tapdisk_server_for_each_vbd(vbd, tmp)
-		if (!strcmp(vbd->uuid, uuid))
+		if (vbd->uuid == uuid)
 			return vbd;
 
 	return NULL;

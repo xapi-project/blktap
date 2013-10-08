@@ -33,6 +33,7 @@
 #include <sys/un.h>
 
 #include "libvhd.h"
+#include "tapdisk-blktap.h"
 #include "tapdisk-image.h"
 #include "tapdisk-driver.h"
 #include "tapdisk-server.h"
@@ -82,11 +83,9 @@ tapdisk_vbd_mark_progress(td_vbd_t *vbd)
 }
 
 td_vbd_t*
-tapdisk_vbd_create(const char *uuid)
+tapdisk_vbd_create(uint16_t uuid)
 {
 	td_vbd_t *vbd;
-
-	ASSERT(uuid);
 
 	vbd = calloc(1, sizeof(td_vbd_t));
 	if (!vbd) {
@@ -94,12 +93,7 @@ tapdisk_vbd_create(const char *uuid)
 		return NULL;
 	}
 
-	if (!(vbd->uuid = strdup(uuid))) {
-		EPRINTF("failed to allocate memory for the VBD's UUID\n");
-		free(vbd);
-		return NULL;
-	}
-
+	vbd->uuid        = uuid;
 	vbd->req_timeout = TD_VBD_REQUEST_TIMEOUT;
 
 	INIT_LIST_HEAD(&vbd->images);
@@ -114,12 +108,9 @@ tapdisk_vbd_create(const char *uuid)
 }
 
 int
-tapdisk_vbd_initialize(int rfd, int wfd, const char *params, const char *uuid)
+tapdisk_vbd_initialize(int rfd, int wfd, uint16_t uuid)
 {
 	td_vbd_t *vbd;
-
-	ASSERT(params);
-	ASSERT(uuid);
 
 	/*
 	 * FIXME check for images opened multiple times? This may not really make
@@ -127,11 +118,9 @@ tapdisk_vbd_initialize(int rfd, int wfd, const char *params, const char *uuid)
 	 */
 	vbd = tapdisk_server_get_vbd(uuid);
 	if (vbd) {
-		EPRINTF("duplicate vbds! %s\n", uuid);
+		EPRINTF("duplicate vbds! %u\n", uuid);
 		return -EEXIST;
 	}
-
-	/* FIXME Shouldn't we be passing/storing params somewhere? */
 
 	vbd = tapdisk_vbd_create(uuid);
 
@@ -351,12 +340,7 @@ static void signal_enospc(td_vbd_t *vbd)
 	int fd, err;
 	char *fn;
 
-    /*
-	 * FIXME Some external tool is probably using this, figure out which and
-     * update it. AFAIK xapi doesn't use this, I've sent a mail to xs-devel
-	 * querying users of this path.
-	 */
-	err = asprintf(&fn, BLKTAP2_ENOSPC_SIGNAL_FILE"%s", vbd->uuid);
+	err = asprintf(&fn, BLKTAP2_ENOSPC_SIGNAL_FILE"%d", vbd->tap->minor);
 	if (err == -1) {
 		EPRINTF("Failed to signal ENOSPC condition\n");
 		return;
@@ -455,8 +439,7 @@ fail:
 }
 
 int
-tapdisk_vbd_open_vdi(td_vbd_t *vbd, const char *params, td_flag_t flags,
-		const char *prt_path)
+tapdisk_vbd_open_vdi(td_vbd_t *vbd, const char *name, td_flag_t flags, int prt_devnum)
 {
 	char *tmp = vbd->name;
 	int err;
@@ -466,20 +449,20 @@ tapdisk_vbd_open_vdi(td_vbd_t *vbd, const char *params, td_flag_t flags,
 		goto fail;
 	}
 
-	if (!params && !vbd->name) {
+	if (!name && !vbd->name) {
 		err = -EINVAL;
 		goto fail;
 	}
 
-	if (params) {
-		vbd->name = strdup(params);
+	if (name) {
+		vbd->name = strdup(name);
 		if (!vbd->name) {
 			err = -errno;
 			goto fail;
 		}
 	}
 
-	err = tapdisk_image_open_chain(vbd->name, flags, prt_path, &vbd->images);
+	err = tapdisk_image_open_chain(vbd->name, flags, prt_devnum, &vbd->images);
 	if (err)
 		goto fail;
 
@@ -537,6 +520,53 @@ fail:
 	return err;
 }
 
+void
+tapdisk_vbd_detach(td_vbd_t *vbd)
+{
+	td_blktap_t *tap = vbd->tap;
+
+	if (tap) {
+		tapdisk_blktap_close(tap);
+		vbd->tap = NULL;
+	}
+}
+
+int
+tapdisk_vbd_attach(td_vbd_t *vbd, const char *devname, int minor)
+{
+
+	if (vbd->tap)
+		return -EALREADY;
+
+	return tapdisk_blktap_open(devname, vbd, &vbd->tap);
+}
+
+/*
+int
+tapdisk_vbd_open(td_vbd_t *vbd, const char *name,
+		 int minor, const char *ring, td_flag_t flags)
+{
+	int err;
+
+	err = tapdisk_vbd_open_vdi(vbd, name, flags, -1);
+	if (err)
+		goto out;
+
+	err = tapdisk_vbd_attach(vbd, ring, minor);
+	if (err)
+		goto out;
+
+	return 0;
+
+out:
+	tapdisk_vbd_detach(vbd);
+	tapdisk_vbd_close_vdi(vbd);
+	free(vbd->name);
+	vbd->name = NULL;
+	return err;
+}
+*/
+
 static void
 tapdisk_vbd_queue_count(td_vbd_t *vbd, int *new,
 			int *pending, int *failed, int *completed)
@@ -588,9 +618,9 @@ tapdisk_vbd_shutdown(td_vbd_t *vbd)
 		vbd->kicked);
 
 	tapdisk_vbd_close_vdi(vbd);
+	tapdisk_vbd_detach(vbd);
 	tapdisk_server_remove_vbd(vbd);
 	free(vbd->name);
-	free(vbd->uuid);
 	free(vbd);
 
 	return 0;
@@ -619,7 +649,7 @@ tapdisk_vbd_close(td_vbd_t *vbd)
 
 fail:
 	td_flag_set(vbd->state, TD_VBD_SHUTDOWN_REQUESTED);
-	DBG(TLOG_WARN, "%s: requests pending\n", vbd->uuid);
+	DBG(TLOG_WARN, "%s: requests pending\n", vbd->name);
 	return -EAGAIN;
 }
 
@@ -782,13 +812,12 @@ tapdisk_vbd_resume(td_vbd_t *vbd, const char *name)
 	DBG(TLOG_DBG, "resume requested\n");
 
 	if (!td_flag_test(vbd->state, TD_VBD_PAUSED)) {
-		EPRINTF("resume request for unpaused vbd %s\n", vbd->uuid);
+		EPRINTF("resume request for unpaused vbd %s\n", vbd->name);
 		return -EINVAL;
 	}
 
 	for (i = 0; i < TD_VBD_EIO_RETRIES; i++) {
-		err = tapdisk_vbd_open_vdi(vbd, name, vbd->flags | TD_OPEN_STRICT,
-				NULL);
+		err = tapdisk_vbd_open_vdi(vbd, name, vbd->flags | TD_OPEN_STRICT, -1);
 		if (!err)
 			break;
 
@@ -818,10 +847,6 @@ tapdisk_vbd_request_ttl(td_vbd_request_t *vreq,
 			const struct timeval *now)
 {
 	struct timeval delta;
-
-	ASSERT(vreq);
-	ASSERT(vreq->vbd);
-
 	timersub(now, &vreq->ts, &delta);
 	return vreq->vbd->req_timeout - delta.tv_sec;
 }
@@ -896,7 +921,7 @@ tapdisk_vbd_check_progress(td_vbd_t *vbd)
 
 	if (diff >= TD_VBD_WATCHDOG_TIMEOUT && tapdisk_vbd_queue_ready(vbd)) {
 		DBG(TLOG_WARN, "%s: watchdog timeout: pending requests "
-		    "idle for %ld seconds\n", vbd->uuid, diff);
+		    "idle for %ld seconds\n", vbd->name, diff);
 		tapdisk_vbd_drop_log(vbd);
 		return;
 	}
@@ -1449,7 +1474,6 @@ tapdisk_vbd_stats(td_vbd_t *vbd, td_stats_t *st)
 	td_image_t *image, *next;
 
 	tapdisk_stats_enter(st, '{');
-	tapdisk_stats_field(st, "uuid", "s", vbd->uuid);
 	tapdisk_stats_field(st, "name", "s", vbd->name);
 
 	tapdisk_stats_field(st, "secs", "[");
@@ -1464,7 +1488,7 @@ tapdisk_vbd_stats(td_vbd_t *vbd, td_stats_t *st)
 
 	if (vbd->tap) {
 		tapdisk_stats_field(st, "tap", "{");
-		tapdisk_xenblkif_stats(vbd->tap, st);
+		tapdisk_xenblkif_stats(vbd->sring, st);
 		tapdisk_stats_leave(st, '}');
 	}
 

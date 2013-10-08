@@ -28,22 +28,14 @@
 #include "tap-ctl.h"
 
 int
-tap_ctl_pause(const int id, struct timeval *timeout, const char *uuid)
+tap_ctl_pause(const int id, const int minor, struct timeval *timeout)
 {
 	int err;
 	tapdisk_message_t message;
 
-    if (!uuid || uuid[0] == '\0'
-			|| strnlen(uuid, TAPDISK_MAX_VBD_UUID_LENGTH)
-	            >= TAPDISK_MAX_VBD_UUID_LENGTH) {
-		EPRINTF("missing/invalid UUID\n");
-		return EINVAL;
-    }
-
 	memset(&message, 0, sizeof(message));
 	message.type = TAPDISK_MESSAGE_PAUSE;
-
-	strcpy(message.u.pause.uuid, uuid);
+	message.cookie = minor;
 
 	err = tap_ctl_connect_send_and_receive(id, &message, timeout);
 	if (err)

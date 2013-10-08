@@ -23,6 +23,7 @@
 #include "tapdisk.h"
 #include "scheduler.h"
 #include "tapdisk-image.h"
+#include "tapdisk-blktap.h"
 #include "td-blkif.h"
 
 #define TD_VBD_REQUEST_TIMEOUT      120
@@ -46,28 +47,26 @@
 struct td_nbdserver;
 
 struct td_vbd_handle {
-
-	/**
-	 * The identifier of the VBD. Can be anything, preferably a printable
-	 * string. If it's a UUID, so much the better.
-	 */
-	char                       *uuid;
-
     /**
      * type:/path/to/file
      */
 	char                       *name;
 
+	td_blktap_t                *tap;
+
+	td_uuid_t                   uuid;
+
     /**
      * shared ring
+	 * FIXME this member was named 'tap'
      */
-    struct td_xenblkif         *tap;
+    struct td_xenblkif         *sring;
 
 	td_flag_t                   flags;
 	td_flag_t                   state;
 
 	/**
-	 * List of images: the leaf is that head, the tree root is at the tail.
+	 * List of images: the leaf is at the head, the tree root is at the tail.
 	 */
 	struct list_head            images;
 
@@ -164,8 +163,8 @@ tapdisk_vbd_next_image(td_image_t *image)
 	return list_entry(image->next.next, td_image_t, next);
 }
 
-td_vbd_t *tapdisk_vbd_create(const char *uuid);
-int tapdisk_vbd_initialize(int, int, const char *, const char *);
+td_vbd_t *tapdisk_vbd_create(td_uuid_t);
+int tapdisk_vbd_initialize(int, int, td_uuid_t);
 int tapdisk_vbd_open(td_vbd_t *, const char *, int, const char *, td_flag_t);
 int tapdisk_vbd_close(td_vbd_t *);
 
@@ -178,12 +177,15 @@ int tapdisk_vbd_close(td_vbd_t *);
  * each flag affect the behavior of this functions? Move TD_OPEN_* flag
  * definitions close to this function (check if they're used only by this
  * function)?
- * @param prt_path parent /path/to/file (optional)
+ * @param prt_devnum parent minor (optional)
  * @returns 0 on success
  */
 int tapdisk_vbd_open_vdi(td_vbd_t * vbd, const char *params, td_flag_t flags,
-        const char *prt_path);
+        int prt_devnum);
 void tapdisk_vbd_close_vdi(td_vbd_t *);
+
+int tapdisk_vbd_attach(td_vbd_t *, const char *, int);
+void tapdisk_vbd_detach(td_vbd_t *);
 
 int tapdisk_vbd_queue_request(td_vbd_t *, td_vbd_request_t *);
 void tapdisk_vbd_forward_request(td_request_t);

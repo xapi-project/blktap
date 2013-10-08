@@ -105,7 +105,9 @@ again:
     if (!strcmp(token, BLKTAP3_FRONTEND_TOKEN)) {
         err = tapback_backend_handle_otherend_watch(path);
     } else if (!strcmp(token, BLKTAP3_BACKEND_TOKEN)) {
-        err = tapback_backend_handle_backend_watch(path);
+        err = -tapback_backend_handle_backend_watch(path);
+	} else if(!strcmp(token, FORCED_HVM_SHUTDOWN_TOKEN)) {
+
     } else {
         WARN("invalid token \'%s\'\n", token);
         err = EINVAL;

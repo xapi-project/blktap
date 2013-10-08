@@ -58,12 +58,12 @@ typedef struct tapdisk_message_list      tapdisk_message_list_t;
 typedef struct tapdisk_message_stat      tapdisk_message_stat_t;
 
 struct tapdisk_message_params {
-	char                             uuid[TAPDISK_MAX_VBD_UUID_LENGTH];
 	tapdisk_message_flag_t           flags;
 
+	uint32_t                         devnum;
 	uint32_t                         domid;
 	char                             path[TAPDISK_MESSAGE_MAX_PATH_LENGTH];
-	char                             prt_path[TAPDISK_MESSAGE_MAX_PATH_LENGTH];
+	uint32_t                         prt_devnum;
 	uint16_t                         req_timeout;
 	char                             secondary[TAPDISK_MESSAGE_MAX_PATH_LENGTH];
 };
@@ -89,15 +89,15 @@ struct tapdisk_message_minors {
 };
 
 struct tapdisk_message_list {
-	char                             uuid[TAPDISK_MAX_VBD_UUID_LENGTH];
 	int                              count;
+	int                              minor;
 	int                              state;
 	char                             path[TAPDISK_MESSAGE_MAX_PATH_LENGTH];
 };
 
 struct tapdisk_message_stat {
 	uint16_t                         type;
-	uint16_t                         cookie; /* FIXME remove? */
+	uint16_t                         cookie;
 	size_t                           length;
 };
 
@@ -106,7 +106,6 @@ struct tapdisk_message_stat {
  * tapdisk to connect to a guest's blkfront.
  */
 typedef struct tapdisk_message_blkif {
-	char uuid[TAPDISK_MAX_VBD_UUID_LENGTH];
 	/**
 	 * The domain ID of the guest to connect to.
 	 */
@@ -173,7 +172,7 @@ typedef struct tapdisk_message_close {
 
 struct tapdisk_message {
 	uint16_t                       type;
-	uint16_t                       cookie; /* FIXME remove? */
+	uint16_t                         cookie;
 
 	union {
 		pid_t                      tapdisk_pid;

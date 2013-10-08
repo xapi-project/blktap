@@ -94,7 +94,7 @@ tapdisk_xenblkif_disconnect(const domid_t domid, const int devid)
     if (blkif->n_reqs_free != blkif->ring_size)
         return EBUSY;
 
-    blkif->vbd->tap = NULL;
+    blkif->vbd->sring = NULL;
 
     tapdisk_xenblkif_destroy(blkif);
 
@@ -229,7 +229,7 @@ tapdisk_xenblkif_connect(domid_t domid, int devid, const grant_ref_t * grefs,
         goto fail;
     }
 
-    vbd->tap = td_blkif;
+    vbd->sring = td_blkif;
 
 	list_add_tail(&td_blkif->entry, &td_ctx->blkifs);
 

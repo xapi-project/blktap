@@ -276,12 +276,12 @@ tapdisk_image_close_chain(struct list_head *list)
  * @param name /path/to/file
  * @param flags
  * @param _head
- * @param prt_params parent type:/path/to/file (optional)
+ * @param prt_devnum parent minor (optional)
  * @returns
  */
 static int
 __tapdisk_image_open_chain(int type, const char *name, int flags,
-			   struct list_head *_head, const char *prt_path)
+			   struct list_head *_head, int prt_devnum)
 {
 	struct list_head head = LIST_HEAD_INIT(head);
 	td_image_t *image;
@@ -293,13 +293,14 @@ __tapdisk_image_open_chain(int type, const char *name, int flags,
 
 	list_add_tail(&image->next, &head);
 
-	if (unlikely(prt_path)) {
-		err = tapdisk_image_open(DISK_TYPE_NBD, prt_path,
+	if (unlikely(prt_devnum >= 0)) {
+		char dev[32];
+		snprintf(dev, sizeof(dev),
+			 "%s%d", BLKTAP2_IO_DEVICE, prt_devnum);
+		err = tapdisk_image_open(DISK_TYPE_AIO, dev,
 					 flags|TD_OPEN_RDONLY, &image);
-		if (err) {
-			ERR(err, "failed to open parent NBD %s\n", prt_path);
+		if (err)
 			goto fail;
-		}
 
 		list_add_tail(&image->next, &head);
 		goto done;
@@ -462,22 +463,23 @@ fail:
 }
 
 int
-tapdisk_image_open_chain(const char *params, int flags, const char *prt_path,
+tapdisk_image_open_chain(const char *desc, int flags, int prt_devnum,
 			 struct list_head *head)
 {
 	const char *name;
 	int type, err;
 
-	type = tapdisk_disktype_parse_params(params, &name);
+	type = tapdisk_disktype_parse_params(desc, &name);
 	if (type >= 0)
-		return __tapdisk_image_open_chain(type, name, flags, head, prt_path);
+		return __tapdisk_image_open_chain(type, name, flags, head,
+						  prt_devnum);
 
 	err = type;
 
-	if (err == -ENOENT && strlen(params) >= 3) {
-		switch (params[2]) {
+	if (err == -ENOENT && strlen(desc) >= 3) {
+		switch (desc[2]) {
 		case 'c':
-			if (!strncmp(params, "x-chain", strlen("x-chain")))
+			if (!strncmp(desc, "x-chain", strlen("x-chain")))
 				err = tapdisk_image_open_x_chain(name, head);
 			break;
 		}

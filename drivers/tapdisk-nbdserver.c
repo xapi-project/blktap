@@ -568,7 +568,7 @@ tapdisk_nbdserver_alloc(td_vbd_t *vbd, td_disk_info_t info)
 	server->vbd = vbd;
 	server->info = info;
 
-	snprintf(fdreceiver_path, TAPDISK_NBDSERVER_MAX_PATH_LEN, "%s%d.%s",
+	snprintf(fdreceiver_path, TAPDISK_NBDSERVER_MAX_PATH_LEN, "%s%d.%d",
 			TAPDISK_NBDSERVER_LISTEN_SOCK_PATH, getpid(),
 			vbd->uuid);
 
@@ -581,10 +581,10 @@ tapdisk_nbdserver_alloc(td_vbd_t *vbd, td_disk_info_t info)
 	}
 
 	if (-1 == snprintf(server->sockpath, TAPDISK_NBDSERVER_MAX_PATH_LEN,
-				"%s%d.%s", TAPDISK_NBDSERVER_SOCK_PATH, getpid(), vbd->uuid))
+				"%s%d.%d", TAPDISK_NBDSERVER_SOCK_PATH, getpid(), vbd->uuid))
 	{
 		err = errno;
-		ERROR("failed to snprintf %s...%s: %s", TAPDISK_NBDSERVER_SOCK_PATH,
+		ERROR("failed to snprintf %s...%d: %s", TAPDISK_NBDSERVER_SOCK_PATH,
 				vbd->uuid, strerror(err));
 		goto out;
 	}

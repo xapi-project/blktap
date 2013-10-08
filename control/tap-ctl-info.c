@@ -33,7 +33,7 @@
     } while (0)
 
 int tap_ctl_info(pid_t pid, unsigned long long *sectors,
-		unsigned int *sector_size, unsigned int *info, const char *uuid)
+		unsigned int *sector_size, unsigned int *info, const int minor)
 {
     tapdisk_message_t message;
     int err;
@@ -42,14 +42,9 @@ int tap_ctl_info(pid_t pid, unsigned long long *sectors,
     ASSERT(sector_size);
     ASSERT(info);
 
-    if (!uuid || uuid[0] == '\0'
-			|| strnlen(uuid, TAPDISK_MAX_VBD_UUID_LENGTH)
-				>= TAPDISK_MAX_VBD_UUID_LENGTH)
-        return EINVAL;
-
     memset(&message, 0, sizeof(message));
     message.type = TAPDISK_MESSAGE_DISK_INFO;
-    strcpy(message.u.params.uuid, uuid);
+	message.cookie = minor;
 
     err = tap_ctl_connect_send_and_receive(pid, &message, NULL);
     if (err) {
@@ -64,7 +59,7 @@ int tap_ctl_info(pid_t pid, unsigned long long *sectors,
         *info = message.u.image.info;
         return 0;
     } else if (TAPDISK_MESSAGE_ERROR == message.type) {
-       return message.u.response.error;
+       return -message.u.response.error;
     } else {
         EPRINTF("unexpected reply %d\n", message.type);
         return -EINVAL;

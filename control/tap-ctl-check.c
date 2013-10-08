@@ -1,4 +1,4 @@
-/*
+/* 
  * Copyright (C) Citrix Systems Inc.
  *
  * This program is free software; you can redistribute it and/or
@@ -21,39 +21,52 @@
 
 #include <stdio.h>
 #include <errno.h>
-#include <stdlib.h>
 #include <unistd.h>
 #include <string.h>
-#include <getopt.h>
 
 #include "tap-ctl.h"
+#include "blktap2.h"
 
 int
-tap_ctl_close(const int id, const int minor, const int force,
-	      struct timeval *timeout)
+tap_ctl_check_blktap(const char **msg)
 {
-	int err;
-	tapdisk_message_t message;
+	FILE *f;
+	int err = 0, minor;
+	char name[32];
 
-	memset(&message, 0, sizeof(message));
-	message.type = TAPDISK_MESSAGE_CLOSE;
-	if (force)
-		message.type = TAPDISK_MESSAGE_FORCE_SHUTDOWN;
-	message.cookie = minor;
+	memset(name, 0, sizeof(name));
 
-	err = tap_ctl_connect_send_and_receive(id, &message, timeout);
-	if (err)
-		return err;
-
-	if (message.type == TAPDISK_MESSAGE_CLOSE_RSP) {
-		err = message.u.response.error;
-		if (err)
-			EPRINTF("close failed: %s\n", strerror(err));
-	} else {
-		EPRINTF("got unexpected result '%s' from %d\n",
-			tapdisk_message_name(message.type), id);
-		err = -EINVAL;
+	f = fopen("/proc/misc", "r");
+	if (!f) {
+		*msg = "failed to open /proc/misc";
+		return -errno;
 	}
 
+	while (fscanf(f, "%d %32s", &minor, name) == 2) {
+		if (!strcmp(name, BLKTAP2_CONTROL_NAME))
+			goto out;
+	}
+
+	err = -ENOSYS;
+	*msg = "blktap kernel module not installed";
+
+out:
+	fclose(f);
+	return err;
+}
+
+int
+tap_ctl_check(const char **msg)
+{
+	int err;
+
+	err = tap_ctl_check_blktap(msg);
+	if (err)
+		goto out;
+
+	err  = 0;
+	*msg = "ok";
+
+out:
 	return err;
 }

@@ -66,11 +66,16 @@ void (*tapback_vlog) (int prio, const char *fmt, va_list ap);
 /*
  * Pre-defined XenStore path components used for running the XenBus protocol.
  */
-#define XENSTORE_BACKEND        "backend"
-#define BLKTAP3_BACKEND_NAME    "vbd"
-#define BLKTAP3_BACKEND_PATH    XENSTORE_BACKEND"/"BLKTAP3_BACKEND_NAME
-#define BLKTAP3_BACKEND_TOKEN   XENSTORE_BACKEND"-"BLKTAP3_BACKEND_NAME
-#define BLKTAP3_FRONTEND_TOKEN  "otherend-state"
+#define XENSTORE_BACKEND			"backend"
+#define BLKTAP3_BACKEND_NAME		"vbd"
+#define BLKTAP3_BACKEND_PATH		XENSTORE_BACKEND"/"BLKTAP3_BACKEND_NAME
+#define BLKTAP3_BACKEND_TOKEN		XENSTORE_BACKEND"-"BLKTAP3_BACKEND_NAME
+#define BLKTAP3_FRONTEND_TOKEN		"otherend-state"
+
+/*
+ * FIXME Find a better name for this.
+ */
+#define FORCED_HVM_SHUTDOWN_TOKEN	"forced-HVM-shutdown"
 
 /*
  * TODO Put the rest of the front-end nodes defined in blkif.h here and group
@@ -152,7 +157,7 @@ typedef struct vbd {
      */
     unsigned int info;
 
-	char uuid[TAPDISK_MAX_VBD_UUID_LENGTH];
+	int minor;
 
 } vbd_t;
 

@@ -1,4 +1,4 @@
-/*
+/* 
  * Copyright (C) Citrix Systems Inc.
  *
  * This program is free software; you can redistribute it and/or
@@ -21,39 +21,42 @@
 
 #include <stdio.h>
 #include <errno.h>
-#include <stdlib.h>
-#include <unistd.h>
-#include <string.h>
-#include <getopt.h>
 
 #include "tap-ctl.h"
 
 int
-tap_ctl_close(const int id, const int minor, const int force,
-	      struct timeval *timeout)
+tap_ctl_blk_major(void)
 {
-	int err;
-	tapdisk_message_t message;
+	FILE *devices;
+	int rv, major;
 
-	memset(&message, 0, sizeof(message));
-	message.type = TAPDISK_MESSAGE_CLOSE;
-	if (force)
-		message.type = TAPDISK_MESSAGE_FORCE_SHUTDOWN;
-	message.cookie = minor;
-
-	err = tap_ctl_connect_send_and_receive(id, &message, timeout);
-	if (err)
-		return err;
-
-	if (message.type == TAPDISK_MESSAGE_CLOSE_RSP) {
-		err = message.u.response.error;
-		if (err)
-			EPRINTF("close failed: %s\n", strerror(err));
-	} else {
-		EPRINTF("got unexpected result '%s' from %d\n",
-			tapdisk_message_name(message.type), id);
-		err = -EINVAL;
+	devices = fopen("/proc/devices", "r");
+	if (!devices) {
+		rv = -errno;
+		goto out;
 	}
 
-	return err;
+	do {
+		char buf[32], *s;
+		int n, offset;
+
+		s = fgets(buf, sizeof(buf), devices);
+		if (!s)
+			break;
+
+		major  = -ENODEV;
+		offset = 0;
+
+		n = sscanf(buf, "%d tapdev%n", &major, &offset);
+		if (n == 1 && offset)
+			break;
+	} while (1);
+
+	rv = major;
+
+out:
+	if (devices)
+		fclose(devices);
+
+	return rv;
 }

@@ -10,9 +10,9 @@ libexec_PROGRAMS = tapdisk
 tapdisk_SOURCES = tapdisk2.c
 tapdisk_LDADD = libtapdisk.la
 
-# FIXME Disabled for the moment, isn't shipped in the RPM.
-#noinst_PROGRAMS = tapdisk-stream
-#tapdisk_stream_LDADD = libtapdisk.la
+noinst_PROGRAMS = tapdisk-stream
+
+tapdisk_stream_LDADD = libtapdisk.la
 
 sbin_PROGRAMS  = td-util
 sbin_PROGRAMS += td-rated
@@ -29,6 +29,9 @@ libtapdisk_la_SOURCES += tapdisk-control.c
 libtapdisk_la_SOURCES += tapdisk-control.h
 libtapdisk_la_SOURCES += tapdisk-vbd.c
 libtapdisk_la_SOURCES += tapdisk-vbd.h
+libtapdisk_la_SOURCES += linux-blktap.h
+libtapdisk_la_SOURCES += tapdisk-blktap.c
+libtapdisk_la_SOURCES += tapdisk-blktap.h
 libtapdisk_la_SOURCES += tapdisk-nbdserver.c
 libtapdisk_la_SOURCES += tapdisk-nbdserver.h
 libtapdisk_la_SOURCES += tapdisk-nbd.h

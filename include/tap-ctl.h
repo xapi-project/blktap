@@ -43,6 +43,13 @@ extern int tap_ctl_debug;
 				  strerror(errno))
 #endif
 
+void tap_ctl_version(int *major, int *minor);
+int tap_ctl_kernel_version(int *major, int *minor);
+
+int tap_ctl_check_blktap(const char **message);
+int tap_ctl_check_version(const char **message);
+int tap_ctl_check(const char **message);
+
 int tap_ctl_connect(const char *path, int *socket);
 int tap_ctl_connect_id(int id, int *socket);
 int tap_ctl_read_raw(int fd, void *buf, size_t sz, struct timeval *timeout);
@@ -59,7 +66,7 @@ char *tap_ctl_socket_name(int id);
 
 typedef struct {
 	pid_t       pid;
-	char        uuid[TAPDISK_MAX_VBD_UUID_LENGTH];
+	int         minor;
 	int         state;
 	char       *type;
 	char       *path;
@@ -77,25 +84,31 @@ int tap_ctl_list(struct list_head *list);
 int tap_ctl_list_pid(pid_t pid, struct list_head *list);
 void tap_ctl_list_free(struct list_head *list);
 
-int tap_ctl_create(const char *params, int flags, const char *prt_path,
-		char *secondary, int timeout, const char *uuid);
-int tap_ctl_destroy(const int id, int force, struct timeval *timeout,
-		const char *uuid);
+int tap_ctl_find_minor(const char *type, const char *path);
+
+int tap_ctl_allocate(int *minor, char **devname);
+int tap_ctl_free(const int minor);
+
+int tap_ctl_create(const char *params, char **devname, int flags, 
+		int prt_minor, char *secondary, int timeout);
+int tap_ctl_destroy(const int id, const int minor, int force,
+		    struct timeval *timeout);
 
 int tap_ctl_spawn(void);
 pid_t tap_ctl_get_pid(const int id);
 
+int tap_ctl_attach(const int id, const int minor);
+int tap_ctl_detach(const int id, const int minor);
 
-int tap_ctl_open(const int id, const char *params, int flags,
-		const char *prt_path, const char *secondary, int timeout,
-		const char *uuid);
-int tap_ctl_close(const int id, const int force, struct timeval *timeout,
-		const char *uuid);
+int tap_ctl_open(const int id, const int minor, const char *params, int flags,
+		const int prt_minor, const char *secondary, int timeout);
+int tap_ctl_close(const int id, const int minor, const int force,
+		  struct timeval *timeout);
 
 /**
  * Pauses the VBD.
  */
-int tap_ctl_pause(const int id, struct timeval *timeout, const char *uuid);
+int tap_ctl_pause(const int id, const int minor, struct timeval *timeout);
 
 /**
  * Unpauses the VBD
@@ -106,11 +119,13 @@ int tap_ctl_pause(const int id, struct timeval *timeout, const char *uuid);
  * @param uuid
  * @param new_params the new VDI to use (type:/path/to/file), optional
  */
-int tap_ctl_unpause(const int id, int flags, char *secondary, const char *uuid,
-		const char *new_params);
+int tap_ctl_unpause(const int id, const int minor, const char *params,
+		int flags, char *secondary);
 
-ssize_t tap_ctl_stats(pid_t pid, char *buf, size_t size, const char *uuid);
-int tap_ctl_stats_fwrite(pid_t pid, FILE *out, const char *uuid);
+ssize_t tap_ctl_stats(pid_t pid, int minor, char *buf, size_t size);
+int tap_ctl_stats_fwrite(pid_t pid, int minor, FILE *out);
+
+int tap_ctl_blk_major(void);
 
 /**
  * Instructs a tapdisk to connect to the shared ring.
@@ -127,12 +142,12 @@ int tap_ctl_stats_fwrite(pid_t pid, FILE *out, const char *uuid);
  * @param pool a string used as an identifier to group two or more VBDs
  * beloning to the same tapdisk process. For VBDs with the same pool name, a
  * single event channel is used.
- * @param uuid
+ * @param minor
  * @returns 0 on success, a negative error code otherwise
  */
 int tap_ctl_connect_xenblkif(const pid_t pid, const domid_t domid, const int
 		devid, const grant_ref_t * grefs, const int order, const evtchn_port_t
-		port, int proto, const char *pool, const char *uuid);
+		port, int proto, const char *pool, const int minor);
 
 /**
  * Instructs a tapdisk to disconnect from the shared ring.
@@ -153,11 +168,11 @@ int tap_ctl_disconnect_xenblkif(const pid_t pid, const domid_t domid,
  * @param sectors output parameter that receives the number of sectors
  * @param sector_size output parameter that receives the size of the sector
  * @param info TODO ?
- * @param uuid
+ * @param minor
  *
  */
 int tap_ctl_info(pid_t pid, unsigned long long *sectors, unsigned int
-		*sector_size, unsigned int *info, const char *uuid);
+		*sector_size, unsigned int *info, const int minor);
 
 /**
  * Parses a type:/path/to/file string, storing the type and path to the output

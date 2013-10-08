@@ -1,4 +1,4 @@
-/*
+/* 
  * Copyright (C) Citrix Systems Inc.
  *
  * This program is free software; you can redistribute it and/or
@@ -22,37 +22,33 @@
 #include <stdio.h>
 #include <errno.h>
 #include <stdlib.h>
-#include <unistd.h>
 #include <string.h>
 #include <getopt.h>
 
 #include "tap-ctl.h"
 
 int
-tap_ctl_close(const int id, const int minor, const int force,
-	      struct timeval *timeout)
+tap_ctl_detach(const int id, const int minor)
 {
 	int err;
 	tapdisk_message_t message;
 
 	memset(&message, 0, sizeof(message));
-	message.type = TAPDISK_MESSAGE_CLOSE;
-	if (force)
-		message.type = TAPDISK_MESSAGE_FORCE_SHUTDOWN;
+	message.type = TAPDISK_MESSAGE_DETACH;
 	message.cookie = minor;
 
-	err = tap_ctl_connect_send_and_receive(id, &message, timeout);
+	err = tap_ctl_connect_send_and_receive(id, &message, NULL);
 	if (err)
 		return err;
 
-	if (message.type == TAPDISK_MESSAGE_CLOSE_RSP) {
+	if (message.type == TAPDISK_MESSAGE_DETACH_RSP) {
 		err = message.u.response.error;
-		if (err)
-			EPRINTF("close failed: %s\n", strerror(err));
+		if (err < 0)
+			printf("detach failed: %d\n", err);
 	} else {
-		EPRINTF("got unexpected result '%s' from %d\n",
-			tapdisk_message_name(message.type), id);
-		err = -EINVAL;
+		printf("got unexpected result '%s' from %d\n",
+		       tapdisk_message_name(message.type), id);
+		err = EINVAL;
 	}
 
 	return err;

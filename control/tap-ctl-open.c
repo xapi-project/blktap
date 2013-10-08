@@ -29,33 +29,19 @@
 #include "tap-ctl.h"
 
 int
-tap_ctl_open(const int id, const char *params, int flags,
-		const char *prt_path, const char *secondary, int timeout,
-		const char *uuid)
+tap_ctl_open(const int id, const int minor, const char *params, int flags,
+		const int prt_minor, const char *secondary, int timeout)
 {
 	int err;
 	tapdisk_message_t message;
 
-	if (!uuid || strlen(uuid) >= TAPDISK_MAX_VBD_UUID_LENGTH) {
-		EPRINTF("missing/invalid UUID\n");
-		return EINVAL;
-	}
-
-	if (!params || strlen(params) >= TAPDISK_MESSAGE_MAX_PATH_LENGTH) {
-		EPRINTF("missing/invalid type:/file/to/path\n");
-		return EINVAL;
-	}
-
 	memset(&message, 0, sizeof(message));
 	message.type = TAPDISK_MESSAGE_OPEN;
+	message.cookie = minor;
+	message.u.params.devnum = minor;
+	message.u.params.prt_devnum = prt_minor;
 	message.u.params.req_timeout = timeout;
 	message.u.params.flags = flags;
-	strcpy(message.u.params.uuid, uuid);
-	if (prt_path) {
-		if (strlen(prt_path) >= TAPDISK_MESSAGE_MAX_PATH_LENGTH)
-			return ENAMETOOLONG;
-		strcpy(message.u.params.prt_path, prt_path);
-	}
 
 	err = snprintf(message.u.params.path,
 		       sizeof(message.u.params.path) - 1, "%s", params);

@@ -1,4 +1,4 @@
-/*
+/* 
  * Copyright (C) Citrix Systems Inc.
  *
  * This program is free software; you can redistribute it and/or
@@ -15,37 +15,10 @@
  * 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  */
 
-#ifdef HAVE_CONFIG_H
-#include "config.h"
+#ifndef __TAPDISK2_H__
+#define __TAPDISK2_H__
+
+int tapdisk2_create_device();
+int tapdisk2_attach_device(int, const char *);
+
 #endif
-
-#include <stdio.h>
-#include <errno.h>
-#include <fcntl.h>
-#include <stdlib.h>
-#include <unistd.h>
-#include <getopt.h>
-
-#include "tap-ctl.h"
-#include "blktap2.h"
-
-int
-tap_ctl_destroy(const int id, const int minor,
-		int force, struct timeval *timeout)
-{
-	int err;
-
-	err = tap_ctl_close(id, minor, 0, timeout);
-	if (err)
-		return err;
-
-	err = tap_ctl_detach(id, minor);
-	if (err)
-		return err;
-
-	err = tap_ctl_free(minor);
-	if (err)
-		return err;
-
-	return 0;
-}
