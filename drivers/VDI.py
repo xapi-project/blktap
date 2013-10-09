@@ -320,9 +320,11 @@ class VDI(object):
                 del sm_config[key]
 
     def _db_update_sm_config(self, ref, sm_config):
+        import cleanup
         current_sm_config = self.sr.session.xenapi.VDI.get_sm_config(ref)
         for key, val in sm_config.iteritems():
-            if key.startswith("host_") or key == "paused":
+            if key.startswith("host_") or \
+                key in ["paused", cleanup.VDI.DB_VHD_BLOCKS]:
                 continue
             if sm_config.get(key) != current_sm_config.get(key):
                 util.SMlog("_db_update_sm_config: %s sm-config:%s %s->%s" % \
@@ -331,7 +333,9 @@ class VDI(object):
                 self.sr.session.xenapi.VDI.add_to_sm_config(ref, key, val)
 
         for key in current_sm_config.keys():
-            if key.startswith("host_") or key == "paused" or key in self.sm_config_keep:
+            if key.startswith("host_") or \
+                key in ["paused", cleanup.VDI.DB_VHD_BLOCKS] or \
+                key in self.sm_config_keep:
                 continue
             if not sm_config.get(key):
                 util.SMlog("_db_update_sm_config: %s del sm-config:%s" % \
