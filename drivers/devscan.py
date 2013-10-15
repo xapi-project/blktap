@@ -27,76 +27,23 @@ SYSFS_PATH1='/sys/class/scsi_host'
 SYSFS_PATH2='/sys/class/scsi_disk'
 SYSFS_PATH3='/sys/class/fc_transport'
 
-MODULE_INFO = {
-    'aacraid': 'Adaptec Raid Driver',
-    'brocade': 'Brocade HBA Driver',
-    'cxgb3': 'Chelsio T3 HBA Driver',
-    'cxgb4': 'Chelsio T4 HBA Driver',
-    'csiostor': 'Chelsio T4/T5 FCoE Driver',
-    'fnic' : 'Cisco FCoE HBA driver',
-    'qlogic': 'QLogic HBA Driver',
-    'lpfc': 'Emulex Device Driver for Fibre Channel HBAs',
-    'mptfc': 'LSI Logic Fusion MPT Fibre Channel Driver',
-    'mptsas': 'LSI Logic Fusion MPT SAS Adapter Driver',
-    'mpt2sas': 'LSI Logic Fusion MPT 6GB SAS Adapter Driver',
-    'megaraid_sas': 'MegaRAID driver for SAS based RAID controllers',
-    'palo' : 'Cisco Palo FCoE Adapter driver',
-    'ethdrv' : 'Coraid ATA over Ethernet driver',
-    'xsvhba': 'Xsigo Systems Virtual HBA Driver',
-    'mpp': 'RDAC Multipath Handler, manages DELL devices from other adapters'
-    }
+DRIVER_BLACKLIST = ['^(s|p|)ata_.*', '^ahci$', '^pdc_adma$', '^iscsi_tcp$']
 
 def getManufacturer(s):
-    for e in MODULE_INFO.iterkeys():
-        regex = re.compile("^%s" % e)
-        if regex.search(s, 0):
-            return MODULE_INFO[e]
-    return "Unknown"
-
-def gen_QLadt():
-    host = []
-    arr = glob.glob('/sys/bus/pci/drivers/qla*/*/*host*') +\
-          glob.glob('/sys/bus/pci/drivers/qlisa/*/*host*')
-    # output may be in the form "host#" or "scsi_host:host#"
-    for val in arr:
-        node = val.split('/')[-1]
-        entry = re.sub("^.*:","",node)
-        if entry not in host:
-            host.append(entry)
-    return host
-
-def gen_brocadt():
-    host = []
-    arr = glob.glob('/sys/bus/pci/drivers/bfa/*/host*')
-    for val in arr:
-        host.append(val.split('/')[-1])
-    return host
-
-def gen_palo():
-    host = []
-    arr = glob.glob('/sys/bus/pci/drivers/fnic/*/host*')
-    for val in arr:
-        host.append(val.split('/')[-1])
-    return host
+    (rc,stdout,stderr) = util.doexec(['/sbin/modinfo', '-d', s])
+    if stdout:
+        return stdout.strip()
+    else:
+        return "Unknown"
 
 def adapters(filterstr="any"):
     dict = {}
     devs = {}
     adt = {}
-    QL = gen_QLadt()
-    BC = gen_brocadt()
-    CS = gen_palo()
     for a in os.listdir(SYSFS_PATH1):
-        if a in QL:
-            proc = "qlogic"
-        elif a in BC:
-            proc = "brocade"
-        elif a in CS:
-            proc = "palo"
-        else:
-            proc = match_hbadevs(a, filterstr)
-            if not proc:
-                continue
+        proc = match_hbadevs(a, filterstr)
+        if not proc:
+            continue
         adt[a] = proc
         id = a.replace("host","")
         scsiutil.rescan([id])
@@ -165,11 +112,39 @@ def adapters(filterstr="any"):
     dict['adt'] = adt
     return dict
             
-def _getField(s):
-    f = open(s, 'r')
-    line = f.readline()[:-1]
-    f.close()
-    return line
+def _get_driver_name(scsihost):
+    driver_name = 'Unknown'
+    if os.path.exists(os.path.join(SYSFS_PATH1, scsihost, 'fnic_state')):
+        driver_name = 'fnic'
+    if os.path.exists(os.path.join(SYSFS_PATH1, scsihost, 'lpfc_fcp_class')):
+        driver_name = 'lpfc'
+    if os.path.exists(os.path.join(SYSFS_PATH1, scsihost, '84xx_fw_version')):
+        driver_name = 'qla2xxx'
+    if 'Unknown' == driver_name:
+        namepath = os.path.join(SYSFS_PATH1, scsihost, 'driver_name')
+        if not os.path.exists(namepath):
+            namepath = os.path.join(SYSFS_PATH1, scsihost, 'proc_name')
+        if os.path.exists(namepath):
+            try:
+                f = open(namepath, 'r')
+                line = f.readline()[:-1]
+                f.close()
+                if not line in ['<NULL>', '(NULL)', '']:
+                    driver_name = line
+            except IOError:
+                pass
+    if 'Unknown' == driver_name:
+        ueventpath = os.path.join(SYSFS_PATH1, scsihost, 'uevent')
+        if os.path.exists(ueventpath):
+            try:
+                f = open(ueventpath, 'r')
+                for line in f:
+                    if line.startswith('PHYSDEVDRIVER='):
+                        driver_name = line.replace('PHYSDEVDRIVER=','').strip()
+                f.close()
+            except IOError:
+                pass
+    return driver_name
 
 def _parseHostId(str):
     id = str.split()
@@ -201,28 +176,21 @@ def _genMPPHBA(id):
     return mppdict
 
 def match_hbadevs(s, filterstr):
-    regex = re.compile("^host[0-9]")
-    if not regex.search(s, 0):
-        return ""
-    try:
-        if os.path.exists(os.path.join(SYSFS_PATH1,s,"lpfc_fcp_class")):
-            pname = "lpfc"
-        else:
-            filename = os.path.join(SYSFS_PATH1,s,"proc_name")
-            pname = _getField(filename)
-    except:
+    driver_name = _get_driver_name(s)
+    if match_host(s) and not match_blacklist(driver_name) \
+        and ( filterstr == "any" or match_filterstr(filterstr, driver_name) ):
+            return driver_name
+    else:
         return ""
 
-    if filterstr == "any":
-        for e in MODULE_INFO.iterkeys():
-            regex = re.compile("^%s" % e)
-            if regex.search(pname, 0):
-                return pname
-    else:
-        regex = re.compile("^%s" % filterstr)
-        if regex.search(pname, 0):
-            return pname
-    return ""
+def match_blacklist(driver_name):
+    return re.search("(" + ")|(".join(DRIVER_BLACKLIST) + ")", driver_name)
+
+def match_filterstr(filterstr, driver_name):
+    return re.search("^%s" % filterstr, driver_name)
+
+def match_host(s):
+    return re.search("^host[0-9]", s)
 
 def match_rport(s):
     regex = re.compile("^rport-*")
