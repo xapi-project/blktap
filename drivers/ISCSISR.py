@@ -360,9 +360,12 @@ class ISCSISR(SR.SR):
         try:
             pbdref = util.find_my_pbd(self.session, self.host_ref, self.sr_ref)
             if pbdref <> None:
-                other_conf = self.session.xenapi.PBD.get_other_config(pbdref)
-                other_conf['iscsi_sessions'] = str(sessions)
-                self.session.xenapi.PBD.set_other_config(pbdref, other_conf)
+                # Just to be safe in case of garbage left during crashes
+                # we remove the key and add it
+                self.session.xenapi.PBD.remove_from_other_config(
+                    pbdref, "iscsi_sessions")
+                self.session.xenapi.PBD.add_to_other_config(
+                    pbdref, "iscsi_sessions", str(sessions))
         except:
             pass
 
