@@ -34,9 +34,20 @@ rm -rf $RPM_BUILD_ROOT
 cp -f /etc/lvm/lvm.conf /etc/lvm/master/lvm.conf || exit $?
 sed -i 's/metadata_read_only =.*/metadata_read_only = 1/' /etc/lvm/lvm.conf || exit $?
 sed -i 's/metadata_read_only =.*/metadata_read_only = 0/' /etc/lvm/master/lvm.conf || exit $?
+# We try to be "update-alternatives" ready.
+# If a file exists and it is not a symlink we back it up
+if [ -e /etc/multipath.conf -a ! -h /etc/multipath.conf ]; then
+   mv -f /etc/multipath.conf /etc/multipath.conf.$(date +%F_%T)
+fi
+update-alternatives --install /etc/multipath.conf multipath.conf /etc/multipath.xenserver/multipath.conf 90
 
 %preun
 [ ! -x /sbin/chkconfig ] || chkconfig --del sm-multipath
+#only remove in case of erase (but not at upgrade)
+if [ $1 -eq 0 ] ; then
+	update-alternatives --remove multipath.conf /etc/multipath.xenserver/multipath.conf
+fi
+exit 0
 
 %postun
 [ ! -d /etc/lvm/master ] || rm -Rf /etc/lvm/master || exit $?
@@ -244,6 +255,7 @@ cp -f /etc/lvm/lvm.conf.orig /etc/lvm/lvm.conf || exit $?
 /sbin/mpathutil
 /etc/rc.d/init.d/sm-multipath
 %config /etc/udev/rules.d/40-multipath.rules
+%config /etc/multipath.xenserver/multipath.conf
 
 
 %changelog

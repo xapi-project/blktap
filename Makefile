@@ -58,6 +58,7 @@ SM_LIBS += B_util
 
 UDEV_RULES = 40-multipath
 MPATH_DAEMON = sm-multipath
+MPATH_CONF = multipath.conf
 
 CRON_JOBS += ringwatch
 
@@ -72,6 +73,7 @@ LIBEXEC := /opt/xensource/libexec/
 CRON_DEST := /etc/cron.d/
 UDEV_RULES_DIR := /etc/udev/rules.d/
 INIT_DIR := /etc/rc.d/init.d/
+MPATH_CONF_DIR := /etc/multipath.xenserver/
 
 SM_STAGING := $(DESTDIR)
 SM_STAMP := $(MY_OBJ_DIR)/.staging_stamp
@@ -119,6 +121,7 @@ install: precheck
 	mkdir -p $(SM_STAGING)$(SM_DEST)
 	mkdir -p $(SM_STAGING)$(UDEV_RULES_DIR)
 	mkdir -p $(SM_STAGING)$(INIT_DIR)
+	mkdir -p $(SM_STAGING)$(MPATH_CONF_DIR)
 	mkdir -p $(SM_STAGING)$(DEBUG_DEST)
 	mkdir -p $(SM_STAGING)$(BIN_DEST)
 	mkdir -p $(SM_STAGING)$(MASTER_SCRIPT_DEST)
@@ -127,6 +130,8 @@ install: precheck
 	for i in $(SM_PY_FILES); do \
 	  install -m 755 $$i $(SM_STAGING)$(SM_DEST); \
 	done
+	install -m 644 multipath/$(MPATH_CONF) \
+	  $(SM_STAGING)/$(MPATH_CONF_DIR)
 	install -m 755 multipath/$(MPATH_DAEMON) \
 	  $(SM_STAGING)/$(INIT_DIR)
 	for i in $(UDEV_RULES); do \
