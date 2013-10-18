@@ -28,6 +28,19 @@ rm -rf $RPM_BUILD_ROOT
 
 %post
 [ ! -x /sbin/chkconfig ] || chkconfig --add mpathroot
+# We try to be "update-alternatives" ready.
+# If a file exists and it is not a symlink we back it up
+if [ -e /etc/multipath.conf -a ! -h /etc/multipath.conf ]; then
+   mv -f /etc/multipath.conf /etc/multipath.conf.$(date +%F_%T)
+fi
+update-alternatives --install /etc/multipath.conf multipath.conf /etc/multipath.xenserver/multipath.conf 90
+
+%preun
+#only remove in case of erase (but not at upgrade)
+if [ $1 -eq 0 ] ; then
+	update-alternatives --remove multipath.conf /etc/multipath.xenserver/multipath.conf
+fi
+exit 0
 
 %files
 %defattr(-,root,root,-)
@@ -221,6 +234,7 @@ rm -rf $RPM_BUILD_ROOT
 /opt/xensource/sm/xs_errors.pyc
 /opt/xensource/sm/xs_errors.pyo
 /sbin/mpathutil
+%config /etc/multipath.xenserver/multipath.conf
 
 
 %changelog
