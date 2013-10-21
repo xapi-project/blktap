@@ -65,7 +65,7 @@ class HBASR(SR.SR):
             dict = devscan.adapters(filterstr=self.type)
             self.hbadict = dict['devs']
             self.hbas = dict['adt']
-            if len(self.hbas.iterkeys()):
+            if len(self.hbas):
                 self.attached = True
                 self.devs = scsiutil.cacheSCSIidentifiers()
 
