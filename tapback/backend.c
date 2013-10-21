@@ -56,10 +56,11 @@ tapback_backend_destroy_device(vbd_t * const device)
 
     DBG("removing device %d/%d\n", device->domid, device->devid);
 
-	list_del(&device->backend_entry);
+    list_del(&device->backend_entry);
 
     tapback_device_unwatch_frontend_state(device);
 
+    free(device->tap);
     free(device->frontend_path);
     free(device->name);
     free(device);
@@ -80,7 +81,7 @@ tapback_backend_destroy_device(vbd_t * const device)
  * XXX Only called by blkback_probe.
  */
 static inline int
-blkback_find_tapdisk(const int minor, tap_list_t *tap)
+find_tapdisk(const int minor, tap_list_t *tap)
 {
     struct list_head list;
     tap_list_t *_tap;
@@ -98,7 +99,6 @@ blkback_find_tapdisk(const int minor, tap_list_t *tap)
             if (_tap->minor == minor) {
                 err = 0;
                 memcpy(tap, _tap, sizeof(tap));
-				DBG("found tapdisk[%d] minor=%d\n", _tap->pid, tap->minor);
                 break;
             }
         }
@@ -129,7 +129,7 @@ tapback_backend_create_device(const domid_t domid, const char * const name)
 {
     vbd_t *device = NULL;
     int err = 0;
-	char *s = NULL, *s2 = NULL;
+    char *s = NULL, *s2 = NULL;
 
     ASSERT(name);
 
@@ -141,14 +141,15 @@ tapback_backend_create_device(const domid_t domid, const char * const name)
         goto out;
     }
 
-	device->minor = -1;
+    device->major = -1;
+    device->minor = -1;
 
-	/* TODO check for errors */
-	device->devid = atoi(name);
+    /* TODO check for errors */
+    device->devid = atoi(name);
 
     device->domid = domid;
 
-	list_add_tail(&device->backend_entry, &blktap3_daemon.devices);
+    list_add_tail(&device->backend_entry, &blktap3_daemon.devices);
 
     if (!(device->name = strdup(name))) {
         err = -errno;
@@ -156,15 +157,15 @@ tapback_backend_create_device(const domid_t domid, const char * const name)
     }
 
 #if 0
-	/*
-	 * FIXME XAPI removes this path for forced shutdown on HVM guests.
-	 */
-	err = asprintf(&s2, "/local/domain/%d/device/vbd/%d", device->domid,
-			device->devid);
-	if (err == -1) {
-		err = -errno;
-		goto out;
-	}
+    /*
+     * FIXME XAPI removes this path for forced shutdown on HVM guests.
+     */
+    err = asprintf(&s2, "/local/domain/%d/device/vbd/%d", device->domid,
+            device->devid);
+    if (err == -1) {
+        err = -errno;
+        goto out;
+    }
     if (!xs_watch(blktap3_daemon.xs, s2, FORCED_HVM_SHUTDOWN_TOKEN)) {
         err = -errno;
         goto out;
@@ -172,8 +173,8 @@ tapback_backend_create_device(const domid_t domid, const char * const name)
 #endif
 
 out:
-	free(s);
-	free(s2);
+    free(s);
+    free(s2);
     if (err) {
         WARN("error creating device %d/%s: %s\n", domid, name, strerror(-err));
         if (device)
@@ -183,142 +184,187 @@ out:
 }
 
 /**
- * Returns negative error code.
+ * Retrieves the minor number and tapdisk-related information, and stores them
+ * in @device.
+ *
+ * We might already have read the major/minor, but if the physical-device
+ * key triggered we need to make sure it hasn't changed. This also protects us
+ * against restarted transactions.
+ *
+ * TODO include domid/devid in messages
+ *
+ * Returns 0 on success, a negative error code otherwise.
  */
 static int
 physical_device(vbd_t *device) {
 
     char * s = NULL, *p = NULL, *end = NULL;
-	int err = 0;
+    int err = 0, major = 0, minor = 0;
 
-	ASSERT(device);
+    ASSERT(device);
 
-	/*
-	 * Get the minor.
-	 */
-	s = tapback_device_read(device, PHYS_DEV_KEY);
-	if (!s) {
-		err = -errno;
-		WARN("failed to read the physical-device: %s\n",
-				strerror(-err));
-		goto out;
-	}
+    /*
+     * Get the minor.
+     */
+    s = tapback_device_read(device, PHYS_DEV_KEY);
+    if (!s) {
+        err = -errno;
+        WARN("failed to read the physical-device: %s\n",
+                strerror(-err));
+        goto out;
+    }
 
-	/*
-	 * The XenStore key physical-device contains "major:minor" in hex.
-	 */
-	p = strchr(s, ':');
-	if (!p) {
-		WARN("malformed physical device '%s'\n", s);
-		err = -EINVAL;
-		goto out;
-	}
-	p++;
-	device->minor = strtol(p, &end, 16);
-	if (*end != 0 || end == p) {
-		WARN("malformed physical device '%s'\n", s);
-		err = -EINVAL;
-		goto out;
-	}
+    /*
+     * The XenStore key physical-device contains "major:minor" in hex.
+     */
+    p = strtok(s, ":");
+    if (!p) {
+        WARN("malformed physical device '%s'\n", s);
+        err = -EINVAL;
+        goto out;
+    }
+    major = strtol(p, &end, 16);
+    if (*end != 0 || end == p) {
+        WARN("malformed physical device '%s'\n", s);
+        err = -EINVAL;
+        goto out;
+    }
+    p = strtok(NULL, ":");
+    minor = strtol(p, &end, 16);
+    if (*end != 0 || end == p) {
+        WARN("malformed physical device '%s'\n", s);
+        err = -EINVAL;
+        goto out;
+    }
 
-	DBG("need to find tapdisk serving minor %d\n", device->minor);
+    if ((device->major >= 0 || device->minor >= 0) &&
+            (major != device->major || minor != device->minor)) {
+        WARN("changing physical device from %x:%x to %x:%x not supported\n",
+                device->major, device->minor, major, minor);
+        err = -ENOSYS;
+        goto out;
+    }
 
-	err = blkback_find_tapdisk(device->minor, &device->tap);
-	if (!err)
-		DBG("found tapdisk[%d]\n", device->tap.pid);
-	else  {
-		WARN("error looking for tapdisk: %s\n", strerror(err));
-		goto out;
-	}
+    device->major = major;
+    device->minor = minor;
 
-	/*
-	 * get the VBD parameters from the tapdisk
-	 */
-	if ((err = tap_ctl_info(device->tap.pid, &device->sectors,
-					&device->sector_size, &device->info,
-					device->minor))) {
-		WARN("error retrieving disk characteristics: %s\n",
-				strerror(-err));
-		goto out;
-	}
+    DBG("need to find tapdisk serving minor=%d\n", device->minor);
 
-	if (device->sector_size & 0x1ff || device->sectors <= 0) {
-		WARN("warning: unexpected device characteristics: sector "
-				"size=%d, sectors=%lu\n", device->sector_size,
-				device->sectors);
-	}
+    device->tap = malloc(sizeof(*device->tap));
+    if (!device->tap) {
+        err = -ENOMEM;
+        goto out;
+    }
+    err = find_tapdisk(device->minor, device->tap);
+    if (err) {
+        WARN("error looking for tapdisk: %s\n", strerror(err));
+        goto out;
+    }
+
+    DBG("found tapdisk[%d]\n", device->tap->pid);
+
+    /*
+     * get the VBD parameters from the tapdisk
+     */
+    if ((err = tap_ctl_info(device->tap->pid, &device->sectors,
+                    &device->sector_size, &device->info,
+                    device->minor))) {
+        WARN("error retrieving disk characteristics: %s\n",
+                strerror(-err));
+        goto out;
+    }
+
+    if (device->sector_size & 0x1ff || device->sectors <= 0) {
+        WARN("warning: unexpected device characteristics: sector "
+                "size=%d, sectors=%lu\n", device->sector_size,
+                device->sectors);
+    }
+
+    /*
+     * The front-end might have switched to state Connected before
+     * physical-device is written. Check it's state and connect if necessary.
+     *
+     * FIXME This is not very efficient. Consider doing it like blkback: store
+     * the state in the VBD in-memory structure.
+     */
+    if (device->frontend_state_path) {
+        err = -tapback_backend_handle_otherend_watch(
+                device->frontend_state_path);
+        if (err) {
+            WARN("%d/%d: failed to switch state: %s\n", device->domid,
+                    device->devid, strerror(-err));
+        }
+    }
 out:
-	/*
-	 * FIXME Clean up in case of error, e.g. zero out device member etc.
-	 */
-	free(s);
-	return err;
+    if (err) {
+        device->major = device->minor = -1;
+        free(device->tap);
+        device->tap = NULL;
+        device->sector_size = device->sectors = device->info = 0;
+    }
+    free(s);
+    return err;
 }
 
 static int
 frontend(vbd_t *device) {
 
-	int err = 0;
+    int err = 0;
 
-	ASSERT(device);
+    ASSERT(device);
 
-	/*
-	 * FIXME Might already have executed this function and we're blindly
-	 * overwriting device->frontend_path? Check the EEXIST error checked by
-	 * xe_watch a bit further below in this function.
-	 */
+    if (device->frontend_path)
+        return 0;
 
-	/*
-	 * Get the front-end path from XenStore. We need this to talk to
-	 * the front-end.
-	 */
-	if (!(device->frontend_path = tapback_device_read(device,
-					"frontend"))) {
-		err = -errno;
-		WARN("failed to read front-end path: %s\n", strerror(-err));
-		goto out;
-	}
+    /*
+     * FIXME Might already have executed this function and we're blindly
+     * overwriting device->frontend_path? Check the EEXIST error checked by
+     * xe_watch a bit further below in this function.
+     */
 
-	/*
-	 * Finally, watch the front-end path in XenStore for changes, i.e.
-	 * /local/domain/<domid>/device/vbd/<devname>/state After this, we
-	 * wait for the front-end to switch state to continue with the
-	 * initialisation.
-	 */
-	if (asprintf(&device->frontend_state_path, "%s/state",
-				device->frontend_path) == -1) {
-		/* TODO log error */
-		err = -errno;
-		goto out;
-	}
-	/*
-	 * FIXME Handle gracefully.
-	 */
-	ASSERT(device->frontend_state_path);
+    /*
+     * Get the front-end path from XenStore. We need this to talk to
+     * the front-end.
+     */
+    if (!(device->frontend_path = tapback_device_read(device,
+                    "frontend"))) {
+        err = -errno;
+        WARN("failed to read front-end path: %s\n", strerror(-err));
+        goto out;
+    }
 
-	/*
-	 * We use the same token for all front-end watches. We don't have
-	 * to use a unique token for each front-end watch because when a
-	 * front-end watch fires we are given the XenStore path that
-	 * changed.
-	 */
-	if (!xs_watch(blktap3_daemon.xs, device->frontend_state_path,
-				BLKTAP3_FRONTEND_TOKEN)) {
-		if (errno == EEXIST)
-			err = 0;
-		else {
-			err = -errno;
-			goto out;
-		}
-	}
+    /*
+     * Finally, watch the front-end path in XenStore for changes, i.e.
+     * /local/domain/<domid>/device/vbd/<devname>/state After this, we
+     * wait for the front-end to switch state to continue with the
+     * initialisation.
+     */
+    if (asprintf(&device->frontend_state_path, "%s/state",
+                device->frontend_path) == -1) {
+        /* TODO log error */
+        err = -errno;
+        goto out;
+    }
+
+    /*
+     * We use the same token for all front-end watches. We don't have
+     * to use a unique token for each front-end watch because when a
+     * front-end watch fires we are given the XenStore path that
+     * changed.
+     */
+    if (!xs_watch(blktap3_daemon.xs, device->frontend_state_path,
+                BLKTAP3_FRONTEND_TOKEN)) {
+        err = -errno;
+        goto out;
+    }
 out:
-	if (err) {
-		free(device->frontend_path);
-		device->frontend_path = NULL;
-		free(device->frontend_state_path);
-		device->frontend_state_path = NULL;
-	}
-	return err;
+    if (err) {
+        free(device->frontend_path);
+        device->frontend_path = NULL;
+        free(device->frontend_state_path);
+        device->frontend_state_path = NULL;
+    }
+    return err;
 }
 
 /**
@@ -337,7 +383,7 @@ tapback_backend_probe_device(const domid_t domid, const char * const devname,
 		const char *comp)
 {
     bool should_exist = false, create = false, remove = false;
-	int err = 0;
+    int err = 0;
     vbd_t *device = NULL;
     char * s = NULL;
 
@@ -360,7 +406,7 @@ tapback_backend_probe_device(const domid_t domid, const char * const devname,
             device->domid == domid && !strcmp(device->name, devname));
 
     /*
-	 * If XenStore says that the device should exist but it's not in our device 
+     * If XenStore says that the device should exist but it's not in our device
      * list, we must create it. If it's the other way round, this is a removal.
      */
     remove = device && !should_exist;
@@ -384,75 +430,75 @@ tapback_backend_probe_device(const domid_t domid, const char * const devname,
             return err;
         }
 
-		/*
-		 * FIXME Should get this from tapback_backend_create_device.
-		 */
-		tapback_backend_find_device(device,
-            device->domid == domid && !strcmp(device->name, devname));
+        /*
+         * TODO Should get this from tapback_backend_create_device.
+         */
+        tapback_backend_find_device(device,
+                device->domid == domid && !strcmp(device->name, devname));
 
-		/*
-		 * FIXME If the tapback daemon has just been restarted, we need to
-		 * re-act upon all interesting XenStore keys.
-		 */
-		err = physical_device(device);
-		if (err) {
-			/*
-			 * FIXME Clean up (e.g. free device). Include more information in
-			 * the message.
-			 */
-			if (err == -ENOENT)
-				err = 0;
-			else {
-				WARN("error initialising device: %s\n", strerror(-err));
-				goto out;
-			}
-		}
-		err = frontend(device);
-		if (err) {
-			/*
-			 * FIXME Clean up (e.g. free device). Include more information in
-			 * the message.
-			 */
-			if (err == -ENOENT)
-				err = 0;
-			else
-				WARN("error initialising device: %s\n", strerror(-err));
-			goto out;
-		}
-		err = -tapback_backend_handle_otherend_watch(
-				device->frontend_state_path);
-		if (err) {
-			/*
-			 * FIXME Clean up errors
-			 */
-			if (err == -ENOENT)
-				err = 0;
-			else
-				WARN("error running the Xenbus protocol: %s\n",
-						strerror(-err));
-			goto out;
-		}
-	}
+        /*
+         * XXX If the tapback daemon has just been restarted, we need to
+         * re-act upon all interesting XenStore keys.
+         */
+        err = physical_device(device);
+        if (err) {
+            if (err == -ENOENT)
+                err = 0;
+            else {
+                WARN("%d/%s: failed to retrieve physical device information: "
+                        "%s\n", domid, devname, strerror(-err));
+                goto out;
+            }
+        }
+        err = frontend(device);
+        if (err) {
+            if (err == -ENOENT)
+                err = 0;
+            else
+                WARN("%d/%s: failed to watch front-end path: %s\n", domid,
+                        devname, strerror(-err));
+            goto out;
+        }
+        err = -tapback_backend_handle_otherend_watch(
+                device->frontend_state_path);
+        if (err) {
+            /*
+             * FIXME Must undo call to frontend. Must also undo
+             * physical_device (if successfully ran).
+             */
+            if (err == -ENOENT)
+                err = 0;
+            else
+                WARN("%d/%s: error running the Xenbus protocol: %s\n", domid,
+                        devname, strerror(-err));
+            goto out;
+        }
+    }
 
-	/*
-	 * Examine what happened to the XenStore component on which the watch
-	 * triggered.
-	 * TODO Why not set a watch on these paths when creating the device?
-	 */
-	if (!remove && comp) {
-		/*
-		 * Replace this with a hash table mapping XenStore keys to callbacks.
-		 */
-		if (!strcmp(PHYS_DEV_KEY, comp)) {
-			err = physical_device(device);
-		} else if (!strcmp("frontend", comp)) {
-			err = frontend(device);
-		} else {
-			DBG("ignoring '%s'\n", comp);
-		}
-	}
+    /*
+     * Examine what happened to the XenStore component on which the watch
+     * triggered.
+     * TODO Why not set a watch on these paths when creating the device?
+     */
+    if (!remove && comp) {
+        /*
+         * Replace this with a hash table mapping XenStore keys to callbacks.
+         */
+        if (!strcmp(PHYS_DEV_KEY, comp)) {
+            err = physical_device(device);
+        } else if (!strcmp("frontend", comp)) {
+            err = frontend(device);
+        } else {
+            DBG("ignoring '%s'\n", comp);
+        }
+    }
 
 out:
+    if (err) {
+        if (create && device) {
+            tapback_backend_destroy_device(device);
+        }
+    }
     return err;
 }
 
@@ -479,9 +525,9 @@ tapback_backend_scan(void)
      */
 
     tapback_backend_for_each_device(device, next) {
-		/*
-		 * FIXME check that there is no compoment.
-		 */
+        /*
+         * FIXME check that there is no compoment.
+         */
         err = tapback_backend_probe_device(device->domid, device->name, NULL);
         if (err) {
             WARN("error probing device %s of domain %d: %s\n", device->name,
@@ -543,9 +589,9 @@ tapback_backend_scan(void)
          * Probe each device.
          */
         for (j = 0; j < m; j++) {
-			/*
-			 * FIXME check that there is no compoment.
-			 */
+            /*
+             * FIXME check that there is no compoment.
+             */
             err = tapback_backend_probe_device(domid, sub[j], NULL);
             if (err) {
                 WARN("error probing device %s of domain %d: %s\n", sub[j],
@@ -570,9 +616,9 @@ tapback_backend_handle_backend_watch(char * const path)
 
     ASSERT(path);
 
-	/*
-	 * path is something like "backend/vbd/domid/devid"
-	 */
+    /*
+     * path is something like "backend/vbd/domid/devid"
+     */
 
     s = strtok(path, "/");
     ASSERT(!strcmp(s, XENSTORE_BACKEND));

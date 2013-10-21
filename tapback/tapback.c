@@ -127,6 +127,9 @@ again:
         err = -errno;
         /*
          * This is OK according to xs_transaction_end's semantics.
+		 *
+		 * FIXME We should undo whatever we did as something might have
+		 * changed. This is very difficult.
          */
         if (EAGAIN == errno) {
 			DBG("restarting transaction\n");
@@ -162,7 +165,11 @@ signal_cb(int signum) {
 
     ASSERT(signum == SIGINT || signum == SIGTERM);
 
-    /* TODO Check whether there are active VBDs? */
+	if (!list_empty(&blktap3_daemon.devices)) {
+		WARN("refusing to shutdown while there are active VBDs\n");
+		return;
+	}
+
     tapback_backend_destroy();
     exit(0);
 }

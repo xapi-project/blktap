@@ -82,12 +82,17 @@ blkback_connect_tap(vbd_t * const bdev,
     int err = 0;
     char *proto_str = NULL;
     char *persistent_grants_str = NULL;
-	bool do_connect = true;
 
     ASSERT(bdev);
 
-    if (bdev->connected) {
+    if (bdev->connected)
+        /*
+         * TODO Fail with EALREADY?
+         */
         DBG("front-end already connected to tapdisk.\n");
+    else if (!bdev->tap) {
+        DBG("no tapdisk yet\n");
+        err = EAGAIN;
     } else {
         /*
          * TODO How can we make sure we're not missing a node written by the
@@ -95,6 +100,7 @@ blkback_connect_tap(vbd_t * const bdev,
          */
         int nr_pages = 0, proto = 0, order = 0;
         bool persistent_grants = false;
+    	bool do_connect = true;
 
         if (1 != tapback_device_scanf_otherend(bdev, "ring-page-order", "%d",
                     &order))
@@ -115,6 +121,10 @@ blkback_connect_tap(vbd_t * const bdev,
             int i = 0;
             /*
              * +10 is for INT_MAX, +1 for NULL termination
+             */
+
+            /*
+             * TODO include domid/devid in the error messages
              */
             static const size_t len = sizeof(RING_REF) + 10 + 1;
             char ring_ref[len];
@@ -196,63 +206,67 @@ blkback_connect_tap(vbd_t * const bdev,
 		 *
 		 * FIXME write sectors, sector size etc. to xenstore before connecting?
          */
-		if ((err = tap_ctl_connect_xenblkif(bdev->tap.pid, bdev->domid,
+		if ((err = -tap_ctl_connect_xenblkif(bdev->tap->pid, bdev->domid,
 						bdev->devid, gref, order, port, proto, NULL,
 						bdev->minor))) {
-			if (err == -EALREADY) {
-				INFO("tapdisk already connected to the shared ring\n");
+			if (err == EALREADY) {
+				INFO("%d/%d: tapdisk[%d] already connected to the shared "
+						"ring\n", bdev->domid, bdev->devid, bdev->tap->pid);
 				do_connect = false;
 				err = 0;
 			} else {
-	            WARN("tapdisk failed to connect to the shared ring: %s\n",
+	            WARN("%d/%d: tapdisk[%d] failed to connect to the shared "
+						"ring: %s\n", bdev->domid, bdev->devid, bdev->tap->pid,
 		                strerror(-err));
 			    goto fail;
 			}
         } else {
-	        DBG("tapdisk pid=%d, minor=%d connected to shared ring\n",
-		            bdev->tap.pid, bdev->minor);
+	        DBG("%d/%d: tapdisk[%d] connected to shared ring\n",
+		            bdev->domid, bdev->devid, bdev->tap->pid);
 		}
 
         bdev->connected = true;
-    }
 
-	if (do_connect) {
-		/*
-		 * Write the number of sectors, sector size, and info to the back-end
-		 * path in XenStore so that the front-end creates a VBD with the
-		 * appropriate characteristics.
-		 */
-		if ((err = tapback_device_printf(bdev, "sector-size", true, "%u",
-						bdev->sector_size))) {
-			WARN("Failed to write sector-size.\n");
-			goto fail;
-		}
+        if (do_connect) {
+            /*
+             * Write the number of sectors, sector size, and info to the
+             * back-end path in XenStore so that the front-end creates a VBD
+             * with the appropriate characteristics.
+             */
+            if ((err = tapback_device_printf(bdev, "sector-size", true, "%u",
+                            bdev->sector_size))) {
+                WARN("Failed to write sector-size.\n");
+                goto fail;
+            }
 
-		if ((err = tapback_device_printf(bdev, "sectors", true, "%llu",
-						bdev->sectors))) {
-			WARN("Failed to write sectors.\n");
-			goto fail;
-		}
+            if ((err = tapback_device_printf(bdev, "sectors", true, "%llu",
+                            bdev->sectors))) {
+                WARN("Failed to write sectors.\n");
+                goto fail;
+            }
 
-		if ((err = tapback_device_printf(bdev, "info", true, "%u",
-						bdev->info))) {
-			WARN("Failed to write info.\n");
-			goto fail;
-		}
+            if ((err = tapback_device_printf(bdev, "info", true, "%u",
+                            bdev->info))) {
+                WARN("Failed to write info.\n");
+                goto fail;
+            }
 
-		if ((err = tapback_device_switch_state(bdev, XenbusStateConnected))) {
-			WARN("failed to switch back-end state to connected: %s\n",
-					strerror(err));
-		}
+            if ((err = tapback_device_switch_state(bdev,
+                            XenbusStateConnected))) {
+                WARN("failed to switch back-end state to connected: %s\n",
+                        strerror(err));
+            }
+        }
 	}
 
 fail:
     if (err && bdev->connected) {
-        const int err2 = -tap_ctl_disconnect_xenblkif(bdev->tap.pid,
+        const int err2 = -tap_ctl_disconnect_xenblkif(bdev->tap->pid,
                 bdev->domid, bdev->devid, NULL);
         if (err2) {
-            WARN("error disconnecting tapdisk from the shared ring (error "
-                    "ignored): %s\n", strerror(err2));
+            WARN("%d/%d: error disconnecting tapdisk[%d] from the shared "
+                    "ring (error ignored): %s\n", bdev->domid, bdev->devid,
+                    bdev->tap->pid, strerror(err2));
         }
 
         bdev->connected = false;
@@ -268,6 +282,8 @@ fail:
 /**
  * Removes the XenStore paths XAPI waits for to complete the VM.shutdown
  * operation.
+ *
+ * FIXME Run the script instead?
  */
 static int
 rm_hotplug_paths(vbd_t * const bdev) {
@@ -342,10 +358,12 @@ backend_close(vbd_t * const bdev,
         return 0;
     }
 
-    DBG("disconnecting %d/%d from tapdisk[%d] vbd=%d\n",
-        bdev->domid, bdev->devid, bdev->tap.pid, bdev->minor);
+    ASSERT(bdev->tap);
 
-    if ((err = -tap_ctl_disconnect_xenblkif(bdev->tap.pid, bdev->domid,
+    DBG("%d/%d: disconnecting from tapdisk[%d] minor=%d\n",
+        bdev->domid, bdev->devid, bdev->tap->pid, bdev->minor);
+
+    if ((err = -tap_ctl_disconnect_xenblkif(bdev->tap->pid, bdev->domid,
                     bdev->devid, NULL))) {
 
         /*
@@ -407,7 +425,7 @@ blkback_frontend_changed(vbd_t * const xbdev, const XenbusState state)
             = {tapback_device_switch_state, XenbusStateInitWait},
         [XenbusStateInitWait] = {NULL, 0},
 
-        /* blkback_connect_tap swicthes back-end state to Connected */
+        /* blkback_connect_tap switches back-end state to Connected */
         [XenbusStateInitialised] = {blkback_connect_tap, 0},
         [XenbusStateConnected] = {blkback_connect_tap, 0},
 

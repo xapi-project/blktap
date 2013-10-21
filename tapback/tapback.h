@@ -45,7 +45,8 @@ void (*tapback_vlog) (int prio, const char *fmt, va_list ap);
 
 #define DBG(_fmt, _args...)  tapback_log(LOG_DEBUG, "%s:%d "_fmt, __FILE__, \
         __LINE__, ##_args)
-#define INFO(_fmt, _args...) tapback_log(LOG_INFO, _fmt, ##_args)
+#define INFO(_fmt, _args...) tapback_log(LOG_INFO, "%s:%d " _fmt, __FILE__, \
+		__LINE__, ##_args)
 #define WARN(_fmt, _args...) tapback_log(LOG_WARNING, "%s:%d "_fmt, __FILE__, \
         __LINE__, ##_args)
 
@@ -134,7 +135,7 @@ typedef struct vbd {
      * need this until the end of the VBD's lifetime in order to disconnect
      * the tapdisk from the shared ring.
      */
-    tap_list_t tap;
+    tap_list_t *tap;
 
     /*
      * XXX We keep sector_size, sectors, and info because we need to
@@ -157,6 +158,7 @@ typedef struct vbd {
      */
     unsigned int info;
 
+    int major;
 	int minor;
 
 } vbd_t;
