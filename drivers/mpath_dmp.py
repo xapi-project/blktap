@@ -29,6 +29,7 @@ import mpp_luncheck
 import mpp_mpathutil
 import devscan
 import re
+import wwid_conf
 
 iscsi_mpath_file = "/etc/iscsi/iscsid-mpath.conf"
 iscsi_default_file = "/etc/iscsi/iscsid-default.conf"
@@ -114,6 +115,20 @@ def _resetDMP(sid,explicit_unmap=False,delete_nodes=False):
 # throw an exception. Catch it and ignore it.
     if explicit_unmap:
         util.SMlog("Explicit unmap")
+
+        # Remove map from conf file, if any
+        try:
+            wwid_conf.edit_wwid(sid, True)
+        except:
+            util.SMlog("WARNING: exception raised while attempting to"
+                       " modify multipath.conf")
+        try:
+            mpath_cli.reconfigure()
+        except:
+            util.SMlog("WARNING: exception raised while attempting to"
+                       " reconfigure")
+        time.sleep(5)
+
         devices = mpath_cli.list_paths(sid)
 
         try:
@@ -164,6 +179,22 @@ def map_by_scsibus(sid,npaths=0):
         # how many devices there ought to be, tell multipathd about
         # the paths, and return.
         if(len(devices)>=npaths or npaths==0):
+            # Enable this device's sid: it could be blacklisted
+            # We expect devices to be blacklisted according to their
+            # wwid only. Checking the first one is sufficient
+            if wwid_conf.is_blacklisted(devices[0]):
+                try:
+                    wwid_conf.edit_wwid(sid)
+                except:
+                    util.SMlog("WARNING: exception raised while attempting to"
+                               " modify multipath.conf")
+                try:
+                    mpath_cli.reconfigure()
+                except:
+                    util.SMlog("WARNING: exception raised while attempting to"
+                               " reconfigure")
+                time.sleep(5)
+
             __map_explicit(devices)
             return
 
