@@ -109,8 +109,8 @@ class SHMVDI(VDI.VDI):
 
     def __init__(self, mysr, uuid, filename):
         self.uuid = uuid
-        VDI.VDI.__init__(self, mysr, None)
         self.path = os.path.join(mysr.dconf['location'], filename)
+        VDI.VDI.__init__(self, mysr, None)
         self.label = filename
         self.location = filename
         self.vdi_type = 'file'

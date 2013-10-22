@@ -423,8 +423,8 @@ class ISOVDI(VDI.VDI):
             pass
 
     def __init__(self, mysr, filename):
-        VDI.VDI.__init__(self, mysr, None)
         self.path = os.path.join(mysr.path, filename)
+        VDI.VDI.__init__(self, mysr, None)
         self.location = filename
         self.filename = filename
         self.read_only = True                

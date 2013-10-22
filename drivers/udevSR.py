@@ -114,8 +114,8 @@ def read_whole_file(filename):
 
 class udevVDI(VDI.VDI):
     def __init__(self, sr, location):
-        VDI.VDI.__init__(self, sr, None)
         self.location = location
+        VDI.VDI.__init__(self, sr, None)
         
     def load(self, location):
         self.path = self.location
