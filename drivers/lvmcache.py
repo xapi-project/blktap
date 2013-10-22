@@ -217,8 +217,9 @@ class LVMCache:
     @lazyInit
     def setReadonly(self, lvName, readonly):
         path = self._getPath(lvName)
-        lvutil.setReadonly(path, readonly)
-        self.lvs[lvName].readonly = readonly
+        if self.lvs[lvName].readonly != readonly:
+            lvutil.setReadonly(path, readonly)
+            self.lvs[lvName].readonly = readonly
 
     @lazyInit
     def changeOpen(self, lvName, inc):
