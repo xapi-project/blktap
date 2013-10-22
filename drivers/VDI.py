@@ -76,11 +76,20 @@ class VDI(object):
     """
     def __init__(self, sr, uuid):
         self.sr = sr
-	# Don't set either the UUID or location to None- no good can
-	# ever come of this.
-	if uuid <> None:
-		self.uuid = uuid
-		self.location = uuid
+        # Don't set either the UUID or location to None- no good can
+        # ever come of this.
+        if uuid <> None:
+            self.uuid = uuid
+            self.location = uuid
+            self.path = None
+        else:
+            # We assume that children class initializors calling without
+            # uuid will set these attributes themselves somewhere. They
+            # are VDIs whose physical paths/locations have no direct
+            # connections with their UUID strings (e.g. ISOSR, udevSR,
+            # SHMSR). So we avoid overwriting these attributes here.
+            pass
+
         # deliberately not initialised self.sm_config so that it is
         # ommitted from the XML output
 
