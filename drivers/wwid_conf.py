@@ -1,0 +1,102 @@
+#!/usr/bin/python
+#
+# Copyright (C) Citrix Systems Inc.
+#
+# This program is free software; you can redistribute it and/or modify 
+# it under the terms of the GNU Lesser General Public License as published 
+# by the Free Software Foundation; version 2.1 only.
+#
+# This program is distributed in the hope that it will be useful, 
+# but WITHOUT ANY WARRANTY; without even the implied warranty of 
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the 
+# GNU Lesser General Public License for more details.
+#
+# You should have received a copy of the GNU Lesser General Public License
+# along with this program; if not, write to the Free Software Foundation, Inc.,
+# 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
+#
+# Manipulation utilities for multipath.conf
+#
+
+
+import fileinput, shutil, sys, re
+import os, subprocess
+import util
+
+# We always expect this file.
+# It must be a regular file pointed by /etc/multipath.conf
+CONF_FILE = "/etc/multipath.xenserver/multipath.conf"
+BELIST_TAG = "blacklist_exceptions"
+
+
+def edit_wwid(wwid, remove=False):
+    """Add a wwid to the list of exceptions or remove if
+    remove is set to 1.
+
+    """
+
+    tmp_file = CONF_FILE+"~"
+    filt_regex = re.compile('^\s*%s\s*{'%BELIST_TAG)
+    wwid_regex = re.compile('^\s*wwid\s+\"%s\"'%wwid)
+
+    try:
+        shutil.copy2(CONF_FILE, tmp_file)
+    except:
+        util.SMlog("Failed to create temp file %s" %(tmp_file))
+        raise
+
+    add_mode = True
+    for line in fileinput.input(tmp_file, inplace=1):
+        if add_mode:
+            print line,
+        else:
+            if wwid_regex.match(line):
+                add_mode = True
+            else:
+                print line,
+            continue
+            
+        if filt_regex.match(line):
+            if remove:
+                # looking for the line to remove
+                add_mode = False
+                continue
+            else:
+	        print "\twwid \"%s\""%wwid
+
+    shutil.move(tmp_file, CONF_FILE)
+
+def is_blacklisted(dev):
+    """This function returns 0 if the device is not blacklisted according
+    to multipath.conf rules.
+
+    It cannot be used to check the current daemon rules because it
+    could be running with an old configuration file in memory
+
+    dev -- it is any string accepted by "multipath -c". A full path
+    is sufficient
+
+    """
+
+    (rc,stdout,stderr) = util.doexec(['/sbin/multipath','-c',dev])
+
+    # If the devices is truly blacklisted, there is nothing on stdout.
+    # This is a very fragile mechanism and keeps changing.
+    # What we want is a method to tell immediately if a device is
+    # blacklisted according only to configuration file rules regardless
+    # of daemon in-memory configuration.
+    # Current "multipath -c" takes into account multipath/wwids file
+    # but we do not care about it.
+    if len(stdout) != 0:
+        rc = 0
+    return rc != False
+
+
+def check_conf_file():
+    (rc,stdout,stderr) = util.doexec(['/sbin/multipath','-h'])
+    # Ugly way to check for malformed conf file
+    if len(stdout):
+        util.SMlog("Malformed multipath conf file")
+        return 1
+    return 0
+

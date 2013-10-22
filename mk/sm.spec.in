@@ -252,6 +252,9 @@ cp -f /etc/lvm/lvm.conf.orig /etc/lvm/lvm.conf || exit $?
 /opt/xensource/sm/xs_errors.py
 /opt/xensource/sm/xs_errors.pyc
 /opt/xensource/sm/xs_errors.pyo
+/opt/xensource/sm/wwid_conf.py
+/opt/xensource/sm/wwid_conf.pyc
+/opt/xensource/sm/wwid_conf.pyo
 /sbin/mpathutil
 /etc/rc.d/init.d/sm-multipath
 %config /etc/udev/rules.d/40-multipath.rules
