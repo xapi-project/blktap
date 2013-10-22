@@ -21,8 +21,10 @@
 
 import fileinput, shutil, sys, re
 import os, subprocess
-import util
+import util, lock
 
+LOCK_TYPE_HOST = "host"
+LOCK_NS = "multipath.conf"
 # We always expect this file.
 # It must be a regular file pointed by /etc/multipath.conf
 CONF_FILE = "/etc/multipath.xenserver/multipath.conf"
@@ -38,6 +40,9 @@ def edit_wwid(wwid, remove=False):
     tmp_file = CONF_FILE+"~"
     filt_regex = re.compile('^\s*%s\s*{'%BELIST_TAG)
     wwid_regex = re.compile('^\s*wwid\s+\"%s\"'%wwid)
+
+    conflock = lock.Lock(LOCK_TYPE_HOST, LOCK_NS)
+    conflock.acquire()
 
     try:
         shutil.copy2(CONF_FILE, tmp_file)
