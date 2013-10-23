@@ -66,7 +66,7 @@ tapback_device_switch_state(vbd_t * const device,
  * re-write the sector size etc. in XenStore for an already connected VBD?
  * TODO rename function (no blkback, not only connects to tapdisk)
  *
- * @param xbdev the VBD the tapdisk should connect to
+ * @param bdev the VBD the tapdisk should connect to
  * @param state unused
  * @returns 0 on success, an error code otherwise
  *
@@ -85,12 +85,21 @@ blkback_connect_tap(vbd_t * const bdev,
 
     ASSERT(bdev);
 
-    if (bdev->connected)
+    if (bdev->connected) {
         /*
          * TODO Fail with EALREADY?
          */
         DBG("front-end already connected to tapdisk.\n");
-    else if (!bdev->tap) {
+
+        /*
+         * FIXME just testing
+         */
+        if ((err = tapback_device_switch_state(bdev,
+                        XenbusStateConnected))) {
+            WARN("failed to switch back-end state to connected: %s\n",
+                    strerror(err));
+        }
+    } else if (!bdev->tap) {
         DBG("no tapdisk yet\n");
         err = EAGAIN;
     } else {

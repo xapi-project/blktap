@@ -43,6 +43,9 @@
 void tapback_log(int prio, const char *fmt, ...);
 void (*tapback_vlog) (int prio, const char *fmt, va_list ap);
 
+/*
+ * TODO include timestamps
+ */
 #define DBG(_fmt, _args...)  tapback_log(LOG_DEBUG, "%s:%d "_fmt, __FILE__, \
         __LINE__, ##_args)
 #define INFO(_fmt, _args...) tapback_log(LOG_INFO, "%s:%d " _fmt, __FILE__, \
