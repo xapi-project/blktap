@@ -352,35 +352,35 @@ backend_close(vbd_t * const bdev,
 
     if (!bdev->connected) {
         /*
-         * TODO Is this safe? Shouldn't we report an error?
+         * This VBD might be a CD-ROM device, or a disk device that never went
+         * to state Connected.
          */
         DBG("tapdisk not connected\n");
-        return 0;
-    }
+    } else {
+        ASSERT(bdev->tap);
 
-    ASSERT(bdev->tap);
+        DBG("%d/%d: disconnecting from tapdisk[%d] minor=%d\n",
+            bdev->domid, bdev->devid, bdev->tap->pid, bdev->minor);
 
-    DBG("%d/%d: disconnecting from tapdisk[%d] minor=%d\n",
-        bdev->domid, bdev->devid, bdev->tap->pid, bdev->minor);
+        if ((err = -tap_ctl_disconnect_xenblkif(bdev->tap->pid, bdev->domid,
+                        bdev->devid, NULL))) {
 
-    if ((err = -tap_ctl_disconnect_xenblkif(bdev->tap->pid, bdev->domid,
-                    bdev->devid, NULL))) {
-
-        /*
-         * TODO I don't see how tap_ctl_disconnect_xenblkif can return
-         * ESRCH, so this is probably wrong. Probably there's another error
-         * code indicating that there's no tapdisk process.
-         */
-        if (errno == ESRCH) {
-            WARN("tapdisk not running\n");
-        } else {
-            WARN("error disconnecting tapdisk from front-end: %s\n",
-                    strerror(err));
-            return err;
+            /*
+             * TODO I don't see how tap_ctl_disconnect_xenblkif can return
+             * ESRCH, so this is probably wrong. Probably there's another error
+             * code indicating that there's no tapdisk process.
+             */
+            if (errno == ESRCH) {
+                WARN("tapdisk not running\n");
+            } else {
+                WARN("error disconnecting tapdisk from front-end: %s\n",
+                        strerror(err));
+                return err;
+            }
         }
-    }
 
-    bdev->connected = false;
+        bdev->connected = false;
+    }
 
 	err = rm_hotplug_paths(bdev);
 	if (err) {
