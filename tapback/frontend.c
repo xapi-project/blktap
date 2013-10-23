@@ -289,13 +289,10 @@ fail:
 }
 
 /**
- * Removes the XenStore paths XAPI waits for to complete the VM.shutdown
- * operation.
- *
- * FIXME Run the script instead?
+ * Removes the Xenbus back-end node.
  */
 static int
-rm_hotplug_paths(vbd_t * const bdev) {
+xenbus_rm_backend(vbd_t * const bdev) {
 
 	int err = 0;
 	char *path = NULL;
@@ -303,24 +300,7 @@ rm_hotplug_paths(vbd_t * const bdev) {
 
 	ASSERT(bdev);
 
-	err = asprintf(&path, "/xapi/%d/hotplug/%s/%d/hotplug", bdev->domid,
-			BLKTAP3_BACKEND_NAME, bdev->devid);
-	if (err == -1) {
-		err = errno;
-		WARN("failed to asprintf: %s\n", strerror(err));
-		return err;
-	}
-	err = 0;
-	result = xs_rm(blktap3_daemon.xs, blktap3_daemon.xst, path);
-	if (!result) {
-		err = errno;
-		WARN("failed to remove %s: %s\n", path, strerror(err));
-	}
-	free(path);
-	if (err)
-		return err;
-
-	err = asprintf(&path, "%s/%s/%d/%d/hotplug-status", XENSTORE_BACKEND,
+	err = asprintf(&path, "%s/%s/%d/%d", XENSTORE_BACKEND,
 			BLKTAP3_BACKEND_NAME, bdev->domid, bdev->devid);
 	if (err == -1) {
 		err = errno;
@@ -390,12 +370,6 @@ backend_close(vbd_t * const bdev,
 
         bdev->connected = false;
     }
-
-	err = rm_hotplug_paths(bdev);
-	if (err) {
-		WARN("failed to remove XAPI hotplug paths: %s\n", strerror(err));
-		return err;
-	}
 
     return tapback_device_switch_state(bdev, XenbusStateClosed);
 }
@@ -504,7 +478,7 @@ tapback_backend_handle_otherend_watch(const char * const path)
 		 * to state Closed because of a restarted transaction.
 		 */
 		if (err == ENOENT) {
-			err = rm_hotplug_paths(device);
+			err = xenbus_rm_backend(device);
 			if (err && err != ENOENT) {
 				WARN("failed to remove XAPI hotplug paths: %s\n",
 						strerror(err));
