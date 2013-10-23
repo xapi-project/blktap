@@ -53,15 +53,15 @@ struct _blktap3_daemon blktap3_daemon;
 char *XenbusState2str(const XenbusState xbs)
 {
     static char * const str[] = {
-        [XenbusStateUnknown] = "unknown",
-        [XenbusStateInitialising] = "initialising",
-        [XenbusStateInitWait] = "init wait",
-        [XenbusStateInitialised] = "initialised",
-        [XenbusStateConnected] = "connected",
-        [XenbusStateClosing] = "closing",
-        [XenbusStateClosed] = "closed",
-        [XenbusStateReconfiguring] = "reconfiguring",
-        [XenbusStateReconfigured] = "reconfigured"
+        [XenbusStateUnknown] = "0 (unknown)",
+        [XenbusStateInitialising] = "1 (initialising)",
+        [XenbusStateInitWait] = "2 (init wait)",
+        [XenbusStateInitialised] = "3 (initialised)",
+        [XenbusStateConnected] = "4 (connected)",
+        [XenbusStateClosing] = "5 (closing)",
+        [XenbusStateClosed] = "6 (closed)",
+        [XenbusStateReconfiguring] = "7 (reconfiguring)",
+        [XenbusStateReconfigured] = "8 (reconfigured)"
     };
     return str[xbs];
 }
