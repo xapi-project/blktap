@@ -9,7 +9,7 @@ PYTHON_INCLUDE_DEFAULT := $(dir $(shell find /usr/include/ -maxdepth 2 -path \*/
 PYTHON_INCLUDE ?= $(PYTHON_INCLUDE_DEFAULT)
 
 CFLAGS ?= -O2
-CFLAGS += -I$(PYTHON_INCLUDE) -I$(XS_INCLUDE)
+CFLAGS += -I$(PYTHON_INCLUDE) -I$(XS_INCLUDE) -fPIC
 
 SWIG ?= swig
 
