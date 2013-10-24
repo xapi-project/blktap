@@ -473,15 +473,13 @@ tapback_backend_handle_otherend_watch(const char * const path)
     if (!s) {
         err = errno;
 		/*
-		 * If the state path got removed, we must re-try removing the XAPI
-		 * hotplug paths because they might not got removed when we switched
-		 * to state Closed because of a restarted transaction.
+         * Remove the back-end.
 		 */
 		if (err == ENOENT) {
 			err = xenbus_rm_backend(device);
 			if (err && err != ENOENT) {
-				WARN("failed to remove XAPI hotplug paths: %s\n",
-						strerror(err));
+				WARN("%d/%s: failed to remove the back-end node: %s\n",
+						device->domid, device->name, strerror(err));
 			} else {
 				err = 0;
 				goto out;
