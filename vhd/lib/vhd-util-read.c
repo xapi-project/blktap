@@ -365,7 +365,7 @@ vhd_print_bat(vhd_context_t *vhd, uint64_t block, int count, int hex)
 	if (check_block_range(vhd, block + count, hex))
 		return -ERANGE;
 
-	for (i = 0; i < count; i++) {
+	for (i = 0; i < count && i < vhd->bat.entries; i++) {
 		cur    = block + i;
 		offset = vhd->bat.bat[cur];
 
