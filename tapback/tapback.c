@@ -87,14 +87,14 @@ tapback_read_watch(void)
      */
 again:
     if (!(blktap3_daemon.xst = xs_transaction_start(blktap3_daemon.xs))) {
-        WARN("error starting transaction\n");
+        WARN(NULL, "error starting transaction\n");
         goto fail;
     }
 
 	{
 		char *s = tapback_xs_read(blktap3_daemon.xs, blktap3_daemon.xst, "%s",
 				path);
-	    DBG("%s -> \'%s\'\n", path, s ? s : "removed");
+	    DBG(NULL, "%s -> \'%s\'\n", path, s ? s : "removed");
 		free(s);
 	}
 
@@ -109,7 +109,7 @@ again:
 	} else if(!strcmp(token, FORCED_HVM_SHUTDOWN_TOKEN)) {
 
     } else {
-        WARN("invalid token \'%s\'\n", token);
+        WARN(NULL, "invalid token \'%s\'\n", token);
         err = EINVAL;
     }
 
@@ -117,7 +117,7 @@ again:
     if (_abort) {
         if (err != ENOENT) {
             /* TODO Some functions return +err, others -err */
-            DBG("aborting transaction: %s\n", strerror(abs(err)));
+            DBG(NULL, "aborting transaction: %s\n", strerror(abs(err)));
         }
     }
 
@@ -132,10 +132,10 @@ again:
 		 * changed. This is very difficult.
          */
         if (EAGAIN == errno) {
-			DBG("restarting transaction\n");
+			DBG(NULL, "restarting transaction\n");
             goto again;
 		}
-        DBG("error ending transaction: %s\n", strerror(err));
+        DBG(NULL, "error ending transaction: %s\n", strerror(err));
     }
 
 fail:
@@ -156,7 +156,8 @@ tapback_backend_destroy(void)
     err = unlink(TAPBACK_CTL_SOCK_PATH);
     if (err == -1 && errno != ENOENT) {
         err = errno;
-        WARN("failed to remove %s: %s\n", TAPBACK_CTL_SOCK_PATH, strerror(err));
+        WARN(NULL, "failed to remove %s: %s\n", TAPBACK_CTL_SOCK_PATH,
+				strerror(err));
     }
 }
 
@@ -166,7 +167,7 @@ signal_cb(int signum) {
     ASSERT(signum == SIGINT || signum == SIGTERM);
 
 	if (!list_empty(&blktap3_daemon.devices)) {
-		WARN("refusing to shutdown while there are active VBDs\n");
+		WARN(NULL, "refusing to shutdown while there are active VBDs\n");
 		return;
 	}
 
@@ -207,7 +208,7 @@ tapback_backend_create(void)
 
     if (SIG_ERR == signal(SIGINT, signal_cb) ||
             SIG_ERR == signal(SIGTERM, signal_cb)) {
-        WARN("failed to register signal handlers\n");
+        WARN(NULL, "failed to register signal handlers\n");
         err = EINVAL;
         goto fail;
     }
@@ -220,7 +221,7 @@ tapback_backend_create(void)
     blktap3_daemon.ctrl_sock = socket(AF_UNIX, SOCK_STREAM, 0);
     if (blktap3_daemon.ctrl_sock == -1) {
         err = errno;
-        WARN("failed to create control socket: %s\n", strerror(errno));
+        WARN(NULL, "failed to create control socket: %s\n", strerror(errno));
         goto fail;
     }
     local.sun_family = AF_UNIX;
@@ -228,14 +229,14 @@ tapback_backend_create(void)
     err = unlink(local.sun_path);
     if (err && errno != ENOENT) {
         err = errno;
-        WARN("failed to remove %s: %s\n", local.sun_path, strerror(err));
+        WARN(NULL, "failed to remove %s: %s\n", local.sun_path, strerror(err));
         goto fail;
     }
     len = strlen(local.sun_path) + sizeof(local.sun_family);
     err = bind(blktap3_daemon.ctrl_sock, (struct sockaddr *)&local, len);
     if (err == -1) {
         err = errno;
-        WARN("failed to bind to %s: %s\n", local.sun_path, strerror(err));
+        WARN(NULL, "failed to bind to %s: %s\n", local.sun_path, strerror(err));
         goto fail;
     }
 
@@ -274,7 +275,7 @@ tapback_backend_run(void)
 
         if (FD_ISSET(fd, &rfds))
             tapback_read_watch();
-        DBG("--\n");
+        DBG(NULL, "--\n");
     } while (1);
 
     return err;
@@ -320,7 +321,7 @@ int main(int argc, char **argv)
     int err = 0;
 
 	if(access("/dev/xen/gntdev", F_OK ) == -1) {
-		WARN("grant device does not exist\n");
+		WARN(NULL, "grant device does not exist\n");
 		err = EINVAL;
 		goto fail;
 	}
@@ -370,7 +371,7 @@ int main(int argc, char **argv)
     }
 
 	if ((err = tapback_backend_create())) {
-        WARN("error creating blkback: %s\n", strerror(err));
+        WARN(NULL, "error creating blkback: %s\n", strerror(err));
         goto fail;
     }
 

@@ -54,7 +54,7 @@ tapback_backend_destroy_device(vbd_t * const device)
 {
     ASSERT(device);
 
-    DBG("removing device %d/%d\n", device->domid, device->devid);
+    DBG(device, "removing VBD\n");
 
     list_del(&device->backend_entry);
 
@@ -89,7 +89,7 @@ find_tapdisk(const int minor, tap_list_t *tap)
 
     err = tap_ctl_list(&list);
     if (err) {
-        WARN("error listing tapdisks: %s\n", strerror(-err));
+        WARN(NULL, "error listing tapdisks: %s\n", strerror(-err));
         goto out;
     }
 
@@ -104,7 +104,7 @@ find_tapdisk(const int minor, tap_list_t *tap)
         }
         tap_ctl_list_free(&list);
     } else
-        DBG("no tapdisks\n");
+        DBG(NULL, "no tapdisks\n");
 
 out:
     return err;
@@ -133,10 +133,10 @@ tapback_backend_create_device(const domid_t domid, const char * const name)
 
     ASSERT(name);
 
-    DBG("creating device %d/%s\n", domid, name);
+    DBG(NULL, "creating device %d/%s\n", domid, name);
 
     if (!(device = calloc(1, sizeof(*device)))) {
-        WARN("error allocating memory\n");
+        WARN(NULL, "error allocating memory\n");
         err = errno;
         goto out;
     }
@@ -176,7 +176,8 @@ out:
     free(s);
     free(s2);
     if (err) {
-        WARN("error creating device %d/%s: %s\n", domid, name, strerror(-err));
+        WARN(NULL, "%d/%s: error creating device: %s\n", domid, name,
+                strerror(-err));
         if (device)
             tapback_backend_destroy_device(device);
     }
@@ -209,7 +210,7 @@ physical_device(vbd_t *device) {
     s = tapback_device_read(device, PHYS_DEV_KEY);
     if (!s) {
         err = -errno;
-        WARN("failed to read the physical-device: %s\n",
+        WARN(device, "failed to read the physical-device: %s\n",
                 strerror(-err));
         goto out;
     }
@@ -219,28 +220,28 @@ physical_device(vbd_t *device) {
      */
     p = strtok(s, ":");
     if (!p) {
-        WARN("malformed physical device '%s'\n", s);
+        WARN(device, "malformed physical device '%s'\n", s);
         err = -EINVAL;
         goto out;
     }
     major = strtol(p, &end, 16);
     if (*end != 0 || end == p) {
-        WARN("malformed physical device '%s'\n", s);
+        WARN(device, "malformed physical device '%s'\n", s);
         err = -EINVAL;
         goto out;
     }
     p = strtok(NULL, ":");
     minor = strtol(p, &end, 16);
     if (*end != 0 || end == p) {
-        WARN("malformed physical device '%s'\n", s);
+        WARN(device, "malformed physical device '%s'\n", s);
         err = -EINVAL;
         goto out;
     }
 
     if ((device->major >= 0 || device->minor >= 0) &&
             (major != device->major || minor != device->minor)) {
-        WARN("changing physical device from %x:%x to %x:%x not supported\n",
-                device->major, device->minor, major, minor);
+        WARN(device, "changing physical device from %x:%x to %x:%x not "
+                "supported\n", device->major, device->minor, major, minor);
         err = -ENOSYS;
         goto out;
     }
@@ -248,7 +249,7 @@ physical_device(vbd_t *device) {
     device->major = major;
     device->minor = minor;
 
-    DBG("need to find tapdisk serving minor=%d\n", device->minor);
+    DBG(device, "need to find tapdisk serving minor=%d\n", device->minor);
 
     device->tap = malloc(sizeof(*device->tap));
     if (!device->tap) {
@@ -257,11 +258,11 @@ physical_device(vbd_t *device) {
     }
     err = find_tapdisk(device->minor, device->tap);
     if (err) {
-        WARN("error looking for tapdisk: %s\n", strerror(err));
+        WARN(device, "error looking for tapdisk: %s\n", strerror(err));
         goto out;
     }
 
-    DBG("found tapdisk[%d]\n", device->tap->pid);
+    DBG(device, "found tapdisk[%d]\n", device->tap->pid);
 
     /*
      * get the VBD parameters from the tapdisk
@@ -269,13 +270,13 @@ physical_device(vbd_t *device) {
     if ((err = tap_ctl_info(device->tap->pid, &device->sectors,
                     &device->sector_size, &device->info,
                     device->minor))) {
-        WARN("error retrieving disk characteristics: %s\n",
+        WARN(device, "error retrieving disk characteristics: %s\n",
                 strerror(-err));
         goto out;
     }
 
     if (device->sector_size & 0x1ff || device->sectors <= 0) {
-        WARN("warning: unexpected device characteristics: sector "
+        WARN(device, "warning: unexpected device characteristics: sector "
                 "size=%d, sectors=%lu\n", device->sector_size,
                 device->sectors);
     }
@@ -291,8 +292,7 @@ physical_device(vbd_t *device) {
         err = -tapback_backend_handle_otherend_watch(
                 device->frontend_state_path);
         if (err) {
-            WARN("%d/%d: failed to switch state: %s\n", device->domid,
-                    device->devid, strerror(-err));
+            WARN(device, "failed to switch state: %s\n", strerror(-err));
         }
     }
 out:
@@ -329,7 +329,7 @@ frontend(vbd_t *device) {
     if (!(device->frontend_path = tapback_device_read(device,
                     "frontend"))) {
         err = -errno;
-        WARN("failed to read front-end path: %s\n", strerror(-err));
+        WARN(device, "failed to read front-end path: %s\n", strerror(-err));
         goto out;
     }
 
@@ -389,7 +389,7 @@ tapback_backend_probe_device(const domid_t domid, const char * const devname,
 
     ASSERT(devname);
 
-    DBG("probing device %d/%s\n", domid, devname);
+    DBG(NULL, "%d/%s: probing device\n", domid, devname);
 
     /*
      * Ask XenStore if the device _should_ exist.
@@ -425,7 +425,7 @@ tapback_backend_probe_device(const domid_t domid, const char * const devname,
     if (create) {
         int err = tapback_backend_create_device(domid, devname);
         if (err) {
-            WARN("error creating device %s on domain %d: %s\n", devname, domid,
+            WARN(NULL, "%d/%s: error creating device: %s\n", domid, devname,
                     strerror(-err));
             return err;
         }
@@ -445,8 +445,8 @@ tapback_backend_probe_device(const domid_t domid, const char * const devname,
             if (err == -ENOENT)
                 err = 0;
             else {
-                WARN("%d/%s: failed to retrieve physical device information: "
-                        "%s\n", domid, devname, strerror(-err));
+                WARN(device, "failed to retrieve physical device information: "
+                        "%s\n", strerror(-err));
                 goto out;
             }
         }
@@ -455,8 +455,8 @@ tapback_backend_probe_device(const domid_t domid, const char * const devname,
             if (err == -ENOENT)
                 err = 0;
             else
-                WARN("%d/%s: failed to watch front-end path: %s\n", domid,
-                        devname, strerror(-err));
+                WARN(device, "failed to watch front-end path: %s\n",
+                        strerror(-err));
             goto out;
         }
         err = -tapback_backend_handle_otherend_watch(
@@ -469,8 +469,8 @@ tapback_backend_probe_device(const domid_t domid, const char * const devname,
             if (err == -ENOENT)
                 err = 0;
             else
-                WARN("%d/%s: error running the Xenbus protocol: %s\n", domid,
-                        devname, strerror(-err));
+                WARN(device, "error running the Xenbus protocol: %s\n",
+                        strerror(-err));
             goto out;
         }
     }
@@ -489,7 +489,7 @@ tapback_backend_probe_device(const domid_t domid, const char * const devname,
         } else if (!strcmp("frontend", comp)) {
             err = frontend(device);
         } else {
-            DBG("ignoring '%s'\n", comp);
+            DBG(device, "ignoring '%s'\n", comp);
         }
     }
 
@@ -517,7 +517,7 @@ tapback_backend_scan(void)
     char **dir = NULL;
     int err = 0;
 
-    DBG("scanning entire back-end\n");
+    DBG(NULL, "scanning entire back-end\n");
 
     /*
      * scrap all non-existent devices
@@ -530,8 +530,7 @@ tapback_backend_scan(void)
          */
         err = tapback_backend_probe_device(device->domid, device->name, NULL);
         if (err) {
-            WARN("error probing device %s of domain %d: %s\n", device->name,
-                    device->domid, strerror(-err));
+            WARN(device, "error probing device : %s\n", strerror(-err));
             /* TODO Should we fail in this case of keep probing? */
             goto out;
         }
@@ -550,12 +549,12 @@ tapback_backend_scan(void)
         if (err == -ENOENT)
             err = 0;
         else
-            WARN("error listing %s: %s\n", BLKTAP3_BACKEND_PATH,
+            WARN(NULL, "error listing %s: %s\n", BLKTAP3_BACKEND_PATH,
                     strerror(err));
         goto out;
     }
 
-    DBG("probing %d domains\n", n);
+    DBG(NULL, "probing %d domains\n", n);
 
     for (i = 0; i < n; i++) { /* for each domain */
         char *path = NULL, **sub = NULL, *end = NULL;
@@ -581,7 +580,7 @@ tapback_backend_scan(void)
         free(path);
 
         if (!sub) {
-            WARN("error listing %s: %s\n", path, strerror(-err));
+            WARN(NULL, "error listing %s: %s\n", path, strerror(-err));
             goto out;
         }
 
@@ -594,8 +593,8 @@ tapback_backend_scan(void)
              */
             err = tapback_backend_probe_device(domid, sub[j], NULL);
             if (err) {
-                WARN("error probing device %s of domain %d: %s\n", sub[j],
-                        domid, strerror(-err));
+                WARN(NULL, "%d/%s: error probing device %s of domain %d: %s\n",
+                        domid, sub[j], strerror(-err));
                 goto out;
             }
         }
@@ -631,7 +630,7 @@ tapback_backend_handle_backend_watch(char * const path)
 
     domid = strtoul(s, &end, 0);
     if (*end != 0 || end == s) {
-        WARN("invalid domain ID \'%s\'\n", s);
+        WARN(NULL, "invalid domain ID \'%s\'\n", s);
         return -EINVAL;
     }
 

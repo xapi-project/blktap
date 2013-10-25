@@ -43,28 +43,55 @@
 void tapback_log(int prio, const char *fmt, ...);
 void (*tapback_vlog) (int prio, const char *fmt, va_list ap);
 
-/*
- * TODO include timestamps
- */
-#define DBG(_fmt, _args...)  tapback_log(LOG_DEBUG, "%s:%d "_fmt, __FILE__, \
-        __LINE__, ##_args)
-#define INFO(_fmt, _args...) tapback_log(LOG_INFO, "%s:%d " _fmt, __FILE__, \
-		__LINE__, ##_args)
-#define WARN(_fmt, _args...) tapback_log(LOG_WARNING, "%s:%d "_fmt, __FILE__, \
-        __LINE__, ##_args)
+#define DBG(device, _fmt, _args...)  \
+    do {                                                                    \
+        vbd_t *_device = (vbd_t*)(device);                                  \
+        if (_device) {                                                      \
+            tapback_log(LOG_DEBUG, "%s:%d %d/%d "_fmt, __FILE__, __LINE__,  \
+                _device->domid, _device->devid, ##_args);                   \
+         } else {                                                           \
+            tapback_log(LOG_DEBUG, "%s:%d "_fmt, __FILE__, __LINE__,        \
+                ##_args);                                                   \
+        }                                                                   \
+    } while (0)
+
+#define INFO(device, _fmt, _args...) \
+    do {                                                                    \
+        vbd_t *_device = (vbd_t*)(device);                                  \
+        if (_device) {                                                      \
+            tapback_log(LOG_INFO, "%s:%d %d/%d "_fmt, __FILE__, __LINE__,   \
+                _device->domid, _device->devid, ##_args);                   \
+         } else {                                                           \
+            tapback_log(LOG_INFO, "%s:%d "_fmt, __FILE__, __LINE__,         \
+                ##_args);                                                   \
+        }                                                                   \
+    } while (0)
+
+#define WARN(device, _fmt, _args...) \
+    do {                                                                    \
+        vbd_t *_device = (vbd_t*)(device);                                  \
+        if (_device) {                                                      \
+            tapback_log(LOG_WARNING, "%s:%d %d/%d "_fmt, __FILE__,          \
+                    __LINE__, _device->domid, _device->devid, ##_args);     \
+         } else {                                                           \
+            tapback_log(LOG_WARNING, "%s:%d "_fmt, __FILE__, __LINE__,      \
+                ##_args);                                                   \
+        }                                                                   \
+    } while (0)
 
 #define WARN_ON(_cond, fmt, ...)    \
     if (unlikely(_cond)) {          \
         printf(fmt, ##__VA_ARGS__); \
     }
 
-#define ASSERT(p)                                               \
-    do {                                                        \
-        if (!(p)) {                                             \
-            WARN("tapback-err:%s:%d: FAILED ASSERTION: '%s'\n", \
-                  __FILE__, __LINE__, #p);                      \
-            abort();                                            \
-        }                                                       \
+#define ASSERT(p)                                                   \
+    do {                                                            \
+        if (!(p)) {                                                 \
+            tapback_log(LOG_WARNING,                                \
+                    "tapback-err:%s:%d: FAILED ASSERTION: '%s'\n",  \
+                    __FILE__, __LINE__, #p);                        \
+            abort();                                                \
+        }                                                           \
     } while (0)
 
 /*

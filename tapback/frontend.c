@@ -47,10 +47,10 @@ tapback_device_switch_state(vbd_t * const device,
 
     err = -tapback_device_printf(device, "state", false, "%u", state);
     if (err) {
-        WARN("failed to switch back-end state to %s: %s\n",
+        WARN(device, "failed to switch back-end state to %s: %s\n",
                 XenbusState2str(state), strerror(err));
     } else
-        DBG("switched back-end state to %s\n", XenbusState2str(state));
+        DBG(device, "switched back-end state to %s\n", XenbusState2str(state));
     return err;
 }
 
@@ -89,18 +89,18 @@ blkback_connect_tap(vbd_t * const bdev,
         /*
          * TODO Fail with EALREADY?
          */
-        DBG("front-end already connected to tapdisk.\n");
+        DBG(bdev, "front-end already connected to tapdisk.\n");
 
         /*
          * FIXME just testing
          */
         if ((err = tapback_device_switch_state(bdev,
                         XenbusStateConnected))) {
-            WARN("failed to switch back-end state to connected: %s\n",
+            WARN(bdev, "failed to switch back-end state to connected: %s\n",
                     strerror(err));
         }
     } else if (!bdev->tap) {
-        DBG("no tapdisk yet\n");
+        DBG(bdev, "no tapdisk yet\n");
         err = EAGAIN;
     } else {
         /*
@@ -118,7 +118,7 @@ blkback_connect_tap(vbd_t * const bdev,
          nr_pages = 1 << order;
 
         if (!(gref = calloc(nr_pages, sizeof(grant_ref_t)))) {
-            WARN("Failed to allocate memory for grant refs.\n");
+            WARN(bdev, "failed to allocate memory for grant refs.\n");
             err = ENOMEM;
             goto fail;
         }
@@ -139,13 +139,13 @@ blkback_connect_tap(vbd_t * const bdev,
             char ring_ref[len];
             for (i = 0; i < nr_pages; i++) {
                 if (snprintf(ring_ref, len, "%s%d", RING_REF, i) >= (int)len) {
-                    DBG("error printing to buffer\n");
+                    DBG(bdev, "error printing to buffer\n");
                     err = EINVAL;
                     goto fail;
                 }
                 if (1 != tapback_device_scanf_otherend(bdev, ring_ref, "%u",
                             &gref[i])) {
-                    WARN("Failed to read grant ref 0x%x.\n", i);
+                    WARN(bdev, "failed to read grant ref 0x%x.\n", i);
                     err = ENOENT;
                     goto fail;
                 }
@@ -153,7 +153,7 @@ blkback_connect_tap(vbd_t * const bdev,
         } else {
             if (1 != tapback_device_scanf_otherend(bdev, RING_REF, "%u",
                         &gref[0])) {
-                WARN("Failed to read grant ref.\n");
+                WARN(bdev, "failed to read grant ref.\n");
                 err = ENOENT;
                 goto fail;
             }
@@ -164,7 +164,7 @@ blkback_connect_tap(vbd_t * const bdev,
          */
         if (1 != tapback_device_scanf_otherend(bdev, "event-channel", "%u",
                     &port)) {
-            WARN("Failed to read event channel.\n");
+            WARN(bdev, "failed to read event channel.\n");
             err = ENOENT;
             goto fail;
         }
@@ -179,7 +179,7 @@ blkback_connect_tap(vbd_t * const bdev,
         else if (!strcmp(proto_str, XEN_IO_PROTO_ABI_X86_64))
             proto = BLKIF_PROTOCOL_X86_64;
         else {
-            WARN("unsupported protocol %s\n", proto_str);
+            WARN(bdev, "unsupported protocol %s\n", proto_str);
             err = EINVAL;
             goto fail;
         }
@@ -195,20 +195,20 @@ blkback_connect_tap(vbd_t * const bdev,
             else if (!strcmp(persistent_grants_str, "1"))
                 persistent_grants = true;
             else {
-                WARN("invalid %s value: %s\n", FEAT_PERSIST,
+                WARN(bdev, "invalid %s value: %s\n", FEAT_PERSIST,
                         persistent_grants_str);
                 err = EINVAL;
                 goto fail;
             }
         }
         else
-            DBG("front-end doesn't support persistent grants\n");
+            DBG(bdev, "front-end doesn't support persistent grants\n");
 
         /*
          * persistent grants are not yet supported
          */
         if (persistent_grants)
-            WARN("front-end supports persistent grants but we don't\n");
+            WARN(bdev, "front-end supports persistent grants but we don't\n");
 
         /*
          * Create the shared ring and ask the tapdisk to connect to it.
@@ -219,19 +219,18 @@ blkback_connect_tap(vbd_t * const bdev,
 						bdev->devid, gref, order, port, proto, NULL,
 						bdev->minor))) {
 			if (err == EALREADY) {
-				INFO("%d/%d: tapdisk[%d] already connected to the shared "
-						"ring\n", bdev->domid, bdev->devid, bdev->tap->pid);
+				INFO(bdev, "tapdisk[%d] already connected to the shared "
+						"ring\n", bdev->tap->pid);
 				do_connect = false;
 				err = 0;
 			} else {
-	            WARN("%d/%d: tapdisk[%d] failed to connect to the shared "
-						"ring: %s\n", bdev->domid, bdev->devid, bdev->tap->pid,
-		                strerror(-err));
+	            WARN(bdev, "tapdisk[%d] failed to connect to the shared "
+						"ring: %s\n", bdev->tap->pid, strerror(-err));
 			    goto fail;
 			}
         } else {
-	        DBG("%d/%d: tapdisk[%d] connected to shared ring\n",
-		            bdev->domid, bdev->devid, bdev->tap->pid);
+	        DBG(bdev, "tapdisk[%d] connected to shared ring\n",
+                    bdev->tap->pid);
 		}
 
         bdev->connected = true;
@@ -244,25 +243,25 @@ blkback_connect_tap(vbd_t * const bdev,
              */
             if ((err = tapback_device_printf(bdev, "sector-size", true, "%u",
                             bdev->sector_size))) {
-                WARN("Failed to write sector-size.\n");
+                WARN(bdev, "failed to write sector-size.\n");
                 goto fail;
             }
 
             if ((err = tapback_device_printf(bdev, "sectors", true, "%llu",
                             bdev->sectors))) {
-                WARN("Failed to write sectors.\n");
+                WARN(bdev, "failed to write sectors.\n");
                 goto fail;
             }
 
             if ((err = tapback_device_printf(bdev, "info", true, "%u",
                             bdev->info))) {
-                WARN("Failed to write info.\n");
+                WARN(bdev, "failed to write info.\n");
                 goto fail;
             }
 
             if ((err = tapback_device_switch_state(bdev,
                             XenbusStateConnected))) {
-                WARN("failed to switch back-end state to connected: %s\n",
+                WARN(bdev, "failed to switch back-end state to connected: %s\n",
                         strerror(err));
             }
         }
@@ -273,9 +272,9 @@ fail:
         const int err2 = -tap_ctl_disconnect_xenblkif(bdev->tap->pid,
                 bdev->domid, bdev->devid, NULL);
         if (err2) {
-            WARN("%d/%d: error disconnecting tapdisk[%d] from the shared "
-                    "ring (error ignored): %s\n", bdev->domid, bdev->devid,
-                    bdev->tap->pid, strerror(err2));
+            WARN(bdev, "error disconnecting tapdisk[%d] from the shared "
+                    "ring (error ignored): %s\n", bdev->tap->pid,
+                    strerror(err2));
         }
 
         bdev->connected = false;
@@ -304,16 +303,14 @@ xenbus_rm_backend(vbd_t * const bdev) {
 			BLKTAP3_BACKEND_NAME, bdev->domid, bdev->devid);
 	if (err == -1) {
 		err = errno;
-		WARN("failed to asprintf for %d/%d: %s\n", bdev->domid,
-				bdev->devid, strerror(err));
+		WARN(bdev, "failed to asprintf for %d/%d: %s\n", strerror(err));
 		return err;
 	}
 	err = 0;
 	result = xs_rm(blktap3_daemon.xs, blktap3_daemon.xst, path);
 	if (!result) {
 		err = errno;
-		WARN("failed to remove %s for %d/%d: %s\n", path, bdev->domid,
-				bdev->devid, strerror(err));
+		WARN(bdev, "failed to remove %s: %s\n", path, strerror(err));
 	}
 	free(path);
 	return err;
@@ -344,11 +341,11 @@ backend_close(vbd_t * const bdev,
          * This VBD might be a CD-ROM device, or a disk device that never went
          * to state Connected.
          */
-        DBG("tapdisk not connected\n");
+        DBG(bdev, "tapdisk not connected\n");
     } else {
         ASSERT(bdev->tap);
 
-        DBG("%d/%d: disconnecting from tapdisk[%d] minor=%d\n",
+        DBG(bdev, "disconnecting from tapdisk[%d] minor=%d\n",
             bdev->domid, bdev->devid, bdev->tap->pid, bdev->minor);
 
         if ((err = -tap_ctl_disconnect_xenblkif(bdev->tap->pid, bdev->domid,
@@ -360,9 +357,9 @@ backend_close(vbd_t * const bdev,
              * code indicating that there's no tapdisk process.
              */
             if (errno == ESRCH) {
-                WARN("tapdisk not running\n");
+                WARN(bdev, "tapdisk not running\n");
             } else {
-                WARN("error disconnecting tapdisk from front-end: %s\n",
+                WARN(bdev, "error disconnecting tapdisk from front-end: %s\n",
                         strerror(err));
                 return err;
             }
@@ -422,15 +419,14 @@ blkback_frontend_changed(vbd_t * const xbdev, const XenbusState state)
     ASSERT(xbdev);
     ASSERT(state <= XenbusStateReconfigured);
 
-    DBG("front-end %d/%s went into state %s\n",
-            xbdev->domid, xbdev->name, XenbusState2str(state));
+    DBG(xbdev, "front-end went into state %s\n", XenbusState2str(state));
 
     if (frontend_state_change_map[state].fn)
         return frontend_state_change_map[state].fn(xbdev,
                 frontend_state_change_map[state].state);
     else
-        DBG("ignoring front-end's %d/%s transition to state %s\n",
-                xbdev->domid, xbdev->name, XenbusState2str(state));
+        DBG(xbdev, "ignoring front-end's %transition to state %s\n",
+                XenbusState2str(state));
     return 0;
 }
 
@@ -459,11 +455,10 @@ tapback_backend_handle_otherend_watch(const char * const path)
             device->frontend_state_path &&
 			!strcmp(device->frontend_state_path, path));
     if (!device) {
-        WARN("path \'%s\' does not correspond to a known device\n", path);
+        WARN(NULL, "path \'%s\' does not correspond to a known device\n",
+                path);
         return ENODEV;
     }
-
-    DBG("device: %d/%s\n", device->domid, device->name);
 
     /*
      * Read the new front-end's state.
@@ -478,8 +473,8 @@ tapback_backend_handle_otherend_watch(const char * const path)
 		if (err == ENOENT) {
 			err = xenbus_rm_backend(device);
 			if (err && err != ENOENT) {
-				WARN("%d/%s: failed to remove the back-end node: %s\n",
-						device->domid, device->name, strerror(err));
+				WARN(device, "failed to remove the back-end node: %s\n",
+						strerror(err));
 			} else {
 				err = 0;
 				goto out;
