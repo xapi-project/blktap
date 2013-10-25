@@ -17,6 +17,7 @@
 ### END INIT INFO
 
 DAEMON=/sbin/multipathd
+MP_UTIL=/sbin/mpathconf
 prog=sm-multipath
 initdir=/etc/rc.d/init.d
 
@@ -29,6 +30,8 @@ RETVAL=0
 #
 
 start() {
+	# We want to be sure multipathd is running with modules
+	$MP_UTIL --enable --with_module y
 	test -x $DAEMON || exit 5
 	echo -n $"Multipath check for root device: "
 	$DAEMON -k"show top" &>/dev/null
