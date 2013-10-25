@@ -53,7 +53,7 @@
 		if (!(p)) {						\
 			DPRINTF("Assertion '%s' failed, line %d, "	\
 				"file %s", #p, __LINE__, __FILE__);	\
-			*(int*)0 = 0;					\
+			abort();					\
 		}							\
 	} while (0)
 #else
