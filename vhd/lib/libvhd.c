@@ -66,7 +66,7 @@ libvhd_set_log_level(int level)
 		libvhd_set_log_level(1);                                \
 		VHDLOG("%s:%d: FAILED ASSERTION: '%s'\n",		\
 			__FILE__, __LINE__, #_p);			\
-		*(int*)0 = 0;						\
+		abort();						\
 	}
 
 #ifdef ENABLE_FAILURE_TESTING
