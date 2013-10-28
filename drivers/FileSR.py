@@ -425,13 +425,10 @@ class FileVDI(VDI.VDI):
                 return
 
             try:
-                # If the VDI is activated in R/W mode, the VHD footer won't be
-                # valid, use the back-up one instead.
-                vdi_ref = self.sr.srcmd.params['vdi_ref']
-                sm_config = self.session.xenapi.VDI.get_sm_config(vdi_ref)
-                use_bkp_footer = util.attached_as(sm_config) == 'RW'
+                # The VDI might be activated in R/W mode so the VHD footer
+                # won't be valid, use the back-up one instead.
                 diskinfo = util.ioretry(lambda: self._query_info(self.path,
-                    use_bkp_footer))
+                    True))
 
                 if diskinfo.has_key('parent'):
                     self.parent = diskinfo['parent']
