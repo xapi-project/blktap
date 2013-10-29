@@ -58,6 +58,9 @@ LVM_SIZE_INCREMENT = 4 * 1024 * 1024
 LV_TAG_HIDDEN = "hidden"
 LVM_FAIL_RETRIES = 10
 
+MASTER_LVM_CONF = '/etc/lvm/master'
+DEF_LVM_CONF = '/etc/lvm'
+
 class LVInfo:
     name = ""
     size = 0
@@ -352,7 +355,7 @@ def createVG(root, vgname):
                 pass
             raise xs_errors.XenError('LVMGroupCreate')
     try:
-        cmd = [CMD_VGCHANGE, "-an", "--master", vgname]
+        cmd = [CMD_VGCHANGE, "-an", vgname]
         util.pread2(cmd)
     except util.CommandException, inst:
         raise xs_errors.XenError('LVMUnMount', \
@@ -394,7 +397,7 @@ def setActiveVG(path, active):
     val = "n"
     if active:
         val = "y"
-    cmd = [CMD_VGCHANGE, "-a" + val, "--master", path]
+    cmd = [CMD_VGCHANGE, "-a" + val, path]
     text = util.pread2(cmd)
 
 def create(name, size, vgname, tag = None, activate = True):
@@ -481,12 +484,16 @@ def activateNoRefcount(path, refresh):
     if not _checkActive(path):
         raise util.CommandException(-1, str(cmd), "LV not activated")
     if refresh:
+        # Override slave mode lvm.conf for this command
+        os.environ['LVM_SYSTEM_DIR'] = MASTER_LVM_CONF
         cmd = [CMD_LVCHANGE, "--refresh", path]
         text = util.pread2(cmd)
         mapperDevice = path[5:].replace("-", "--").replace("/", "-")
         cmd = [CMD_DMSETUP, "table", mapperDevice]
         ret = util.pread(cmd)
         util.SMlog("DM table for %s: %s" % (path, ret.strip()))
+        # Restore slave mode lvm.conf
+        os.environ['LVM_SYSTEM_DIR'] = DEF_LVM_CONF
 
 def deactivateNoRefcount(path):
     # LVM has a bug where if an "lvs" command happens to run at the same time 
