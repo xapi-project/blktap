@@ -35,59 +35,6 @@
 #include "vhd-util.h"
 
 /**
- * Switches on the corresponding bit if a block has been written to in any
- * file in the chain.
- *
- * @param ctx the VHD context of the leaf
- * @param bitmap sufficient memory to store the bitmap (1 bit per block), must
- * be initialised to zero
- * @return 0 on success
- */
-static int
-vhd_get_used_blocks(vhd_context_t *ctx, unsigned long long *bitmap) {
-
-    vhd_context_t *cur = NULL;
-    uint64_t i;
-    int err = 0;
-
-    assert(ctx);
-    assert(bitmap);
-
-    err = vhd_get_bat(ctx);
-    if (err) {
-        fprintf(stderr, "failed to get BAT for %s: %s\n", ctx->file,
-                strerror(-err));
-        goto out;
-    }
-
-    list_for_each_entry(cur, &ctx->next, next) {
-        err = vhd_get_bat(cur);
-        if (err) {
-            fprintf(stderr, "failed to get BAT for %s: %s\n", 
-                    cur->file, strerror(-err));
-            goto out;
-        }
-    }
-
-    for (i = 0; i < ctx->bat.entries; i++) {
-        uint64_t blk = ctx->bat.bat[i];
-        if (blk == DD_BLK_UNUSED) {
-            list_for_each_entry(cur, &ctx->next, next) {
-                if (cur->bat.bat[i] != DD_BLK_UNUSED) {
-                    blk = cur->bat.bat[i];
-                    break;
-                }
-            }
-        }
-        if (blk != DD_BLK_UNUSED) {
-            bitmap[(i >> 6)] |= 1u << (i % 64);
-        }
-    }
-out:
-    return 0;
-}
-
-/**
  * Returns the deepest node in the chain 
  * that has any valid data. 
  *
@@ -129,83 +76,6 @@ vhd_get_used_blocks2(vhd_context_t *ctx, vhd_context_t **bat) {
         }
     }
 out:
-    return err;
-}
-
-static inline int
-_vhd_util_copy(const char *name, const int fd) {
-
-    int err = 0, i = 0;
-    vhd_context_t ctx;
-    unsigned long long *bitmap = NULL;
-    void *buf = NULL;
-    int bs = 0; /* block size */
-
-    assert(name);
-
-    err = vhd_open(&ctx, name, VHD_OPEN_RDONLY | VHD_OPEN_CACHED);
-    if (err) {
-        fprintf(stderr, "failed to open %s: %s\n", 
-                name, strerror(-err));
-        return err;
-    }
-
-    err = vhd_get_bat(&ctx);
-    if (err) {
-        fprintf(stderr, "failed to get BAT for %s: %s\n", ctx.file,
-                strerror(-err));
-        goto out;
-    }
-
-    bitmap = calloc(sizeof(unsigned long long), ctx.bat.entries >> 6);
-    if (!bitmap) {
-        fprintf(stderr, "failed to allocate memory for the bitmap\n");
-        err = -ENOMEM;
-        goto out;
-    }
-
-    err = vhd_get_used_blocks(&ctx, bitmap);
-    if (err) {
-        fprintf(stderr, "failed to get bitmap: %s\n", strerror(-err));
-        goto out;
-    }
-
-    bs = ctx.spb << 9;
-    buf = malloc(bs);
-    if (!buf) {
-        fprintf(stderr, "failed to allocate input buffer\n");
-        err = -ENOMEM;
-        goto out;
-    }
-
-    for (i = 0; i < ctx.bat.entries; i++) {
-        const int mask = 1u << (i % 64);
-        const off64_t offset = (off64_t)i * (off64_t)bs;
-        if ((bitmap[(i >> 6)] & mask) == mask) {
-            const off64_t _offset = lseek64(fd, offset, SEEK_SET);
-            if ((off64_t) - 1 == _offset) {
-                err = -errno;
-                fprintf(stderr, "failed to seek at %llu: %s\n",
-                        (unsigned long long)offset,
-                        strerror(-err));
-                goto out;
-            }
-            err = read(fd, buf, bs);
-            if (err == -1) {
-                err = -errno;
-                fprintf(stderr, 
-                        "failed to read at offset %llu: %s\n",
-                        (unsigned long long)offset, 
-                        strerror(-err));
-                goto out;
-            }
-        }
-    }
-out:
-    free(bitmap);
-    vhd_close(&ctx);
-    free(buf);
-
     return err;
 }
 
@@ -278,13 +148,13 @@ my_vhd_read_block(vhd_context_t *ctx, uint32_t block, char *buf)
     bit = vhd_has_batmap(ctx) && vhd_batmap_test(ctx, &ctx->batmap, block);
 
     if (bit) {
-        /* 
+        /*
          * Full block is available at this level.
          * Read and return without going further
          * up in the VHD chain.
          */
         err  = vhd_seek(ctx, off, SEEK_SET);
-        if (err) 
+        if (err)
             goto out;
 
         err = vhd_read(ctx, buf, size);
@@ -309,7 +179,7 @@ my_vhd_read_block(vhd_context_t *ctx, uint32_t block, char *buf)
         if (err) 
             goto out;
 
-        /* 
+        /*
          * FIXME
          * Can be optimized by reading multiple sectors
          * or even entire blocks at one time
@@ -324,16 +194,16 @@ my_vhd_read_block(vhd_context_t *ctx, uint32_t block, char *buf)
                 list_for_each_entry(cur, &ctx->next, next) {
                     level++;
                     err = vhd_get_bat(cur);
-                    if (err) 
+                    if (err)
                         goto out;
 
                     if (cur->bat.bat[block]==DD_BLK_UNUSED)
                         continue;
 
                     if(bitmaps[level]==NULL) {
-                        err = vhd_read_bitmap(cur, 
+                        err = vhd_read_bitmap(cur,
                                 block, &bitmaps[level]);
-                        if (err) 
+                        if (err)
                             goto out;
                     }
 
@@ -349,18 +219,18 @@ my_vhd_read_block(vhd_context_t *ctx, uint32_t block, char *buf)
                 off  = vhd_sectors_to_bytes(blk + cur->bm_secs + i);
 
                 err  = vhd_seek(cur, off, SEEK_SET);
-                if (err) 
+                if (err)
                     goto out;
 
-                err = vhd_read(cur, 
+                err = vhd_read(cur,
                         buf + vhd_sectors_to_bytes(i), size);
-                if (err) 
+                if (err)
                     goto out;
             }
         }
     }
 out:
-    for(i=0; i<30; i++) 
+    for(i=0; i<30; i++)
         if(bitmaps[i])
             free(bitmaps[i]);
 
@@ -379,7 +249,7 @@ _vhd_util_copy2(const char *name, int fd) {
 
     err = vhd_open(&ctx, name, VHD_OPEN_RDONLY | VHD_OPEN_CACHED);
     if (err) {
-        fprintf(stderr, "failed to open %s: %s\n", 
+        fprintf(stderr, "failed to open %s: %s\n",
                 name, strerror(-err));
         return err;
     }
@@ -415,18 +285,18 @@ _vhd_util_copy2(const char *name, int fd) {
         if (ctx_block_list[i]) {
             err  = my_vhd_read_block(ctx_block_list[i], i, buf);
             if (err) {
-                fprintf(stderr, 
+                fprintf(stderr,
                         "failed to read block %lu: %s\n",
-                        (unsigned long)i, 
+                        (unsigned long)i,
                         strerror(-err));
                 goto out;
             }
 
             n = write(fd, buf, vhd_sectors_to_bytes(ctx.spb));
             if (n < 0) {
-                fprintf(stderr, 
+                fprintf(stderr,
                         "failed to write block %lu: %s\n",
-                        (unsigned long)i, 
+                        (unsigned long)i,
                         strerror(-err));
                 goto out;
             }
@@ -456,7 +326,7 @@ vhd_util_copy(const int argc, char **argv)
             case 't':
                 to = optarg;
                 break;
-            case 's': 
+            case 's':
                 stdo = 1;
                 break;
             case 'h':
@@ -466,7 +336,7 @@ vhd_util_copy(const int argc, char **argv)
     }
 
     if (!name || !(to || stdo)) {
-        fprintf(stderr, 
+        fprintf(stderr,
                 "missing source and/or target file/device name\n");
         goto usage;
     }
@@ -480,13 +350,13 @@ vhd_util_copy(const int argc, char **argv)
 
             if (fd == -1) {
                 err = -errno;
-                fprintf(stderr, "failed to open %s: %s\n", 
+                fprintf(stderr, "failed to open %s: %s\n",
                         to, strerror(-err));
                 goto error;
             }
         }
         err = _vhd_util_copy2(name, fd);
-    } 
+    }
 
 error:
     if (fd > 0)
