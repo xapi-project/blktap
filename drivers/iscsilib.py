@@ -246,9 +246,11 @@ def get_current_initiator_name():
         try:
             f=open(INITIATORNAME_FILE, 'r')
             for line in f.readlines():
-                if line.find("InitiatorName") != -1:
+                if line.strip().startswith("#"):
+                    continue 
+                if "InitiatorName" in line:
                     IQN = line.split("=")[1]
-                    currentIQN = IQN[:-1]
+                    currentIQN = IQN.strip()
                     f.close()
                     return currentIQN
             f.close()
