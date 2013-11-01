@@ -39,7 +39,7 @@ libvhd_la_SOURCES += ../../lvm/lvm-util.c
 
 libvhd_la_LDFLAGS = -version-info 1:1:1
 
-libvhd_la_LIBADD = -luuid $(LIBICONV)
+libvhd_la_LIBADD = -luuid $(LIBICONV) -laio
 
 libvhdio_la_SOURCES  = libvhdio.c
 libvhdio_la_SOURCES += ../../part/partition.c
