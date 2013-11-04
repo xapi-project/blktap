@@ -148,6 +148,11 @@ struct bitmap_desc {
     unsigned long long sectors;
 
     /**
+     * Sectors for which their bitmap has been resolved.
+     */
+    unsigned long long bmp_res_sect;
+
+    /**
      * An array indexed by relative sector, pointing to the VHD context from
      * which we must read the sector data. A NULL value means that the sector
      * has never been written to.
@@ -511,6 +516,8 @@ process_mtdt_completion(struct bitmap_desc *bmp) {
                             "%u: %s\n", bmp->block, strerror(err));
                     return err;
                 }
+                if (!bmp->sectors)
+                    return 0;
             }
         } else
             bmp->sectors = 0;
