@@ -718,7 +718,7 @@ vhd_util_copy(const int argc, char **argv)
             fd = fileno(stdout);
         else {
             int flags = O_WRONLY | O_CREAT | O_TRUNC | O_LARGEFILE;
-            if (!strcmp("/dev/null", to))
+            if (strcmp("/dev/null", to))
                 flags |= O_DIRECT;
             fd = open(to, flags, 0644);
 
