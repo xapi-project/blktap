@@ -664,6 +664,10 @@ _vhd_util_copy2(const char *name, int fd) {
             err = -err;
             fprintf(stderr, "failed to get I/O events: %s\n", strerror(err));
             break;
+        } else if (err == 0 || err > 1) {
+            fprintf(stderr, "unexpcted number of completed I/O events: %d\n",
+                    err);
+            break;
         } else {
             DBG("got an I/O completion\n");
             assert(err > 0);
