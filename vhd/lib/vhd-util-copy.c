@@ -547,11 +547,11 @@ process_data_completion(struct bitmap_desc *bmp) {
 
 	    if (off == (off64_t) - 1) {
             err = errno;
-            fprintf(stderr, "failed to seek to %llu: %s\n", _off,
+            fprintf(stderr, "failed to seek output to %llu: %s\n", _off,
                     strerror(errno));
         } else {
             /**
-             * FIXME use libaio!
+             * FIXME use libaio if we're writing to a file
              */
             ssize_t written = write(bmp->fd, bmp->buf, blk_size);
             if (written != blk_size) {
@@ -691,6 +691,21 @@ _vhd_util_copy2(const char *name, int fd) {
                 break;
         }
 
+    }
+
+    /*
+     * Write the EOF.
+     */
+    err = ftruncate(fd, (ctx.bat.entries * ctx.spb) << VHD_SECTOR_SHIFT);
+    if (err == -1) {
+        err = errno;
+        fprintf(stderr, "failed to write EOF: %s\n", strerror(err));
+    }
+
+    err = close(fd);
+    if (err == -1) {
+        err = errno;
+        fprintf(stderr, "failed to close output: %s\n", strerror(err));
     }
 
     /*
