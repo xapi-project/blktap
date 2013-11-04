@@ -271,6 +271,8 @@ read_blocks(struct bitmap_desc *bmp) {
 
     err = io_submit(*bmp->aioctx, bmp->pending_data_iocbs, bmp->data_iocbs);
 
+    DBG("submitted %d I/Os for %u\n", bmp->pending_data_iocbs, bmp->block);
+
     if (err < 0) {
         err = -err;
         fprintf(stderr, "failed to submit data I/O for block %u: %s\n",
@@ -527,11 +529,14 @@ static int
 process_data_completion(struct bitmap_desc *bmp) {
     int err = 0;
     bmp->pending_data_iocbs--;
+
     assert(bmp->pending_data_iocbs >= 0);
     if (bmp->pending_data_iocbs == 0) {
         const size_t blk_size = bmp->ctx->spb << VHD_SECTOR_SHIFT;
         const unsigned long long _off = bmp->block * blk_size;
         const off64_t off = lseek64(bmp->fd, _off, SEEK_SET);
+
+        DBG("last data I/O completed for %u\n", bmp->block);
 
 	    if (off == (off64_t) - 1) {
             err = errno;
@@ -554,6 +559,9 @@ process_data_completion(struct bitmap_desc *bmp) {
          * FIXME all data I/Os finished, we can now spit out the data.
          */
         put_bitmap_desc(bmp);
+    } else {
+        DBG("%d pending data I/Os for %u\n", bmp->pending_data_iocbs,
+                bmp->block);
     }
     return err;
 }
