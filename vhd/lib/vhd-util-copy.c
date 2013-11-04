@@ -717,8 +717,10 @@ vhd_util_copy(const int argc, char **argv)
         if(stdo)
             fd = fileno(stdout);
         else {
-            fd = open(to, O_WRONLY | O_CREAT |
-                    O_TRUNC | O_LARGEFILE | O_DIRECT, 0644);
+            int flags = O_WRONLY | O_CREAT | O_TRUNC | O_LARGEFILE;
+            if (!strcmp("/dev/null", to))
+                flags |= O_DIRECT;
+            fd = open(to, flags, 0644);
 
             if (fd == -1) {
                 err = -errno;
