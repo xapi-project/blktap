@@ -553,7 +553,8 @@ process_data_completion(struct bitmap_desc *bmp) {
 
         if (bmp->fd) {
             const size_t blk_size = bmp->ctx->spb << VHD_SECTOR_SHIFT;
-            const unsigned long long _off = bmp->block * blk_size;
+            const unsigned long long _off = (unsigned long long)bmp->block
+                * (unsigned long long)blk_size;
             const off64_t off = lseek64(bmp->fd, _off, SEEK_SET);
             if (off == (off64_t) - 1) {
                 err = errno;
