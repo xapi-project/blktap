@@ -559,10 +559,9 @@ process_data_completion(struct bitmap_desc *bmp) {
                 err = errno;
                 fprintf(stderr, "failed to seek output to %llu: %s\n", _off,
                         strerror(errno));
-            else if (off != _off) {
+            } else if (off != _off) {
                 fprintf(stderr, "seeked to %llu instead of %llu\n", off, _off);
                 err = EINVAL;
-            }
             } else {
                 /**
                  * FIXME use libaio if we're writing to a file
