@@ -713,7 +713,9 @@ _vhd_util_copy2(const char *name, int fd) {
         /*
          * Write the EOF.
          */
-        err = ftruncate(fd, (ctx.bat.entries * ctx.spb) << VHD_SECTOR_SHIFT);
+        unsigned long long off = (unsigned long long)ctx.bat.entries
+            * (unsigned long long)ctx.spb
+        err = ftruncate(fd, off << VHD_SECTOR_SHIFT);
         if (err == -1) {
             err = errno;
             fprintf(stderr, "failed to write EOF: %s\n", strerror(err));
