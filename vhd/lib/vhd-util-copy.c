@@ -208,6 +208,10 @@ void put_bitmap_desc(struct bitmap_desc *bmp) {
 
 static int pending = 0;
 
+/**
+ * Submits all I/Os necessary for reading all data, using bmp->ctxs. If there
+ * are no data to be read, @bmp is freed.
+ */
 static int
 read_blocks(struct bitmap_desc *bmp) {
     int i;
@@ -270,26 +274,30 @@ read_blocks(struct bitmap_desc *bmp) {
         }
     }
 
-    assert(bmp->pending_data_iocbs);
+    assert(bmp->pending_data_iocbs >= 0);
 
-    bmp->io_type = DATA;
+    if (bmp->pending_data_iocbs) {
 
-    err = io_submit(*bmp->aioctx, bmp->pending_data_iocbs, bmp->data_iocbs);
+        bmp->io_type = DATA;
 
-    DBG("submitted %d I/Os for %u\n", bmp->pending_data_iocbs, bmp->block);
+        err = io_submit(*bmp->aioctx, bmp->pending_data_iocbs, bmp->data_iocbs);
 
-    if (err < 0) {
-        err = -err;
-        fprintf(stderr, "failed to submit data I/O for block %u: %s\n",
-                bmp->block, strerror(err));
-    } else if (err != bmp->pending_data_iocbs) {
-        fprintf(stderr, "submitted only %d iocbs out of %d\n", err,
-                bmp->pending_data_iocbs);
-        err = EINVAL;
-    } else {
-        pending += bmp->pending_data_iocbs;
-        err = 0;
-    }
+        DBG("submitted %d I/Os for %u\n", bmp->pending_data_iocbs, bmp->block);
+
+        if (err < 0) {
+            err = -err;
+            fprintf(stderr, "failed to submit data I/O for block %u: %s\n",
+                    bmp->block, strerror(err));
+        } else if (err != bmp->pending_data_iocbs) {
+            fprintf(stderr, "submitted only %d iocbs out of %d\n", err,
+                    bmp->pending_data_iocbs);
+            err = EINVAL;
+        } else {
+            pending += bmp->pending_data_iocbs;
+            err = 0;
+        }
+    } else
+        put_bitmap_desc(bmp);
 out:
     if (err) {
         if (bmp->data_iocbs) {
@@ -336,7 +344,7 @@ int read_bitmap(struct bitmap_desc *bmp) {
              * bit maps
              */
             bmp->sectors = 0;
-            return 0;
+            return read_blocks(bmp);
         } else {
             /*
              * proceed to the next level
@@ -680,7 +688,7 @@ _vhd_util_copy2(const char *name, int fd) {
             fprintf(stderr, "failed to get I/O events: %s\n", strerror(err));
             break;
         } else if (err == 0 || err > 1) {
-            fprintf(stderr, "unexpcted number of completed I/O events: %d\n",
+            fprintf(stderr, "unexpected number of completed I/O events: %d\n",
                     err);
             break;
         } else {
