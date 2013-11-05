@@ -124,6 +124,7 @@ struct bitmap_desc {
      * File descriptor to write data to.
      */
     int fd;
+    bool is_stream;
 
     enum io_type io_type;
 
@@ -430,7 +431,7 @@ bitmap_read(struct bitmap_desc *bmp) {
 /**
  */
 struct bitmap_desc* read_bitmaps(vhd_context_t *ctx, uint32_t block,
-        io_context_t *aioctx, const int fd) {
+        io_context_t *aioctx, const int fd, const bool is_stream) {
 
     struct bitmap_desc *bmp = NULL;
     int err = 0;
@@ -449,6 +450,7 @@ struct bitmap_desc* read_bitmaps(vhd_context_t *ctx, uint32_t block,
     bmp->aioctx = aioctx;
     bmp->sectors = bmp->ctx->spb;
     bmp->fd = fd;
+    bmp->is_stream = is_stream;
 
     bmp->ctxs = calloc(bmp->ctx->spb, sizeof(vhd_context_t*));
     if (!bmp->ctxs) {
@@ -544,47 +546,56 @@ process_mtdt_completion(struct bitmap_desc *bmp) {
 static int
 process_data_completion(struct bitmap_desc *bmp) {
     int err = 0;
+
     bmp->pending_data_iocbs--;
 
     assert(bmp->pending_data_iocbs >= 0);
-    if (bmp->pending_data_iocbs == 0) {
 
-        DBG("last data I/O completed for %u\n", bmp->block);
+    if (bmp->pending_data_iocbs != 0)
+        return 0;
 
-        if (bmp->fd) {
-            const size_t blk_size = bmp->ctx->spb << VHD_SECTOR_SHIFT;
-            const unsigned long long _off = (unsigned long long)bmp->block
-                * (unsigned long long)blk_size;
-            const off64_t off = lseek64(bmp->fd, _off, SEEK_SET);
+    DBG("last data I/O completed for %u\n", bmp->block);
+
+    if (bmp->fd) {
+        const size_t blk_size = bmp->ctx->spb << VHD_SECTOR_SHIFT;
+        const unsigned long long _off = (unsigned long long)bmp->block
+            * (unsigned long long)blk_size;
+        const off64_t off = lseek64(bmp->fd, _off, SEEK_SET);
+        ssize_t written;
+
+        if (!bmp->is_stream) {
             if (off == (off64_t) - 1) {
                 err = errno;
                 fprintf(stderr, "failed to seek output to %llu: %s\n", _off,
                         strerror(errno));
             } else if (off != _off) {
-                fprintf(stderr, "seeked to %llu instead of %llu\n", off, _off);
+                fprintf(stderr, "seeked to %llu instead of %llu\n", off,
+                        _off);
                 err = EINVAL;
-            } else {
-                /**
-                 * FIXME use libaio if we're writing to a file
-                 */
-                ssize_t written = write(bmp->fd, bmp->buf, blk_size);
-                if (written != blk_size) {
-                    err = errno;
-                    fprintf(stderr, "failed to write block %u "
-                            "(written %u out of %u): %s\n", bmp->block,
-                            written, blk_size, strerror(err));
-                }
             }
         }
 
-        /*
-         * FIXME all data I/Os finished, we can now spit out the data.
+        if (err)
+            goto out;
+
+        /**
+         * FIXME use libaio if we're writing to a file
          */
-        put_bitmap_desc(bmp);
-    } else {
-        DBG("%d pending data I/Os for %u\n", bmp->pending_data_iocbs,
-                bmp->block);
+        written = write(bmp->fd, bmp->buf, blk_size);
+        if (written != blk_size) {
+            err = errno;
+            fprintf(stderr, "failed to write block %u "
+                    "(written %u out of %u): %s\n", bmp->block,
+                    written, blk_size, strerror(err));
+        }
     }
+
+out:
+    /*
+     * FIXME all data I/Os finished, we can now spit out the data.
+     */
+    put_bitmap_desc(bmp);
+
     return err;
 }
 
@@ -616,7 +627,7 @@ process_completion(struct io_event *io_event) {
 }
 
 static inline int
-_vhd_util_copy2(const char *name, int fd) {
+_vhd_util_copy2(const char *name, int fd, bool is_stream) {
 
     io_context_t aioctx;
     int max_events = 16384;
@@ -658,7 +669,8 @@ _vhd_util_copy2(const char *name, int fd) {
     init_bitmap_cache(ctx.spb);
 
     for (blk = 0; blk < ctx.bat.entries; blk++) {
-        struct bitmap_desc *bmp = read_bitmaps(&ctx, blk, &aioctx, fd);
+        struct bitmap_desc *bmp = read_bitmaps(&ctx, blk, &aioctx, fd,
+                is_stream);
         if (!bmp) {
             err = errno;
             fprintf(stderr, "failed to read bitmaps: %s\n", strerror(err));
@@ -766,12 +778,35 @@ vhd_util_copy(const int argc, char **argv)
     }
 
     if (name) { /* smart copy */
+        bool is_stream;
+
         if (stdo)
             fd = fileno(stdout);
         else  if (to) {
+            struct stat buf;
             int flags = O_WRONLY | O_CREAT | O_TRUNC | O_LARGEFILE;
-            if (strcmp("/dev/null", to))
+
+            bzero(&buf, sizeof(struct stat));
+            err = stat(to, &buf);
+            if (err) {
+                if (err == ENOENT)
+                    is_stream = true;
+                else {
+                    err = errno;
+                    fprintf(stderr, "failed to stat %s: %s\n", to,
+                            strerror(err));
+                    goto error;
+                }
+            } else {
+                if (S_ISCHR(buf.st_mode))
+                    is_stream = true;
+                else
+                    is_stream = false;
+            }
+
+            if (!is_stream)
                 flags |= O_DIRECT;
+
             fd = open(to, flags, 0644);
 
             if (fd == -1) {
@@ -781,7 +816,7 @@ vhd_util_copy(const int argc, char **argv)
                 goto error;
             }
         }
-        err = _vhd_util_copy2(name, fd);
+        err = _vhd_util_copy2(name, fd, is_stream);
     }
 
 error:
