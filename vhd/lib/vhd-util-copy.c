@@ -511,6 +511,7 @@ process_mtdt_completion(struct bitmap_desc *bmp) {
                  * bit maps
                  */
                 bmp->sectors = 0;
+                return read_blocks(bmp);
             } else {
                 int err = 0;
                 /*
@@ -547,26 +548,28 @@ process_data_completion(struct bitmap_desc *bmp) {
 
     assert(bmp->pending_data_iocbs >= 0);
     if (bmp->pending_data_iocbs == 0) {
-        const size_t blk_size = bmp->ctx->spb << VHD_SECTOR_SHIFT;
-        const unsigned long long _off = bmp->block * blk_size;
-        const off64_t off = lseek64(bmp->fd, _off, SEEK_SET);
 
         DBG("last data I/O completed for %u\n", bmp->block);
 
-	    if (off == (off64_t) - 1) {
-            err = errno;
-            fprintf(stderr, "failed to seek output to %llu: %s\n", _off,
-                    strerror(errno));
-        } else {
-            /**
-             * FIXME use libaio if we're writing to a file
-             */
-            ssize_t written = write(bmp->fd, bmp->buf, blk_size);
-            if (written != blk_size) {
+        if (bmp->fd) {
+            const size_t blk_size = bmp->ctx->spb << VHD_SECTOR_SHIFT;
+            const unsigned long long _off = bmp->block * blk_size;
+            const off64_t off = lseek64(bmp->fd, _off, SEEK_SET);
+            if (off == (off64_t) - 1) {
                 err = errno;
-                fprintf(stderr, "failed to write block %u "
-                        "(written %u out of %u): %s\n", bmp->block, written,
-                        blk_size, strerror(err));
+                fprintf(stderr, "failed to seek output to %llu: %s\n", _off,
+                        strerror(errno));
+            } else {
+                /**
+                 * FIXME use libaio if we're writing to a file
+                 */
+                ssize_t written = write(bmp->fd, bmp->buf, blk_size);
+                if (written != blk_size) {
+                    err = errno;
+                    fprintf(stderr, "failed to write block %u "
+                            "(written %u out of %u): %s\n", bmp->block,
+                            written, blk_size, strerror(err));
+                }
             }
         }
 
@@ -701,19 +704,21 @@ _vhd_util_copy2(const char *name, int fd) {
 
     }
 
-    /*
-     * Write the EOF.
-     */
-    err = ftruncate(fd, (ctx.bat.entries * ctx.spb) << VHD_SECTOR_SHIFT);
-    if (err == -1) {
-        err = errno;
-        fprintf(stderr, "failed to write EOF: %s\n", strerror(err));
-    }
+    if (fd) {
+        /*
+         * Write the EOF.
+         */
+        err = ftruncate(fd, (ctx.bat.entries * ctx.spb) << VHD_SECTOR_SHIFT);
+        if (err == -1) {
+            err = errno;
+            fprintf(stderr, "failed to write EOF: %s\n", strerror(err));
+        }
 
-    err = close(fd);
-    if (err == -1) {
-        err = errno;
-        fprintf(stderr, "failed to close output: %s\n", strerror(err));
+        err = close(fd);
+        if (err == -1) {
+            err = errno;
+            fprintf(stderr, "failed to close output: %s\n", strerror(err));
+        }
     }
 
     /*
@@ -727,7 +732,7 @@ int
 vhd_util_copy(const int argc, char **argv)
 {
     char *name = NULL, *to = NULL;
-    int c = 0, err = 0, fd = 0, stdo = 0;
+    int c = 0, err = 0, fd = -1, stdo = 0;
 
     if (!argc || !argv)
         goto usage;
@@ -749,16 +754,16 @@ vhd_util_copy(const int argc, char **argv)
         }
     }
 
-    if (!name || !(to || stdo)) {
+    if (!name || !(!!to ^ !!stdo)) {
         fprintf(stderr,
                 "missing source and/or target file/device name\n");
         goto usage;
     }
 
     if (name) { /* smart copy */
-        if(stdo)
+        if (stdo)
             fd = fileno(stdout);
-        else {
+        else  if (to) {
             int flags = O_WRONLY | O_CREAT | O_TRUNC | O_LARGEFILE;
             if (strcmp("/dev/null", to))
                 flags |= O_DIRECT;
