@@ -567,7 +567,6 @@ process_data_completion(struct bitmap_desc *bmp) {
                 /**
                  * FIXME use libaio if we're writing to a file
                  */
-                printf("%u %llu\n", bmp->block, _off);
                 ssize_t written = write(bmp->fd, bmp->buf, blk_size);
                 if (written != blk_size) {
                     err = errno;
@@ -713,9 +712,8 @@ _vhd_util_copy2(const char *name, int fd) {
         /*
          * Write the EOF.
          */
-        unsigned long long off = (unsigned long long)ctx.bat.entries
-            * (unsigned long long)ctx.spb
-        err = ftruncate(fd, off << VHD_SECTOR_SHIFT);
+        err = ftruncate(fd, ((unsigned long long)ctx.bat.entries
+            * (unsigned long long)ctx.spb) << VHD_SECTOR_SHIFT);
         if (err == -1) {
             err = errno;
             fprintf(stderr, "failed to write EOF: %s\n", strerror(err));
