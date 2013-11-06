@@ -729,7 +729,7 @@ _vhd_util_copy2(const char *name, int fd, bool is_stream,
         }
     }
 
-    if (fd) {
+    if (!err && fd) {
         /*
          * Write the EOF.
          */
