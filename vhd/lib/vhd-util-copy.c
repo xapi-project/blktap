@@ -789,10 +789,10 @@ vhd_util_copy(const int argc, char **argv)
             bzero(&buf, sizeof(struct stat));
             err = stat(to, &buf);
             if (err) {
+                err = errno;
                 if (err == ENOENT)
                     is_stream = true;
                 else {
-                    err = errno;
                     fprintf(stderr, "failed to stat %s: %s\n", to,
                             strerror(err));
                     goto error;
