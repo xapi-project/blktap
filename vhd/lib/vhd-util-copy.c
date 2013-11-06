@@ -113,7 +113,7 @@ void put_buf(char *buf) {
     free(buf);
 }
 
-enum io_type {MTDT, DATA};
+enum io_type {MTDT, READ, WRITE};
 
 /*
  * TODO change name, this struct is for a VHD block
@@ -281,7 +281,7 @@ read_blocks(struct bitmap_desc *bmp) {
 
     if (bmp->pending_data_iocbs) {
 
-        bmp->io_type = DATA;
+        bmp->io_type = READ;
 
         err = io_submit(*bmp->aioctx, bmp->pending_data_iocbs, bmp->data_iocbs);
 
@@ -402,6 +402,7 @@ int read_bitmap(struct bitmap_desc *bmp) {
         io_prep_pread(&bmp->iocb, bmp->cur_ctx->fd, bmp->bmp, bitmap_size,
                 offset);
         bmp->iocb.data = bmp;
+        bmp->io_type = MTDT;
         err = io_submit(*bmp->aioctx, 1, &p_iocb);
         if (err < 0) {
             fprintf(stderr, "failed to submit I/O request: %s\n",
@@ -556,7 +557,16 @@ process_mtdt_completion(struct bitmap_desc *bmp) {
 }
 
 static int
-process_data_completion(struct bitmap_desc *bmp) {
+process_write_completion(struct bitmap_desc *bmp) {
+
+    assert(bmp);
+    put_bitmap_desc(bmp);
+
+    return 0;
+}
+
+static int
+process_read_completion(struct bitmap_desc *bmp) {
     int err = 0;
 
     bmp->pending_data_iocbs--;
@@ -569,44 +579,47 @@ process_data_completion(struct bitmap_desc *bmp) {
     DBG("last data I/O completed for %u\n", bmp->block);
 
     if (bmp->fd) {
+        /*
+         * FIXME make this a member of struct bitmap
+         */
         const size_t blk_size = bmp->ctx->spb << VHD_SECTOR_SHIFT;
-        const unsigned long long _off = (unsigned long long)bmp->block
-            * (unsigned long long)blk_size;
-        const off64_t off = lseek64(bmp->fd, _off, SEEK_SET);
-        ssize_t written;
 
         if (!bmp->is_stream) {
-            if (off == (off64_t) - 1) {
-                err = errno;
-                fprintf(stderr, "failed to seek output to %llu: %s\n", _off,
-                        strerror(errno));
-            } else if (off != _off) {
-                fprintf(stderr, "seeked to %llu instead of %llu\n", off,
-                        _off);
+            struct iocb *p_iocb = &bmp->iocb;
+            io_prep_pwrite(&bmp->iocb, bmp->fd, bmp->buf, blk_size,
+                    (unsigned long long)bmp->block
+                    * (unsigned long long)blk_size);
+            bmp->iocb.data = bmp;
+            bmp->io_type = WRITE;
+            err = io_submit(*bmp->aioctx, 1, &p_iocb);
+            if (err < 0) {
+                err = -err;
+                fprintf(stderr, "failed to submit write I/O for block %u: %s\n",
+                        bmp->block, strerror(err));
+            } else if (err != 1) {
+                fprintf(stderr, "submitted only %d iocbs instead of 1?!\n",
+                        err);
                 err = EINVAL;
+            } else {
+                pending++;
+                err = 0;
             }
+
+        } else {
+            /**
+             * FIXME use libaio if we're writing to a file
+             */
+            ssize_t written = write(bmp->fd, bmp->buf, blk_size);
+            if (written != blk_size) {
+                err = errno;
+                fprintf(stderr, "failed to write block %u "
+                        "(written %u out of %u): %s\n", bmp->block,
+                        written, blk_size, strerror(err));
+            }
+            put_bitmap_desc(bmp);
         }
-
-        if (err)
-            goto out;
-
-        /**
-         * FIXME use libaio if we're writing to a file
-         */
-        written = write(bmp->fd, bmp->buf, blk_size);
-        if (written != blk_size) {
-            err = errno;
-            fprintf(stderr, "failed to write block %u "
-                    "(written %u out of %u): %s\n", bmp->block,
-                    written, blk_size, strerror(err));
-        }
-    }
-
-out:
-    /*
-     * FIXME all data I/Os finished, we can now spit out the data.
-     */
-    put_bitmap_desc(bmp);
+    } else
+        put_bitmap_desc(bmp);
 
     return err;
 }
@@ -630,12 +643,15 @@ process_completion(struct io_event *io_event) {
     bmp = (struct bitmap_desc*)iocb->data;
     assert(bmp);
 
-    assert(bmp->io_type == MTDT || bmp->io_type == DATA);
+    assert(bmp->io_type == MTDT || bmp->io_type == READ
+            || bmp->io_type == WRITE);
 
     if (bmp->io_type == MTDT)
         return process_mtdt_completion(bmp);
+    else if (bmp->io_type == READ)
+        return process_read_completion(bmp);
     else
-        return process_data_completion(bmp);
+        return process_write_completion(bmp);
 }
 
 static inline int
@@ -693,6 +709,8 @@ _vhd_util_copy2(const char *name, int fd, bool is_stream,
 
         int completed_events;
 
+        assert(pending >= 0);
+
         if (blk < ctx.bat.entries) {
             struct bitmap_desc *bmp = read_bitmaps(&ctx, blk, &aioctx, fd,
                     is_stream);
@@ -703,6 +721,10 @@ _vhd_util_copy2(const char *name, int fd, bool is_stream,
             }
             blk++;
         }
+
+        /*
+         * FIXME Check for errors in io_event!!!
+         */
 
         completed_events = io_getevents(aioctx, 0, max_events, io_events,
                 NULL);
