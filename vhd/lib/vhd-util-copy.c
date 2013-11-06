@@ -479,6 +479,14 @@ out:
     return bmp;
 }
 
+static void
+put_bat_chain(vhd_context_t *ctx) {
+    vhd_context_t *cur = NULL;
+    assert(ctx);
+    list_for_each_entry(cur, &ctx->next, next)
+        vhd_put_bat(cur);
+}
+
 static int
 read_bat_chain(vhd_context_t *ctx) {
     int err = 0;
@@ -486,8 +494,10 @@ read_bat_chain(vhd_context_t *ctx) {
     assert(ctx);
     list_for_each_entry(cur, &ctx->next, next) {
         err = vhd_get_bat(cur);
-        if (err)
+        if (err) {
+            put_bat_chain(ctx);
             return err;
+        }
     }
     return 0;
 }
@@ -652,19 +662,19 @@ _vhd_util_copy2(const char *name, int fd, bool is_stream) {
     if (err) {
         fprintf(stderr, "failed to open %s: %s\n",
                 name, strerror(-err));
-        goto out;
+        goto out_queue_release;
     }
 
     err = vhd_get_bat(&ctx);
     if (err) {
         fprintf(stderr, "failed to get BAT for %s: %s\n", ctx.file,
                 strerror(-err));
-        goto out;
+        goto out_close_vhd_ctx;
     }
 
     err = read_bat_chain(&ctx);
     if (err)
-        goto out;
+        goto out_put_bat;
 
     init_bitmap_cache(ctx.spb);
 
@@ -739,8 +749,18 @@ _vhd_util_copy2(const char *name, int fd, bool is_stream) {
     }
 
     /*
-     * FIXME close vhd, put BATs, ...
+     * FIXME free pending I/Os in case of error
      */
+    put_bat_chain(&ctx);
+out_put_bat:
+    vhd_put_bat(&ctx);
+out_close_vhd_ctx:
+    vhd_close(&ctx);
+out_queue_release:
+    err = -io_queue_release(aioctx);
+    if (err) {
+        fprintf(stderr, "failed to release AIO queue: %s\n", strerror(err));
+    }
 out:
     return err;
 }
