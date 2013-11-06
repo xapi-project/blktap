@@ -644,7 +644,7 @@ _vhd_util_copy2(const char *name, int fd, bool is_stream,
 
     io_context_t aioctx;
     vhd_context_t ctx;
-    uint32_t blk;
+    uint32_t blk = 0;
     int err;
     struct io_event *io_events;
 
@@ -723,8 +723,11 @@ _vhd_util_copy2(const char *name, int fd, bool is_stream,
             DBG("got an I/O completion\n");
             for (i = 0; i < completed_events; i++) {
                 err = process_completion(&io_events[i]);
-                if (err)
+                if (err) {
+                    fprintf(stderr, "failed to process completion: %s\n",
+                            strerror(err));
                     break;
+                }
             }
         }
     }
