@@ -648,7 +648,7 @@ _vhd_util_copy2(const char *name, int fd, bool is_stream,
     int err;
     struct io_event io_event;
 
-    if (events <= 0) {
+    if (max_events <= 0) {
         fprintf(stderr, "invalid number of AIO events (%d)\n", max_events);
         goto out;
     }
@@ -778,10 +778,15 @@ vhd_util_copy(const int argc, char **argv)
     char *name = NULL, *to = NULL;
     int c = 0, err = 0, fd = -1, stdo = 0, max_events = 1024;
 
+    /*
+     * FIXME Adjust number of AIO events depending on (free?) system memory and
+     * VHD block size.
+     */
+
     if (!argc || !argv)
         goto usage;
 
-    while ((c = getopt(argc, argv, "n:o:sh")) != -1) {
+    while ((c = getopt(argc, argv, "n:o:e:sh")) != -1) {
         switch (c) {
             case 'n':
                 name = optarg;
