@@ -646,7 +646,7 @@ _vhd_util_copy2(const char *name, int fd, bool is_stream,
     vhd_context_t ctx;
     uint32_t blk;
     int err;
-    struct io_event io_event;
+    struct io_event *io_events;
 
     if (max_events <= 0) {
         fprintf(stderr, "invalid number of AIO events (%d)\n", max_events);
@@ -665,11 +665,15 @@ _vhd_util_copy2(const char *name, int fd, bool is_stream,
         goto out;
     }
 
+    io_events = malloc(sizeof(struct io_event) * max_events);
+    if (!io_events)
+        goto out_queue_release;
+
     err = vhd_open(&ctx, name, VHD_OPEN_RDONLY | VHD_OPEN_CACHED);
     if (err) {
         fprintf(stderr, "failed to open %s: %s\n",
                 name, strerror(-err));
-        goto out_queue_release;
+        goto out_free_io_events;
     }
 
     err = vhd_get_bat(&ctx);
@@ -685,56 +689,44 @@ _vhd_util_copy2(const char *name, int fd, bool is_stream,
 
     init_bitmap_cache(ctx.spb);
 
-    for (blk = 0; blk < ctx.bat.entries; blk++) {
-        struct bitmap_desc *bmp = read_bitmaps(&ctx, blk, &aioctx, fd,
-                is_stream);
-        if (!bmp) {
-            err = errno;
-            fprintf(stderr, "failed to read bitmaps: %s\n", strerror(err));
-            break;
+    while (blk < ctx.bat.entries || pending) {
+
+        int completed_events;
+
+        if (blk < ctx.bat.entries) {
+            struct bitmap_desc *bmp = read_bitmaps(&ctx, blk, &aioctx, fd,
+                    is_stream);
+            if (!bmp) {
+                err = errno;
+                fprintf(stderr, "failed to read bitmaps: %s\n", strerror(err));
+                break;
+            }
+            blk++;
         }
 
-        err = io_getevents(aioctx, 0, 1, &io_event, NULL);
-        if (err < 0) {
-            err = -err;
+        completed_events = io_getevents(aioctx, 0, max_events, io_events,
+                NULL);
+        if (completed_events < 0) {
+            err = -completed_events;
             fprintf(stderr, "failed to get I/O events: %s\n",
                     strerror(err));
             break;
-        } else if (err == 0) {
+        } else if (completed_events == 0) {
             /*
              * No I/O requests have completed, issue another one.
              */
             DBG("no I/Os have completed, proceeding to the next block\n");
+            err = 0;
             continue;
         } else {
+            int i;
             DBG("got an I/O completion\n");
-            err = process_completion(&io_event);
-            if (err)
-                break;
+            for (i = 0; i < completed_events; i++) {
+                err = process_completion(&io_events[i]);
+                if (err)
+                    break;
+            }
         }
-    }
-
-    DBG("done issuing I/Os for bitmaps\n");
-
-    while (pending) {
-        DBG("waiting for an I/O completion (pending=%d)\n", pending);
-        err = io_getevents(aioctx, 1, 1, &io_event, NULL);
-        if (err < 0) {
-            err = -err;
-            fprintf(stderr, "failed to get I/O events: %s\n", strerror(err));
-            break;
-        } else if (err == 0 || err > 1) {
-            fprintf(stderr, "unexpected number of completed I/O events: %d\n",
-                    err);
-            break;
-        } else {
-            DBG("got an I/O completion\n");
-            assert(err > 0);
-            err = process_completion(&io_event);
-            if (err)
-                break;
-        }
-
     }
 
     if (fd) {
@@ -763,6 +755,8 @@ out_put_bat:
     vhd_put_bat(&ctx);
 out_close_vhd_ctx:
     vhd_close(&ctx);
+out_free_io_events:
+    free(io_events);
 out_queue_release:
     err = -io_queue_release(aioctx);
     if (err) {
