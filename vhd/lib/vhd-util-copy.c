@@ -639,14 +639,19 @@ process_completion(struct io_event *io_event) {
 }
 
 static inline int
-_vhd_util_copy2(const char *name, int fd, bool is_stream) {
+_vhd_util_copy2(const char *name, int fd, bool is_stream,
+        const int max_events) {
 
     io_context_t aioctx;
-    int max_events = 16384;
     vhd_context_t ctx;
     uint32_t blk;
     int err;
     struct io_event io_event;
+
+    if (events <= 0) {
+        fprintf(stderr, "invalid number of AIO events (%d)\n", max_events);
+        goto out;
+    }
 
     /*
      * FIXME allow user specify maxevents
@@ -771,7 +776,7 @@ int
 vhd_util_copy(const int argc, char **argv)
 {
     char *name = NULL, *to = NULL;
-    int c = 0, err = 0, fd = -1, stdo = 0;
+    int c = 0, err = 0, fd = -1, stdo = 0, max_events = 16384;
 
     if (!argc || !argv)
         goto usage;
@@ -786,6 +791,9 @@ vhd_util_copy(const int argc, char **argv)
                 break;
             case 's':
                 stdo = 1;
+                break;
+            case 'e':
+                max_events = atoi(optarg);
                 break;
             case 'h':
             default:
@@ -813,11 +821,11 @@ vhd_util_copy(const int argc, char **argv)
             if (err) {
                 err = errno;
                 if (err == ENOENT)
-                    is_stream = true;
+                    is_stream = false;
                 else {
                     fprintf(stderr, "failed to stat %s: %s\n", to,
                             strerror(err));
-                    goto error;
+                    goto out;
                 }
             } else {
                 if (S_ISCHR(buf.st_mode))
@@ -835,18 +843,18 @@ vhd_util_copy(const int argc, char **argv)
                 err = -errno;
                 fprintf(stderr, "failed to open %s: %s\n",
                         to, strerror(-err));
-                goto error;
+                goto out;
             }
         }
-        err = _vhd_util_copy2(name, fd, is_stream);
+        err = _vhd_util_copy2(name, fd, is_stream, max_events);
     }
 
-error:
+out:
     if (fd > 0)
         close(fd);
     return err;
 
 usage:
-    printf("options: <-n source file name> [-o target file name] [-s stream output to stdout] [-h help]\n");
+    printf("options: <-n source file name> [-o target file name] [-s stream output to stdout] [-h help] [-e max AIO events]\n");
     return -EINVAL;
 }
