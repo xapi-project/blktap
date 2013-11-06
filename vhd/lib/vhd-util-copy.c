@@ -234,11 +234,13 @@ read_blocks(struct bitmap_desc *bmp) {
      * allocating/free fixed-size objects.
      */
     err = posix_memalign((void*)&bmp->buf, VHD_SECTOR_SIZE,
-            VHD_SECTOR_SIZE * bmp->ctx->spb);
+            bmp->ctx->spb << VHD_SECTOR_SHIFT);
     if (err) {
         errno = err;
         goto out;
     }
+
+    bzero(bmp->buf, bmp->ctx->spb << VHD_SECTOR_SHIFT);
 
     for (i = 0, bmp->pending_data_iocbs = 0, prv_iocb = NULL, prv_ctx = NULL;
             i < bmp->ctx->spb; i++) {
