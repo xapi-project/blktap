@@ -776,7 +776,7 @@ int
 vhd_util_copy(const int argc, char **argv)
 {
     char *name = NULL, *to = NULL;
-    int c = 0, err = 0, fd = -1, stdo = 0, max_events = 16384;
+    int c = 0, err = 0, fd = -1, stdo = 0, max_events = 1024;
 
     if (!argc || !argv)
         goto usage;
