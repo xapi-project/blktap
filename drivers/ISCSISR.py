@@ -372,9 +372,9 @@ class ISCSISR(SR.SR):
         if self.mpath == 'true' and self.dconf.has_key('SCSIid'):
             self.mpathmodule.refresh(self.dconf['SCSIid'],npaths)
             # set the device mapper's I/O scheduler
-            self.block_setscheduler('/dev/disk/by-scsid/%s/mapper'
-                    % self.dconf['SCSIid'])
-
+            path = '/dev/disk/by-scsid/%s' % self.dconf['SCSIid']
+            for file in os.listdir(path):
+                self.block_setscheduler('%s/%s' % (path,file))
 
     def detach(self, sr_uuid):
         keys = []
