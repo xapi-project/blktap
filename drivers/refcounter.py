@@ -185,10 +185,13 @@ class RefCounter:
             os.unlink(objFile)
         except OSError:
             raise RefCounterException("failed to remove '%s'" % objFile)
-        if not os.listdir(nsDir):
-            try:
-                os.rmdir(nsDir)
-            except OSError:
+        
+        try:
+            os.rmdir(nsDir)
+        except OSError, e:
+            # Having a listdir wont help since there could be other vdi related
+            # operations that could create a file in between the python calls.
+            if e.errno != errno.ENOTEMPTY:
                 raise RefCounterException("failed to remove '%s'" % nsDir)
     _removeObject = staticmethod(_removeObject)
 
