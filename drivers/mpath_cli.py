@@ -50,9 +50,8 @@ def remove_map(m):
 def resize_map(m):
     mpexec("resize map %s" % m)
 
-# Don't reconfigure!!
-#def reconfigure():
-#    mpexec("reconfigure")
+def reconfigure():
+    mpexec("reconfigure")
 
 regex = re.compile("[0-9]+:[0-9]+:[0-9]+:[0-9]+\s*([a-z]*)")
 regex2 = re.compile("multipathd>(\s*[^:]*:)?\s+(.*)")
