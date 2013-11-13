@@ -18,6 +18,10 @@
 # LVM-based journaling
 
 import util
+from srmetadata import open_file, close, get_min_blk_size_wrapper, \
+    xs_file_read_wrapper, xs_file_write_wrapper
+
+LVM_MAX_NAME_LEN = 127
 
 class JournalerException(util.SMException):
     pass
@@ -30,6 +34,8 @@ class Journaler:
     LV_SIZE = 4 * 1024 * 1024 # minimum size
     LV_TAG = "journaler"
     SEPARATOR = "_"
+    JRN_CLONE = "clone"
+    JRN_LEAF = "leaf"
 
     def __init__(self, lvmCache):
         self.vgName = lvmCache.vgName
@@ -39,11 +45,37 @@ class Journaler:
         """Create an entry of type "type" for "id" with the value "val".
         Error if such an entry already exists."""
         valExisting = self.get(type, id)
+        writeData = False
         if valExisting:
             raise JournalerException("Journal already exists for '%s:%s': %s" \
                     % (type, id, valExisting))
         lvName = self._getNameLV(type, id, val)
-        self.lvmCache.create(lvName, self.LV_SIZE, self.LV_TAG, False)
+
+        mapperDevice = self._getLVMapperName(lvName)
+        if len(mapperDevice) > LVM_MAX_NAME_LEN:
+            lvName = self._getNameLV(type, id)
+            writeData = True
+            mapperDevice = self._getLVMapperName(lvName)
+            assert len(mapperDevice) <= LVM_MAX_NAME_LEN
+
+        self.lvmCache.create(lvName, self.LV_SIZE, self.LV_TAG)
+
+        if writeData:
+            fullPath = self.lvmCache._getPath(lvName)
+            fd =  open_file(fullPath, True)
+            try:
+                try:
+                    min_block_size = get_min_blk_size_wrapper(fd)
+                    data = "%d %s" % (len(val), val)
+                    xs_file_write_wrapper(fd, 0, min_block_size, data, len(data))
+                finally:
+                    close(fd)
+                    self.lvmCache.deactivateNoRefcount(lvName)
+            except:
+                util.logException("journaler.create")
+                self.lvmCache.remove(lvName)
+                raise JournalerException("Failed to write to journal %s" \
+                    % lvName)
 
     def remove(self, type, id):
         """Remove the entry of type "type" for "id". Error if the entry doesn't
@@ -52,6 +84,10 @@ class Journaler:
         if not val:
             raise JournalerException("No journal for '%s:%s'" % (type, id))
         lvName = self._getNameLV(type, id, val)
+
+        mapperDevice = self._getLVMapperName(lvName)
+        if len(mapperDevice) > LVM_MAX_NAME_LEN:
+            lvName = self._getNameLV(type, id)
         self.lvmCache.remove(lvName)
 
     def get(self, type, id):
@@ -77,7 +113,7 @@ class Journaler:
                 return True
         return False
 
-    def _getNameLV(self, type, id, val):
+    def _getNameLV(self, type, id, val = 1):
         return "%s%s%s%s%s" % (type, self.SEPARATOR, id, self.SEPARATOR, val)
 
     def _getAllEntries(self):
@@ -88,11 +124,32 @@ class Journaler:
             if len(parts) != 3:
                 raise JournalerException("Bad LV name: %s" % lvName)
             type, id, val = parts
+            # For clone and leaf journals, additional
+            # data is written inside file
+            # TODO: Remove dependency on journal type
+            if type == self.JRN_CLONE or type == self.JRN_LEAF:
+                fullPath = self.lvmCache._getPath(lvName)
+                self.lvmCache.activateNoRefcount(lvName,False)
+                fd = open_file(fullPath)
+                try:
+                    try:
+                        min_block_size = get_min_blk_size_wrapper(fd)
+                        data = xs_file_read_wrapper(fd, 0, min_block_size, min_block_size)
+                        length, val = data.split(" ", 1)
+                        val = val[:int(length)]
+                    except:
+                       raise JournalerException("Failed to read from journal %s" \
+                           % lvName)
+                finally:
+                    close(fd)
+                    self.lvmCache.deactivateNoRefcount(lvName)
             if not entries.get(type):
                 entries[type] = dict()
             entries[type][id] = val
         return entries
 
+    def _getLVMapperName(self, lvName):
+        return '%s-%s' % (self.vgName.replace("-", "--"), lvName)
 
 ###########################################################################
 #
