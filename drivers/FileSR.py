@@ -34,10 +34,10 @@ CAPABILITIES = ["SR_PROBE","SR_UPDATE", \
                 "VDI_CLONE","VDI_SNAPSHOT","VDI_RESIZE",
                 "ATOMIC_PAUSE"]
 
-CONFIGURATION = [ [ 'path', 'path where images are stored (required)' ] ]
+CONFIGURATION = [ [ 'location', 'local directory path (required)' ] ]
                   
 DRIVER_INFO = {
-    'name': 'Local EXT3 VHD',
+    'name': 'Local Path VHD',
     'description': 'SR plugin which represents disks as VHD files stored on a local path',
     'vendor': 'Citrix Systems Inc',
     'copyright': '(C) 2008 Citrix Systems Inc',
