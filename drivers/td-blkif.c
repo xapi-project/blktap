@@ -21,7 +21,6 @@
 #include <errno.h>
 #include <sys/mman.h>
 #include <xenctrl.h>
-#include <unistd.h>
 
 #include "blktap3.h"
 #include "tapdisk.h"
