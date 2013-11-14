@@ -26,6 +26,7 @@ typedef struct td_nbdserver_client td_nbdserver_client_t;
 #include "tapdisk-vbd.h"
 #include "list.h"
 #include "tapdisk-nbd.h"
+#include <sys/un.h>
 
 struct td_nbdserver {
 	td_vbd_t               *vbd;

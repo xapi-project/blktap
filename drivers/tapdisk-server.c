@@ -36,14 +36,6 @@
 #define ERR(_err, _f, _a...)         tlog_error(_err, _f, ##_a)
 
 #define TAPDISK_TIOCBS              (TAPDISK_DATA_REQUESTS + 50)
-#define ASSERT(p)                                      \
-    do {                                               \
-        if (!(p)) {                                    \
-            EPRINTF("%s:%d: FAILED ASSERTION: '%s'\n", \
-                     __FILE__, __LINE__, #p);          \
-            abort();                                   \
-        }                                              \
-    } while (0)
 
 typedef struct tapdisk_server {
 	int                          run;

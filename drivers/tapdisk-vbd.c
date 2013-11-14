@@ -28,9 +28,6 @@
 #include <libgen.h>
 #include <sys/mman.h>
 #include <sys/ioctl.h>
-#include <sys/types.h>
-#include <sys/socket.h>
-#include <sys/un.h>
 
 #include "libvhd.h"
 #include "tapdisk-blktap.h"
