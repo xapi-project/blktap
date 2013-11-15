@@ -171,7 +171,8 @@ out:
 }
 
 static int
-vhd_util_coalesce_parent(const char *name, int sparse, int progress)
+vhd_util_coalesce_parent(const char *name, int sparse, int progress,
+        const char *step_parent)
 {
 	char *pname;
 	int err, parent_fd;
@@ -184,6 +185,22 @@ vhd_util_coalesce_parent(const char *name, int sparse, int progress)
 	if (err) {
 		printf("error opening %s: %d\n", name, err);
 		return err;
+	}
+
+	if (vhd.footer.type != HD_TYPE_DIFF) {
+		printf("coalescing of non-differencing disks is not supported\n");
+		vhd_close(&vhd);
+		return -EINVAL;
+	}
+
+	if (step_parent) {
+		err = vhd_custom_parent_set(&vhd, step_parent);
+		if (err) {
+			fprintf(stderr, "failed to set parent to \'%s\': %s\n",
+					step_parent, strerror(err));
+			vhd_close(&vhd);
+			return -EINVAL;
+		}
 	}
 
 	err = vhd_parent_locator_get(&vhd, &pname);
@@ -446,6 +463,9 @@ out:
 	return err;
 }
 
+/**
+ * Clears the bitmaps on all VHDs between child and ancestor.
+ */
 static int
 vhd_util_coalesce_clear_bitmaps(struct list_head *chain, vhd_context_t *child,
 				vhd_context_t *ancestor, uint64_t block)
@@ -649,20 +669,21 @@ done:
 int
 vhd_util_coalesce(int argc, char **argv)
 {
-	char *name, *oname, *ancestor;
+	char *name, *oname, *ancestor, *step_parent;
 	int err, c, progress, sparse;
 
-	name      = NULL;
-	oname     = NULL;
-	ancestor  = NULL;
-	sparse    = 0;
-	progress  = 0;
+	name        = NULL;
+	oname       = NULL;
+	ancestor    = NULL;
+	step_parent = NULL;
+	sparse      = 0;
+	progress    = 0;
 
 	if (!argc || !argv)
 		goto usage;
 
 	optind = 0;
-	while ((c = getopt(argc, argv, "n:o:a:sph")) != -1) {
+	while ((c = getopt(argc, argv, "n:o:a:x:sph")) != -1) {
 		switch (c) {
 		case 'n':
 			name = optarg;
@@ -678,6 +699,9 @@ vhd_util_coalesce(int argc, char **argv)
 			break;
 		case 'p':
 			progress = 1;
+			break;
+		case 'x':
+			step_parent = optarg;
 			break;
 		case 'h':
 		default:
@@ -697,7 +721,7 @@ vhd_util_coalesce(int argc, char **argv)
 		err = vhd_util_coalesce_ancestor(name, ancestor,
 						 sparse, progress);
 	else
-		err = vhd_util_coalesce_parent(name, sparse, progress);
+		err = vhd_util_coalesce_parent(name, sparse, progress, step_parent);
 
 	if (err)
 		printf("error coalescing: %d\n", err);
@@ -706,6 +730,7 @@ vhd_util_coalesce(int argc, char **argv)
 
 usage:
 	printf("options: <-n name> [-a ancestor] "
-	       "[-o output] [-s sparse] [-p progress] [-h help]\n");
+	       "[-o output] [-s sparse] [-p progress] [-x custom parent] "
+	       "[-h help]\n");
 	return -EINVAL;
 }
