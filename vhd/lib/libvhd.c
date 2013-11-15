@@ -1616,6 +1616,9 @@ vhd_parent_locator_get(vhd_context_t *ctx, char **parent)
 	if (ctx->footer.type != HD_TYPE_DIFF)
 		return -EINVAL;
 
+	if (ctx->custom_parent)
+		return vhd_find_parent(ctx, ctx->custom_parent, parent);
+
 	n = vhd_parent_locator_count(ctx);
 	for (i = 0; i < n; i++) {
 		int _err;
@@ -1638,6 +1641,23 @@ vhd_parent_locator_get(vhd_context_t *ctx, char **parent)
 	}
 
 	return err;
+}
+
+/**
+ * Overrides the parent with the supplied one.
+ *
+ * XXX Writing the header/footer after calling this function may lead to
+ * undefined results.
+ */
+int
+vhd_custom_parent_set(vhd_context_t *ctx, const char *parent) {
+	ASSERT(ctx);
+	ASSERT(parent);
+	free(ctx->custom_parent);
+	ctx->custom_parent = strdup(parent);
+	if (!ctx->custom_parent)
+		return -ENOMEM;
+	return 0;
 }
 
 int
@@ -2579,6 +2599,7 @@ vhd_close(vhd_context_t *ctx)
 	free(ctx->file);
 	free(ctx->bat.bat);
 	free(ctx->batmap.map);
+	free(ctx->custom_parent);
 	memset(ctx, 0, sizeof(vhd_context_t));
 }
 
