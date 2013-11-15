@@ -1127,9 +1127,6 @@ tapdisk_vbd_complete_td_request(td_request_t treq, int res)
 		}
 	}
 
-	if (res != 0)
-		DPRINTF("Res=%d, image->type=%d\n", res, image->type);
-
 	if (res != 0 && image->type == DISK_TYPE_NBD && 
 			((image == vbd->secondary) || 
 			 (image == vbd->retired))) {
