@@ -162,7 +162,7 @@ static int
 vhd_util_coalesce_parent(const char *name, int sparse, int progress,
         const char *step_parent)
 {
-    char *pname;
+	char *pname;
 	int err, parent_fd;
 	vhd_context_t vhd, parent;
 
@@ -176,28 +176,27 @@ vhd_util_coalesce_parent(const char *name, int sparse, int progress,
 	}
 
 	if (vhd.footer.type != HD_TYPE_DIFF) {
-        fprintf(stderr, "coalescing of non-differencing disks is not "
-                "supported\n");
-        vhd_close(&vhd);
+		printf("coalescing of non-differencing disks is not supported\n");
+		vhd_close(&vhd);
 		return -EINVAL;
-    }
+	}
 
-    if (step_parent) {
-        err = vhd_parent_locator_set(&vhd, step_parent);
-        if (err) {
-            fprintf(stderr, "failed to set parent to \'%s\': %s\n",
-                    step_parent, strerror(err));
-            vhd_close(&vhd);
-            return -EINVAL;
-        }
-    }
+	if (step_parent) {
+		err = vhd_custom_parent_set(&vhd, step_parent);
+		if (err) {
+			fprintf(stderr, "failed to set parent to \'%s\': %s\n",
+					step_parent, strerror(err));
+			vhd_close(&vhd);
+			return -EINVAL;
+		}
+	}
 
-    err = vhd_parent_locator_get(&vhd, &pname);
-    if (err) {
-        printf("error finding %s parent: %d\n", name, err);
-        vhd_close(&vhd);
-        return err;
-    }
+	err = vhd_parent_locator_get(&vhd, &pname);
+	if (err) {
+		printf("error finding %s parent: %d\n", name, err);
+		vhd_close(&vhd);
+		return err;
+	}
 
 	if (vhd_parent_raw(&vhd)) {
 		parent_fd = open(pname, O_RDWR | O_DIRECT | O_LARGEFILE, 0644);
@@ -664,7 +663,7 @@ vhd_util_coalesce(int argc, char **argv)
 	name        = NULL;
 	oname       = NULL;
 	ancestor    = NULL;
-    step_parent = NULL;
+	step_parent = NULL;
 	sparse      = 0;
 	progress    = 0;
 
@@ -689,9 +688,9 @@ vhd_util_coalesce(int argc, char **argv)
 		case 'p':
 			progress = 1;
 			break;
-        case 'x':
-            step_parent = optarg;
-            break;
+		case 'x':
+			step_parent = optarg;
+			break;
 		case 'h':
 		default:
 			goto usage;
@@ -719,6 +718,7 @@ vhd_util_coalesce(int argc, char **argv)
 
 usage:
 	printf("options: <-n name> [-a ancestor] "
-	       "[-o output] [-s sparse] [-p progress] [-h help]\n");
+	       "[-o output] [-s sparse] [-p progress] [-x custom parent] "
+	       "[-h help]\n");
 	return -EINVAL;
 }

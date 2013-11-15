@@ -135,7 +135,7 @@ struct vhd_context {
 
 	struct list_head           next;
 
-    char                      *custom_parent;
+	char                      *custom_parent;
 };
 
 static inline int
@@ -305,16 +305,7 @@ int vhd_initialize_header_parent_name(vhd_context_t *, const char *);
 int vhd_write_parent_locators(vhd_context_t *, const char *);
 int vhd_parent_locator_count(vhd_context_t *);
 int vhd_parent_locator_get(vhd_context_t *, char **);
-
-/**
- * Sets the parent locator in the VHD context.
- *
- * XXX Writing the header/footer after calling this function may lead to
- * undefined results.
- *
- * TODO Figure out how calling this function could affect the header/footer.
- */
-int vhd_parent_locator_set(vhd_context_t *vhd, const char *parent);
+int vhd_custom_parent_set(vhd_context_t *vhd, const char *parent);
 
 int vhd_parent_locator_read(vhd_context_t *, vhd_parent_locator_t *, char **);
 int vhd_find_parent(vhd_context_t *, const char *, char **);
