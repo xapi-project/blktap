@@ -261,8 +261,7 @@ class NFSFileVDI(FileSR.FileVDI):
         also start a tapdisk on the file"""
         util.SMlog("NFSFileVDI.attach_from_config")
         try:
-            if not util.pathexists(self.sr.path):
-                self.sr.attach(sr_uuid)
+            self.sr.attach(sr_uuid)
         except:
             util.logException("NFSFileVDI.attach_from_config")
             raise xs_errors.XenError('SRUnavailable', \
