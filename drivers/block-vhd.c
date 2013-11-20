@@ -61,6 +61,8 @@
 #include "tapdisk-disktype.h"
 #include "tapdisk-storage.h"
 
+#include "crc32.h"
+
 unsigned int SPB;
 
 #define DEBUGGING   2
@@ -245,6 +247,10 @@ struct vhd_state {
 	struct vhd_request       *vreq_free[VHD_REQS_DATA];
 	struct vhd_request        vreq_list[VHD_REQS_DATA];
 
+	int			  stats_fd;
+	char			 *stats_mem;
+	char			 *stats_name;
+
 	/* for redundant bitmap writes */
 	int                       padbm_size;
 	char                     *padbm_buf;
@@ -377,29 +383,61 @@ vhd_kill_footer(struct vhd_state *s)
 	return 0;
 }
 
+
+static inline void
+update_next_db(struct vhd_state *s, uint64_t next_db)
+{
+  DPRINTF("update_next_db");
+
+  s->next_db = next_db;
+
+  struct stats_t {
+    int32_t len;
+    int32_t checksum;
+    char msg[256];    
+  } stats;
+
+  memset(stats.msg,0,sizeof(stats.msg));
+
+  if(s->stats_mem) {
+    snprintf(stats.msg, 256, "%"PRIu64, next_db);
+    stats.len=strlen(stats.msg);
+    stats.checksum=crc((unsigned char *)stats.msg,stats.len);
+    memcpy(s->stats_mem, &stats, sizeof(stats));
+    msync(s->stats_mem, 4096, MS_SYNC);
+  }
+
+}
+
+
+
 static inline int
 find_next_free_block(struct vhd_state *s)
 {
 	int err;
 	off64_t eom;
 	uint32_t i, entry;
+	uint64_t next_db;
 
 	err = vhd_end_of_headers(&s->vhd, &eom);
 	if (err)
 		return err;
 
-	s->next_db = secs_round_up(eom);
+	update_next_db(s, secs_round_up(eom));
 	s->first_db = s->next_db;
 	if ((s->first_db + s->bm_secs) % s->spp)
 		s->first_db += (s->spp - ((s->first_db + s->bm_secs) % s->spp));
 
 	for (i = 0; i < s->bat.bat.entries; i++) {
 		entry = bat_entry(s, i);
-		if (entry != DD_BLK_UNUSED && entry >= s->next_db)
-			s->next_db = (uint64_t)entry + (uint64_t)s->spb
+		if (entry != DD_BLK_UNUSED && entry >= s->next_db) {
+			next_db = (uint64_t)entry + (uint64_t)s->spb
 				+ (uint64_t)s->bm_secs;
-			if (s->next_db > UINT_MAX)
-				break;
+			update_next_db(s, next_db);
+		}
+
+		if (s->next_db > UINT_MAX)
+		  break;
 	}
 
 	return 0;
@@ -628,6 +666,68 @@ vhd_log_open(struct vhd_state *s)
 		allocated, full, s->next_db);
 }
 
+static void
+vhd_stats_open(struct vhd_state *s, const char *name)
+{
+  char *bname = basename(name);
+  char statsname[256];
+  
+  snprintf(statsname, 256, "/dev/shm/%s.stats", bname);
+
+  s->stats_fd = open(statsname, O_CREAT | O_TRUNC | O_RDWR, 00600);
+  
+  if(s->stats_fd < 0) {
+    EPRINTF("Unable to open stats file [%s]!\n", statsname);
+    return;
+  }
+
+  if(ftruncate(s->stats_fd, 4096) < 0) {
+    EPRINTF("Unable to allocate memory for stats file: %s", strerror(errno));
+
+    close(s->stats_fd);
+    s->stats_fd=0;
+
+    return;
+  }
+
+  s->stats_mem = mmap(NULL, 4096, PROT_READ | PROT_WRITE, MAP_SHARED, s->stats_fd, 0);
+
+  if(s->stats_mem == (void *)-1) {
+    close(s->stats_fd);
+    s->stats_fd=0;
+    s->stats_mem=0;
+
+    EPRINTF("Unable to mmap stats file [%s] err=%s!\n", statsname, strerror(errno));
+    return;    
+  }
+
+  s->stats_name=strdup(statsname);
+
+  return;
+}
+
+static void
+vhd_stats_close(struct vhd_state *s)
+{
+  if(s->stats_mem) {
+    munmap(s->stats_mem, 4096);
+    s->stats_mem = NULL;
+  }
+
+  if(s->stats_fd) {
+    close(s->stats_fd);
+    s->stats_fd=0;
+  }
+
+  if(s->stats_name != NULL) {
+    if(unlink(s->stats_name) == -1) {
+      EPRINTF("Unable to unlink stats file '%s' (err=%s)\n", s->stats_name, strerror(errno));
+    }
+    free(s->stats_name);
+    s->stats_name=NULL;
+  }
+}
+
 static int
 __vhd_open(td_driver_t *driver, const char *name, vhd_flag_t flags)
 {
@@ -677,6 +777,11 @@ __vhd_open(td_driver_t *driver, const char *name, vhd_flag_t flags)
 	}
 
 	vhd_log_open(s);
+
+	if(!test_vhd_flag(flags, VHD_FLAG_OPEN_RDONLY)) {
+	  vhd_stats_open(s, name);
+	  update_next_db(s, s->next_db); /* Write it into the stats file */
+	}
 
 	SPB = s->spb;
 
@@ -799,6 +904,7 @@ _vhd_close(td_driver_t *driver)
 	}
 
  free:
+	vhd_stats_close(s);
 	vhd_log_close(s);
 	vhd_free_bat(s);
 	vhd_free_bitmap_cache(s);
@@ -1513,7 +1619,7 @@ allocate_block(struct vhd_state *s, uint32_t blk)
 	if (next_db > UINT_MAX)
 		return -EIO;
 
-	s->next_db = next_db;
+	update_next_db(s,next_db);
 
 	s->bat.pbw_blk = blk;
 	s->bat.pbw_offset = s->next_db;
@@ -2122,7 +2228,7 @@ finish_bat_write(struct vhd_request *req)
 
 	if (!req->error) {
 		bat_entry(s, s->bat.pbw_blk) = s->bat.pbw_offset;
-		s->next_db = s->bat.pbw_offset + s->spb + s->bm_secs;
+		update_next_db(s, s->bat.pbw_offset + s->spb + s->bm_secs);
 	} else
 		tx->error = req->error;
 
