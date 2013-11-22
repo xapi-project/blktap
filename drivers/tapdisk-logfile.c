@@ -93,45 +93,11 @@ tapdisk_logfile_unlink(td_logfile_t *log)
 }
 
 static int
-__tapdisk_logfile_rename(td_logfile_t *log, const char *newpath)
-{
-	const size_t max = sizeof(log->path);
-	int err;
-
-	if (!strcmp(log->path, newpath))
-		return 0;
-
-	if (strlen(newpath) > max)
-		return -ENAMETOOLONG;
-
-	err = rename(log->path, newpath);
-	if (err) {
-		err = -errno;
-		return err;
-	}
-
-	strncpy(log->path, newpath, max);
-
-	return 0;
-}
-
-static int
-tapdisk_logfile_name(char *path, size_t size,
-		     const char *dir, const char *ident, const char *suffix)
+tapdisk_logfile_name(char *path, size_t size, const char *dir,
+        const char *ident)
 {
 	const size_t max = MIN(size, TD_LOGFILE_PATH_MAX);
-	return snprintf(path, max, "%s/%s.%d%s", dir, ident, getpid(), suffix);
-}
-
-int
-tapdisk_logfile_rename(td_logfile_t *log,
-		       const char *dir, const char *ident, const char *suffix)
-{
-	char newpath[TD_LOGFILE_PATH_MAX+1];
-
-	tapdisk_logfile_name(newpath, sizeof(newpath), dir, ident, suffix);
-
-	return __tapdisk_logfile_rename(log, newpath);
+	return snprintf(path, max, "%s/%s.%d.log", dir, ident, getpid());
 }
 
 void
@@ -146,15 +112,14 @@ tapdisk_logfile_close(td_logfile_t *log)
 }
 
 int
-tapdisk_logfile_open(td_logfile_t *log,
-		     const char *dir, const char *ident, const char *ext,
-		     size_t bufsz)
+tapdisk_logfile_open(td_logfile_t *log, const char *dir, const char *ident,
+        size_t bufsz)
 {
 	int err;
 
 	memset(log, 0, sizeof(log));
 
-	tapdisk_logfile_name(log->path, sizeof(log->path), dir, ident, ext);
+	tapdisk_logfile_name(log->path, sizeof(log->path), dir, ident);
 
 	log->file = fopen(log->path, "w");
 	if (!log->file) {

@@ -32,6 +32,7 @@ void tlog_close(void);
 void tlog_precious(int);
 void tlog_vsyslog(int, const char *, va_list);
 void tlog_syslog(int, const char *, ...) __printf(2, 3);
+int tlog_reopen(void);
 
 #include <syslog.h>
 
