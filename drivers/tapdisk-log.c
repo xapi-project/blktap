@@ -90,8 +90,9 @@ tlog_logfile_save(void)
 /**
  * Closes the log file.
  *
- * @param keep if set to true the log file is not removed. NB if an error has
- * occurred or a USR1 has been received the log is always kept.
+ * @param keep if set to true the log file is never removed. NB if an error has
+ * occurred or a USR1 has been received the log is always kept, independently
+ * of whether @keep is set to false.
  */
 static void
 tlog_logfile_close(bool keep)

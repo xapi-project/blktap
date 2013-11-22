@@ -90,18 +90,6 @@ fail:
 }
 
 int
-tapdisk_logfile_unlink(td_logfile_t *log)
-{
-	int err;
-
-	err = unlink(log->path);
-	if (err)
-		err = -errno;
-
-	return err;
-}
-
-int
 tapdisk_logfiles_unlink(td_logfile_t *log)
 {
     int err;
@@ -191,7 +179,7 @@ tapdisk_logfile_open(td_logfile_t *log, const char *dir, const char *ident,
 	return 0;
 
 fail:
-	tapdisk_logfile_unlink(log);
+	tapdisk_logfiles_unlink(log);
 	tapdisk_logfile_close(log);
 	return err;
 }
