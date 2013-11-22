@@ -89,3 +89,6 @@ libtapdisk_la_LIBADD += -laio
 
 logrotatedir = $(sysconfdir)/logrotate.d
 dist_logrotate_DATA = blktap
+
+cronddailydir = $(sysconfdir)/cron.daily
+dist_cronddaily_DATA = blktap-log-cleanup

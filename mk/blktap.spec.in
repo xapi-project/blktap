@@ -44,6 +44,7 @@ make
 %install
 rm -rf %{buildroot}
 make install DESTDIR=%{buildroot}
+chmod 755 %{buildroot}/%{_sysconfdir}/cron.daily/blktap-log-cleanup
 
 %files
 %defattr(-,root,root,-)
@@ -62,6 +63,7 @@ make install DESTDIR=%{buildroot}
 %{_libexecdir}/tapdisk
 %{_sysconfdir}/udev/rules.d/blktap.rules
 %{_sysconfdir}/logrotate.d/blktap
+%{_sysconfdir}/cron.daily/blktap-log-cleanup
 
 %files devel
 %defattr(-,root,root,-)
