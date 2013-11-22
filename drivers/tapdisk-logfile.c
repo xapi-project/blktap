@@ -27,11 +27,20 @@
 #include <stdarg.h>
 #include <sys/time.h>
 #include <sys/mman.h>
+#include <glob.h>
 
 #include "tapdisk-logfile.h"
 #include "tapdisk-utils.h"
+#include "tapdisk-log.h"
 
 #define MIN(a,b) (((a) < (b)) ? (a) : (b))
+
+#define ASSERT(_p)                                  \
+    if (!(_p)) {                                    \
+        EPRINTF("%s:%d: FAILED ASSERTION: '%s'\n",  \
+                __FILE__, __LINE__, #_p);           \
+        abort();                                    \
+    }
 
 static inline size_t
 page_align(size_t size)
@@ -92,46 +101,60 @@ tapdisk_logfile_unlink(td_logfile_t *log)
 	return err;
 }
 
-static int
-__tapdisk_logfile_rename(td_logfile_t *log, const char *newpath)
+int
+tapdisk_logfiles_unlink(td_logfile_t *log)
 {
-	const size_t max = sizeof(log->path);
-	int err;
+    int err;
+    glob_t globbuf;
+    char *buf = NULL;
 
-	if (!strcmp(log->path, newpath))
-		return 0;
+    err = unlink(log->path);
+    if (err) {
+        err = errno;
+        tlog_syslog(LOG_WARNING, "failed to remove log file %s: %s\n",
+                log->path, strerror(err));
+    }
 
-	if (strlen(newpath) > max)
-		return -ENAMETOOLONG;
+    err = asprintf(&buf, "%s.[0-9]*", log->path);
+    if (err == -1) {
+        err = errno;
+        ASSERT(err);
+        buf = NULL;
+        goto out;
+    }
 
-	err = rename(log->path, newpath);
-	if (err) {
-		err = -errno;
-		return err;
-	}
-
-	strncpy(log->path, newpath, max);
-
-	return 0;
+    err = glob(buf, GLOB_ERR, NULL, &globbuf);
+    if (err) {
+        if (err != GLOB_NOMATCH) {
+            err = errno;
+            ASSERT(err);
+            tlog_syslog(LOG_WARNING, "failed to check whether there are "
+                    "rotated log files to be removed: %s\n", strerror(err));
+        }
+    } else {
+        int i;
+        for (i = 0; i < globbuf.gl_pathc; i++) {
+            err = unlink(globbuf.gl_pathv[i]);
+            if (err) {
+                err = errno;
+                ASSERT(err);
+                tlog_syslog(LOG_WARNING, "failed to remove log file %s: %s\n",
+                        globbuf.gl_pathv[i], strerror(err));
+            }
+        }
+        globfree(&globbuf);
+    }
+out:
+    free(buf);
+    return err;
 }
 
 static int
-tapdisk_logfile_name(char *path, size_t size,
-		     const char *dir, const char *ident, const char *suffix)
+tapdisk_logfile_name(char *path, size_t size, const char *dir,
+        const char *ident)
 {
 	const size_t max = MIN(size, TD_LOGFILE_PATH_MAX);
-	return snprintf(path, max, "%s/%s.%d%s", dir, ident, getpid(), suffix);
-}
-
-int
-tapdisk_logfile_rename(td_logfile_t *log,
-		       const char *dir, const char *ident, const char *suffix)
-{
-	char newpath[TD_LOGFILE_PATH_MAX+1];
-
-	tapdisk_logfile_name(newpath, sizeof(newpath), dir, ident, suffix);
-
-	return __tapdisk_logfile_rename(log, newpath);
+	return snprintf(path, max, "%s/%s.%d.log", dir, ident, getpid());
 }
 
 void
@@ -146,15 +169,14 @@ tapdisk_logfile_close(td_logfile_t *log)
 }
 
 int
-tapdisk_logfile_open(td_logfile_t *log,
-		     const char *dir, const char *ident, const char *ext,
-		     size_t bufsz)
+tapdisk_logfile_open(td_logfile_t *log, const char *dir, const char *ident,
+        size_t bufsz)
 {
 	int err;
 
 	memset(log, 0, sizeof(log));
 
-	tapdisk_logfile_name(log->path, sizeof(log->path), dir, ident, ext);
+	tapdisk_logfile_name(log->path, sizeof(log->path), dir, ident);
 
 	log->file = fopen(log->path, "w");
 	if (!log->file) {

@@ -27,6 +27,7 @@
 #include <sys/time.h>
 #include <sys/stat.h>
 #include <sys/types.h>
+#include <stdbool.h>
 
 #include "tapdisk-log.h"
 #include "tapdisk-utils.h"
@@ -48,6 +49,7 @@ struct tlog {
 	char          *ident;
 	td_syslog_t    syslog;
 	unsigned long  errors;
+	int            facility;
 };
 
 static struct tlog tapdisk_log;
@@ -75,27 +77,29 @@ static void
 tlog_logfile_save(void)
 {
 	td_logfile_t *logfile = &tapdisk_log.logfile;
-	const char *name = tapdisk_log.name;
 	int err;
 
 	tlog_info("saving log, %lu errors", tapdisk_log.errors);
 
 	tapdisk_logfile_flush(logfile);
 
-	err = tapdisk_logfile_rename(logfile,
-				     TLOG_DIR, name, ".log");
-
 	tlog_syslog(TLOG_INFO,
 		    "logfile saved to %s: %d\n", logfile->path, err);
 }
 
+/**
+ * Closes the log file.
+ *
+ * @param keep if set to true the log file is not removed. NB if an error has
+ * occurred or a USR1 has been received the log is always kept.
+ */
 static void
-tlog_logfile_close(void)
+tlog_logfile_close(bool keep)
 {
 	td_logfile_t *logfile = &tapdisk_log.logfile;
-	int keep;
 
-	keep = tapdisk_log.precious || tapdisk_log.errors;
+	if (tapdisk_log.precious || tapdisk_log.errors)
+		keep = true;
 
 	tlog_info("closing log, %lu errors", tapdisk_log.errors);
 
@@ -105,7 +109,7 @@ tlog_logfile_close(void)
 	tapdisk_logfile_close(logfile);
 
 	if (!keep)
-		tapdisk_logfile_unlink(logfile);
+		tapdisk_logfiles_unlink(logfile);
 }
 
 static int
@@ -121,9 +125,7 @@ tlog_logfile_open(const char *name, int level)
 			goto fail;
 	}
 
-	err = tapdisk_logfile_open(logfile,
-				   TLOG_DIR, name, ".tmp",
-				   TLOG_LOGFILE_BUFSZ);
+	err = tapdisk_logfile_open(logfile, TLOG_DIR, name, TLOG_LOGFILE_BUFSZ);
 	if (err)
 		goto fail;
 
@@ -138,7 +140,7 @@ tlog_logfile_open(const char *name, int level)
 	return 0;
 
 fail:
-	tlog_logfile_close();
+	tlog_logfile_close(false);
 	return err;
 }
 
@@ -195,6 +197,7 @@ tlog_open(const char *name, int facility, int level)
 	tapdisk_log.level = level;
 	tapdisk_log.name  = strdup(name);
 	tapdisk_log.ident = tapdisk_syslog_ident(name);
+	tapdisk_log.facility = facility;
 
 	if (!tapdisk_log.name || !tapdisk_log.ident) {
 		err = -errno;
@@ -216,13 +219,27 @@ fail:
 	return err;
 }
 
+int
+tlog_reopen(void)
+{
+	int err;
+
+	tlog_logfile_close(true);
+	err = tlog_logfile_open(tapdisk_log.name, tapdisk_log.level);
+	if (err)
+		return err;
+
+	tlog_syslog_close();
+	return tlog_syslog_open(tapdisk_log.ident, tapdisk_log.facility);
+}
+
 void
 tlog_close(void)
 {
 	DPRINTF("tapdisk-log: closing after %lu errors\n",
 		tapdisk_log.errors);
 
-	tlog_logfile_close();
+	tlog_logfile_close(false);
 	tlog_syslog_close();
 
 	free(tapdisk_log.ident);
