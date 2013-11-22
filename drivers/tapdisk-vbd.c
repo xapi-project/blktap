@@ -1485,6 +1485,7 @@ tapdisk_vbd_stats(td_vbd_t *vbd, td_stats_t *st)
 
 	if (vbd->tap) {
 		tapdisk_stats_field(st, "tap", "{");
+		tapdisk_stats_field(st, "minor", "d", vbd->tap->minor);
 		tapdisk_xenblkif_stats(vbd->sring, st);
 		tapdisk_stats_leave(st, '}');
 	}

@@ -33,8 +33,8 @@
         }                                              \
     } while (0)
 
-static inline void
-__tapdisk_xenblkif_stats(struct td_xenblkif * blkif, td_stats_t * st)
+void
+tapdisk_xenblkif_stats(struct td_xenblkif * blkif, td_stats_t * st)
 {
     ASSERT(blkif);
     ASSERT(st);
@@ -60,14 +60,4 @@ __tapdisk_xenblkif_stats(struct td_xenblkif * blkif, td_stats_t * st)
     tapdisk_stats_field(st, "vbd", "llu", blkif->stats.errors.vbd);
     tapdisk_stats_field(st, "img", "llu", blkif->stats.errors.img);
     tapdisk_stats_leave(st, '}');
-}
-
-void
-tapdisk_xenblkif_stats(struct td_xenblkif * blkif, td_stats_t * st)
-{
-    tapdisk_stats_field(st, "xen-blkifs", "[");
-    tapdisk_stats_enter(st, '{');
-    __tapdisk_xenblkif_stats(blkif, st);
-    tapdisk_stats_leave(st, '}');
-    tapdisk_stats_leave(st, ']');
 }
