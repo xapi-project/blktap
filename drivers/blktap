@@ -2,6 +2,7 @@
     rotate 5
     missingok
     size 16M
+    monthly
     sharedscripts
     postrotate
                /usr/bin/killall -HUP tapdisk
