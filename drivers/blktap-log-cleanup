@@ -2,7 +2,5 @@
 
 # Remove old rotated tapdisk logs.
 
-files=`find /var/log/blktap . -mtime +7 -type f -name tapdisk.*.log.*.gz`
-for f in ${files}; do
-	rm -f ${f}
-done
+find /var/log/blktap -mtime +7 -type f -name tapdisk.*.log.*.gz -delete
+exit $?
