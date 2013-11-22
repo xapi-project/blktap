@@ -73,20 +73,6 @@ tlog_logfile_print(const char *fmt, ...)
 #define tlog_info(_fmt, _args ...)					\
 	tlog_logfile_print("%s: "_fmt, tapdisk_log.ident, ##_args)
 
-static void
-tlog_logfile_save(void)
-{
-	td_logfile_t *logfile = &tapdisk_log.logfile;
-	int err;
-
-	tlog_info("saving log, %lu errors", tapdisk_log.errors);
-
-	tapdisk_logfile_flush(logfile);
-
-	tlog_syslog(TLOG_INFO,
-		    "logfile saved to %s: %d\n", logfile->path, err);
-}
-
 /**
  * Closes the log file.
  *
@@ -103,9 +89,6 @@ tlog_logfile_close(bool keep)
 		keep = true;
 
 	tlog_info("closing log, %lu errors", tapdisk_log.errors);
-
-	if (keep)
-		tlog_logfile_save();
 
 	tapdisk_logfile_close(logfile);
 
@@ -250,9 +233,7 @@ tlog_close(void)
 void
 tlog_precious(int force_flush)
 {
-	if (!tapdisk_log.precious)
-		tlog_logfile_save();
-	else if (force_flush)
+	if (!tapdisk_log.precious || force_flush)
 		tapdisk_logfile_flush(&tapdisk_log.logfile);
 
 	tapdisk_log.precious = 1;
