@@ -27,20 +27,11 @@
 #include <stdarg.h>
 #include <sys/time.h>
 #include <sys/mman.h>
-#include <glob.h>
 
 #include "tapdisk-logfile.h"
 #include "tapdisk-utils.h"
-#include "tapdisk-log.h"
 
 #define MIN(a,b) (((a) < (b)) ? (a) : (b))
-
-#define ASSERT(_p)                                  \
-    if (!(_p)) {                                    \
-        EPRINTF("%s:%d: FAILED ASSERTION: '%s'\n",  \
-                __FILE__, __LINE__, #_p);           \
-        abort();                                    \
-    }
 
 static inline size_t
 page_align(size_t size)
@@ -90,51 +81,15 @@ fail:
 }
 
 int
-tapdisk_logfiles_unlink(td_logfile_t *log)
+tapdisk_logfile_unlink(td_logfile_t *log)
 {
-    int err;
-    glob_t globbuf;
-    char *buf = NULL;
+	int err;
 
-    err = unlink(log->path);
-    if (err) {
-        err = errno;
-        tlog_syslog(LOG_WARNING, "failed to remove log file %s: %s\n",
-                log->path, strerror(err));
-    }
+	err = unlink(log->path);
+	if (err)
+		err = -errno;
 
-    err = asprintf(&buf, "%s.[0-9]*", log->path);
-    if (err == -1) {
-        err = errno;
-        ASSERT(err);
-        buf = NULL;
-        goto out;
-    }
-
-    err = glob(buf, GLOB_ERR, NULL, &globbuf);
-    if (err) {
-        if (err != GLOB_NOMATCH) {
-            err = errno;
-            ASSERT(err);
-            tlog_syslog(LOG_WARNING, "failed to check whether there are "
-                    "rotated log files to be removed: %s\n", strerror(err));
-        }
-    } else {
-        int i;
-        for (i = 0; i < globbuf.gl_pathc; i++) {
-            err = unlink(globbuf.gl_pathv[i]);
-            if (err) {
-                err = errno;
-                ASSERT(err);
-                tlog_syslog(LOG_WARNING, "failed to remove log file %s: %s\n",
-                        globbuf.gl_pathv[i], strerror(err));
-            }
-        }
-        globfree(&globbuf);
-    }
-out:
-    free(buf);
-    return err;
+	return err;
 }
 
 static int
@@ -179,7 +134,7 @@ tapdisk_logfile_open(td_logfile_t *log, const char *dir, const char *ident,
 	return 0;
 
 fail:
-	tapdisk_logfiles_unlink(log);
+	tapdisk_logfile_unlink(log);
 	tapdisk_logfile_close(log);
 	return err;
 }

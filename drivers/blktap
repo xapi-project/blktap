@@ -1,6 +1,6 @@
 /var/log/blktap/tapdisk.*.log {
     rotate 5
-    maxage 14
+    maxage 7
     missingok
     size 16M
     sharedscripts

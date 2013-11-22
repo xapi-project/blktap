@@ -38,7 +38,8 @@ ssize_t tapdisk_logfile_printf(td_logfile_t *, const char *fmt, ...);
 ssize_t tapdisk_logfile_vprintf(td_logfile_t *, const char *fmt, va_list ap);
 
 void tapdisk_logfile_close(td_logfile_t *);
-int tapdisk_logfiles_unlink(td_logfile_t *);
+int tapdisk_logfile_unlink(td_logfile_t *);
+
 int tapdisk_logfile_setvbuf(td_logfile_t *log, int mode);
 int tapdisk_logfile_flush(td_logfile_t *);
 

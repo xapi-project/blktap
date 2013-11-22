@@ -110,7 +110,7 @@ tlog_logfile_close(bool keep)
 	tapdisk_logfile_close(logfile);
 
 	if (!keep)
-		tapdisk_logfiles_unlink(logfile);
+		tapdisk_logfile_unlink(logfile);
 }
 
 static int
