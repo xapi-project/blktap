@@ -873,7 +873,11 @@ tdnbd_queue_read(td_driver_t* driver, td_request_t treq)
 	int      size    = treq.secs * driver->info.sector_size;
 	uint64_t offset  = treq.sec * (uint64_t)driver->info.sector_size;
 
-	tdnbd_queue_request(prv, NBD_CMD_READ, offset, treq.buf, size, treq, 0);
+	if (prv->flags & TD_OPEN_SECONDARY)
+		td_forward_request(treq);
+	else
+		tdnbd_queue_request(prv, NBD_CMD_READ, offset, treq.buf, size,
+				treq, 0);
 }
 
 static void
