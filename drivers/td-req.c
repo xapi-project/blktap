@@ -308,6 +308,7 @@ tapdisk_xenblkif_make_vbd_request(struct td_xenblkif * const blkif,
 
     vreq = &tapreq->vreq;
     ASSERT(vreq);
+    memset(vreq, 0, sizeof(*vreq));
 
     switch (tapreq->msg.operation) {
     case BLKIF_OP_READ:
