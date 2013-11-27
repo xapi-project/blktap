@@ -53,6 +53,12 @@ start() {
 			if [ "$ROOT_DISK_MINOR" = "$NODE_MINOR" ] ; then
 				mkdir -p /dev/disk/mpInuse
 				ln -sf $n /dev/disk/mpInuse
+				# Ensure its wwid is not blacklisted
+				WWID=$(basename ${n})
+				ROOT_SLAVES=$(/bin/ls /sys/block/dm-$NODE_MINOR/slaves)
+				for i in $ROOT_SLAVES; do
+					/opt/xensource/sm/wwid_conf.py /dev/${i} $WWID && break
+				done
 			fi
 		done
 	fi

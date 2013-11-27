@@ -105,3 +105,24 @@ def check_conf_file():
         return 1
     return 0
 
+
+def usage():
+    print "Usage: sys.argv[0] <device path> <device wwid>"
+
+
+if __name__ == "__main__":
+    if len(sys.argv) < 3:
+        usage()
+        sys.exit(1)
+
+    device = sys.argv[1]
+    wwid = sys.argv[2]
+
+    if is_blacklisted(device):
+        try:
+            edit_wwid(wwid)
+        except:
+            sys.exit(1)
+
+    sys.exit(0)
+
