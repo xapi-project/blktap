@@ -210,8 +210,9 @@ physical_device(vbd_t *device) {
     s = tapback_device_read(device, PHYS_DEV_KEY);
     if (!s) {
         err = -errno;
-        WARN(device, "failed to read the physical-device: %s\n",
-                strerror(-err));
+        if (err != -ENOENT)
+            WARN(device, "failed to read the physical-device: %s\n",
+                    strerror(-err));
         goto out;
     }
 
