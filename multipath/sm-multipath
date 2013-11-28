@@ -32,11 +32,7 @@ RETVAL=0
 start() {
 	# We want to be sure multipathd is running with modules
 	$MP_UTIL --enable --with_module y
-	test -x $DAEMON || exit 5
 	echo -n $"Multipath check for root device: "
-	$DAEMON -k"show top" &>/dev/null
-	RETVAL=$?
-	[ $RETVAL -eq 0 ] || failure || exit 0
 	success
 
 	# Create an mpInuse symlink for the root device if that is multipath.
