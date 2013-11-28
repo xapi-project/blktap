@@ -259,7 +259,7 @@ physical_device(vbd_t *device) {
     }
     err = find_tapdisk(device->minor, device->tap);
     if (err) {
-        WARN(device, "error looking for tapdisk: %s\n", strerror(err));
+        WARN(device, "error looking for tapdisk: %s\n", strerror(-err));
         goto out;
     }
 
@@ -390,7 +390,7 @@ tapback_backend_probe_device(const domid_t domid, const char * const devname,
 
     ASSERT(devname);
 
-    DBG(NULL, "%d/%s: probing device\n", domid, devname);
+    DBG(NULL, "%d/%s probing device\n", domid, devname);
 
     /*
      * Ask XenStore if the device _should_ exist.
@@ -611,28 +611,40 @@ out:
 int
 tapback_backend_handle_backend_watch(char * const path)
 {
-    char *s = NULL, *end = NULL, *name = NULL;
+    char *s = NULL, *end = NULL, *name = NULL, *_path = NULL;
     domid_t domid = 0;
+    int err = 0;
 
     ASSERT(path);
+
+    _path = strdup(path);
+    if (!_path) {
+        err = -ENOMEM;
+        goto out;
+    }
 
     /*
      * path is something like "backend/vbd/domid/devid"
      */
 
-    s = strtok(path, "/");
+    s = strtok(_path, "/");
     ASSERT(!strcmp(s, XENSTORE_BACKEND));
-    if (!(s = strtok(NULL, "/")))
-        return tapback_backend_scan();
+    if (!(s = strtok(NULL, "/"))) {
+        err = tapback_backend_scan();
+        goto out;
+    }
 
     ASSERT(!strcmp(s, BLKTAP3_BACKEND_NAME));
-    if (!(s = strtok(NULL, "/")))
-        return tapback_backend_scan();
+    if (!(s = strtok(NULL, "/"))) {
+        err = tapback_backend_scan();
+        goto out;
+    }
 
     domid = strtoul(s, &end, 0);
     if (*end != 0 || end == s) {
         WARN(NULL, "invalid domain ID \'%s\'\n", s);
-        return -EINVAL;
+        err = -EINVAL;
+        goto out;
     }
 
     /*
@@ -640,8 +652,10 @@ tapback_backend_handle_backend_watch(char * const path)
      * scan the whole thing. Add the domid as an optional parameter to
      * tapback_backend_scan.
      */
-    if (!(name = strtok(NULL, "/")))
-        return tapback_backend_scan();
+    if (!(name = strtok(NULL, "/"))) {
+        err = tapback_backend_scan();
+        goto out;
+    }
 
     /*
      * Create or remove a specific device.
@@ -650,5 +664,8 @@ tapback_backend_handle_backend_watch(char * const path)
      * device should exist, but we already know that in the current function.
      * Optimise this case.
      */
-    return tapback_backend_probe_device(domid, name, strtok(NULL, "/"));
+    err = tapback_backend_probe_device(domid, name, strtok(NULL, "/"));
+out:
+    free(_path);
+    return err;
 }

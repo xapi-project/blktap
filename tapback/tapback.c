@@ -321,7 +321,7 @@ int main(int argc, char **argv)
     int opt_debug = 0;
     int err = 0;
 
-	if(access("/dev/xen/gntdev", F_OK ) == -1) {
+	if (access("/dev/xen/gntdev", F_OK ) == -1) {
 		WARN(NULL, "grant device does not exist\n");
 		err = EINVAL;
 		goto fail;
