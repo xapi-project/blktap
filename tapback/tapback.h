@@ -40,17 +40,28 @@
 #define __printf(_f, _a)        __attribute__((format (printf, _f, _a)))
 #define __scanf(_f, _a)         __attribute__((format (scanf, _f, _a)))
 
+#define ARRAY_SIZE(_a) (sizeof(_a)/sizeof((_a)[0]))
+
 void tapback_log(int prio, const char *fmt, ...);
 void (*tapback_vlog) (int prio, const char *fmt, va_list ap);
+
+/**
+ * Fills in the buffer with a pretty timestamp.
+ *
+ * FIXME There may be an easier/simpler way to do this.
+ */
+int pretty_time(char *buf, unsigned char buf_len);
 
 #define DBG(device, _fmt, _args...)  \
     do {                                                                    \
         vbd_t *_device = (vbd_t*)(device);                                  \
+        char buf[32];                                                       \
+        pretty_time(buf, ARRAY_SIZE(buf));                                  \
         if (_device) {                                                      \
-            tapback_log(LOG_DEBUG, "%s:%d %d/%d "_fmt, __FILE__, __LINE__,  \
-                _device->domid, _device->devid, ##_args);                   \
+            tapback_log(LOG_DEBUG, "%s %s:%d %d/%d "_fmt, buf, __FILE__,    \
+                    __LINE__, _device->domid, _device->devid, ##_args);     \
          } else {                                                           \
-            tapback_log(LOG_DEBUG, "%s:%d "_fmt, __FILE__, __LINE__,        \
+            tapback_log(LOG_DEBUG, "%s %s:%d "_fmt, buf, __FILE__, __LINE__,\
                 ##_args);                                                   \
         }                                                                   \
     } while (0)
@@ -58,11 +69,13 @@ void (*tapback_vlog) (int prio, const char *fmt, va_list ap);
 #define INFO(device, _fmt, _args...) \
     do {                                                                    \
         vbd_t *_device = (vbd_t*)(device);                                  \
+        char buf[32];                                                       \
+        pretty_time(buf, ARRAY_SIZE(buf));                                  \
         if (_device) {                                                      \
-            tapback_log(LOG_INFO, "%s:%d %d/%d "_fmt, __FILE__, __LINE__,   \
-                _device->domid, _device->devid, ##_args);                   \
+            tapback_log(LOG_INFO, "%s %s:%d %d/%d "_fmt, buf, __FILE__,     \
+                    __LINE__, _device->domid, _device->devid, ##_args);     \
          } else {                                                           \
-            tapback_log(LOG_INFO, "%s:%d "_fmt, __FILE__, __LINE__,         \
+            tapback_log(LOG_INFO, "%s %s:%d "_fmt, buf, __FILE__, __LINE__, \
                 ##_args);                                                   \
         }                                                                   \
     } while (0)
@@ -70,12 +83,14 @@ void (*tapback_vlog) (int prio, const char *fmt, va_list ap);
 #define WARN(device, _fmt, _args...) \
     do {                                                                    \
         vbd_t *_device = (vbd_t*)(device);                                  \
+        char buf[32];                                                       \
+        pretty_time(buf, ARRAY_SIZE(buf));                                  \
         if (_device) {                                                      \
-            tapback_log(LOG_WARNING, "%s:%d %d/%d "_fmt, __FILE__,          \
+            tapback_log(LOG_WARNING, "%s %s:%d %d/%d "_fmt, buf, __FILE__,  \
                     __LINE__, _device->domid, _device->devid, ##_args);     \
          } else {                                                           \
-            tapback_log(LOG_WARNING, "%s:%d "_fmt, __FILE__, __LINE__,      \
-                ##_args);                                                   \
+            tapback_log(LOG_WARNING, "%s %s:%d "_fmt, buf, __FILE__,        \
+                    __LINE__, ##_args);                                     \
         }                                                                   \
     } while (0)
 

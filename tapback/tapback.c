@@ -35,6 +35,7 @@
 #include <sys/ioctl.h>
 #include <sys/mount.h>
 #include <syslog.h>
+#include <time.h>
 
 #include "blktap3.h"
 #include "stdio.h" /* TODO tap-ctl.h needs to include stdio.h */
@@ -385,4 +386,25 @@ fail:
 usage:
     usage(stderr, prog);
     return 1;
+}
+
+int pretty_time(char *buf, unsigned char buf_len) {
+
+    int err;
+    time_t timer;
+    struct tm* tm_info;
+
+    assert(buf);
+    assert(buf_len > 0);
+
+    err = time(&timer);
+    if (err == (time_t)-1)
+        return errno;
+    tm_info = localtime(&timer);
+    if (!tm_info)
+        return EINVAL;
+    err = strftime(buf, buf_len, "%b %d %H:%M:%S", tm_info);
+    if (err == 0)
+        return EINVAL;
+    return 0;
 }
