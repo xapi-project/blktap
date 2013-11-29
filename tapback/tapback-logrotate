@@ -1,0 +1,10 @@
+/var/log/tapback.log {
+    missingok
+    rotate 5
+    size 16M
+    weekly
+    postrotate
+        killall -HUP tapback
+    endscript
+    compress
+}

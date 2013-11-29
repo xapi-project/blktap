@@ -24,5 +24,8 @@ tapback_LDADD += $(top_srcdir)/control/libblktapctl.la
 exec_init_ddir = $(sysconfdir)/rc.d/init.d
 dist_exec_init_d_SCRIPTS = init.d-tapback
 
+logrotatedir = $(sysconfdir)/logrotate.d
+dist_logrotate_DATA = tapback-logrotate
+
 install-exec-local:
 	cd ${DESTDIR}${exec_init_ddir} && mv init.d-tapback tapback

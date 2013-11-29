@@ -52,7 +52,7 @@ start() {
 	check_running
 	RUNNING=$?
 	if [ ${RUNNING} -eq 0 ]; then
-		${TAPBACK} >/dev/null 2>&1 </dev/null
+		${TAPBACK} -v >/dev/null 2>&1 </dev/null
 		for gap in 0.1 0.2 0.5 1 2 5; do
 			check_running
 			RUNNING=$?

@@ -63,6 +63,7 @@ make install DESTDIR=%{buildroot}
 %{_libexecdir}/tapdisk
 %{_sysconfdir}/udev/rules.d/blktap.rules
 %{_sysconfdir}/rc.d/init.d/tapback
+%{_sysconfdir}/logrotate.d/tapback-logrotate
 
 %files devel
 %defattr(-,root,root,-)

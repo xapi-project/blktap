@@ -162,18 +162,28 @@ tapback_backend_destroy(void)
     }
 }
 
+static FILE *tapback_log_fp = NULL;
+
 static void
 signal_cb(int signum) {
 
-    ASSERT(signum == SIGINT || signum == SIGTERM);
+    ASSERT(signum == SIGINT || signum == SIGTERM || signum == SIGHUP);
 
-	if (!list_empty(&blktap3_daemon.devices)) {
-		WARN(NULL, "refusing to shutdown while there are active VBDs\n");
-		return;
-	}
+    if (signum == SIGHUP) {
+        if (tapback_log_fp) {
+            fflush(tapback_log_fp);
+            fclose(tapback_log_fp);
+            tapback_log_fp = fopen(TAPBACK_LOG, "a+");
+        }
+    } else {
+        if (!list_empty(&blktap3_daemon.devices)) {
+            WARN(NULL, "refusing to shutdown while there are active VBDs\n");
+            return;
+        }
 
-    tapback_backend_destroy();
-    exit(0);
+        tapback_backend_destroy();
+        exit(0);
+    }
 }
 
 /**
@@ -208,7 +218,8 @@ tapback_backend_create(void)
     }
 
     if (SIG_ERR == signal(SIGINT, signal_cb) ||
-            SIG_ERR == signal(SIGTERM, signal_cb)) {
+            SIG_ERR == signal(SIGTERM, signal_cb) ||
+            SIG_ERR == signal(SIGHUP, signal_cb)) {
         WARN(NULL, "failed to register signal handlers\n");
         err = EINVAL;
         goto fail;
@@ -268,7 +279,10 @@ tapback_backend_run(void)
         FD_SET(fd, &rfds);
 
         /* poll the fd for changes in the XenStore path we're interested in */
-        if ((nfds = select(fd + 1, &rfds, NULL, NULL, NULL)) < 0) {
+        nfds = select(fd + 1, &rfds, NULL, NULL, NULL);
+        if (nfds == -1) {
+            if (errno == EINTR)
+                continue;
             perror("error monitoring XenStore");
             err = -errno;
             break;
@@ -296,8 +310,10 @@ blkback_vlog_fprintf(const int prio, const char * const fmt, va_list ap)
     assert(LOG_DEBUG == prio || LOG_INFO == prio || LOG_WARNING == prio);
     assert(strprio[prio]);
 
-    fprintf(stderr, "%s[%s] ", blkback_ident, strprio[prio]);
-    vfprintf(stderr, fmt, ap);
+    if (tapback_log_fp) {
+        fprintf(tapback_log_fp, "%s[%s] ", blkback_ident, strprio[prio]);
+        vfprintf(tapback_log_fp, fmt, ap);
+    }
 }
 
 /**
@@ -311,14 +327,15 @@ usage(FILE * const stream, const char * const prog)
 
     fprintf(stream,
             "usage: %s\n"
-            "\t[-D|--debug]\n"
-			"\t[-h|--help]\n", prog);
+            "\t[-d|--debug]\n"
+			"\t[-h|--help]\n"
+            "\t[-v|--verbose]\n", prog);
 }
 
 int main(int argc, char **argv)
 {
     const char *prog = NULL;
-    int opt_debug = 0;
+    bool opt_debug = false, opt_verbose = false;
     int err = 0;
 
 	if (access("/dev/xen/gntdev", F_OK ) == -1) {
@@ -334,11 +351,12 @@ int main(int argc, char **argv)
     do {
         const struct option longopts[] = {
             {"help", 0, NULL, 'h'},
-            {"debug", 0, NULL, 'D'},
+            {"debug", 0, NULL, 'd'},
+            {"verbose", 0, NULL, 'v'},
         };
         int c;
 
-        c = getopt_long(argc, argv, "h:D", longopts, NULL);
+        c = getopt_long(argc, argv, "h:dv", longopts, NULL);
         if (c < 0)
             break;
 
@@ -346,16 +364,22 @@ int main(int argc, char **argv)
         case 'h':
             usage(stdout, prog);
             return 0;
-        case 'D':
-            opt_debug = 1;
+        case 'd':
+            opt_debug = true;
+            break;
+        case 'v':
+            opt_verbose = true;
             break;
         case '?':
             goto usage;
         }
     } while (1);
 
-    if (opt_debug) {
+    if (opt_verbose) {
         blkback_ident = "";
+        tapback_log_fp = fopen(TAPBACK_LOG, "a+");
+        if (!tapback_log_fp)
+            return errno;
         tapback_vlog = blkback_vlog_fprintf;
     }
     else {
@@ -381,6 +405,8 @@ int main(int argc, char **argv)
     tapback_backend_destroy();
 
 fail:
+    if (tapback_log_fp)
+        fclose(tapback_log_fp);
     return err ? -err : 0;
 
 usage:
