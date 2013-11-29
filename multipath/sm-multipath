@@ -53,7 +53,7 @@ start() {
 				WWID=$(basename ${n})
 				ROOT_SLAVES=$(/bin/ls /sys/block/dm-$NODE_MINOR/slaves)
 				for i in $ROOT_SLAVES; do
-					/opt/xensource/sm/wwid_conf.py /dev/${i} $WWID && break
+					/opt/xensource/sm/wwid_conf.py -d /dev/${i} -w $WWID && break
 				done
 			fi
 		done
