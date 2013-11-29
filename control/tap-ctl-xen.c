@@ -63,11 +63,12 @@ tap_ctl_connect_xenblkif(const pid_t pid, const domid_t domid, const int devid,
     if (err || message.type == TAPDISK_MESSAGE_ERROR) {
 		if (!err)
 			err = -message.u.response.error;
-        /*
-         * TODO include more info
-         */
-        EPRINTF("failed to connect tapdisk %d to the ring: %s\n", pid,
-                strerror(-err));
+        if (err == -EALREADY)
+            /*
+             * TODO include more info
+             */
+            EPRINTF("failed to connect tapdisk %d to the ring: %s\n", pid,
+                    strerror(-err));
 	}
     return err;
 }

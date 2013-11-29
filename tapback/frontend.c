@@ -32,8 +32,8 @@
  * @param state the state to switch to
  * @returns 0 on success, an error code otherwise
  */
-static int
-tapback_device_switch_state(vbd_t * const device,
+int
+xenbus_switch_state(vbd_t * const device,
         const XenbusState state)
 {
     int err;
@@ -45,239 +45,198 @@ tapback_device_switch_state(vbd_t * const device,
      * TODO Check for valid state transitions?
      */
 
-    err = -tapback_device_printf(device, "state", false, "%u", state);
-    if (err) {
+    err = -tapback_device_printf(device, XBT_NULL, "state", false, "%u",
+            state);
+    if (err)
         WARN(device, "failed to switch back-end state to %s: %s\n",
-                XenbusState2str(state), strerror(err));
-    } else
-        DBG(device, "switched back-end state to %s\n", XenbusState2str(state));
+                xenbus_strstate(state), strerror(err));
+    else {
+        DBG(device, "switched back-end state to %s\n", xenbus_strstate(state));
+        device->state = state;
+    }
     return err;
 }
 
 /**
  * Core functions that instructs the tapdisk to connect to the shared ring (if
- * not already connected) and communicates essential information to the
- * front-end.
+ * not already connected).
  *
  * If the tapdisk is not already connected, all the necessary information is
  * read from XenStore and the tapdisk gets connected using this information.
+ * This function is idempotent: if the tapback daemon gets restarted this
+ * function will be called again but it won't really do anything.
  *
- * TODO Why should this function be called on an already connected VBD? Why
- * re-write the sector size etc. in XenStore for an already connected VBD?
- * TODO rename function (no blkback, not only connects to tapdisk)
- *
- * @param bdev the VBD the tapdisk should connect to
- * @param state unused
+ * @param device the VBD the tapdisk should connect to
  * @returns 0 on success, an error code otherwise
- *
- * XXX Only called by blkback_frontend_changed, when the front-end switches to
- * Initialised and Connected.
  */
-static int
-blkback_connect_tap(vbd_t * const bdev,
-        const XenbusState state __attribute__((unused)))
+static inline int
+connect_tap(vbd_t * const device)
 {
     evtchn_port_t port = 0;
     grant_ref_t *gref = NULL;
     int err = 0;
     char *proto_str = NULL;
     char *persistent_grants_str = NULL;
+    int nr_pages = 0, proto = 0, order = 0;
+    bool persistent_grants = false;
 
-    ASSERT(bdev);
+    ASSERT(device);
 
-    if (bdev->connected) {
+    /*
+     * FIXME disconnect if already connected and then reconnect, this is how
+     * blkback does.
+     * FIXME If we're already connected, why did we end up here in the first
+     * place?
+     */
+    ASSERT(!device->connected);
+
+    /*
+     * The physical-device XenStore key has not been written yet.
+     */
+    if (!device->tap) {
+        DBG(device, "no tapdisk yet\n");
+        goto out;
+    }
+    /*
+     * TODO How can we make sure we're not missing a node written by the
+     * front-end? Use xs_directory?
+     */
+
+    if (1 != tapback_device_scanf_otherend(device, XBT_NULL, RING_PAGE_ORDER,
+                "%d", &order))
+        order = 0;
+
+     nr_pages = 1 << order;
+
+    if (!(gref = calloc(nr_pages, sizeof(grant_ref_t)))) {
+        WARN(device, "failed to allocate memory for grant refs.\n");
+        err = ENOMEM;
+        goto out;
+    }
+
+    /*
+     * Read the grant references.
+     */
+    if (order) {
+        int i = 0;
         /*
-         * TODO Fail with EALREADY?
+         * +10 is for INT_MAX, +1 for NULL termination
          */
-        DBG(bdev, "front-end already connected to tapdisk.\n");
-
-        /*
-         * FIXME just testing
-         */
-        if ((err = tapback_device_switch_state(bdev,
-                        XenbusStateConnected))) {
-            WARN(bdev, "failed to switch back-end state to connected: %s\n",
-                    strerror(err));
-        }
-    } else if (!bdev->tap) {
-        DBG(bdev, "no tapdisk yet\n");
-        err = EAGAIN;
-    } else {
-        /*
-         * TODO How can we make sure we're not missing a node written by the
-         * front-end? Use xs_directory?
-         */
-        int nr_pages = 0, proto = 0, order = 0;
-        bool persistent_grants = false;
-    	bool do_connect = true;
-
-        if (1 != tapback_device_scanf_otherend(bdev, "ring-page-order", "%d",
-                    &order))
-            order = 0;
-
-         nr_pages = 1 << order;
-
-        if (!(gref = calloc(nr_pages, sizeof(grant_ref_t)))) {
-            WARN(bdev, "failed to allocate memory for grant refs.\n");
-            err = ENOMEM;
-            goto fail;
-        }
-
-        /*
-         * Read the grant references.
-         */
-        if (order) {
-            int i = 0;
-            /*
-             * +10 is for INT_MAX, +1 for NULL termination
-             */
-
-            /*
-             * TODO include domid/devid in the error messages
-             */
-            static const size_t len = sizeof(RING_REF) + 10 + 1;
-            char ring_ref[len];
-            for (i = 0; i < nr_pages; i++) {
-                if (snprintf(ring_ref, len, "%s%d", RING_REF, i) >= (int)len) {
-                    DBG(bdev, "error printing to buffer\n");
-                    err = EINVAL;
-                    goto fail;
-                }
-                if (1 != tapback_device_scanf_otherend(bdev, ring_ref, "%u",
-                            &gref[i])) {
-                    WARN(bdev, "failed to read grant ref 0x%x.\n", i);
-                    err = ENOENT;
-                    goto fail;
-                }
-            }
-        } else {
-            if (1 != tapback_device_scanf_otherend(bdev, RING_REF, "%u",
-                        &gref[0])) {
-                WARN(bdev, "failed to read grant ref.\n");
-                err = ENOENT;
-                goto fail;
-            }
-        }
 
         /*
-         * Read the event channel.
+         * TODO include domid/devid in the error messages
          */
-        if (1 != tapback_device_scanf_otherend(bdev, "event-channel", "%u",
-                    &port)) {
-            WARN(bdev, "failed to read event channel.\n");
-            err = ENOENT;
-            goto fail;
-        }
-
-        /*
-         * Read the guest VM's ABI.
-         */
-        if (!(proto_str = tapback_device_read_otherend(bdev, "protocol")))
-            proto = BLKIF_PROTOCOL_NATIVE;
-        else if (!strcmp(proto_str, XEN_IO_PROTO_ABI_X86_32))
-            proto = BLKIF_PROTOCOL_X86_32;
-        else if (!strcmp(proto_str, XEN_IO_PROTO_ABI_X86_64))
-            proto = BLKIF_PROTOCOL_X86_64;
-        else {
-            WARN(bdev, "unsupported protocol %s\n", proto_str);
-            err = EINVAL;
-            goto fail;
-        }
-
-        /*
-         * Does the front-end support persistent grants?
-         */
-        persistent_grants_str = tapback_device_read_otherend(bdev,
-                FEAT_PERSIST);
-        if (persistent_grants_str) {
-            if (!strcmp(persistent_grants_str, "0"))
-                persistent_grants = false;
-            else if (!strcmp(persistent_grants_str, "1"))
-                persistent_grants = true;
-            else {
-                WARN(bdev, "invalid %s value: %s\n", FEAT_PERSIST,
-                        persistent_grants_str);
+        static const size_t len = sizeof(RING_REF) + 10 + 1;
+        char ring_ref[len];
+        for (i = 0; i < nr_pages; i++) {
+            if (snprintf(ring_ref, len, "%s%d", RING_REF, i) >= (int)len) {
+                DBG(device, "error printing to buffer\n");
                 err = EINVAL;
-                goto fail;
+                goto out;
+            }
+            if (1 != tapback_device_scanf_otherend(device, XBT_NULL, ring_ref,
+                        "%u", &gref[i])) {
+                WARN(device, "failed to read grant ref 0x%x\n", i);
+                err = ENOENT;
+                goto out;
             }
         }
-        else
-            DBG(bdev, "front-end doesn't support persistent grants\n");
+    } else {
+        if (1 != tapback_device_scanf_otherend(device, XBT_NULL, RING_REF,
+                    "%u", &gref[0])) {
+            WARN(device, "failed to read grant ref\n");
+            err = ENOENT;
+            goto out;
+        }
+    }
 
-        /*
-         * persistent grants are not yet supported
-         */
-        if (persistent_grants)
-            WARN(bdev, "front-end supports persistent grants but we don't\n");
+    /*
+     * Read the event channel.
+     */
+    if (1 != tapback_device_scanf_otherend(device, XBT_NULL, EVENT_CHANNEL,
+                "%u", &port)) {
+        WARN(device, "failed to read event channel\n");
+        err = ENOENT;
+        goto out;
+    }
 
+    /*
+     * Read the guest VM's ABI.
+     */
+    if (!(proto_str = tapback_device_read_otherend(device, XBT_NULL, PROTO)))
+        proto = BLKIF_PROTOCOL_NATIVE;
+    else if (!strcmp(proto_str, XEN_IO_PROTO_ABI_X86_32))
+        proto = BLKIF_PROTOCOL_X86_32;
+    else if (!strcmp(proto_str, XEN_IO_PROTO_ABI_X86_64))
+        proto = BLKIF_PROTOCOL_X86_64;
+    else {
+        WARN(device, "unsupported protocol %s\n", proto_str);
+        err = EINVAL;
+        goto out;
+    }
+
+    /*
+     * Does the front-end support persistent grants?
+     */
+    persistent_grants_str = tapback_device_read_otherend(device, XBT_NULL,
+            FEAT_PERSIST);
+    if (persistent_grants_str) {
+        if (!strcmp(persistent_grants_str, "0"))
+            persistent_grants = false;
+        else if (!strcmp(persistent_grants_str, "1"))
+            persistent_grants = true;
+        else {
+            WARN(device, "invalid %s value: %s\n", FEAT_PERSIST,
+                    persistent_grants_str);
+            err = EINVAL;
+            goto out;
+        }
+    }
+    else
+        DBG(device, "front-end doesn't support persistent grants\n");
+
+    /*
+     * persistent grants are not yet supported
+     */
+    if (persistent_grants)
+        WARN(device, "front-end supports persistent grants but we don't\n");
+
+    /*
+     * Create the shared ring and ask the tapdisk to connect to it.
+     */
+    if ((err = -tap_ctl_connect_xenblkif(device->tap->pid, device->domid,
+                    device->devid, gref, order, port, proto, NULL,
+                    device->minor))) {
         /*
-         * Create the shared ring and ask the tapdisk to connect to it.
-		 *
-		 * FIXME write sectors, sector size etc. to xenstore before connecting?
+         * This happens if the tapback dameon gets restarted while there are
+         * active VBDs.
          */
-		if ((err = -tap_ctl_connect_xenblkif(bdev->tap->pid, bdev->domid,
-						bdev->devid, gref, order, port, proto, NULL,
-						bdev->minor))) {
-			if (err == EALREADY) {
-				INFO(bdev, "tapdisk[%d] already connected to the shared "
-						"ring\n", bdev->tap->pid);
-				do_connect = false;
-				err = 0;
-			} else {
-	            WARN(bdev, "tapdisk[%d] failed to connect to the shared "
-						"ring: %s\n", bdev->tap->pid, strerror(-err));
-			    goto fail;
-			}
+        if (err == EALREADY) {
+            INFO(device, "tapdisk[%d] already connected to the shared ring\n",
+                    device->tap->pid);
+            err = 0;
         } else {
-	        DBG(bdev, "tapdisk[%d] connected to shared ring\n",
-                    bdev->tap->pid);
-		}
-
-        bdev->connected = true;
-
-        if (do_connect) {
-            /*
-             * Write the number of sectors, sector size, and info to the
-             * back-end path in XenStore so that the front-end creates a VBD
-             * with the appropriate characteristics.
-             */
-            if ((err = tapback_device_printf(bdev, "sector-size", true, "%u",
-                            bdev->sector_size))) {
-                WARN(bdev, "failed to write sector-size.\n");
-                goto fail;
-            }
-
-            if ((err = tapback_device_printf(bdev, "sectors", true, "%llu",
-                            bdev->sectors))) {
-                WARN(bdev, "failed to write sectors.\n");
-                goto fail;
-            }
-
-            if ((err = tapback_device_printf(bdev, "info", true, "%u",
-                            bdev->info))) {
-                WARN(bdev, "failed to write info.\n");
-                goto fail;
-            }
-
-            if ((err = tapback_device_switch_state(bdev,
-                            XenbusStateConnected))) {
-                WARN(bdev, "failed to switch back-end state to connected: %s\n",
-                        strerror(err));
-            }
+            WARN(device, "tapdisk[%d] failed to connect to the shared "
+                    "ring: %s\n", device->tap->pid, strerror(-err));
+            goto out;
         }
-	}
+    }
 
-fail:
-    if (err && bdev->connected) {
-        const int err2 = -tap_ctl_disconnect_xenblkif(bdev->tap->pid,
-                bdev->domid, bdev->devid, NULL);
+    device->connected = true;
+
+    DBG(device, "tapdisk[%d] connected to shared ring\n", device->tap->pid);
+
+out:
+    if (err && device->connected) {
+        const int err2 = -tap_ctl_disconnect_xenblkif(device->tap->pid,
+                device->domid, device->devid, NULL);
         if (err2) {
-            WARN(bdev, "error disconnecting tapdisk[%d] from the shared "
-                    "ring (error ignored): %s\n", bdev->tap->pid,
+            WARN(device, "error disconnecting tapdisk[%d] from the shared "
+                    "ring (error ignored): %s\n", device->tap->pid,
                     strerror(err2));
         }
 
-        bdev->connected = false;
+        device->connected = false;
     }
 
     free(gref);
@@ -287,33 +246,97 @@ fail:
     return err;
 }
 
-/**
- * Removes the Xenbus back-end node.
- */
-static int
-xenbus_rm_backend(vbd_t * const bdev) {
 
-	int err = 0;
-	char *path = NULL;
-	bool result = false;
+static inline int
+connect_frontend(vbd_t *device) {
 
-	ASSERT(bdev);
+    int err = 0;
+    xs_transaction_t xst = XBT_NULL;
+    bool abort_transaction = false;
 
-	err = asprintf(&path, "%s/%s/%d/%d", XENSTORE_BACKEND,
-			BLKTAP3_BACKEND_NAME, bdev->domid, bdev->devid);
-	if (err == -1) {
-		err = errno;
-		WARN(bdev, "failed to asprintf for %d/%d: %s\n", strerror(err));
-		return err;
-	}
-	err = 0;
-	result = xs_rm(blktap3_daemon.xs, blktap3_daemon.xst, path);
-	if (!result) {
-		err = errno;
-		WARN(bdev, "failed to remove %s: %s\n", path, strerror(err));
-	}
-	free(path);
-	return err;
+    ASSERT(device);
+
+    do {
+        if (!(xst = xs_transaction_start(blktap3_daemon.xs))) {
+            err = errno;
+            WARN(device, "failed to start transaction: %s\n", strerror(err));
+            goto out;
+        }
+
+        abort_transaction = true;
+
+        /*
+         * FIXME blkback writes discard-granularity, discard-alignment,
+         * discard-secure, feature-discard, feature-barrier but we don't.
+         */
+
+        /*
+         * Write the number of sectors, sector size, and info to the
+         * back-end path in XenStore so that the front-end creates a VBD
+         * with the appropriate characteristics.
+         */
+        if ((err = tapback_device_printf(device, xst, "sector-size", true,
+                        "%u", device->sector_size))) {
+            WARN(device, "failed to write sector-size: %s\n", strerror(err));
+            break;
+        }
+
+        if ((err = tapback_device_printf(device, xst, "sectors", true, "%llu",
+                        device->sectors))) {
+            WARN(device, "failed to write sectors: %s\n", strerror(err));
+            break;
+        }
+
+        if ((err = tapback_device_printf(device, xst, "info", true, "%u",
+                        device->info))) {
+            WARN(device, "failed to write info: %s\n", strerror(err));
+            break;
+        }
+        abort_transaction = false;
+        if (!xs_transaction_end(blktap3_daemon.xs, xst, 0)) {
+            err = errno;
+            ASSERT(err);
+        }
+    } while (err == EAGAIN);
+
+    if (abort_transaction) {
+        if (!xs_transaction_end(blktap3_daemon.xs, xst, 1)) {
+            int err2 = errno;
+            WARN(device, "failed to abort transaction: %s\n", strerror(err2));
+        }
+        goto out;
+    }
+
+    if (err) {
+        WARN(device, "failed to end transaction: %s\n", strerror(err));
+        goto out;
+    }
+
+    err = xenbus_switch_state(device, XenbusStateConnected);
+    if (err)
+        WARN(device, "failed to switch back-end state to connected: %s\n",
+                strerror(err));
+out:
+    return err;
+}
+
+static inline int
+connect(vbd_t *device) {
+    int err;
+
+    ASSERT(device);
+
+    err = connect_tap(device);
+    /*
+     * Even if tapdisk is already connected to the shared ring, we continue
+     * connecting since we don't know how far the connection process had gone
+     * before the tapback daemon was restarted.
+     */
+    if (err && err != -EALREADY)
+        goto out;
+    err = connect_frontend(device);
+out:
+    return err;
 }
 
 /**
@@ -322,53 +345,52 @@ xenbus_rm_backend(vbd_t * const bdev) {
  * Instructs the tapdisk to disconnect itself from the shared ring and switches
  * the back-end state to StateClosed.
  *
- * @param xbdev the VBD whose tapdisk should be disconnected
+ * @param xdevice the VBD whose tapdisk should be disconnected
  * @param state unused
  * @returns 0 on success, a positive error code otherwise
  *
- * XXX Only called by blkback_frontend_changed.
+ * XXX Only called by frontend_changed.
  */
 static inline int
-backend_close(vbd_t * const bdev,
-		const XenbusState state __attribute__((unused)))
+backend_close(vbd_t * const device)
 {
     int err = 0;
 
-    ASSERT(bdev);
+    ASSERT(device);
 
-    if (!bdev->connected) {
+    if (!device->connected) {
         /*
          * This VBD might be a CD-ROM device, or a disk device that never went
          * to state Connected.
          */
-        DBG(bdev, "tapdisk not connected\n");
+        DBG(device, "tapdisk not connected\n");
     } else {
-        ASSERT(bdev->tap);
+        ASSERT(device->tap);
 
-        DBG(bdev, "disconnecting from tapdisk[%d] minor=%d\n",
-            bdev->domid, bdev->devid, bdev->tap->pid, bdev->minor);
+        DBG(device, "disconnecting from tapdisk[%d] minor=%d\n",
+            device->tap->pid, device->minor);
 
-        if ((err = -tap_ctl_disconnect_xenblkif(bdev->tap->pid, bdev->domid,
-                        bdev->devid, NULL))) {
+        if ((err = -tap_ctl_disconnect_xenblkif(device->tap->pid, device->domid,
+                        device->devid, NULL))) {
 
             /*
              * TODO I don't see how tap_ctl_disconnect_xenblkif can return
              * ESRCH, so this is probably wrong. Probably there's another error
              * code indicating that there's no tapdisk process.
              */
-            if (errno == ESRCH) {
-                WARN(bdev, "tapdisk not running\n");
-            } else {
-                WARN(bdev, "error disconnecting tapdisk from front-end: %s\n",
+            if (errno == ESRCH)
+                WARN(device, "tapdisk not running\n");
+            else {
+                WARN(device, "error disconnecting tapdisk from front-end: %s\n",
                         strerror(err));
                 return err;
             }
         }
 
-        bdev->connected = false;
+        device->connected = false;
     }
 
-    return tapback_device_switch_state(bdev, XenbusStateClosed);
+    return xenbus_switch_state(device, XenbusStateClosed);
 }
 
 /**
@@ -377,65 +399,57 @@ backend_close(vbd_t * const bdev,
  * TODO The back-end blindly follows the front-ends state transitions, should
  * we check whether unexpected transitions are performed?
  *
- * @param xbdev the VBD whose front-end state changed
+ * @param device the VBD whose front-end state changed
  * @param state the new state
  * @returns 0 on success, an error code otherwise
  *
  * XXX Only called by tapback_device_check_front-end_state.
+ *
+ * FIXME Add a function for each front-end state transition to make the code
+ * more readable (e.g. frontend_initialising, frontend_connected, etc.).
  */
 static inline int
-blkback_frontend_changed(vbd_t * const xbdev, const XenbusState state)
+frontend_changed(vbd_t * const device, const XenbusState state)
 {
-    /*
-     * XXX The size of the array (9) comes from the XenbusState enum.
-     *
-     * TODO Send a patch that adds XenbusStateMin, XenbusStateMax,
-     * XenbusStateInvalid and in the XenbusState enum (located in xenbus.h).
-     *
-     * The front-end's state is used as the array index. Each element contains
-     * a call-back function to be executed in response, and an optional state
-     * for the back-end to switch to.
-     */
-    static struct frontend_state_change {
-        int (*fn)(vbd_t * const, const XenbusState);
-        const XenbusState state;
-    } const frontend_state_change_map[] = {
-        [XenbusStateUnknown] = {NULL, 0},
-        [XenbusStateInitialising]
-            = {tapback_device_switch_state, XenbusStateInitWait},
-        [XenbusStateInitWait] = {NULL, 0},
+    int err = 0;
 
-        /* blkback_connect_tap switches back-end state to Connected */
-        [XenbusStateInitialised] = {blkback_connect_tap, 0},
-        [XenbusStateConnected] = {blkback_connect_tap, 0},
+    DBG(device, "front-end went into state %s\n", xenbus_strstate(state));
 
-        [XenbusStateClosing]
-            = {tapback_device_switch_state, XenbusStateClosing},
-        [XenbusStateClosed] = {backend_close, 0},
-        [XenbusStateReconfiguring] = {NULL, 0},
-        [XenbusStateReconfigured] = {NULL, 0}
-    };
-
-    ASSERT(xbdev);
-    ASSERT(state <= XenbusStateReconfigured);
-
-    DBG(xbdev, "front-end went into state %s\n", XenbusState2str(state));
-
-    if (frontend_state_change_map[state].fn)
-        return frontend_state_change_map[state].fn(xbdev,
-                frontend_state_change_map[state].state);
-    else
-        DBG(xbdev, "ignoring front-end's %transition to state %s\n",
-                XenbusState2str(state));
-    return 0;
+    switch (state) {
+        case XenbusStateInitialising:
+            err = xenbus_switch_state(device, XenbusStateInitWait);
+            break;
+        case XenbusStateInitialised:
+    	case XenbusStateConnected:
+            /*
+             * Already connected when the front-end switched to Initialising?
+             */
+            if (device->state != XenbusStateConnected)
+                err = connect(device);
+            break;
+        case XenbusStateClosing:
+            err = xenbus_switch_state(device, XenbusStateClosing);
+            break;
+        case XenbusStateClosed:
+            err = backend_close(device);
+            break;
+        default:
+            err = EINVAL;
+            WARN(device, "invalid front-end state %d", state);
+            break;
+    }
+    return err;
 }
 
+/*
+ * FIXME return error code as negative
+ */
 int
 tapback_backend_handle_otherend_watch(const char * const path)
 {
     vbd_t *device = NULL;
     int err = 0, state = 0;
-    char *s = NULL, *end = NULL;
+    char *s = NULL, *end = NULL, *_path = NULL;
 
     ASSERT(path);
 
@@ -463,34 +477,42 @@ tapback_backend_handle_otherend_watch(const char * const path)
     /*
      * Read the new front-end's state.
      */
-	s = tapback_xs_read(blktap3_daemon.xs, blktap3_daemon.xst, "%s",
+	s = tapback_xs_read(blktap3_daemon.xs, XBT_NULL, "%s",
 			device->frontend_state_path);
     if (!s) {
         err = errno;
 		/*
-         * Remove the back-end.
+         * If the front-end XenBus node is missing, the XenBus device has been
+         * removed: remove the XenBus back-end node.
 		 */
 		if (err == ENOENT) {
-			err = xenbus_rm_backend(device);
-			if (err && err != ENOENT) {
-				WARN(device, "failed to remove the back-end node: %s\n",
-						strerror(err));
-			} else {
-				err = 0;
-				goto out;
-			}
+            err = asprintf(&_path, "%s/%s/%d/%d", XENSTORE_BACKEND,
+                    BLKTAP3_BACKEND_NAME, device->domid, device->devid);
+            if (err == -1) {
+                err = errno;
+                WARN(device, "failed to asprintf for %d/%d: %s\n",
+                        strerror(err));
+                goto out;
+            }
+            err = 0;
+            if (!xs_rm(blktap3_daemon.xs, XBT_NULL, _path)) {
+                if (errno != ENOENT) {
+                    err = errno;
+                    WARN(device, "failed to remove %s: %s\n", path,
+                            strerror(err));
+                }
+            }
 		}
-        goto out;
+    } else {
+        state = strtol(s, &end, 0);
+        if (*end != 0 || end == s)
+            err = EINVAL;
+        else
+            err = frontend_changed(device, state);
     }
-    state = strtol(s, &end, 0);
-    if (*end != 0 || end == s) {
-        err = EINVAL;
-        goto out;
-    }
-
-    err = blkback_frontend_changed(device, state);
 
 out:
     free(s);
+    free(_path);
     return err;
 }

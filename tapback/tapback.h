@@ -119,18 +119,18 @@ int pretty_time(char *buf, unsigned char buf_len);
 #define BLKTAP3_BACKEND_PATH		XENSTORE_BACKEND"/"BLKTAP3_BACKEND_NAME
 #define BLKTAP3_BACKEND_TOKEN		XENSTORE_BACKEND"-"BLKTAP3_BACKEND_NAME
 #define BLKTAP3_FRONTEND_TOKEN		"otherend-state"
-
-/*
- * FIXME Find a better name for this.
- */
-#define FORCED_HVM_SHUTDOWN_TOKEN	"forced-HVM-shutdown"
+#define PHYS_DEV_KEY                "physical-device"
 
 /*
  * TODO Put the rest of the front-end nodes defined in blkif.h here and group
  * them. e.g. FRONTEND_NODE_xxx.
  */
 #define RING_REF                "ring-ref"
+#define RING_PAGE_ORDER         "ring-page-order"
+#define EVENT_CHANNEL           "event-channel"
 #define FEAT_PERSIST            "feature-persistent"
+#define PROTO                   "protocol"
+#define FRONTEND_KEY            "frontend"
 
 /**
  * A Virtual Block Device (VBD), represents a block device in a guest VM.
@@ -208,6 +208,8 @@ typedef struct vbd {
     int major;
 	int minor;
 
+    XenbusState state;
+
 } vbd_t;
 
 /**
@@ -219,11 +221,6 @@ struct _blktap3_daemon {
      * A handle to XenStore.
      */
     struct xs_handle *xs;
-
-    /**
-     * For executing transacted operations on XenStore.
-     */
-    xs_transaction_t xst;
 
     /**
      * The list of virtual block devices.
@@ -249,8 +246,9 @@ struct _blktap3_daemon {
 
 extern struct _blktap3_daemon blktap3_daemon;
 
-#define tapback_backend_for_each_device(_device, _next)	\
-	list_for_each_entry_safe(_device, _next, &blktap3_daemon.devices, backend_entry)
+#define tapback_backend_for_each_device(_device, _next)                 \
+	list_for_each_entry_safe(_device, _next, &blktap3_daemon.devices,   \
+            backend_entry)
 
 /**
  * Iterates over all devices and returns the one for which the condition is
@@ -275,40 +273,40 @@ do {                                                    \
  * The caller must free the returned buffer.
  *
  * @param device the VBD
+ * @param xst XenStore transaction
  * @param path key under the front-end directory
  * @returns a buffer containing the value, or NULL on error
  */
 char *
-tapback_device_read_otherend(vbd_t * const device,
+tapback_device_read_otherend(vbd_t * const device, xs_transaction_t xst,
         const char * const path);
 
 /**
  * Writes to XenStore backened/tapback/<domid>/<devname>/@key = @fmt.
  *
  * @param device the VBD
+ * @param xst XenStore transaction
  * @param key the key to write to
  * @param mkread TODO
  * @param fmt format
  * @returns 0 on success, an negative error code otherwise
  */
-// FIXME
-//__printf(4, 5)
 int
-tapback_device_printf(vbd_t * const device, const char * const key,
-        const bool mkread, const char * const fmt, ...);
+tapback_device_printf(vbd_t * const device, xs_transaction_t xst,
+        const char * const key, const bool mkread, const char * const fmt,
+        ...);
 
 /**
  * Reads the specified XenStore path under the front-end directory in a
  * scanf-like manner.
  *
  * @param device the VBD
+ * @param xst XenStore transaction
  * @param path XenStore path to read
  * @param fmt format
  */
-// FIXME
-//__scanf(3, 4)
 int
-tapback_device_scanf_otherend(vbd_t * const device,
+tapback_device_scanf_otherend(vbd_t * const device, xs_transaction_t xst,
         const char * const path, const char * const fmt, ...);
 
 /**
@@ -317,11 +315,13 @@ tapback_device_scanf_otherend(vbd_t * const device,
  * The caller must free the returned buffer.
  *
  * @param device the VBD
+ * @param xst XenStore transaction
  * @param path the XenStore key
  * @returns a buffer containing the value, or NULL on error
  */
 char *
-tapback_device_read(const vbd_t * const device, const char * const path);
+tapback_device_read(const vbd_t * const device, xs_transaction_t xst,
+        const char * const path);
 
 /**
  * Reads the specified XenStore path. The caller must free the returned buffer.
@@ -394,16 +394,16 @@ tapback_backend_handle_backend_watch(char * const path);
  * @returns a printable string
  */
 char *
-XenbusState2str(const XenbusState xbs);
+xenbus_strstate(const XenbusState xbs);
 
 /**
- * Converts XenbusState values to a printable string, e.g. XenbusStateConnected
- * corresponds to "connected".
+ * Switches the back-end state of the device by writing to XenStore.
  *
- * @param xbs the XenbusState to convert
- * @returns a printable string
+ * @param device the VBD
+ * @param state the state to switch to
+ * @returns 0 on success, an error code otherwise
  */
-char *
-XenbusState2str(const XenbusState xbs);
+int
+xenbus_switch_state(vbd_t * const device, const XenbusState state);
 
 #endif /* __TAPBACK_H__ */

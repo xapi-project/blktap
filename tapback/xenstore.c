@@ -91,30 +91,29 @@ tapback_xs_read(struct xs_handle * const xs, xs_transaction_t xst,
 }
 
 char *
-tapback_device_read(const vbd_t * const device, const char * const path)
-{
-    ASSERT(device);
-    ASSERT(path);
-
-    return tapback_xs_read(blktap3_daemon.xs, blktap3_daemon.xst,
-            "%s/%d/%s/%s", BLKTAP3_BACKEND_PATH, device->domid, device->name,
-            path);
-}
-
-char *
-tapback_device_read_otherend(vbd_t * const device,
+tapback_device_read(const vbd_t * const device, xs_transaction_t xst,
         const char * const path)
 {
     ASSERT(device);
     ASSERT(path);
 
-    return tapback_xs_read(blktap3_daemon.xs, blktap3_daemon.xst, "%s/%s",
+    return tapback_xs_read(blktap3_daemon.xs, xst, "%s/%d/%s/%s",
+            BLKTAP3_BACKEND_PATH, device->domid, device->name, path);
+}
+
+char *
+tapback_device_read_otherend(vbd_t * const device, xs_transaction_t xst,
+        const char * const path)
+{
+    ASSERT(device);
+    ASSERT(path);
+
+    return tapback_xs_read(blktap3_daemon.xs, xst, "%s/%s",
             device->frontend_path, path);
 }
 
-__scanf(3, 4)
 int
-tapback_device_scanf_otherend(vbd_t * const device,
+tapback_device_scanf_otherend(vbd_t * const device, xs_transaction_t xst,
         const char * const path, const char * const fmt, ...)
 {
     va_list ap;
@@ -124,7 +123,7 @@ tapback_device_scanf_otherend(vbd_t * const device,
     ASSERT(device);
     ASSERT(path);
 
-    if (!(s = tapback_device_read_otherend(device, path)))
+    if (!(s = tapback_device_read_otherend(device, xst, path)))
         return -1;
     va_start(ap, fmt);
     n = vsscanf(s, fmt, ap);
@@ -134,10 +133,9 @@ tapback_device_scanf_otherend(vbd_t * const device,
     return n;
 }
 
-__printf(4, 5)
 int
-tapback_device_printf(vbd_t * const device, const char * const key,
-        const bool mkread, const char * const fmt, ...)
+tapback_device_printf(vbd_t * const device, xs_transaction_t xst,
+        const char * const key, const bool mkread, const char * const fmt, ...)
 {
     va_list ap;
     int err = 0;
@@ -163,8 +161,7 @@ tapback_device_printf(vbd_t * const device, const char * const key,
         goto fail;
     }
 
-    if (!(nerr = xs_write(blktap3_daemon.xs, blktap3_daemon.xst, path, val,
-                    strlen(val)))) {
+    if (!(nerr = xs_write(blktap3_daemon.xs, xst, path, val, strlen(val)))) {
         err = -errno;
         goto fail;
     }
@@ -175,8 +172,8 @@ tapback_device_printf(vbd_t * const device, const char * const key,
             XS_PERM_READ
         };
 
-        if (!(nerr = xs_set_permissions(blktap3_daemon.xs, blktap3_daemon.xst,
-                        path, &perms, 1))) {
+        if (!(nerr = xs_set_permissions(blktap3_daemon.xs, xst, path, &perms,
+                        1))) {
             err = -errno;
             goto fail;
         }

@@ -51,7 +51,7 @@ void (*tapback_vlog) (int prio, const char *fmt, va_list ap);
 
 struct _blktap3_daemon blktap3_daemon;
 
-char *XenbusState2str(const XenbusState xbs)
+char *xenbus_strstate(const XenbusState xbs)
 {
     static char * const str[] = {
         [XenbusStateUnknown] = "0 (unknown)",
@@ -76,7 +76,8 @@ tapback_read_watch(void)
 {
     char **watch = NULL, *path = NULL, *token = NULL;
     unsigned int n = 0;
-    int err = 0, _abort = 0;
+    int err = 0;
+    char *s;
 
     /* read the change */
     watch = xs_read_watch(blktap3_daemon.xs, &n);
@@ -84,20 +85,19 @@ tapback_read_watch(void)
     token = watch[XS_WATCH_TOKEN];
 
     /*
-     * TODO Put the body of "again:" into a loop instead of using goto.
+     * print the path the watch triggered on for debug purposes
+     *
+     * TODO include token
      */
-again:
-    if (!(blktap3_daemon.xst = xs_transaction_start(blktap3_daemon.xs))) {
-        WARN(NULL, "error starting transaction\n");
-        goto fail;
-    }
-
-	{
-		char *s = tapback_xs_read(blktap3_daemon.xs, blktap3_daemon.xst, "%s",
-				path);
-	    DBG(NULL, "%s -> \'%s\'\n", path, s ? s : "removed");
-		free(s);
-	}
+	s = tapback_xs_read(blktap3_daemon.xs, XBT_NULL, "%s", path);
+    if (s) {
+        if (0 == strlen(s))
+            DBG(NULL, "%s -> (created)\n", path);
+        else
+            DBG(NULL, "%s -> \'%s\'\n", path, s);
+        free(s);
+    } else
+        DBG(NULL, "%s -> (removed)\n", path);
 
     /*
      * The token indicates which XenStore watch triggered, the front-end one or
@@ -107,39 +107,11 @@ again:
         err = tapback_backend_handle_otherend_watch(path);
     } else if (!strcmp(token, BLKTAP3_BACKEND_TOKEN)) {
         err = -tapback_backend_handle_backend_watch(path);
-	} else if(!strcmp(token, FORCED_HVM_SHUTDOWN_TOKEN)) {
-
     } else {
         WARN(NULL, "invalid token \'%s\'\n", token);
         err = EINVAL;
     }
 
-    _abort = !!err;
-    if (_abort) {
-        if (err != ENOENT) {
-            /* TODO Some functions return +err, others -err */
-            DBG(NULL, "aborting transaction: %s\n", strerror(abs(err)));
-        }
-    }
-
-    err = xs_transaction_end(blktap3_daemon.xs, blktap3_daemon.xst, _abort);
-    blktap3_daemon.xst = 0;
-    if (!err) {
-        err = -errno;
-        /*
-         * This is OK according to xs_transaction_end's semantics.
-		 *
-		 * FIXME We should undo whatever we did as something might have
-		 * changed. This is very difficult.
-         */
-        if (EAGAIN == errno) {
-			DBG(NULL, "restarting transaction\n");
-            goto again;
-		}
-        DBG(NULL, "error ending transaction: %s\n", strerror(err));
-    }
-
-fail:
     free(watch);
     return;
 }
@@ -200,7 +172,6 @@ tapback_backend_create(void)
     int len;
 
     INIT_LIST_HEAD(&blktap3_daemon.devices);
-    blktap3_daemon.xst = XBT_NULL;
     blktap3_daemon.ctrl_sock = -1;
 
     if (!(blktap3_daemon.xs = xs_daemon_open())) {
@@ -271,6 +242,8 @@ tapback_backend_run(void)
     const int fd = xs_fileno(blktap3_daemon.xs);
 	int err;
 
+    INFO(NULL, "tapback (user-space blkback for tapdisk3) daemon started\n");
+
     do {
         fd_set rfds;
         int nfds = 0;
@@ -278,12 +251,17 @@ tapback_backend_run(void)
         FD_ZERO(&rfds);
         FD_SET(fd, &rfds);
 
-        /* poll the fd for changes in the XenStore path we're interested in */
+        /*
+         * poll the fd for changes in the XenStore path we're interested in
+         *
+         * FIXME Add a (e.g. 3 second) time-out in order to periodically
+         * flush the log.
+         */
         nfds = select(fd + 1, &rfds, NULL, NULL, NULL);
         if (nfds == -1) {
             if (errno == EINTR)
                 continue;
-            perror("error monitoring XenStore");
+            WARN(NULL, "error monitoring XenStore");
             err = -errno;
             break;
         }
@@ -405,8 +383,10 @@ int main(int argc, char **argv)
     tapback_backend_destroy();
 
 fail:
-    if (tapback_log_fp)
+    if (tapback_log_fp) {
+        INFO(NULL, "tapback shut down\n");
         fclose(tapback_log_fp);
+    }
     return err ? -err : 0;
 
 usage:
