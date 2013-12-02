@@ -223,6 +223,9 @@ try:
             session.xenapi.host.add_to_other_config(localhost,key,val)
         config = session.xenapi.host.get_other_config(localhost)
         maps = mpath_cli.list_maps()
+        # Ensure output headers are not in the list
+        if 'name' in maps:
+            maps.remove('name')
         # first map will always correspond to the root dev, dm-0
         assert(len(maps) > 0)
         i = maps[0]
