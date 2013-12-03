@@ -247,17 +247,19 @@ tapback_backend_run(void)
     do {
         fd_set rfds;
         int nfds = 0;
+        struct timeval ttl = {.tv_sec = 3, .tv_usec = 0};
 
         FD_ZERO(&rfds);
         FD_SET(fd, &rfds);
 
         /*
          * poll the fd for changes in the XenStore path we're interested in
-         *
-         * FIXME Add a (e.g. 3 second) time-out in order to periodically
-         * flush the log.
          */
-        nfds = select(fd + 1, &rfds, NULL, NULL, NULL);
+        nfds = select(fd + 1, &rfds, NULL, NULL, &ttl);
+        if (nfds == 0) {
+            fflush(tapback_log_fp);
+            continue;
+        }
         if (nfds == -1) {
             if (errno == EINTR)
                 continue;
