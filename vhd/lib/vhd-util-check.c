@@ -297,6 +297,9 @@ ok:
 				 sizeof(footer->reserved)))
 		return "invalid 'reserved' bits";
 
+	if (uuid_is_null(footer->uuid))
+		return "invalid (NULL) uuid";
+
 	return NULL;
 }
 
