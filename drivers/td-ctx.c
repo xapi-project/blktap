@@ -20,6 +20,10 @@
 #include <errno.h>
 #include <xenctrl.h>
 #include <stdlib.h>
+#include <unistd.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <fcntl.h>
 
 #include "tapdisk-server.h"
 #include "td-ctx.h"
@@ -58,6 +62,11 @@ tapdisk_xenio_ctx_close(struct td_xenio_ctx * const ctx)
     if (ctx->xcg_handle) {
         xc_evtchn_close(ctx->xcg_handle);
         ctx->xcg_handle = NULL;
+    }
+
+    if (ctx->gntdev_fd != -1) {
+        close(ctx->gntdev_fd);
+        ctx->gntdev_fd = -1;
     }
 
     list_del(&ctx->entry);
@@ -348,9 +357,17 @@ tapdisk_xenio_ctx_open(const char *pool)
     }
 
     ctx->ring_event = -1; /* TODO is there a special value? */
+    ctx->gntdev_fd = -1;
     ctx->pool = TD_XENBLKIF_DEFAULT_POOL;
 	INIT_LIST_HEAD(&ctx->blkifs);
     list_add(&ctx->entry, &_td_xenio_ctxs);
+
+    ctx->gntdev_fd = open("/dev/xen/gntdev", O_NONBLOCK);
+    if (ctx->gntdev_fd == -1) {
+        err = errno;
+        ERROR("failed to open the grant device: %s\n", strerror(err));
+        goto fail;
+    }
 
     ctx->xce_handle = xc_evtchn_open(NULL, 0);
     if (!ctx->xce_handle) {

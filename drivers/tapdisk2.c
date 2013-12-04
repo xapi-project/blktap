@@ -30,6 +30,9 @@
 #include "tapdisk-server.h"
 #include "tapdisk-control.h"
 
+unsigned int PAGE_SIZE;
+unsigned int PAGE_MASK;
+
 void tdnbd_fdreceiver_start();
 void tdnbd_fdreceiver_stop();
 
@@ -71,6 +74,9 @@ main(int argc, char *argv[])
 	char *control;
 	int c, err, nodaemon;
 	FILE *out;
+
+    PAGE_SIZE = sysconf(_SC_PAGESIZE);
+    PAGE_MASK = ~(PAGE_SIZE - 1);
 
 	control  = NULL;
 	nodaemon = 0;

@@ -66,6 +66,8 @@ struct td_xenio_ctx {
      * for linked lists
      */
     struct list_head entry;
+
+    int gntdev_fd;
 };
 
 /**

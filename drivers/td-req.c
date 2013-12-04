@@ -19,16 +19,21 @@
 
 #include <xenctrl.h>
 
-#include "td-req.h"
-#include "td-blkif.h"
 #include <stdlib.h>
 #include <errno.h>
-#include "td-ctx.h"
 #include <syslog.h>
 #include <inttypes.h>
+#include <sys/mman.h>
+#include <unistd.h>
+#include <xen/sys/gntdev.h>
+#include <sys/ioctl.h>
+
+#include "td-req.h"
+#include "td-blkif.h"
+#include "td-ctx.h"
 #include "tapdisk-vbd.h"
 #include "tapdisk-log.h"
-#include <sys/mman.h>
+#include "tapdisk.h"
 
 #define ASSERT(p)                                      \
     do {                                               \
@@ -171,12 +176,12 @@ xenio_blkif_put_response(struct td_xenblkif * const blkif,
 }
 
 static int
-guest_copy(struct td_xenblkif * const blkif,
+guest_copy2(struct td_xenblkif * const blkif,
         struct td_xenblkif_req * const tapreq) {
 
-    void *vma = NULL, *src = NULL, *dst = NULL;
-    int err = 0, i = 0;
+    int i = 0;
     td_vbd_request_t *vreq = NULL;
+    long err = 0;
 
     ASSERT(blkif);
     ASSERT(blkif->ctx);
@@ -185,37 +190,27 @@ guest_copy(struct td_xenblkif * const blkif,
 
     vreq = &tapreq->vreq;
 
-    /*
-     * Map the request's data.
-     */
-    vma = xc_gnttab_map_domain_grant_refs(blkif->ctx->xcg_handle,
-            tapreq->nr_segments, blkif->domid, tapreq->gref, tapreq->prot);
-    if (!vma) {
-        err = errno;
-        ASSERT(err);
-        ERR(blkif, "failed to grant map: %s\n", strerror(err));
-        return err;
-    }
+    for (i = 0; i < tapreq->nr_segments; i++) {
+        struct blkif_request_segment *seg = &tapreq->msg.seg[i];
+        struct ioctl_gntdev_grant_copy cpy = {
+            .iov.iov_base = tapreq->vma
+                + (PAGE_SIZE * i)
+                + (seg->first_sect << SECTOR_SHIFT),
+            .iov.iov_len = (seg->last_sect - seg->first_sect + 1)
+                << SECTOR_SHIFT,
+            .dir = BLKIF_OP_WRITE == tapreq->op,
+            .ref = seg->gref,
+            .offset = seg->first_sect << SECTOR_SHIFT,
+            .domid = blkif->domid
+        };
 
-    if (BLKIF_OP_READ == tapreq->op)
-        src = tapreq->vma, dst = vma;
-    else
-        src = vma, dst = tapreq->vma;
-
-    for (i = 0; i < vreq->iovcnt; i++) {
-        unsigned long off = vreq->iov[i].base - tapreq->vma;
-        memcpy(dst + off, src + off, vreq->iov[i].secs << SECTOR_SHIFT);
+        err = -ioctl(blkif->ctx->gntdev_fd, IOCTL_GNTDEV_GRANT_COPY, &cpy);
+        if (err) {
+            ERR(blkif, "failed to grant-copy: %lu\n", err);
+            break;
+        }
     }
-
-    err = xc_gnttab_munmap(blkif->ctx->xcg_handle, vma,
-            tapreq->nr_segments);
-    if (err) {
-        err = errno;
-        ERR(blkif, "failed to grant unmap: %s\n", strerror(err));
-        ASSERT(err);
-        return err;
-    }
-    return 0;
+    return err;
 }
 
 /**
@@ -236,7 +231,7 @@ tapdisk_xenblkif_complete_request(struct td_xenblkif * const blkif,
     if (tapreq->vma) { /* TODO can this ever be NULL? */
         int _err;
         if (BLKIF_OP_READ == tapreq->op && !err) {
-            _err = guest_copy(blkif, tapreq);
+            _err = guest_copy2(blkif, tapreq);
             if (_err) {
                 err = _err;
                 ERR(blkif, "failed to copy from/to guest: %s\n",
@@ -366,12 +361,13 @@ tapdisk_xenblkif_make_vbd_request(struct td_xenblkif * const blkif,
     tapreq->id = tapreq->msg.id;
 
     /*
-     * Vectorizes the request: creates the struct iovec (in tapreq->iov) that
+     * Vectorises the request: creates the struct iovec (in tapreq->iov) that
      * describes each segment to be transferred. Also, merges consecutive
      * segments.
      *
-     * In each loop, iov points to the previous scatter/gather element in order
-     * to reuse it if the current and previous segments are consecutive.
+     * In each loop, iov points to the previous scatter/gather element in
+     * order to reuse it if the current and previous segments are
+     * consecutive.
      */
     iov = tapreq->iov - 1;
     last = NULL;
@@ -402,7 +398,7 @@ tapdisk_xenblkif_make_vbd_request(struct td_xenblkif * const blkif,
     vreq->sec = tapreq->msg.sector_number;
 
     if (tapreq->op == BLKIF_OP_WRITE) {
-        err = guest_copy(blkif, tapreq);
+        err = guest_copy2(blkif, tapreq);
         if (err) {
             ERR(blkif, "failed to copy from guest: %s\n", strerror(err));
             goto out;
@@ -410,8 +406,8 @@ tapdisk_xenblkif_make_vbd_request(struct td_xenblkif * const blkif,
     }
 
     /*
-     * TODO Isn't this kind of expensive to do for each requests? Why does the
-     * tapdisk need this in the first place?
+     * TODO Isn't this kind of expensive to do for each requests? Why does
+     * the tapdisk need this in the first place?
      */
     snprintf(tapreq->name, sizeof(tapreq->name), "xenvbd-%d-%d.%"SCNx64"",
              blkif->domid, blkif->devid, tapreq->msg.id);

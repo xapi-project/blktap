@@ -56,6 +56,9 @@
 #include "tapdisk-utils.h"
 #include "tapdisk-stats.h"
 
+extern unsigned int PAGE_SIZE;
+extern unsigned int PAGE_MASK;
+
 #define MAX_SEGMENTS_PER_REQ         11
 #define MAX_REQUESTS                 32U
 #define SECTOR_SHIFT                 9

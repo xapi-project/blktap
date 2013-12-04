@@ -33,14 +33,17 @@
  * td_vbd_request_t, but keeping it separate simplifies keeping Xen stuff
  * outside tapdisk.
  *
+ * FIXME IIUC msg is the copy of the request in the ring so we don't need to
+ * keep id, op and nr_segments around.
+ *
  * TODO rename to something better, e.g. ring_req?
  */
 struct td_xenblkif_req {
     /**
      * A request descriptor in the ring. We need to copy the descriptors
-     * because the guest may modify it while we're using it. Note that we only
-     * copy the descriptor and not the actual data, the guest is free to modify
-     * the data and corrupt itself if it wants to.
+     * because the guest may modify it while we're using it. Note that we
+     * only copy the descriptor and not the actual data, the guest is free
+     * to modify the data and corrupt itself if it wants to.
      */
     blkif_request_t msg;
 
