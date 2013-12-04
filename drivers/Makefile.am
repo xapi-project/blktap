@@ -86,3 +86,9 @@ libtapdisk_la_SOURCES += block-nbd.c
 
 libtapdisk_la_LIBADD  = ../vhd/lib/libvhd.la
 libtapdisk_la_LIBADD += -laio
+
+logrotatedir = $(sysconfdir)/logrotate.d
+dist_logrotate_DATA = blktap
+
+cronddailydir = $(sysconfdir)/cron.daily
+dist_cronddaily_DATA = blktap-log-cleanup
