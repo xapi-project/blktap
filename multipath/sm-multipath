@@ -29,30 +29,58 @@ RETVAL=0
 # See how we were called.
 #
 
+#
+# This block of functions is taken from dracut
+#
+find_block_device() {
+    local rootdev blkdev fs type opts misc
+    while read blkdev fs type opts misc; do
+        [[ $blkdev = rootfs ]] && continue # skip rootfs entry
+        [[ $fs = $1 ]] && { rootdev=$blkdev; break; } # we have a winner!
+    done < /proc/mounts
+    [[ -b $rootdev ]] || return 1 # oops, not a block device.
+    # get major/minor for the device
+    ls -nLl "$rootdev" | \
+        (read x x x x maj min x; maj=${maj//,/}; echo $maj:$min)
+}
+
+find_root_block_device() { find_block_device /; }
+
+is_mpath() {
+    [ -e /sys/dev/block/$1/dm/uuid ] || return 1
+    # we modified the matching pattern: ^mpath did not work
+    [[ $(cat /sys/dev/block/$1/dm/uuid) =~ mpath- ]] && return 0
+    return 1
+}
+
+#
+# End of block
+
+
 start() {
 	# We want to be sure multipathd is running with modules
 	$MP_UTIL --enable --with_module y
-	test -x $DAEMON || exit 5
 	echo -n $"Multipath check for root device: "
-	$DAEMON -k"show top" &>/dev/null
-	RETVAL=$?
-	[ $RETVAL -eq 0 ] || failure || exit 0
 	success
 
 	# Create an mpInuse symlink for the root device if that is multipath.
-	DEVICE_MAPPER_MAJOR=$(sed -ne 's/^\([0-9]\+\) device-mapper$/\1/p' /proc/devices)
-	DEVICE_MAPPER_MAJOR_HEX=$(printf "%x" ${DEVICE_MAPPER_MAJOR})
-	ROOT_PART_MAJOR=$(stat --format=%t /dev/root)
-	if [ "$ROOT_PART_MAJOR" == "$DEVICE_MAPPER_MAJOR_HEX" ] ; then
-		ROOT_PART_MINOR=$(stat --format=%T /dev/root)
+	ROOT_PART=$(find_root_block_device)
+	if is_mpath $ROOT_PART; then
+		ROOT_PART_MINOR=${ROOT_PART#[[:digit:]]*:}
 		ROOT_PART_SLAVE=$(/bin/ls /sys/block/dm-$ROOT_PART_MINOR/slaves)
 		ROOT_DISK_MINOR=${ROOT_PART_SLAVE#dm-}
 		MPATH_NODES="$(dmsetup ls --target multipath --exec ls)"
 		for n in $MPATH_NODES ; do
-			NODE_MINOR="$(stat --format=%T $n)"
+			NODE_MINOR="$(stat -L --format=%T $n)"
 			if [ "$ROOT_DISK_MINOR" = "$NODE_MINOR" ] ; then
 				mkdir -p /dev/disk/mpInuse
 				ln -sf $n /dev/disk/mpInuse
+				# Ensure its wwid is not blacklisted
+				WWID=$(basename ${n})
+				ROOT_SLAVES=$(/bin/ls /sys/block/dm-$NODE_MINOR/slaves)
+				for i in $ROOT_SLAVES; do
+					/opt/xensource/sm/wwid_conf.py -d /dev/${i} -w $WWID && break
+				done
 			fi
 		done
 	fi

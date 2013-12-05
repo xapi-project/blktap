@@ -105,3 +105,55 @@ def check_conf_file():
         return 1
     return 0
 
+
+def usage():
+    print "Usage: %s [-r] -d <device path> -w <device wwid>" % sys.argv[0]
+    print "Usage: %s -f [-r] -w <device wwid>" % sys.argv[0]
+    print "\tAdd a device wwid to multipath.conf whitelist"
+    print "\t-r: remove"
+    print "\t-f: if provided the operation will be performed anyway"
+    print "\t    otherwise it will be after checking <device> is"
+    print "\t    blacklisted (or not)"
+
+
+if __name__ == "__main__":
+    import getopt
+    from operator import xor
+
+    try:
+        opts, args = getopt.getopt(sys.argv[1:], "fd:w:r")
+    except getopt.GetoptError:
+        usage()
+        sys.exit(1)
+
+    remove = False
+    device = ""
+    force = False
+    wwid = ""
+
+    for o, a in opts:
+        if o == "-r":
+            remove = True
+        elif o == "-d":
+            device = a
+        elif o == "-f":
+            force = True
+        elif o == "-w":
+            wwid = a
+
+    if not wwid:
+        usage()
+        sys.exit(1)
+
+    if not (device or force):
+        usage()
+        sys.exit(1)
+
+    if force or xor(remove, is_blacklisted(device)):
+        try:
+            edit_wwid(wwid, remove)
+        except:
+            sys.exit(1)
+
+    sys.exit(0)
+

@@ -29,6 +29,8 @@ rm -rf $RPM_BUILD_ROOT
 %post
 [ ! -x /sbin/chkconfig ] || chkconfig --add mpathroot
 [ ! -x /sbin/chkconfig ] || chkconfig --add sm-multipath
+service sm-multipath start
+
 [ -f /etc/lvm/lvm.conf.orig ] || cp /etc/lvm/lvm.conf /etc/lvm/lvm.conf.orig || exit $?
 [ -d /etc/lvm/master ] || mkdir /etc/lvm/master || exit $?
 cp -f /etc/lvm/lvm.conf /etc/lvm/master/lvm.conf || exit $?
