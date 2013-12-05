@@ -182,6 +182,7 @@ guest_copy2(struct td_xenblkif * const blkif,
     int i = 0;
     td_vbd_request_t *vreq = NULL;
     long err = 0;
+    struct ioctl_gntdev_grant_copy gcopy;
 
     ASSERT(blkif);
     ASSERT(blkif->ctx);
@@ -191,25 +192,26 @@ guest_copy2(struct td_xenblkif * const blkif,
     vreq = &tapreq->vreq;
 
     for (i = 0; i < tapreq->nr_segments; i++) {
-        struct blkif_request_segment *seg = &tapreq->msg.seg[i];
-        struct ioctl_gntdev_grant_copy cpy = {
-            .iov.iov_base = tapreq->vma
-                + (PAGE_SIZE * i)
-                + (seg->first_sect << SECTOR_SHIFT),
-            .iov.iov_len = (seg->last_sect - seg->first_sect + 1)
-                << SECTOR_SHIFT,
-            .dir = BLKIF_OP_WRITE == tapreq->op,
-            .ref = seg->gref,
-            .offset = seg->first_sect << SECTOR_SHIFT,
-            .domid = blkif->domid
-        };
-
-        err = -ioctl(blkif->ctx->gntdev_fd, IOCTL_GNTDEV_GRANT_COPY, &cpy);
-        if (err) {
-            ERR(blkif, "failed to grant-copy: %lu\n", err);
-            break;
-        }
+        struct blkif_request_segment *blkif_seg = &tapreq->msg.seg[i];
+        struct gntdev_grant_copy_segment *gcopy_seg = &gcopy.segments[i];
+        gcopy_seg->iov.iov_base = tapreq->vma + (i << PAGE_SHIFT)
+            + (blkif_seg->first_sect << SECTOR_SHIFT);
+        gcopy_seg->iov.iov_len = (blkif_seg->last_sect
+                - blkif_seg->first_sect
+                + 1)
+            << SECTOR_SHIFT;
+        gcopy_seg->ref = blkif_seg->gref;
+        gcopy_seg->offset = blkif_seg->first_sect << SECTOR_SHIFT;
     }
+
+    gcopy.dir = BLKIF_OP_WRITE == tapreq->op;
+    gcopy.domid = blkif->domid;
+    gcopy.count = tapreq->nr_segments;
+
+    err = -ioctl(blkif->ctx->gntdev_fd, IOCTL_GNTDEV_GRANT_COPY, &gcopy);
+    if (err)
+        ERR(blkif, "failed to grant-copy: %s\n", strerror(err));
+
     return err;
 }
 
