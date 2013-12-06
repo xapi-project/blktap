@@ -345,6 +345,14 @@ out:
     return err;
 }
 
+/**
+ * Attempts to reconnected the back-end to the fornt-end if possible (e.g.
+ * after a tapback restart).
+ *
+ * returns 0 on success, an error code otherwise
+ *
+ * NB that 0 is also returned when a reconnection is not yet feasible
+ */
 static inline int
 reconnect(vbd_t *device) {
 
@@ -362,7 +370,10 @@ reconnect(vbd_t *device) {
     }
     err = frontend(device);
     if (err) {
-        if (err == -ENOENT)
+        /*
+         * The tapdisk or the front-end state path are not available.
+         */
+        if (err == -ENOENT || err == -ESRCH)
             err = 0;
         else
             WARN(device, "failed to watch front-end path: %s\n",

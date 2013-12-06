@@ -67,7 +67,8 @@ xenbus_switch_state(vbd_t * const device,
  * function will be called again but it won't really do anything.
  *
  * @param device the VBD the tapdisk should connect to
- * @returns 0 on success, an error code otherwise
+ * @returns (a) 0 on success, (b) ESRCH if the tapdisk is not available, and
+ * (c) an error code otherwise
  */
 static inline int
 connect_tap(vbd_t * const device)
@@ -95,6 +96,7 @@ connect_tap(vbd_t * const device)
      */
     if (!device->tap) {
         DBG(device, "no tapdisk yet\n");
+        err = ESRCH;
         goto out;
     }
     /*
@@ -327,6 +329,11 @@ connect(vbd_t *device) {
     ASSERT(device);
 
     err = connect_tap(device);
+    /*
+     * No tapdisk yet (the physical-device XenStore key has not been written).
+     */
+    if (err == ESRCH)
+        goto out;
     /*
      * Even if tapdisk is already connected to the shared ring, we continue
      * connecting since we don't know how far the connection process had gone
