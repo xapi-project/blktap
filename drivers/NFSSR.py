@@ -121,18 +121,18 @@ class NFSSR(FileSR.FileSR):
 
 
     def attach(self, sr_uuid):
-        self.validate_remotepath(False)
-        util._testHost(self.dconf['server'], NFSPORT, 'NFSTarget')
-        io_timeout = util.get_nfs_timeout(self.session, sr_uuid)
-        self.mount_remotepath(sr_uuid, io_timeout)
+        if not self._checkmount():
+            self.validate_remotepath(False)
+            util._testHost(self.dconf['server'], NFSPORT, 'NFSTarget')
+            io_timeout = util.get_nfs_timeout(self.session, sr_uuid)
+            self.mount_remotepath(sr_uuid, io_timeout)
+        self.attached = True
 
 
     def mount_remotepath(self, sr_uuid, timeout = 0):
         if not self._checkmount():
             self.check_server()
             self.mount(self.path, self.remotepath, timeout)
-
-        return super(NFSSR, self).attach(sr_uuid)
 
 
     def probe(self):
@@ -169,7 +169,7 @@ class NFSSR(FileSR.FileSR):
         except nfs.NfsException, exc:
             raise xs_errors.XenError('NFSUnMount', opterr=exc.errstr)
 
-        return super(NFSSR, self).detach(sr_uuid)
+        self.attached = False
         
 
     def create(self, sr_uuid, size):
