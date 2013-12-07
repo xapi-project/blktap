@@ -338,6 +338,9 @@ class FileSR(SR.SR):
         util.SMlog("Kicking GC")
         cleanup.gc(self.session, self.uuid, True)
 
+    def _checkmount(self):
+        return util.ioretry(lambda: util.pathexists(self.path)) \
+               and util.ioretry(lambda: util.ismount(self.path))
 
 class FileVDI(VDI.VDI):
     PARAM_VHD = "vhd"
