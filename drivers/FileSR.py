@@ -81,7 +81,8 @@ class FileSR(SR.SR):
         self.sr_vditype = vhdutil.VDI_TYPE_VHD
         if not self.dconf.has_key('location') or  not self.dconf['location']:
             raise xs_errors.XenError('ConfigLocationMissing')
-        self.path = self.dconf['location']
+        self.remotepath = self.dconf['location']
+        self.path = os.path.join(SR.MOUNT_BASE, sr_uuid)
         self.attached = False
 
     def create(self, sr_uuid, size):
@@ -90,12 +91,12 @@ class FileSR(SR.SR):
         mounted a device onto a directory manually and want to use this as the
         root of a file-based SR.) """
         try:
-            if util.ioretry(lambda: util.pathexists(self.path)):
-                if len(util.ioretry(lambda: util.listdir(self.path))) != 0:
+            if util.ioretry(lambda: util.pathexists(self.remotepath)):
+                if len(util.ioretry(lambda: util.listdir(self.remotepath))) != 0:
                     raise xs_errors.XenError('SRExists')
             else:
                 try:
-                    util.ioretry(lambda: os.mkdir(self.path))
+                    util.ioretry(lambda: os.mkdir(self.remotepath))
                 except util.CommandException, inst:
                     if inst.code == errno.EEXIST:
                         raise xs_errors.XenError('SRExists')
@@ -107,9 +108,7 @@ class FileSR(SR.SR):
             raise xs_errors.XenError('FileSRCreate')
 
     def delete(self, sr_uuid):
-        if not self._checkpath(self.path):
-            raise xs_errors.XenError('SRUnavailable', \
-                  opterr='no such directory %s' % self.path)
+        self.attach(sr_uuid)
         cleanup.gc_force(self.session, self.uuid)
 
         # check to make sure no VDIs are present; then remove old 
@@ -134,21 +133,41 @@ class FileSR(SR.SR):
                             raise xs_errors.XenError('FileSRDelete', \
                                   opterr='failed to remove %s error %d' \
                                   % (fullpath, inst.code))
+            self.detach(sr_uuid)
         except util.CommandException, inst:
+            self.detach(sr_uuid)
             raise xs_errors.XenError('FileSRDelete', \
                   opterr='error %d' % inst.code)
 
     def attach(self, sr_uuid):
-        if not self._checkpath(self.path):
-            raise xs_errors.XenError('SRUnavailable', \
-                  opterr='no such directory %s' % self.path)
+        if not self._checkmount():
+            try:
+                util.ioretry(lambda: util.makedirs(self.path))
+            except util.CommandException, inst:
+                if inst.code != errno.EEXIST:
+                    raise xs_errors.XenError("FileSRCreate", \
+                                             opterr='fail to create mount point. Errno is %s' % inst.code)
+            try:
+                util.pread(["mount", "--bind", self.remotepath, self.path])
+            except util.CommandException, inst:
+                raise xs_errors.XenError('FileSRCreate', \
+                                         opterr='fail to mount FileSR. Errno is %s' % inst.code)
         self.attached = True
 
     def detach(self, sr_uuid):
+        if self._checkmount():
+            try:
+                util.SMlog("Aborting GC/coalesce")
+                cleanup.abort(self.uuid)
+                os.chdir(SR.MOUNT_BASE)
+                util.pread(["umount", self.path])
+                os.rmdir(self.path)
+            except Exception, e:
+                raise xs_errors.XenError('SRInUse', opterr=str(e))
         self.attached = False
 
     def scan(self, sr_uuid):
-        if not self._checkpath(self.path):
+        if not self._checkmount():
             raise xs_errors.XenError('SRUnavailable', \
                   opterr='no such directory %s' % self.path)
 
@@ -177,7 +196,7 @@ class FileSR(SR.SR):
         return super(FileSR, self).scan(sr_uuid)
 
     def update(self, sr_uuid):
-        if not self._checkpath(self.path):
+        if not self._checkmount():
             raise xs_errors.XenError('SRUnavailable', \
                   opterr='no such directory %s' % self.path)
         self._update(sr_uuid, 0)
@@ -210,16 +229,6 @@ class FileSR(SR.SR):
             self._process_replay(data)
         except:
             raise xs_errors.XenError('SRLog')
-
-    def _checkpath(self, path):
-        try:
-            if util.ioretry(lambda: util.pathexists(path)):
-                if util.ioretry(lambda: util.isdir(path)):
-                    return True
-            return False
-        except util.CommandException, inst:
-            raise xs_errors.XenError('EIO', \
-                  opterr='IO error checking path %s' % path)
 
     def _loadvdis(self):
         if self.vdis:
