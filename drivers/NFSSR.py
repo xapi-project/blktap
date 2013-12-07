@@ -231,10 +231,6 @@ class NFSSR(FileSR.FileSR):
             return NFSFileVDI(self, uuid)
         return NFSFileVDI(self, uuid)
     
-    def _checkmount(self):
-        return util.ioretry(lambda: util.pathexists(self.path)) \
-               and util.ioretry(lambda: util.ismount(self.path))
-
     def scan_exports(self, target):
         util.SMlog("scanning2 (target=%s)" % target)
         dom = nfs.scan_exports(target)

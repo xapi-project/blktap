@@ -238,8 +238,6 @@ class EXTSR(FileSR.FileSR):
             return EXTFileVDI(self, uuid)
         return EXTFileVDI(self, uuid)
 
-    def _checkmount(self):
-        return self.path and os.path.ismount(self.path)
 
 class EXTFileVDI(FileSR.FileVDI):
     def attach(self, sr_uuid, vdi_uuid):
