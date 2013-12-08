@@ -347,9 +347,17 @@ class FileSR(SR.SR):
         util.SMlog("Kicking GC")
         cleanup.gc(self.session, self.uuid, True)
 
+    def _isbind(self):
+        # os.path.ismount can't deal with bind mount
+        st1 = os.stat(self.path)
+        st2 = os.stat(self.remotepath)
+        return st1.st_dev == st2.st_dev and st1.st_ino == st2.st_ino
+
     def _checkmount(self):
-        return util.ioretry(lambda: util.pathexists(self.path)) \
-               and util.ioretry(lambda: util.ismount(self.path))
+        return util.ioretry(lambda: util.pathexists(self.path) and \
+                                (util.ismount(self.path) or \
+                                 util.pathexists(self.remotepath) and self._isbind()))
+
 
 class FileVDI(VDI.VDI):
     PARAM_VHD = "vhd"
