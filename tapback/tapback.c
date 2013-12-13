@@ -49,7 +49,7 @@
 void tapback_log(int prio, const char *fmt, ...);
 void (*tapback_vlog) (int prio, const char *fmt, va_list ap);
 
-struct _blktap3_daemon blktap3_daemon;
+LIST_HEAD(backends);
 
 char *xenbus_strstate(const XenbusState xbs)
 {
@@ -72,15 +72,17 @@ char *xenbus_strstate(const XenbusState xbs)
  * or one of the front-end paths and act accordingly.
  */
 static inline void
-tapback_read_watch(void)
+tapback_read_watch(backend_t *backend)
 {
     char **watch = NULL, *path = NULL, *token = NULL;
     unsigned int n = 0;
     int err = 0;
     char *s;
 
+	ASSERT(backend);
+
     /* read the change */
-    watch = xs_read_watch(blktap3_daemon.xs, &n);
+    watch = xs_read_watch(backend->xs, &n);
     path = watch[XS_WATCH_PATH];
     token = watch[XS_WATCH_TOKEN];
 
@@ -89,7 +91,7 @@ tapback_read_watch(void)
      *
      * TODO include token
      */
-	s = tapback_xs_read(blktap3_daemon.xs, XBT_NULL, "%s", path);
+	s = tapback_xs_read(backend->xs, XBT_NULL, "%s", path);
     if (s) {
         if (0 == strlen(s))
             DBG(NULL, "%s -> (created)\n", path);
@@ -104,9 +106,9 @@ tapback_read_watch(void)
      * the back-end one.
      */
     if (!strcmp(token, BLKTAP3_FRONTEND_TOKEN)) {
-        err = tapback_backend_handle_otherend_watch(path);
-    } else if (!strcmp(token, BLKTAP3_BACKEND_TOKEN)) {
-        err = -tapback_backend_handle_backend_watch(path);
+        err = tapback_backend_handle_otherend_watch(backend, path);
+    } else if (!strcmp(token, backend->token)) {
+        err = -tapback_backend_handle_backend_watch(backend, path);
     } else {
         WARN(NULL, "invalid token \'%s\'\n", token);
         err = EINVAL;
@@ -117,13 +119,20 @@ tapback_read_watch(void)
 }
 
 static void
-tapback_backend_destroy(void)
+tapback_backend_destroy(backend_t *backend)
 {
     int err;
 
-    if (blktap3_daemon.xs) {
-        xs_daemon_close(blktap3_daemon.xs);
-        blktap3_daemon.xs = NULL;
+	if (!backend)
+		return;
+
+    free(backend->name);
+    free(backend->path);
+    free(backend->token);
+
+    if (backend->xs) {
+        xs_daemon_close(backend->xs);
+        backend->xs = NULL;
     }
 
     err = unlink(TAPBACK_CTL_SOCK_PATH);
@@ -132,6 +141,10 @@ tapback_backend_destroy(void)
         WARN(NULL, "failed to remove %s: %s\n", TAPBACK_CTL_SOCK_PATH,
 				strerror(err));
     }
+
+	list_del(&backend->entry);
+
+	free(backend);
 }
 
 static FILE *tapback_log_fp = NULL;
@@ -148,12 +161,19 @@ signal_cb(int signum) {
             tapback_log_fp = fopen(TAPBACK_LOG, "a+");
         }
     } else {
-        if (!list_empty(&blktap3_daemon.devices)) {
-            WARN(NULL, "refusing to shutdown while there are active VBDs\n");
-            return;
-        }
+		backend_t *backend, *tmp;
 
-        tapback_backend_destroy();
+		list_for_each_entry(backend, &backends, entry) {
+			if (!list_empty(&backend->devices)) {
+				WARN(NULL, "refusing to shutdown while back-end %s has active "
+						"VBDs\n", backend->name);
+				return;
+			}
+		}
+
+		list_for_each_entry_safe(backend, tmp, &backends, entry)
+			tapback_backend_destroy(backend);
+
         exit(EXIT_SUCCESS);
     }
 }
@@ -162,24 +182,61 @@ signal_cb(int signum) {
  * Initializes the back-end descriptor. There is one back-end per tapback
  * process. Also, it initiates a watch to XenStore on backend/<backend name>.
  *
- * @returns 0 on success, an error code otherwise
+ * @returns a new back-end, NULL on failure, sets errno
  */
-static inline int
-tapback_backend_create(void)
+static backend_t *
+tapback_backend_create(const char *name)
 {
     int err;
     struct sockaddr_un local;
     int len;
+	backend_t *backend = NULL;
 
-    INIT_LIST_HEAD(&blktap3_daemon.devices);
-    blktap3_daemon.ctrl_sock = -1;
+    ASSERT(name);
 
-    if (!(blktap3_daemon.xs = xs_daemon_open())) {
-        err = EINVAL;
-        goto fail;
+	backend = calloc(1, sizeof(*backend));
+	if (!backend) {
+		err = errno;
+		goto out;
+	}
+	INIT_LIST_HEAD(&backend->entry);
+	INIT_LIST_HEAD(&backend->devices);
+
+    backend->path = backend->token = NULL;
+
+    backend->name = strdup(name);
+    if (!backend->name) {
+        err = errno;
+        goto out;
     }
 
-	err = get_my_domid(blktap3_daemon.xs, XBT_NULL);
+    err = asprintf(&backend->path, "%s/%s", XENSTORE_BACKEND,
+            backend->name);
+    if (err == -1) {
+        backend->path = NULL;
+        err = errno;
+        goto out;
+    }
+
+    err = asprintf(&backend->token, "%s-%s", XENSTORE_BACKEND,
+            backend->name);
+    if (err == -1) {
+        backend->token = NULL;
+        err = errno;
+        goto out;
+    }
+
+    err = 0;
+
+    INIT_LIST_HEAD(&backend->devices);
+    backend->ctrl_sock = -1;
+
+    if (!(backend->xs = xs_daemon_open())) {
+        err = EINVAL;
+        goto out;
+    }
+
+	err = get_my_domid(backend->xs, XBT_NULL);
 	if (err < 0) {
 		/*
 		 * If the domid XenStore key is not yet written, it means we're running
@@ -195,18 +252,19 @@ tapback_backend_create(void)
 		} else {
 			err = -err;
 			WARN(NULL, "failed to get current domain ID: %s\n", strerror(err));
-			goto fail;
+			goto out;
 		}
 	}
-	blktap3_daemon.domid = err;
+	backend->domid = err;
+	err = 0;
 
     /*
      * Watch the back-end.
      */
-    if (!xs_watch(blktap3_daemon.xs, BLKTAP3_BACKEND_PATH,
-                BLKTAP3_BACKEND_TOKEN)) {
+    if (!xs_watch(backend->xs, backend->path,
+                backend->token)) {
         err = errno;
-        goto fail;
+        goto out;
     }
 
     if (SIG_ERR == signal(SIGINT, signal_cb) ||
@@ -214,7 +272,7 @@ tapback_backend_create(void)
             SIG_ERR == signal(SIGHUP, signal_cb)) {
         WARN(NULL, "failed to register signal handlers\n");
         err = EINVAL;
-        goto fail;
+        goto out;
     }
 
     /*
@@ -222,11 +280,11 @@ tapback_backend_create(void)
      * XXX We don't listen for connections as we don't yet support any control
      * commands.
      */
-    blktap3_daemon.ctrl_sock = socket(AF_UNIX, SOCK_STREAM, 0);
-    if (blktap3_daemon.ctrl_sock == -1) {
+    backend->ctrl_sock = socket(AF_UNIX, SOCK_STREAM, 0);
+    if (backend->ctrl_sock == -1) {
         err = errno;
         WARN(NULL, "failed to create control socket: %s\n", strerror(errno));
-        goto fail;
+        goto out;
     }
     local.sun_family = AF_UNIX;
     strcpy(local.sun_path, TAPBACK_CTL_SOCK_PATH);
@@ -234,22 +292,26 @@ tapback_backend_create(void)
     if (err && errno != ENOENT) {
         err = errno;
         WARN(NULL, "failed to remove %s: %s\n", local.sun_path, strerror(err));
-        goto fail;
+        goto out;
     }
     len = strlen(local.sun_path) + sizeof(local.sun_family);
-    err = bind(blktap3_daemon.ctrl_sock, (struct sockaddr *)&local, len);
+    err = bind(backend->ctrl_sock, (struct sockaddr *)&local, len);
     if (err == -1) {
         err = errno;
         WARN(NULL, "failed to bind to %s: %s\n", local.sun_path, strerror(err));
-        goto fail;
+        goto out;
     }
 
-    return 0;
+	list_add(&backend->entry, &backends);
 
-fail:
-	tapback_backend_destroy();
+out:
+	if (err) {
+		tapback_backend_destroy(backend);
+		backend = NULL;
+		errno = err;
+	}
 
-    return err;
+    return backend;
 }
 
 /**
@@ -258,10 +320,14 @@ fail:
  * Watches backend/<backend name> and the front-end devices.
  */
 static inline int
-tapback_backend_run(void)
+tapback_backend_run(backend_t *backend)
 {
-    const int fd = xs_fileno(blktap3_daemon.xs);
+    int fd;
 	int err;
+
+	ASSERT(backend);
+
+	fd = xs_fileno(backend->xs);
 
     INFO(NULL, "tapback (user-space blkback for tapdisk3) daemon started\n");
 
@@ -290,7 +356,7 @@ tapback_backend_run(void)
         }
 
         if (FD_ISSET(fd, &rfds))
-            tapback_read_watch();
+            tapback_read_watch(backend);
         DBG(NULL, "--\n");
     } while (1);
 
@@ -330,14 +396,19 @@ usage(FILE * const stream, const char * const prog)
             "usage: %s\n"
             "\t[-d|--debug]\n"
 			"\t[-h|--help]\n"
-            "\t[-v|--verbose]\n", prog);
+            "\t[-v|--verbose]\n"
+            "\t[-n|--name]\n", prog);
 }
+
+extern char *optarg;
 
 int main(int argc, char **argv)
 {
     const char *prog = NULL;
+    char *opt_name = "vbd3";
     bool opt_debug = false, opt_verbose = false;
     int err = 0;
+	backend_t *backend = NULL;
 
 	if (access("/dev/xen/gntdev", F_OK ) == -1) {
 		WARN(NULL, "grant device does not exist\n");
@@ -354,10 +425,11 @@ int main(int argc, char **argv)
             {"help", 0, NULL, 'h'},
             {"debug", 0, NULL, 'd'},
             {"verbose", 0, NULL, 'v'},
+            {"name", 0, NULL, 'n'},
         };
         int c;
 
-        c = getopt_long(argc, argv, "h:dv", longopts, NULL);
+        c = getopt_long(argc, argv, "hdvn:", longopts, NULL);
         if (c < 0)
             break;
 
@@ -370,6 +442,13 @@ int main(int argc, char **argv)
             break;
         case 'v':
             opt_verbose = true;
+            break;
+        case 'n':
+            opt_name = strdup(optarg);
+            if (!opt_name) {
+                err = errno;
+                goto fail;
+            }
             break;
         case '?':
             goto usage;
@@ -384,7 +463,7 @@ int main(int argc, char **argv)
         tapback_vlog = blkback_vlog_fprintf;
     }
     else {
-        blkback_ident = BLKTAP3_BACKEND_TOKEN;
+        blkback_ident = opt_name;
         openlog(blkback_ident, 0, LOG_DAEMON);
         setlogmask(LOG_UPTO(LOG_INFO));
     }
@@ -396,14 +475,16 @@ int main(int argc, char **argv)
         }
     }
 
-	if ((err = tapback_backend_create())) {
+	backend = tapback_backend_create(opt_name);
+	if (!backend) {
+		err = errno;
         WARN(NULL, "error creating blkback: %s\n", strerror(err));
         goto fail;
     }
 
-    err = tapback_backend_run();
+    err = tapback_backend_run(backend);
 
-    tapback_backend_destroy();
+    tapback_backend_destroy(backend);
 
 fail:
     if (tapback_log_fp) {

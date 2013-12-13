@@ -22,6 +22,7 @@
 
 #include "tapback.h"
 #include "xenstore.h"
+#include <xen/io/blkif.h>
 
 /**
  * Removes the XenStore watch from the front-end.
@@ -36,7 +37,7 @@ tapback_device_unwatch_frontend_state(vbd_t * const device)
 
     if (device->frontend_state_path)
 		/* TODO check return code */
-        xs_unwatch(blktap3_daemon.xs, device->frontend_state_path,
+        xs_unwatch(device->backend->xs, device->frontend_state_path,
                 BLKTAP3_FRONTEND_TOKEN);
 
     free(device->frontend_state_path);
@@ -156,12 +157,13 @@ out:
  * not undoing everything we did in this function.
  */
 static inline vbd_t*
-tapback_backend_create_device(const domid_t domid, const char * const name)
+tapback_backend_create_device(backend_t *backend,
+		const domid_t domid, const char * const name)
 {
     vbd_t *device = NULL;
     int err = 0;
-    char *s = NULL, *s2 = NULL;
 
+	ASSERT(backend);
     ASSERT(name);
 
     DBG(NULL, "%d/%s creating device\n", domid, name);
@@ -172,10 +174,15 @@ tapback_backend_create_device(const domid_t domid, const char * const name)
         goto out;
     }
 
-    list_add_tail(&device->backend_entry, &blktap3_daemon.devices);
+	device->backend = backend;
+    list_add_tail(&device->backend_entry, &device->backend->devices);
 
     device->major = -1;
     device->minor = -1;
+
+	device->mode = false;
+	device->cdrom = false;
+	device->info = 0;
 
     /* TODO check for errors */
     device->devid = atoi(name);
@@ -191,8 +198,6 @@ tapback_backend_create_device(const domid_t domid, const char * const name)
     }
 
 out:
-    free(s);
-    free(s2);
     if (err) {
         WARN(NULL, "%d/%s: error creating device: %s\n", domid, name,
                 strerror(-err));
@@ -225,6 +230,7 @@ physical_device(vbd_t *device) {
 
     char * s = NULL, *p = NULL, *end = NULL;
     int err = 0, major = 0, minor = 0;
+	unsigned int info;
 
     ASSERT(device);
 
@@ -293,7 +299,7 @@ physical_device(vbd_t *device) {
      * get the VBD parameters from the tapdisk
      */
     if ((err = tap_ctl_info(device->tap->pid, &device->sectors,
-                    &device->sector_size, &device->info,
+                    &device->sector_size, &info,
                     device->minor))) {
         WARN(device, "error retrieving disk characteristics: %s\n",
                 strerror(-err));
@@ -303,7 +309,7 @@ physical_device(vbd_t *device) {
     if (device->sector_size & 0x1ff || device->sectors <= 0) {
         WARN(device, "warning: unexpected device characteristics: sector "
                 "size=%d, sectors=%lu\n", device->sector_size,
-                device->sectors);
+				device->sectors);
     }
 
     /*
@@ -314,7 +320,7 @@ physical_device(vbd_t *device) {
      * the state in the VBD in-memory structure.
      */
     if (device->frontend_state_path) {
-        int err2 = -tapback_backend_handle_otherend_watch(
+        int err2 = -tapback_backend_handle_otherend_watch(device->backend,
                 device->frontend_state_path);
         if (err2)
             WARN(device, "failed to switch state: %s\n", strerror(-err2));
@@ -370,7 +376,7 @@ frontend(vbd_t *device) {
      * front-end watch fires we are given the XenStore path that
      * changed.
      */
-    if (!xs_watch(blktap3_daemon.xs, device->frontend_state_path,
+    if (!xs_watch(device->backend->xs, device->frontend_state_path,
                 BLKTAP3_FRONTEND_TOKEN)) {
         err = -errno;
         goto out;
@@ -386,6 +392,25 @@ out:
     return err;
 }
 
+static int
+device_set_mode(vbd_t *device, const char *mode) {
+
+	ASSERT(device);
+	ASSERT(mode);
+
+	if (!strcmp(mode, "r"))
+		device->mode = false;
+	else if (!strcmp(mode, "w"))
+		device->mode = true;
+	else {
+		WARN(device, "invalid value %s for XenStore key %s\n",
+				mode, MODE_KEY);
+		return -EINVAL;
+	}
+
+	return 0;
+}
+
 /**
  * Returns 0 in success, -errno on failure.
  */
@@ -394,6 +419,8 @@ hotplug_status_changed(vbd_t * const device) {
 
 	int err;
 	char *hotplug_status = NULL;
+	char *device_type = NULL;
+	char *mode = NULL;
 
 	ASSERT(device);
 
@@ -413,8 +440,54 @@ hotplug_status_changed(vbd_t * const device) {
 		WARN(device, "invalid hotplug-status value %s\n", hotplug_status);
 		err = -EINVAL;
 	}
+
+	device_type = tapback_device_read_otherend(device, XBT_NULL,
+			"device-type");
+	if (!device_type) {
+		err = -errno;
+		WARN(device, "failed to read device-type: %s\n", strerror(-err));
+		goto out;
+	}
+	if (!strcmp(device_type, "cdrom"))
+		device->cdrom = true;
+	else if (!strcmp(device_type, "disk"))
+		device->cdrom = false;
+	else {
+		WARN(device, "unsupported device type %s\n", device_type);
+		err = -EOPNOTSUPP;
+		goto out;
+	}
+
+	mode = tapback_device_read(device, XBT_NULL, MODE_KEY);
+	if (!mode) {
+		err = -errno;
+		WARN(device, "failed to read XenStore key %s: %s\n",
+				MODE_KEY, strerror(-err));
+		goto out;
+	}
+	err = device_set_mode(device, mode);
+	if (err) {
+		WARN(device, "failed to set device R/W mode: %s\n",
+				strerror(-err));
+		goto out;
+	}
+
+	if (device->cdrom)
+		device->info |= VDISK_CDROM;
+	if (!device->mode)
+		device->info |= VDISK_READONLY;
+
+	err = tapback_device_printf(device, XBT_NULL, "info", false, "%d",
+			device->info);
+	if (err) {
+		WARN(device, "failed to write info: %s\n", strerror(-err));
+		goto out;
+	}
 out:
 	free(hotplug_status);
+	free(device_type);
+	free(mode);
+
 	return err;
 }
 
@@ -454,7 +527,8 @@ reconnect(vbd_t *device) {
         goto out;
     }
 
-    err = -tapback_backend_handle_otherend_watch(device->frontend_state_path);
+    err = -tapback_backend_handle_otherend_watch(device->backend,
+			device->frontend_state_path);
     if (err) {
         if (err == -ENOENT)
             err = 0;
@@ -478,14 +552,15 @@ out:
  * @returns 0 on success, a negative error code otherwise
  */
 static int
-tapback_backend_probe_device(const domid_t domid, const char * const devname,
-		const char *comp)
+tapback_backend_probe_device(backend_t *backend,
+		const domid_t domid, const char * const devname, const char *comp)
 {
     bool should_exist = false, create = false, remove = false;
     int err = 0;
     vbd_t *device = NULL;
     char * s = NULL;
 
+	ASSERT(backend);
     ASSERT(devname);
 
     DBG(NULL, "%d/%s probing device\n", domid, devname);
@@ -493,8 +568,8 @@ tapback_backend_probe_device(const domid_t domid, const char * const devname,
     /*
      * Ask XenStore if the device _should_ exist.
      */
-    s = tapback_xs_read(blktap3_daemon.xs, XBT_NULL, "%s/%d/%s",
-            BLKTAP3_BACKEND_PATH, domid, devname);
+    s = tapback_xs_read(backend->xs, XBT_NULL, "%s/%d/%s",
+            backend->path, domid, devname);
     should_exist = s != NULL;
     free(s);
 
@@ -503,7 +578,7 @@ tapback_backend_probe_device(const domid_t domid, const char * const devname,
      *
      * TODO Use a faster data structure.
      */
-    tapback_backend_find_device(device,
+    tapback_backend_find_device(backend, device,
             device->domid == domid && !strcmp(device->name, devname));
 
     /*
@@ -530,7 +605,7 @@ tapback_backend_probe_device(const domid_t domid, const char * const devname,
 	}
 
     if (create) {
-        device = tapback_backend_create_device(domid, devname);
+        device = tapback_backend_create_device(backend, domid, devname);
         if (!device) {
             err = errno;
             WARN(NULL, "%d/%s error creating device: %s\n", domid, devname,
@@ -582,12 +657,14 @@ tapback_backend_probe_device(const domid_t domid, const char * const devname,
  * XXX Only called by tapback_backend_handle_backend_watch.
  */
 static int
-tapback_backend_scan(void)
+tapback_backend_scan(backend_t *backend)
 {
     vbd_t *device = NULL, *next = NULL;
     unsigned int i = 0, j = 0, n = 0, m = 0;
     char **dir = NULL;
     int err = 0;
+
+	ASSERT(backend);
 
     DBG(NULL, "scanning entire back-end\n");
 
@@ -596,11 +673,12 @@ tapback_backend_scan(void)
      * TODO Why do we do this? Is this costly?
      */
 
-    tapback_backend_for_each_device(device, next) {
+    tapback_backend_for_each_device(backend, device, next) {
         /*
          * FIXME check that there is no compoment.
          */
-        err = tapback_backend_probe_device(device->domid, device->name, NULL);
+        err = tapback_backend_probe_device(backend, device->domid,
+				device->name, NULL);
         if (err) {
             WARN(device, "error probing device : %s\n", strerror(-err));
             /* TODO Should we fail in this case of keep probing? */
@@ -615,13 +693,13 @@ tapback_backend_scan(void)
      * could there be a performance issue in the presence of many VMs/VBDs?
      * (e.g. boot-storm)
      */
-    if (!(dir = xs_directory(blktap3_daemon.xs, XBT_NULL,
-                    BLKTAP3_BACKEND_PATH, &n))) {
+    if (!(dir = xs_directory(backend->xs, XBT_NULL,
+                    backend->path, &n))) {
         err = -errno;
         if (err == -ENOENT)
             err = 0;
         else
-            WARN(NULL, "error listing %s: %s\n", BLKTAP3_BACKEND_PATH,
+            WARN(NULL, "error listing %s: %s\n", backend->path,
                     strerror(err));
         goto out;
     }
@@ -642,12 +720,12 @@ tapback_backend_scan(void)
         /*
          * Read the devices of this domain.
          */
-        if (asprintf(&path, "%s/%d", BLKTAP3_BACKEND_PATH, domid) == -1) {
+        if (asprintf(&path, "%s/%d", backend->path, domid) == -1) {
             /* TODO log error */
             err = -errno;
             goto out;
         }
-        sub = xs_directory(blktap3_daemon.xs, XBT_NULL, path, &m);
+        sub = xs_directory(backend->xs, XBT_NULL, path, &m);
         err = -errno;
         free(path);
 
@@ -663,7 +741,7 @@ tapback_backend_scan(void)
             /*
              * FIXME check that there is no compoment.
              */
-            err = tapback_backend_probe_device(domid, sub[j], NULL);
+            err = tapback_backend_probe_device(backend, domid, sub[j], NULL);
             if (err) {
                 WARN(NULL, "%d/%s: error probing device %s of domain %d: %s\n",
                         domid, sub[j], strerror(-err));
@@ -680,12 +758,14 @@ out:
 }
 
 int
-tapback_backend_handle_backend_watch(char * const path)
+tapback_backend_handle_backend_watch(backend_t *backend,
+		char * const path)
 {
     char *s = NULL, *end = NULL, *name = NULL, *_path = NULL;
     domid_t domid = 0;
     int err = 0;
 
+	ASSERT(backend);
     ASSERT(path);
 
     _path = strdup(path);
@@ -701,13 +781,13 @@ tapback_backend_handle_backend_watch(char * const path)
     s = strtok(_path, "/");
     ASSERT(!strcmp(s, XENSTORE_BACKEND));
     if (!(s = strtok(NULL, "/"))) {
-        err = tapback_backend_scan();
+        err = tapback_backend_scan(backend);
         goto out;
     }
 
-    ASSERT(!strcmp(s, BLKTAP3_BACKEND_NAME));
+    ASSERT(!strcmp(s, backend->name));
     if (!(s = strtok(NULL, "/"))) {
-        err = tapback_backend_scan();
+        err = tapback_backend_scan(backend);
         goto out;
     }
 
@@ -724,7 +804,7 @@ tapback_backend_handle_backend_watch(char * const path)
      * tapback_backend_scan.
      */
     if (!(name = strtok(NULL, "/"))) {
-        err = tapback_backend_scan();
+        err = tapback_backend_scan(backend);
         goto out;
     }
 
@@ -735,7 +815,8 @@ tapback_backend_handle_backend_watch(char * const path)
      * device should exist, but we already know that in the current function.
      * Optimise this case.
      */
-    err = tapback_backend_probe_device(domid, name, strtok(NULL, "/"));
+    err = tapback_backend_probe_device(backend, domid, name,
+			strtok(NULL, "/"));
 out:
     free(_path);
     return err;

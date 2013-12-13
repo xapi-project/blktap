@@ -106,8 +106,8 @@ tapback_device_read(const vbd_t * const device, xs_transaction_t xst,
     ASSERT(device);
     ASSERT(path);
 
-    return tapback_xs_read(blktap3_daemon.xs, xst, "%s/%d/%s/%s",
-            BLKTAP3_BACKEND_PATH, device->domid, device->name, path);
+    return tapback_xs_read(device->backend->xs, xst, "%s/%d/%s/%s",
+            device->backend->path, device->domid, device->name, path);
 }
 
 char *
@@ -117,7 +117,7 @@ tapback_device_read_otherend(vbd_t * const device, xs_transaction_t xst,
     ASSERT(device);
     ASSERT(path);
 
-    return tapback_xs_read(blktap3_daemon.xs, xst, "%s/%s",
+    return tapback_xs_read(device->backend->xs, xst, "%s/%s",
             device->frontend_path, path);
 }
 
@@ -154,7 +154,7 @@ tapback_device_printf(vbd_t * const device, xs_transaction_t xst,
     ASSERT(device);
     ASSERT(key);
 
-    if (-1 == asprintf(&path, "%s/%d/%s/%s", BLKTAP3_BACKEND_PATH,
+    if (-1 == asprintf(&path, "%s/%d/%s/%s", device->backend->path,
                 device->domid, device->name, key)) {
         err = -errno;
         goto fail;
@@ -170,18 +170,18 @@ tapback_device_printf(vbd_t * const device, xs_transaction_t xst,
         goto fail;
     }
 
-    if (!(nerr = xs_write(blktap3_daemon.xs, xst, path, val, strlen(val)))) {
+    if (!(nerr = xs_write(device->backend->xs, xst, path, val, strlen(val)))) {
         err = -errno;
         goto fail;
     }
 
     if (mkread) {
         struct xs_permissions perms[2] = {
-			{blktap3_daemon.domid, XS_PERM_NONE},
+			{device->backend->domid, XS_PERM_NONE},
 			{device->domid, XS_PERM_READ}
         };
 
-        if (!(nerr = xs_set_permissions(blktap3_daemon.xs, xst, path, perms,
+        if (!(nerr = xs_set_permissions(device->backend->xs, xst, path, perms,
                         ARRAY_SIZE(perms)))) {
             err = -errno;
             goto fail;

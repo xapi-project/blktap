@@ -105,12 +105,10 @@ int pretty_time(char *buf, unsigned char buf_len);
  * Pre-defined XenStore path components used for running the XenBus protocol.
  */
 #define XENSTORE_BACKEND			"backend"
-#define BLKTAP3_BACKEND_NAME		"vbd"
-#define BLKTAP3_BACKEND_PATH		XENSTORE_BACKEND"/"BLKTAP3_BACKEND_NAME
-#define BLKTAP3_BACKEND_TOKEN		XENSTORE_BACKEND"-"BLKTAP3_BACKEND_NAME
 #define BLKTAP3_FRONTEND_TOKEN		"otherend-state"
 #define PHYS_DEV_KEY                "physical-device"
 #define HOTPLUG_STATUS_KEY			"hotplug-status"
+#define MODE_KEY					"mode"
 
 /*
  * TODO Put the rest of the front-end nodes defined in blkif.h here and group
@@ -122,6 +120,56 @@ int pretty_time(char *buf, unsigned char buf_len);
 #define FEAT_PERSIST            "feature-persistent"
 #define PROTO                   "protocol"
 #define FRONTEND_KEY            "frontend"
+
+/**
+ * The collection of all necessary handles and descriptors.
+ */
+typedef struct backend {
+
+    /**
+     * XenStore key name, e.g. vbd, vbd3 etc.
+     */
+    char *name;
+
+    /*
+     * FIXME document
+     */
+    char *path;
+    char *token;
+
+    /**
+     * A handle to XenStore.
+     */
+    struct xs_handle *xs;
+
+    /**
+     * The list of virtual block devices.
+     *
+     * TODO We sometimes have to scan the whole list to find the device/domain
+     * we're interested in, should we optimise this? E.g. use a hash table
+     * for O(1) access?
+     * TODO Replace with a hash table (hcreate etc.)?
+     */
+    struct list_head devices;
+
+    /**
+     * TODO From xen/include/public/io/blkif.h: "The maximum supported size of
+     * the request ring buffer"
+     */
+    int max_ring_page_order;
+
+    /**
+     * Unix domain socket for controlling the daemon.
+     */
+    int ctrl_sock;
+
+	domid_t domid;
+
+	/**
+	 * for linked lists
+	 */
+	struct list_head entry;
+} backend_t;
 
 /**
  * A Virtual Block Device (VBD), represents a block device in a guest VM.
@@ -205,6 +253,9 @@ typedef struct vbd {
     int major;
 	int minor;
 
+	bool mode;
+	bool cdrom;
+
 	/*
 	 * FIXME rename to backend_state
 	 */
@@ -212,64 +263,29 @@ typedef struct vbd {
 
 	XenbusState frontend_state;
 
+	backend_t *backend;
 } vbd_t;
 
-/**
- * The collection of all necessary handles and descriptors.
- */
-struct _blktap3_daemon {
-
-    /**
-     * A handle to XenStore.
-     */
-    struct xs_handle *xs;
-
-    /**
-     * The list of virtual block devices.
-     *
-     * TODO We sometimes have to scan the whole list to find the device/domain
-     * we're interested in, should we optimize this? E.g. use a hash table
-     * for O(1) access?
-     * TODO Replace with a hash table (hcreate etc.)?
-     */
-    struct list_head devices;
-
-    /**
-     * TODO From xen/include/public/io/blkif.h: "The maximum supported size of
-     * the request ring buffer"
-     */
-    int max_ring_page_order;
-
-    /**
-     * Unix domain socket for controlling the daemon.
-     */
-    int ctrl_sock;
-
-	domid_t domid;
-};
-
-extern struct _blktap3_daemon blktap3_daemon;
-
-#define tapback_backend_for_each_device(_device, _next)                 \
-	list_for_each_entry_safe(_device, _next, &blktap3_daemon.devices,   \
+#define tapback_backend_for_each_device(_backend, _device, _next)			\
+	list_for_each_entry_safe(_device, _next, &backend->devices,				\
             backend_entry)
 
 /**
  * Iterates over all devices and returns the one for which the condition is
  * true.
  */
-#define tapback_backend_find_device(_device, _cond)     \
-do {                                                    \
-    vbd_t *__next;                                      \
-    int found = 0;                                      \
-    tapback_backend_for_each_device(_device, __next) {  \
-        if (_cond) {                                    \
-            found = 1;                                  \
-            break;                                      \
-        }                                               \
-    }                                                   \
-    if (!found)                                         \
-        _device = NULL;                                 \
+#define tapback_backend_find_device(_backend, _device, _cond)		\
+do {																\
+    vbd_t *__next;													\
+    int found = 0;													\
+    tapback_backend_for_each_device(_backend, _device, __next) {	\
+        if (_cond) {												\
+            found = 1;												\
+            break;													\
+        }															\
+    }																\
+    if (!found)														\
+        _device = NULL;												\
 } while (0)
 
 /**
@@ -366,7 +382,8 @@ tapback_xs_read(struct xs_handle * const xs, xs_transaction_t xst,
  * XXX Only called by tapback_read_watch
  */
 int
-tapback_backend_handle_otherend_watch(const char * const path);
+tapback_backend_handle_otherend_watch(backend_t *backend,
+		const char * const path);
 
 /**
  * Act in response to a change in the back-end directory in XenStore.
@@ -380,15 +397,11 @@ tapback_backend_handle_otherend_watch(const char * const path);
  * @param path the back-end's XenStore path that changed @returns 0 on success,
  * an error code otherwise
  *
- * TODO We only care about changes on the domid/devid component, as this
- * signifies device creation/removal. Changes to paths such as
- * "backend/vbd3/29/51712/mode" or "backend/vbd3/29/51712/removable" are
- * currently uninteresting and we shouldn't do anything.
- *
  * XXX Only called by tapback_read_watch.
  */
 int
-tapback_backend_handle_backend_watch(char * const path);
+tapback_backend_handle_backend_watch(backend_t *backend,
+		char * const path);
 
 /**
  * Converts XenbusState values to a printable string, e.g. XenbusStateConnected

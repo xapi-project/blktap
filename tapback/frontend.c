@@ -257,9 +257,11 @@ connect_frontend(vbd_t *device) {
     bool abort_transaction = false;
 
     ASSERT(device);
+	ASSERT(device->cdrom != -1);
+	ASSERT(device->mode != -1);
 
     do {
-        if (!(xst = xs_transaction_start(blktap3_daemon.xs))) {
+        if (!(xst = xs_transaction_start(device->backend->xs))) {
             err = errno;
             WARN(device, "failed to start transaction: %s\n", strerror(err));
             goto out;
@@ -294,15 +296,16 @@ connect_frontend(vbd_t *device) {
             WARN(device, "failed to write info: %s\n", strerror(err));
             break;
         }
-        abort_transaction = false;
-        if (!xs_transaction_end(blktap3_daemon.xs, xst, 0)) {
+
+		abort_transaction = false;
+        if (!xs_transaction_end(device->backend->xs, xst, 0)) {
             err = errno;
             ASSERT(err);
         }
     } while (err == EAGAIN);
 
     if (abort_transaction) {
-        if (!xs_transaction_end(blktap3_daemon.xs, xst, 1)) {
+        if (!xs_transaction_end(device->backend->xs, xst, 1)) {
             int err2 = errno;
             WARN(device, "failed to abort transaction: %s\n", strerror(err2));
         }
@@ -440,12 +443,14 @@ frontend_changed(vbd_t * const device, const XenbusState state)
  * FIXME return error code as negative
  */
 int
-tapback_backend_handle_otherend_watch(const char * const path)
+tapback_backend_handle_otherend_watch(backend_t *backend,
+		const char * const path)
 {
     vbd_t *device = NULL;
     int err = 0, state = 0;
     char *s = NULL, *end = NULL, *_path = NULL;
 
+	ASSERT(backend);
     ASSERT(path);
 
     /*
@@ -460,7 +465,7 @@ tapback_backend_handle_otherend_watch(const char * const path)
      *
      * TODO Instead of this linear search we could do better (hash table etc).
      */
-    tapback_backend_find_device(device,
+    tapback_backend_find_device(backend, device,
             device->frontend_state_path &&
 			!strcmp(device->frontend_state_path, path));
     if (!device) {
@@ -472,7 +477,7 @@ tapback_backend_handle_otherend_watch(const char * const path)
     /*
      * Read the new front-end's state.
      */
-	s = tapback_xs_read(blktap3_daemon.xs, XBT_NULL, "%s",
+	s = tapback_xs_read(device->backend->xs, XBT_NULL, "%s",
 			device->frontend_state_path);
     if (!s) {
         err = errno;
@@ -482,7 +487,7 @@ tapback_backend_handle_otherend_watch(const char * const path)
 		 */
 		if (err == ENOENT) {
             err = asprintf(&_path, "%s/%s/%d/%d", XENSTORE_BACKEND,
-                    BLKTAP3_BACKEND_NAME, device->domid, device->devid);
+                    device->backend->name, device->domid, device->devid);
             if (err == -1) {
                 err = errno;
                 WARN(device, "failed to asprintf for %d/%d: %s\n",
@@ -490,7 +495,7 @@ tapback_backend_handle_otherend_watch(const char * const path)
                 goto out;
             }
             err = 0;
-            if (!xs_rm(blktap3_daemon.xs, XBT_NULL, _path)) {
+            if (!xs_rm(device->backend->xs, XBT_NULL, _path)) {
                 if (errno != ENOENT) {
                     err = errno;
                     WARN(device, "failed to remove %s: %s\n", path,
