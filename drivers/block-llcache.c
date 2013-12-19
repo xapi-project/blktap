@@ -242,7 +242,7 @@ llpcache_fork_write(td_llpcache_t *s, td_request_t treq)
 		return;
 	}
 
-	memset(req, 0, sizeof(req));
+	memset(req, 0, sizeof(td_llpcache_req_t));
 
 	req->treq     = treq;
 
@@ -542,7 +542,7 @@ llecache_forward_write(td_llecache_t *s, td_request_t treq)
 		return;
 	}
 
-	memset(req, 0, sizeof(req));
+	memset(req, 0, sizeof(td_llecache_req_t));
 
 	req->treq       = treq;
 	req->pending    = treq.secs;

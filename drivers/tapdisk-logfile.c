@@ -117,7 +117,7 @@ tapdisk_logfile_open(td_logfile_t *log, const char *dir, const char *ident,
 {
 	int err;
 
-	memset(log, 0, sizeof(log));
+	memset(log, 0, sizeof(td_logfile_t));
 
 	tapdisk_logfile_name(log->path, sizeof(log->path), dir, ident);
 
