@@ -470,6 +470,23 @@ def refresh_scsi_channel(channel):
 
     return True
 
+
+def refreshdev(pathlist):
+    """
+    Refresh block devices given a path list
+    """
+    for path in pathlist:
+        dev = getdev(path)
+        sysfs = os.path.join('/sys/block',dev,'device/rescan')
+        if os.path.exists(sysfs):
+            try:
+                f = os.open(sysfs, os.O_WRONLY)
+                os.write(f,'1')
+                os.close(f)
+            except:
+                pass
+
+
 def remove_stale_luns(hostids, lunid, expectedPath, mpath):
     try:
         for hostid in hostids:            

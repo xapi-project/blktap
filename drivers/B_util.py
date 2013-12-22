@@ -21,23 +21,6 @@
 import os
 import scsiutil
 
-def refreshdev(pathlist):
-    """
-    Refresh block devices given a path list
-    """
-    # This function could fit into scsiutil
-    for path in pathlist:
-        dev = scsiutil.getdev(path)
-        sysfs = os.path.join('/sys/block',dev,'device/rescan')
-        if os.path.exists(sysfs):
-            try:
-                f = os.open(sysfs, os.O_WRONLY)
-                os.write(f,'1')
-                os.close(f)
-            except:
-                pass
-
-
 def is_vdi_attached(session, vdi_ref):
     """ Check if a vdi is attached to a vm"""
     # This function could fit into util.py
