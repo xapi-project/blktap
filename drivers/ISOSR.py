@@ -31,8 +31,9 @@ CONFIGURATION = \
     [ [ 'location', 'path to mount (required) (e.g. server:/path)' ], 
       [ 'options', 
         'extra options to pass to mount (deprecated) (e.g. \'-o ro\')' ],
-      [ 'type','cifs or nfs'] ]
-                  
+      [ 'type','cifs or nfs'],
+      nfs.NFS_VERSION]
+
 DRIVER_INFO = {
     'name': 'ISO',
     'description': 'Handles CD images stored as files in iso format',
@@ -209,6 +210,9 @@ class ISOSR(SR.SR):
         else:
             self.path = self.mountpoint
 
+        # Handle optional dconf attributes
+        self.nfsversion = nfs.validate_nfsversion(self.dconf.get('nfsversion'))
+
         # Some info we need:
         self.sr_vditype = 'phy'
         self.credentials = None
@@ -261,7 +265,8 @@ class ISOSR(SR.SR):
             # to the process waiting.
             if self.dconf.has_key('type') and self.dconf['type']!='cifs':
                 serv_path = location.split(':')
-                nfs.soft_mount(self.mountpoint, serv_path[0], serv_path[1], 'tcp')
+                nfs.soft_mount(self.mountpoint, serv_path[0], serv_path[1],
+                               'tcp', nfsversion=self.nfsversion)
             else:
                 util.pread(mountcmd, True)
         except util.CommandException, inst:
