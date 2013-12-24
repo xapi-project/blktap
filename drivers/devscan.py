@@ -239,6 +239,26 @@ def _extract_dev(device_dir, procname, host, target):
     entry['target'] = target
     return (dev, entry)
 
+def _add_host_parameters_to_adapter(dom, adapter, host_class, host_id,
+                                    parameters):
+    """Adds additional information about the adapter to the the adapter node"""
+    host_path = os.path.join('/sys/class/', host_class, 'host%s' % (host_id))
+    if os.path.exists(host_path):
+        host_entry = dom.createElement(host_class)
+        adapter.appendChild(host_entry)
+        for parameter in parameters:
+            try:
+                filehandle = open(os.path.join(host_path, parameter))
+                parameter_value = filehandle.read(512).strip()
+                filehandle.close()
+                if parameter_value:
+                    entry = dom.createElement(parameter)
+                    host_entry.appendChild(entry)
+                    text_node = dom.createTextNode(parameter_value)
+                    entry.appendChild(text_node)
+            except IOError:
+                pass
+
 def scan(srobj):
     systemrootID = util.getrootdevID()
     hbadict = srobj.hbadict
@@ -340,8 +360,17 @@ def scan(srobj):
         entry = dom.createElement('id')
         a.appendChild(entry)
         textnode = dom.createTextNode(id)
-        entry.appendChild(textnode)       
-        
+        entry.appendChild(textnode)
+
+        _add_host_parameters_to_adapter(dom, a, 'fc_host', id,
+                                        ['node_name', 'port_name',
+                                         'port_state', 'speed',
+                                         'supported_speeds'])
+        _add_host_parameters_to_adapter(dom, a, 'iscsi_host', id,
+                                        ['hwaddress', 'initiatorname',
+                                         'ipaddress', 'port_speed',
+                                         'port_state'])
+
     return dom.toprettyxml()
 
 def check_iscsi(adapter):
