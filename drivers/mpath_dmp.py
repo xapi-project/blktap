@@ -203,13 +203,6 @@ def map_by_scsibus(sid,npaths=0):
     __map_explicit(devices)
     
 def refresh(sid,npaths):
-    # Fix udev bug (?): make sure it updates /dev/disk/by-id
-    # Trigger the old way, if possible
-    if os.path.exists("/sbin/udevtrigger"):
-        util.pread2(["/sbin/udevtrigger"]) 
-    else:
-        util.pread2(["/sbin/udevadm","trigger"])
-
     # Refresh the multipath status
     util.SMlog("Refreshing LUN %s" % sid)
     if len(sid):
@@ -228,6 +221,7 @@ def refresh(sid,npaths):
 def _refresh_DMP(sid, npaths):
     map_by_scsibus(sid,npaths)
     path = os.path.join(DEVMAPPERPATH, sid)
+    util.wait_for_path(path, 10)
     if not os.path.exists(path):
         raise xs_errors.XenError('DMP failed to activate mapper path')
     lvm_path = "/dev/disk/by-scsid/"+sid+"/mapper"

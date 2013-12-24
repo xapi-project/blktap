@@ -88,8 +88,9 @@ class OCFSoHBASR(OCFSSR.OCFSSR):
         if self.mpath == "true":
             self.mpathmodule.refresh(self.SCSIid,0)
             # set the device mapper's I/O scheduler
-            self.block_setscheduler('/dev/disk/by-scsid/%s/mapper'
-                    % self.SCSIid)
+            path = '/dev/disk/by-scsid/%s' % self.dconf['SCSIid']
+            for file in os.listdir(path):
+                self.block_setscheduler('%s/%s' % (path,file))
 
         self._pathrefresh(OCFSoHBASR)
         if not os.path.exists(self.dconf['device']):
