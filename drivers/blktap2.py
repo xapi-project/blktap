@@ -195,6 +195,9 @@ class TapCtl(object):
 
         @classmethod
         def __next_mkcmd(cls, args):
+
+            # pylint: disable = E1101
+
             cmd = __prev_mkcmd(args)
 
             tracefile = "/tmp/%s.%d.%d" % (os.path.basename(cls.PATH),
