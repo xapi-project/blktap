@@ -1069,7 +1069,7 @@ if __debug__:
     except NameError:
         XE_IOFI_IORETRY = os.environ.get('XE_IOFI_IORETRY', None)
     if __name__ == 'util' and XE_IOFI_IORETRY is not None:
-        import iofi
+        __import__('iofi')
 
 
 ################################################################################
