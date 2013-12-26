@@ -31,6 +31,7 @@ import errno
 import subprocess
 import syslog as _syslog
 import glob
+import json
 import xs_errors
 import XenAPI
 import scsiutil
@@ -827,9 +828,8 @@ class Tapdisk(object):
         self._set_dirty()
 
     def stats(self):
-        import simplejson
         json = TapCtl.stats(self.pid, self.minor)
-        return simplejson.loads(json)
+        return json.loads(json)
 
     #
     # NB. dirty/refresh: reload attributes on next access
@@ -2608,7 +2608,6 @@ if __name__ == '__main__':
     #
     # Local Tapdisks
     #
-    from pprint import pprint
 
     if cmd == 'tap.major':
 
@@ -2696,7 +2695,7 @@ if __name__ == '__main__':
                 # Gather tapdisk status
                 stats = tapdisk.stats()
                 print "%s:" % tapdisk
-                pprint(stats)
+                print json.dumps(stats, indent=True)
 
             else:
                 usage(sys.stderr)
