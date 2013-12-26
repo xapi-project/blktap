@@ -93,8 +93,8 @@ precommit: build
 	CHANGED=$$(git status --porcelain $(SM_PY_FILES) | awk '{print $$2}'); \
 	for i in $$CHANGED; do \
 		echo Checking $${i} ...; \
-		RESULT=$$(PYTHONPATH=./snapwatchd:./drivers:$$PAYTHONPATH pylint --rcfile=tests/pylintrc $${i}); \
-		[ -z "$$RESULT" ] || { echo "$$RESULT"; QUIT=1; }; \
+		PYTHONPATH=./snapwatchd:./drivers:$$PYTHONPATH pylint --rcfile=tests/pylintrc $${i}; \
+		[ $$? -ne 0 ] && QUIT=1 ; \
 	done; \
 	if [ $$QUIT -ne 0 ]; then \
 		exit 1; \
@@ -107,8 +107,8 @@ precheck: build
 	@ QUIT=0; \
 	for i in $(SM_PY_FILES); do \
 		echo Checking $${i} ...; \
-		RESULT=$$(PYTHONPATH=./snapwatchd:./drivers:$$PAYTHONPATH pylint --rcfile=tests/pylintrc $${i}); \
-		[ -z "$$RESULT" ] || { echo "$$RESULT"; QUIT=1; }; \
+		PYTHONPATH=./snapwatchd:./drivers:$$PYTHONPATH pylint --rcfile=tests/pylintrc $${i}; \
+		[ $$? -ne 0 ] && QUIT=1 ; \
 	done; \
 	if [ $$QUIT -ne 0 ]; then \
 		exit 1; \
