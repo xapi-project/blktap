@@ -820,6 +820,7 @@ tapdisk_vbd_resume(td_vbd_t *vbd, const char *name)
 		td_flag_set(vbd->state, TD_VBD_RESUME_FAILED);
 		return err;
 	}
+	td_flag_clear(vbd->state, TD_VBD_RESUME_FAILED);
 
 	DBG(TLOG_DBG, "resume completed\n");
 
