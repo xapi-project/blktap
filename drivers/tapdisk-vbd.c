@@ -816,8 +816,11 @@ tapdisk_vbd_resume(td_vbd_t *vbd, const char *name)
 		sleep(TD_VBD_EIO_SLEEP);
 	}
 
-	if (err)
+	if (err) {
+		td_flag_set(vbd->state, TD_VBD_RESUME_FAILED);
 		return err;
+	}
+	td_flag_clear(vbd->state, TD_VBD_RESUME_FAILED);
 
 	DBG(TLOG_DBG, "resume completed\n");
 
@@ -1381,8 +1384,13 @@ tapdisk_vbd_issue_requests(td_vbd_t *vbd)
 		return tapdisk_vbd_kill_requests(vbd);
 
 	if (td_flag_test(vbd->state, TD_VBD_QUIESCED) ||
-	    td_flag_test(vbd->state, TD_VBD_QUIESCE_REQUESTED))
-		return -EAGAIN;
+	    td_flag_test(vbd->state, TD_VBD_QUIESCE_REQUESTED)) {
+
+		if (td_flag_test(vbd->state, TD_VBD_RESUME_FAILED))
+			return tapdisk_vbd_kill_requests(vbd);
+		else
+			return -EAGAIN;
+	}
 
 	err = tapdisk_vbd_reissue_failed_requests(vbd);
 	if (err)
