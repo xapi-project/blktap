@@ -414,6 +414,7 @@ class VDI:
     DB_VHD_BLOCKS = "vhd-blocks"
     DB_VDI_PAUSED = "paused"
     DB_GC = "gc"
+    DB_COALESCE = "coalesce"
     DB_LEAFCLSC = "leaf-coalesce" # config key
     LEAFCLSC_DISABLED = "false"  # set by user; means do not leaf-coalesce
     LEAFCLSC_FORCE = "force"     # set by user; means skip snap-coalesce
@@ -429,6 +430,7 @@ class VDI:
             DB_VHD_BLOCKS:   XAPI.CONFIG_SM,
             DB_VDI_PAUSED:   XAPI.CONFIG_SM,
             DB_GC:           XAPI.CONFIG_OTHER,
+            DB_COALESCE:     XAPI.CONFIG_OTHER,
             DB_LEAFCLSC:     XAPI.CONFIG_OTHER,
             DB_ONBOOT:       XAPI.CONFIG_ON_BOOT,
     }
@@ -1403,6 +1405,14 @@ class SR:
         """Find a coalesceable VDI. Return a vdi that should be coalesced
         (choosing one among all coalesceable candidates according to some
         criteria) or None if there is no VDI that could be coalesced"""
+
+        candidates = []
+
+        srSwitch = self.xapi.srRecord["other_config"].get(VDI.DB_COALESCE)
+        if srSwitch == "false":
+            Util.log("Coalesce disabled for this SR")
+            return candidates
+
         # finish any VDI for which a relink journal entry exists first
         journals = self.journaler.getAll(VDI.JRN_RELINK)
         for uuid in journals.iterkeys():
@@ -1410,7 +1420,6 @@ class SR:
             if vdi and vdi not in self._failedCoalesceTargets:
                 return vdi
 
-        candidates = []
         for vdi in self.vdis.values():
             if vdi.isCoalesceable() and vdi not in self._failedCoalesceTargets:
                 candidates.append(vdi)
@@ -1441,6 +1450,10 @@ class SR:
     def findLeafCoalesceable(self):
         """Find leaf-coalesceable VDIs in each VHD tree"""
         candidates = []
+        srSwitch = self.xapi.srRecord["other_config"].get(VDI.DB_COALESCE)
+        if srSwitch == "false":
+            Util.log("Coalesce disabled for this SR")
+            return candidates
         srSwitch = self.xapi.srRecord["other_config"].get(VDI.DB_LEAFCLSC)
         if srSwitch == VDI.LEAFCLSC_DISABLED:
             Util.log("Leaf-coalesce disabled for this SR")
