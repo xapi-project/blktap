@@ -1455,10 +1455,14 @@ class LVHDVDI(VDI.VDI):
         snapResult = None
         try:
             snapResult = self._snapshot(snapType)
-        except:
-            blktap2.VDI.tap_unpause(self.session, sr_uuid, vdi_uuid, None)
-            raise
-            
+        except Exception, e1:
+            try:
+                blktap2.VDI.tap_unpause(self.session, sr_uuid, vdi_uuid, None)
+            except Exception, e2:
+                util.SMlog('WARNING: failed to clean up failed snapshot: '
+                        '%s (error ignored)' % e2)
+            raise e1
+
         blktap2.VDI.tap_unpause(self.session, sr_uuid, vdi_uuid, secondary)
         return snapResult
 
@@ -1908,8 +1912,9 @@ class LVHDVDI(VDI.VDI):
             return
         try:
             lvs = lvhdutil.getLVInfo(self.sr.lvmCache, self.lvname)
-        except util.CommandException:
-            raise xs_errors.XenError('VDIUnavailable', opterr='LV scan error')
+        except util.CommandException, e:
+            raise xs_errors.XenError('VDIUnavailable',
+                    opterr= '%s (LV scan error)' % os.strerror(abs(e.code)))
         if not lvs.get(self.uuid):
             raise xs_errors.XenError('VDIUnavailable', opterr='LV not found')
         self._initFromLVInfo(lvs[self.uuid])
@@ -1947,8 +1952,12 @@ class LVHDVDI(VDI.VDI):
                 self.sr.lvActivator.add(uuid, lvName, binaryParam)
 
     def _failClone(self, uuid, jval, msg):
-        self.sr._handleInterruptedCloneOp(uuid, jval, True)
-        self.sr.journaler.remove(self.JRN_CLONE, uuid)
+        try:
+            self.sr._handleInterruptedCloneOp(uuid, jval, True)
+            self.sr.journaler.remove(self.JRN_CLONE, uuid)
+        except Exception, e:
+            util.SMlog('WARNING: failed to clean up failed snapshot: ' \
+                    ' %s (error ignored)' % e)
         raise xs_errors.XenError('VDIClone', opterr=msg)
 
     def _markHidden(self):
