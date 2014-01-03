@@ -1,0 +1,5 @@
+#!/bin/bash
+
+# Remove old rotated tapdisk logs.
+
+find /var/log/blktap -mtime +7 -type f -name tapdisk.*.log.*.gz -delete

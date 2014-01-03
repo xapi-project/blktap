@@ -31,17 +31,14 @@ struct _td_logfile {
 	size_t         vbufsz;
 };
 
-int tapdisk_logfile_open(td_logfile_t *,
-			 const char *dir, const char *ident, const char *ext,
-			 size_t bufsz);
+int tapdisk_logfile_open(td_logfile_t *, const char *dir, const char *ident,
+        size_t bufsz);
 
 ssize_t tapdisk_logfile_printf(td_logfile_t *, const char *fmt, ...);
 ssize_t tapdisk_logfile_vprintf(td_logfile_t *, const char *fmt, va_list ap);
 
 void tapdisk_logfile_close(td_logfile_t *);
 int tapdisk_logfile_unlink(td_logfile_t *);
-int tapdisk_logfile_rename(td_logfile_t *,
-			   const char *dir, const char *ident, const char *ext);
 
 int tapdisk_logfile_setvbuf(td_logfile_t *log, int mode);
 int tapdisk_logfile_flush(td_logfile_t *);

@@ -97,3 +97,9 @@ libtapdisk_la_SOURCES += td-stats.h
 libtapdisk_la_LIBADD  = ../vhd/lib/libvhd.la
 libtapdisk_la_LIBADD += -laio
 libtapdisk_la_LIBADD += -lxenctrl
+
+logrotatedir = $(sysconfdir)/logrotate.d
+dist_logrotate_DATA = blktap
+
+cronddailydir = $(sysconfdir)/cron.daily
+dist_cronddaily_DATA = blktap-log-cleanup

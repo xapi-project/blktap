@@ -349,6 +349,10 @@ tapdisk_server_signal_handler(int signal)
 		DBG(TLOG_INFO, "debugging on signal %d\n", signal);
 		tapdisk_server_debug();
 		break;
+
+	case SIGHUP:
+		tlog_reopen();
+		break;
 	}
 }
 
@@ -416,6 +420,7 @@ tapdisk_server_run()
 	signal(SIGBUS, tapdisk_server_signal_handler);
 	signal(SIGINT, tapdisk_server_signal_handler);
 	signal(SIGUSR1, tapdisk_server_signal_handler);
+	signal(SIGHUP, tapdisk_server_signal_handler);
 	signal(SIGXFSZ, tapdisk_server_signal_handler);
 
 	__tapdisk_server_run();
