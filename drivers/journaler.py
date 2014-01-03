@@ -64,16 +64,34 @@ class Journaler:
             fullPath = self.lvmCache._getPath(lvName)
             fd =  open_file(fullPath, True)
             try:
+                e = None
                 try:
                     min_block_size = get_min_blk_size_wrapper(fd)
                     data = "%d %s" % (len(val), val)
-                    xs_file_write_wrapper(fd, 0, min_block_size, data, len(data))
+                    xs_file_write_wrapper(fd, 0, min_block_size, data,
+                            len(data))
+                except Exception, e:
+                    raise
                 finally:
-                    close(fd)
-                    self.lvmCache.deactivateNoRefcount(lvName)
+                    try:
+                        close(fd)
+                        self.lvmCache.deactivateNoRefcount(lvName)
+                    except Exception, e2:
+                        msg = 'failed to close/deactivate %s: %s' \
+                                % (lvName, e2)
+                        if not e:
+                            util.SMlog(msg)
+                            raise e2
+                        else:
+                            util.SMlog('WARNING: %s (error ignored)' % msg)
+
             except:
                 util.logException("journaler.create")
-                self.lvmCache.remove(lvName)
+                try:
+                    self.lvmCache.remove(lvName)
+                except Exception, e:
+                    util.SMlog('WARNING: failed to clean up failed journal ' \
+                            ' creation: %s (error ignored)' % e)
                 raise JournalerException("Failed to write to journal %s" \
                     % lvName)
 

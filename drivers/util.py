@@ -67,7 +67,7 @@ class CommandException(SMException):
         self.code = code
         self.cmd = cmd
         self.reason = reason
-        Exception.__init__(self, code)
+        Exception.__init__(self, os.strerror(abs(code)))
 
 class SRBusyException(SMException):
     """The SR could not be locked"""
