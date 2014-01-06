@@ -557,8 +557,9 @@ class ScanRecord:
             try:
                 self.sr.forget_vdi(vdi['uuid'])
             except XenAPI.Failure, e:
-                if e.details == "HANDLE_INVALID" or e.details == "UUID_INVALID":
-                   util.SMlog("VDI %s not found, ignoring exception" % uuid)
+                if util.isInvalidVDI(e):
+                   util.SMlog("VDI %s not found, ignoring exception" \
+                           % vdi['uuid'])
                 else:
                    raise
 
