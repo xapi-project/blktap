@@ -258,11 +258,6 @@ class XAPI:
         if self.sessionPrivate:
             self.session.xenapi.session.logout()
 
-    def isInvalidVDI(exception):
-        return exception.details[0] == "HANDLE_INVALID" or \
-                exception.details[0] == "UUID_INVALID"
-    isInvalidVDI = staticmethod(isInvalidVDI)
-
     def isPluggedHere(self):
         pbds = self.getAttachedPBDs()
         for pbdRec in pbds:
@@ -514,7 +509,7 @@ class VDI:
                         self.sr.uuid, self.uuid):
                     raise util.SMException("Failed to refresh %s" % self)
             except XenAPI.Failure, e:
-                if self.sr.xapi.isInvalidVDI(e) and ignoreNonexistent:
+                if util.isInvalidVDI(e) and ignoreNonexistent:
                     Util.log("VDI %s not found, ignoring" % self)
                     return
                 raise
@@ -1741,7 +1736,7 @@ class SR:
             ret = self.xapi.singleSnapshotVDI(vdi)
             Util.log("Single-snapshot returned: %s" % ret)
         except XenAPI.Failure, e:
-            if self.xapi.isInvalidVDI(e):
+            if util.isInvalidVDI(e):
                 Util.log("The VDI appears to have been concurrently deleted")
                 return False
             raise

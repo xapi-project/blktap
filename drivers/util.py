@@ -1647,3 +1647,7 @@ def open_atomic(path, mode=None):
     except:
         os.close(fd)
         raise
+
+def isInvalidVDI(exception):
+    return exception.details[0] == "HANDLE_INVALID" or \
+            exception.details[0] == "UUID_INVALID"
