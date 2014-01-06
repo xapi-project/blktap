@@ -95,4 +95,5 @@ clean:
 	rm -rf $(RPM_BUILDDIR)
 	rm -f $(BLKTAP_RPM_SOURCES)
 	rm -f $(STAMP_RPMBUILD)
+	rm -f $(STAMP_CHECKOUT)
 	rm -f $(BLKTAP_SRCTREE)/EXTRAVERSION
