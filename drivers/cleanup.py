@@ -421,7 +421,8 @@ class VDI:
     LEAFCLSC_FORCE = "force"     # set by user; means skip snap-coalesce
     LEAFCLSC_OFFLINE = "offline" # set here for informational purposes: means
                                  # no space to snap-coalesce or unable to keep 
-                                 # up with VDI
+                                 # up with VDI. This is not used by the SM, it
+                                 # might be used by external components.
     DB_ONBOOT = "on-boot"
     ONBOOT_RESET = "reset"
 
