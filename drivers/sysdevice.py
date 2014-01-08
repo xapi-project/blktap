@@ -61,12 +61,9 @@ def stat(device):
         elif device_path.find("/ide") <> -1:
             results["bus"] = "IDE"
             results["bus_path"] = os.path.basename(device_path)
-        elif os.readlink(os.path.join(device, "bus")).endswith("scsi"):
+        elif os.readlink(os.path.join(device, "subsystem")).endswith("scsi"):
             results["bus"] = "SCSI"
-            all = os.listdir(device)
-            # Read the identifier after "scsi_device:"
-            disk = filter(lambda x:x.startswith("scsi_device:"), all)[0]
-            results["bus_path"] = disk[len("scsi_device:"):]
+            results["bus_path"] = os.path.basename(device_path)
     except:
         pass
 
