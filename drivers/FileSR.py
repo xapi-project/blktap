@@ -354,8 +354,9 @@ class FileSR(SR.SR):
         return st1.st_dev == st2.st_dev and st1.st_ino == st2.st_ino
 
     def _checkmount(self):
-        return util.ioretry(lambda: util.pathexists(self.path)) \
-               and util.ioretry(lambda: util.ismount(self.path) or self._isbind())
+        return util.ioretry(lambda: util.pathexists(self.path) and \
+                                (util.ismount(self.path) or \
+                                 util.pathexists(self.remotepath) and self._isbind()))
 
 
 class FileVDI(VDI.VDI):
