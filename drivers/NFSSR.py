@@ -76,9 +76,11 @@ class NFSSR(FileSR.FileSR):
             raise xs_errors.XenError('ConfigServerMissing')
         self.remoteserver = self.dconf['server']
         self.nosubdir = False
-        if self.session is not None:
+        if self.sr_ref and self.session is not None :
             sm_conf = self.session.xenapi.SR.get_sm_config(self.sr_ref)
-            self.nosubdir = sm_conf.get('nosubdir') == "true"
+        else:
+            sm_conf = self.srcmd.params.get('sr_sm_config') or {}
+        self.nosubdir = sm_conf.get('nosubdir') == "true"
         if self.dconf.has_key('serverpath'):
             self.remotepath = os.path.join(self.dconf['serverpath'],
                                            not self.nosubdir and sr_uuid or "")
@@ -142,7 +144,7 @@ class NFSSR(FileSR.FileSR):
 
         temppath = os.path.join(SR.MOUNT_BASE, PROBE_MOUNTPOINT)
 
-        self.mount(temppath, self.dconf['serverpath'])
+        self.mount(temppath, self.remotepath)
         try:
             return nfs.scan_srlist(temppath)
         finally:
