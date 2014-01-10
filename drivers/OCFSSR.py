@@ -96,7 +96,7 @@ class OCFSSR(FileSR.FileSR):
     def attach(self, sr_uuid):
         if not self._checkmount():
             self.mount(self.path, self.blockdevice)
-        self.attached = True
+        return super(OCFSSR, self).attach(sr_uuid)
 
     def probe(self):
         # We are not storing sr-uuid in the remote disk, return NULL during a 
@@ -122,7 +122,7 @@ class OCFSSR(FileSR.FileSR):
                       opterr='Failed to umount FS. Errno is %d' % \
                       os.strerror(inst.code))
 
-        self.attached = False
+        return super(OCFSSR, self).detach(sr_uuid)
         
 
     def create(self, sr_uuid, size):
@@ -146,6 +146,9 @@ class OCFSSR(FileSR.FileSR):
             return OCFSFileVDI(self, uuid)
         return OCFSFileVDI(self, uuid)
     
+    def _checkmount(self):
+        return util.ioretry(lambda: util.pathexists(self.path)) \
+               and util.ioretry(lambda: util.ismount(self.path))
 
 class OCFSFileVDI(FileSR.FileVDI):
     def attach(self, sr_uuid, vdi_uuid):
