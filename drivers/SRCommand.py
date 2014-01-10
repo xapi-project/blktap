@@ -113,7 +113,7 @@ class SRCommand:
             msg = str(e)
             if isinstance(e, util.CommandException):
                 msg = "Command %s failed (%s): %s" % \
-                        (e.cmd, e.reason, os.strerror(abs(e.code)))
+                        (e.cmd, e.code, e.reason)
             excType = EXCEPTION_TYPE.get(self.cmd)
             if not excType:
                 excType = "SMGeneral"
@@ -135,8 +135,6 @@ class SRCommand:
     def _run_locked(self, sr):
         lockSR = False
         lockInitOnly = False
-        rv = None
-        e = None
         if self.cmd in sr.ops_exclusive:
             lockSR = True
         elif self.cmd in NEEDS_VDI_OBJECT and "vdi_init" in sr.ops_exclusive:
@@ -155,23 +153,12 @@ class SRCommand:
                 if acquired and lockInitOnly:
                     sr.lock.release()
                     acquired = False
-            try:
-                rv = self._run(sr, target)
-            except Exception, e:
-                raise
+
+            return self._run(sr, target)
         finally:
             if acquired:
                 sr.lock.release()
-            try:
-                sr.cleanup()
-            except Exception, e1:
-                msg = 'failed to clean up SR: %s' % e1
-                if not e:
-                    util.SMlog(msg)
-                    raise e1
-                else:
-                    util.SMlog('WARNING: %s (error ignored)' % msg)
-        return rv
+            sr.cleanup()
 
     def _run(self, sr, target):
         dconf_type = sr.dconf.get("type")
