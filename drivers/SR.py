@@ -105,8 +105,7 @@ class SR(object):
             else:
                 self.host_ref = self.srcmd.params['host_ref']
 
-            if 'sr_ref' in self.srcmd.params:
-                self.sr_ref = self.srcmd.params['sr_ref']
+            self.sr_ref = self.srcmd.params.get('sr_ref')
 
 	    if 'device_config' in self.srcmd.params:
                 if self.dconf.get("SRmaster") == "true":
