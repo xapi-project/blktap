@@ -79,4 +79,4 @@ $(MY_OUTPUT_DIR)/$(ERRORCODES_XML):
 	cp $(REPO)/drivers/$(ERRORCODES_XML) $@
 
 $(SUPPORT_PACK): $(SM_STAMP)
-	python setup.py --out $(dir $@) --pdn $(PRODUCT_BRAND) --pdv $(PRODUCT_VERSION) --bld $(BUILD) --spn "borehamwood-supp-pack" --spd "XenServer RawHBA implementation" --rxv "6.1.0" $(RPM_RPMSDIR)/$(DOMAIN0_ARCH_OPTIMIZED)/sm-rawhba-*.i686.rpm
+	python setup.py --out $(dir $@) --pdn $(PRODUCT_BRAND) --pdv $(PRODUCT_VERSION) --bld $(BUILD) --spn "borehamwood-supp-pack" --spd "XenServer RawHBA implementation" --rxv "6.1.0" $(RPM_RPMSDIR)/$(DOMAIN0_ARCH_OPTIMIZED)/sm-rawhba-*.$(DOMAIN0_ARCH_OPTIMIZED).rpm
