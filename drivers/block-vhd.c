@@ -1325,7 +1325,7 @@ reserve_new_block(struct vhd_state *s, uint32_t blk)
 		gap = (s->spp - ((s->next_db + s->bm_secs) % s->spp));
 
 	if (s->next_db + gap > UINT_MAX)
-		return (uint64_t)EIO << 32;
+		return (uint64_t)ENOSPC << 32;
 
 	s->bat.pbw_blk    = blk;
 	s->bat.pbw_offset = s->next_db + gap;
@@ -1511,7 +1511,7 @@ allocate_block(struct vhd_state *s, uint32_t blk)
 	}
 
 	if (next_db > UINT_MAX)
-		return -EIO;
+		return -ENOSPC;
 
 	s->next_db = next_db;
 
