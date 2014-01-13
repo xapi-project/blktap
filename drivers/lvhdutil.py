@@ -178,8 +178,9 @@ def inflate(journaler, srUuid, vdiUuid, size):
     util.fistpoint.activate("LVHDRT_inflate_after_create_journal",srUuid)
     lvmCache.setSize(lvName, newSize)
     util.fistpoint.activate("LVHDRT_inflate_after_setSize",srUuid)
-    util.zeroOut(path, newSize - vhdutil.VHD_FOOTER_SIZE,
-            vhdutil.VHD_FOOTER_SIZE)
+    if not util.zeroOut(path, newSize - vhdutil.VHD_FOOTER_SIZE,
+            vhdutil.VHD_FOOTER_SIZE):
+        raise Exception('failed to zero out VHD footer')
     util.fistpoint.activate("LVHDRT_inflate_after_zeroOut",srUuid)
     vhdutil.setSizePhys(path, newSize, False)
     util.fistpoint.activate("LVHDRT_inflate_after_setSizePhys",srUuid)

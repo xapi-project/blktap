@@ -1982,10 +1982,12 @@ class LVHDVDI(VDI.VDI):
                 fn = "detach"
             pools = self.session.xenapi.pool.get_all()
             master = self.session.xenapi.pool.get_master(pools[0])
-            text = self.session.xenapi.host.call_plugin( \
-                    master, self.sr.THIN_PLUGIN, fn, \
-                    {"srUuid": self.sr.uuid, "vdiUuid": self.uuid})
-            util.SMlog("call-plugin returned: '%s'" % text)
+            rv = eval(self.session.xenapi.host.call_plugin(
+                    master, self.sr.THIN_PLUGIN, fn,
+                    {"srUuid": self.sr.uuid, "vdiUuid": self.uuid}))
+            util.SMlog("call-plugin returned: '%s'" % rv)
+            if not rv:
+                raise Exception('failed to run plugin on master: %s' % rv)
             # refresh to pick up the size change on this slave
             self.sr.lvmCache.activateNoRefcount(self.lvname, True)
 

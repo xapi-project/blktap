@@ -578,6 +578,11 @@ def get_this_host():
     f.close()
     return uuid
 
+def is_master(session):
+    pools = session.xenapi.pool.get_all()
+    master = session.xenapi.pool.get_master(pools[0])
+    return get_this_host_ref(session) == master
+
 # XXX: this function doesn't do what it claims to do
 def get_localhost_uuid(session):
     filename = '/etc/xensource-inventory'
