@@ -51,6 +51,7 @@ Makefile.in
 /vhd/Makefile
 /vhd/lib/Makefile
 /vhd/lib/test/Makefile
+mk/config.log
 
 # dist output
 /blktap-*.tar.*
