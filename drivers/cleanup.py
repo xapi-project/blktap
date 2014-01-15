@@ -2577,8 +2577,8 @@ def _abort(srUuid, soft=False):
             time.sleep(SR.LOCK_RETRY_INTERVAL)
         abortFlag.clear(FLAG_TYPE_ABORT)
         if not gotLock:
-            raise util.SMException("SR %s: error aborting existing process" % \
-                    srUuid)
+            raise util.CommandException(code=errno.ETIMEDOUT,
+                    reason="SR %s: error aborting existing process" % srUuid)
     return True
 
 def init(srUuid):
