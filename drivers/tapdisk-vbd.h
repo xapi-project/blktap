@@ -39,6 +39,7 @@
 #define TD_VBD_SHUTDOWN_REQUESTED   0x0040
 #define TD_VBD_LOCKING              0x0080
 #define TD_VBD_LOG_DROPPED          0x0100
+#define TD_VBD_RESUME_FAILED        0x0200
 
 #define TD_VBD_SECONDARY_DISABLED   0
 #define TD_VBD_SECONDARY_MIRROR     1
