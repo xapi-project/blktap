@@ -147,6 +147,9 @@ tapback_backend_create_device(const domid_t domid, const char * const name)
 
     device->domid = domid;
 
+	device->state = XenbusStateUnknown;
+	device->frontend_state = XenbusStateUnknown;
+
     list_add_tail(&device->backend_entry, &blktap3_daemon.devices);
 
     if (!(device->name = strdup(name))) {
@@ -312,7 +315,7 @@ frontend(vbd_t *device) {
     }
 
     /*
-     * Finally, watch the front-end path in XenStore for changes, i.e.
+     * Watch the front-end path in XenStore for changes, i.e.
      * /local/domain/<domid>/device/vbd/<devname>/state After this, we
      * wait for the front-end to switch state to continue with the
      * initialisation.
@@ -335,6 +338,7 @@ frontend(vbd_t *device) {
         err = -errno;
         goto out;
     }
+
 out:
     if (err) {
         free(device->frontend_path);
@@ -343,6 +347,38 @@ out:
         device->frontend_state_path = NULL;
     }
     return err;
+}
+
+/**
+ * Returns 0 in success, -errno on failure.
+ */
+static int
+hotplug_status_changed(vbd_t * const device) {
+
+	int err;
+	char *hotplug_status = NULL;
+
+	ASSERT(device);
+
+	hotplug_status = tapback_device_read(device, XBT_NULL, HOTPLUG_STATUS_KEY);
+	if (!hotplug_status) {
+		err = -errno;
+		goto out;
+	}
+	if (!strcmp(hotplug_status, "connected")) {
+		device->hotplug_status_connected = true;
+		err = frontend_changed(device, device->frontend_state);
+	}
+	else {
+		/*
+		 * FIXME what other values can it receive?
+		 */
+		WARN(device, "invalid hotplug-status value %s\n", hotplug_status);
+		err = -EINVAL;
+	}
+out:
+	free(hotplug_status);
+	return err;
 }
 
 /**
@@ -480,6 +516,8 @@ tapback_backend_probe_device(const domid_t domid, const char * const devname,
             err = physical_device(device);
         else if (!strcmp(FRONTEND_KEY, comp))
             err = frontend(device);
+		else if (!strcmp(HOTPLUG_STATUS_KEY, comp))
+			err = hotplug_status_changed(device);
         else
             DBG(device, "ignoring '%s'\n", comp);
     }

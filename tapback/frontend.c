@@ -400,38 +400,26 @@ backend_close(vbd_t * const device)
     return xenbus_switch_state(device, XenbusStateClosed);
 }
 
-/**
- * Acts on changes in the front-end state.
- *
- * TODO The back-end blindly follows the front-ends state transitions, should
- * we check whether unexpected transitions are performed?
- *
- * @param device the VBD whose front-end state changed
- * @param state the new state
- * @returns 0 on success, an error code otherwise
- *
- * XXX Only called by tapback_device_check_front-end_state.
- *
- * FIXME Add a function for each front-end state transition to make the code
- * more readable (e.g. frontend_initialising, frontend_connected, etc.).
- */
-static inline int
+int
 frontend_changed(vbd_t * const device, const XenbusState state)
 {
     int err = 0;
 
     DBG(device, "front-end went into state %s\n", xenbus_strstate(state));
+	device->frontend_state = state;
 
     switch (state) {
         case XenbusStateInitialising:
-            err = xenbus_switch_state(device, XenbusStateInitWait);
+			if (device->hotplug_status_connected)
+				err = xenbus_switch_state(device, XenbusStateInitWait);
             break;
         case XenbusStateInitialised:
     	case XenbusStateConnected:
             /*
              * Already connected when the front-end switched to Initialising?
              */
-            if (device->state != XenbusStateConnected)
+            if (device->hotplug_status_connected
+					&& device->state != XenbusStateConnected)
                 err = connect(device);
             break;
         case XenbusStateClosing:

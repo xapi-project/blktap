@@ -120,6 +120,7 @@ int pretty_time(char *buf, unsigned char buf_len);
 #define BLKTAP3_BACKEND_TOKEN		XENSTORE_BACKEND"-"BLKTAP3_BACKEND_NAME
 #define BLKTAP3_FRONTEND_TOKEN		"otherend-state"
 #define PHYS_DEV_KEY                "physical-device"
+#define HOTPLUG_STATUS_KEY			"hotplug-status"
 
 /*
  * TODO Put the rest of the front-end nodes defined in blkif.h here and group
@@ -172,6 +173,12 @@ typedef struct vbd {
      */
     char *frontend_state_path;
 
+	/**
+	 * Indicates whether the "hotplug-status" key has received the "connected"
+	 * value.
+	 */
+	bool hotplug_status_connected;
+
     /**
      * Indicates whether the tapdisk is connected to the shared ring.
      */
@@ -208,7 +215,12 @@ typedef struct vbd {
     int major;
 	int minor;
 
+	/*
+	 * FIXME rename to backend_state
+	 */
     XenbusState state;
+
+	XenbusState frontend_state;
 
 } vbd_t;
 
@@ -405,5 +417,21 @@ xenbus_strstate(const XenbusState xbs);
  */
 int
 xenbus_switch_state(vbd_t * const device, const XenbusState state);
+
+/**
+ * Acts on changes in the front-end state.
+ *
+ * TODO The back-end blindly follows the front-ends state transitions, should
+ * we check whether unexpected transitions are performed?
+ *
+ * @param device the VBD whose front-end state changed
+ * @param state the new state
+ * @returns 0 on success, an error code otherwise
+ *
+ * FIXME Add a function for each front-end state transition to make the code
+ * more readable (e.g. frontend_initialising, frontend_connected, etc.).
+ */
+int
+frontend_changed(vbd_t * const device, const XenbusState state);
 
 #endif /* __TAPBACK_H__ */
