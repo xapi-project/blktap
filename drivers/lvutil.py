@@ -559,12 +559,16 @@ def _checkActive(path):
 
     if mapperDeviceExists and mapperPathExists and not symlinkExists:
         # we can fix this situation manually here
-        os.symlink(mapperPath, path)
+        try:
+            util.SMlog("_checkActive: attempt to create the symlink manually.")
+            os.symlink(mapperPath, path)
+        except OSError, e:
+            util.SMlog("ERROR: failed to symlink!")
+            if e.errno != errno.EEXIST:
+                raise
         if util.pathexists(path):
             util.SMlog("_checkActive: created the symlink manually")
             return True
-        else:
-            util.SMlog("ERROR: failed to symlink!")
 
     return False
 
