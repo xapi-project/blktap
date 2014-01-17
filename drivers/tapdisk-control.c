@@ -33,6 +33,7 @@
 #include <sys/socket.h>
 #include <sys/mman.h>
 
+#include "debug.h"
 #include "list.h"
 #include "tapdisk.h"
 #include "tapdisk-vbd.h"
@@ -54,13 +55,6 @@
 #define DBG(_f, _a...)             tlog_syslog(TLOG_DBG, _f, ##_a)
 #define ERR(err, _f, _a...)        tlog_error(err, _f, ##_a)
 #define INFO(_f, _a...)            tlog_syslog(TLOG_INFO, "control: " _f, ##_a)
-
-#define ASSERT(_p)							\
-	if (!(_p)) {							\
-		EPRINTF("%s:%d: FAILED ASSERTION: '%s'\n",		\
-			__FILE__, __LINE__, #_p);			\
-		td_panic();						\
-	}
 
 #define WARN_ON(_p)							\
 	if (_p) {							\

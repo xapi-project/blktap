@@ -32,11 +32,6 @@
 #define TAPDISK_MESSAGE_MAX_MINORS \
 	((TAPDISK_MESSAGE_MAX_PATH_LENGTH / sizeof(int)) - 1)
 
-/*
- * FIXME In struct vbd we use a pointer, use an array of this size instead.
- */
-#define TAPDISK_MAX_VBD_UUID_LENGTH      256
-
 #define TAPDISK_MESSAGE_FLAG_SHARED      0x001
 #define TAPDISK_MESSAGE_FLAG_RDONLY      0x002
 #define TAPDISK_MESSAGE_FLAG_ADD_CACHE   0x004
@@ -148,8 +143,6 @@ typedef struct tapdisk_message_blkif {
  * Contains parameters for resuming a previously paused VBD.
  */
 typedef struct tapdisk_message_resume {
-	char uuid[TAPDISK_MAX_VBD_UUID_LENGTH];
-
     /**
      * TODO
      */
@@ -166,10 +159,6 @@ typedef struct tapdisk_message_resume {
     char secondary[TAPDISK_MESSAGE_MAX_PATH_LENGTH];
 } tapdisk_message_resume_t;
 
-typedef struct tapdisk_message_close {
-	char uuid[TAPDISK_MAX_VBD_UUID_LENGTH];
-} tapdisk_message_close_t, tapdisk_message_pause_t;
-
 struct tapdisk_message {
 	uint16_t                       type;
 	uint16_t                         cookie;
@@ -184,9 +173,7 @@ struct tapdisk_message {
 		tapdisk_message_list_t     list;
 		tapdisk_message_stat_t     info;
 		tapdisk_message_blkif_t    blkif;
-		tapdisk_message_pause_t    pause;
         tapdisk_message_resume_t   resume;
-		tapdisk_message_close_t    close;
 	} u;
 };
 

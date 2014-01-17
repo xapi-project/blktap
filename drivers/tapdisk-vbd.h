@@ -59,7 +59,6 @@ struct td_vbd_handle {
 
     /**
      * shared ring
-	 * FIXME this member was named 'tap'
      */
     struct td_xenblkif         *sring;
 

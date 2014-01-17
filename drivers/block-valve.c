@@ -31,6 +31,7 @@
 #include "tapdisk-driver.h"
 #include "tapdisk-server.h"
 #include "tapdisk-interface.h"
+#include "util.h"
 
 #include "block-valve.h"
 
@@ -122,7 +123,6 @@ static void valve_kill(td_valve_t *);
 	__cond;						\
 })
 
-#define ARRAY_SIZE(_a)   (sizeof(_a)/sizeof((_a)[0]))
 #define TREQ_SIZE(_treq) ((unsigned int)(_treq.secs) << 9)
 
 static td_valve_request_t *

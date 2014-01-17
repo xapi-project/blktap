@@ -25,19 +25,12 @@
 #include <sys/stat.h>
 #include <fcntl.h>
 
+#include "debug.h"
 #include "tapdisk-server.h"
 #include "td-ctx.h"
 #include "tapdisk-log.h"
 
 #define ERROR(_f, _a...)           tlog_syslog(TLOG_WARN, "td-ctx: " _f, ##_a)
-#define ASSERT(p)                                      \
-    do {                                               \
-        if (!(p)) {                                    \
-            EPRINTF("%s:%d: FAILED ASSERTION: '%s'\n", \
-                     __FILE__, __LINE__, #p);          \
-            abort();                                   \
-        }                                              \
-    } while (0)
 
 LIST_HEAD(_td_xenio_ctxs);
 
@@ -47,7 +40,8 @@ LIST_HEAD(_td_xenio_ctxs);
 static void
 tapdisk_xenio_ctx_close(struct td_xenio_ctx * const ctx)
 {
-    ASSERT(ctx);
+	if (!ctx)
+		return;
 
     if (ctx->ring_event >= 0) {
         tapdisk_server_unregister_event(ctx->ring_event);
@@ -71,7 +65,7 @@ tapdisk_xenio_ctx_close(struct td_xenio_ctx * const ctx)
 
     list_del(&ctx->entry);
 
-    /* TODO when do we free it? */
+	free(ctx);
 }
 
 /*
@@ -335,7 +329,7 @@ tapdisk_xenio_ctx_ring_event(event_id_t id __attribute__((unused)),
  * Opens a context on the specified pool.
  *
  * @param pool the pool, it can either be NULL or a non-zero length string
- * @returns 0 in success
+ * @returns 0 in success, -errno on error
  *
  * TODO The pool is ignored, we always open the default pool.
  */
@@ -347,11 +341,11 @@ tapdisk_xenio_ctx_open(const char *pool)
 
     /* zero-length pool names are not allowed */
     if (pool && !strlen(pool))
-        return EINVAL;
+        return -EINVAL;
 
     ctx = calloc(1, sizeof(*ctx));
     if (!ctx) {
-        err = errno;
+        err = -errno;
         ERROR("cannot allocate memory");
         goto fail;
     }
@@ -364,40 +358,40 @@ tapdisk_xenio_ctx_open(const char *pool)
 
     ctx->gntdev_fd = open("/dev/xen/gntdev", O_NONBLOCK);
     if (ctx->gntdev_fd == -1) {
-        err = errno;
-        ERROR("failed to open the grant device: %s\n", strerror(err));
+        err = -errno;
+        ERROR("failed to open the grant device: %s\n", strerror(-err));
         goto fail;
     }
 
     ctx->xce_handle = xc_evtchn_open(NULL, 0);
     if (!ctx->xce_handle) {
-        err = errno;
+        err = -errno;
         ERROR("failed to open the event channel driver: %s\n",
-                strerror(err));
+                strerror(-err));
         goto fail;
     }
 
     ctx->xcg_handle = xc_gnttab_open(NULL, 0);
     if (!ctx->xcg_handle) {
-        err = errno;
+        err = -errno;
         ERROR("failed to open the grant table driver: %s\n",
-                strerror(err));
+                strerror(-err));
         goto fail;
     }
 
     fd = xc_evtchn_fd(ctx->xce_handle);
     if (fd < 0) {
-        err = errno;
+        err = -errno;
         ERROR("failed to get the event channel file descriptor: %s\n",
-                strerror(err));
+                strerror(-err));
         goto fail;
     }
 
     ctx->ring_event = tapdisk_server_register_event(SCHEDULER_POLL_READ_FD,
         fd, 0, tapdisk_xenio_ctx_ring_event, ctx);
     if (ctx->ring_event < 0) {
-        err = -ctx->ring_event;
-        ERROR("failed to register event: %s\n", strerror(err));
+        err = ctx->ring_event;
+        ERROR("failed to register event: %s\n", strerror(-err));
         goto fail;
     }
 

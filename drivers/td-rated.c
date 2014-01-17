@@ -35,6 +35,7 @@
 #include "block-valve.h"
 #include "compiler.h"
 #include "list.h"
+#include "util.h"
 
 static void
 rlb_vlog_vfprintf(int prio, const char *fmt, va_list ap)
@@ -83,8 +84,6 @@ static int debug = 0;
 
 #define MAX(a, b)       ((a) > (b) ? (a) : (b))
 #define MIN(a, b)       ((a) < (b) ? (a) : (b))
-
-#define ARRAY_SIZE(_a)  (sizeof(_a)/sizeof((_a)[0]))
 
 typedef struct ratelimit_bridge        td_rlb_t;
 typedef struct ratelimit_connection    td_rlb_conn_t;

@@ -33,6 +33,7 @@
 #include "tapdisk-interface.h"
 #include "tapdisk-disktype.h"
 #include "tapdisk-storage.h"
+#include "util.h"
 
 #define DBG(_f, _a...)       tlog_syslog(TLOG_DBG, _f, ##_a)
 #define INFO(_f, _a...)      tlog_syslog(TLOG_INFO, _f, ##_a)
@@ -45,8 +46,6 @@
 		ERR(-EINVAL, "(%s) = %d", #_cond, _cond);	\
 		BUG();						\
 	}
-
-#define ARRAY_SIZE(_a) (sizeof(_a)/sizeof((_a)[0]))
 
 td_image_t *
 tapdisk_image_allocate(const char *file, int type, td_flag_t flags)

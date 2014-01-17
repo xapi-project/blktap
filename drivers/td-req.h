@@ -33,9 +33,6 @@
  * td_vbd_request_t, but keeping it separate simplifies keeping Xen stuff
  * outside tapdisk.
  *
- * FIXME IIUC msg is the copy of the request in the ring so we don't need to
- * keep id, op and nr_segments around.
- *
  * TODO rename to something better, e.g. ring_req?
  */
 struct td_xenblkif_req {
@@ -51,37 +48,6 @@ struct td_xenblkif_req {
      * tapdisk's representation of the request.
      */
     td_vbd_request_t vreq;
-
-    /*
-     * TODO xenio_blkif_get_request copies the request from the shared ring
-     * locally, into this.msg, so don't need to keep a copy of id, op, and
-     * nr_segments.
-     */
-
-    /**
-     * Request id, must be echoed in response, according to the definition of
-     * blkif_request.
-     */
-    uint64_t id;
-
-    /**
-     * operation: read/write
-     * TODO We maintain this here because we set it in the message when
-     * pushing the response. The question is whether we really need to set it
-     * in the first place.
-     *
-     * TODO Do we have to keep it here because blkif_request_t may be changed
-     * by the guest?
-     */
-    uint8_t op;
-
-    /**
-     * Number of segments.
-     *
-     * TODO Do we have to keep it here because blkif_request_t may be changed
-     * by the guest?
-     */
-    int nr_segments;
 
     /**
      * Pointer to memory-mapped grant refs. We keep this around because we need

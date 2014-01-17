@@ -29,6 +29,7 @@
 #include <sys/mman.h>
 #include <sys/ioctl.h>
 
+#include "debug.h"
 #include "libvhd.h"
 #include "tapdisk-blktap.h"
 #include "tapdisk-image.h"
@@ -47,19 +48,6 @@
 
 #define INFO(_f, _a...)            tlog_syslog(TLOG_INFO, "vbd: " _f, ##_a)
 #define ERROR(_f, _a...)           tlog_syslog(TLOG_WARN, "vbd: " _f, ##_a)
-
-#if 1
-#define ASSERT(p)							\
-	do {								\
-		if (!(p)) {						\
-			DPRINTF("Assertion '%s' failed, line %d, "	\
-				"file %s", #p, __LINE__, __FILE__);	\
-			abort();					\
-		}							\
-	} while (0)
-#else
-#define ASSERT(p) ((void)0)
-#endif
 
 #define TD_VBD_EIO_RETRIES          10
 #define TD_VBD_EIO_SLEEP            1
@@ -109,10 +97,6 @@ tapdisk_vbd_initialize(int rfd, int wfd, uint16_t uuid)
 {
 	td_vbd_t *vbd;
 
-	/*
-	 * FIXME check for images opened multiple times? This may not really make
-	 * sense since a file may be a link (even worse, a hard link).
-	 */
 	vbd = tapdisk_server_get_vbd(uuid);
 	if (vbd) {
 		EPRINTF("duplicate vbds! %u\n", uuid);
@@ -1493,13 +1477,13 @@ tapdisk_vbd_stats(td_vbd_t *vbd, td_stats_t *st)
 
 	if (vbd->tap) {
 		tapdisk_stats_field(st, "tap", "{");
-		tapdisk_stats_field(st, "minor", "d", vbd->tap->minor);
-        /*
-         * FIXME What stats do we report given that there are two I/O paths
-         * for tapdisk (blktap2 and the shared ring).
-         */
-        if (vbd->sring)
-    		tapdisk_xenblkif_stats(vbd->sring, st);
+		tapdisk_blktap_stats(vbd->tap, st);
+		tapdisk_stats_leave(st, '}');
+	}
+
+	if (vbd->sring) {
+		tapdisk_stats_field(st, "xenbus", "{");
+		tapdisk_xenblkif_stats(vbd->sring, st);
 		tapdisk_stats_leave(st, '}');
 	}
 

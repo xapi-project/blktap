@@ -54,6 +54,7 @@
 #include <sys/mman.h>
 #include <limits.h>
 
+#include "debug.h"
 #include "libvhd.h"
 #include "tapdisk.h"
 #include "tapdisk-driver.h"
@@ -64,7 +65,6 @@
 unsigned int SPB;
 
 #define DEBUGGING   2
-#define ASSERTING   1
 #define MICROSOFT_COMPAT
 
 #define VHD_BATMAP_MAX_RETRIES 10
@@ -79,15 +79,6 @@ unsigned int SPB;
 		    s->bat.pbw_blk);					\
 	} while(0)
 
-#define __ASSERT(_p)							\
-	if (!(_p)) {							\
-		DPRINTF("%s:%d: FAILED ASSERTION: '%s'\n",		\
-			__FILE__, __LINE__, #_p);			\
-		DBG(TLOG_WARN, "%s:%d: FAILED ASSERTION: '%s'\n",	\
-		    __FILE__, __LINE__, #_p);				\
-		td_panic();						\
-	}
-
 #if (DEBUGGING == 1)
   #define DBG(level, _f, _a...)      DPRINTF(_f, ##_a)
   #define ERR(_s, err, _f, _a...)    DPRINTF("ERROR: %d: " _f, err, ##_a)
@@ -100,12 +91,6 @@ unsigned int SPB;
   #define DBG(level, _f, _a...)      ((void)0)
   #define ERR(_s, err, _f, _a...)    ((void)0)
   #define TRACE(s)                   ((void)0)
-#endif
-
-#if (ASSERTING == 1)
-  #define ASSERT(_p)                 __ASSERT(_p)
-#else
-  #define ASSERT(_p)                 ((void)0)
 #endif
 
 /******VHD DEFINES******/

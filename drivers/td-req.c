@@ -28,21 +28,13 @@
 #include <xen/sys/gntdev.h>
 #include <sys/ioctl.h>
 
+#include "debug.h"
 #include "td-req.h"
 #include "td-blkif.h"
 #include "td-ctx.h"
 #include "tapdisk-vbd.h"
 #include "tapdisk-log.h"
 #include "tapdisk.h"
-
-#define ASSERT(p)                                      \
-    do {                                               \
-        if (!(p)) {                                    \
-            EPRINTF("%s:%d: FAILED ASSERTION: '%s'\n", \
-                     __FILE__, __LINE__, #p);          \
-            abort();                                   \
-        }                                              \
-    } while (0)
 
 #define ERR(blkif, fmt, args...) \
     EPRINTF("%d/%d: "fmt, (blkif)->domid, (blkif)->devid, ##args);
@@ -94,12 +86,13 @@ td_blkif_ring_size(const struct td_xenblkif * const blkif)
  * Get the response that corresponds to the specified ring index in a H/W
  * independent way.
  *
+ * @returns a pointer to the response, NULL on error, sets errno
+ *
  * TODO use function pointers instead of switch
  * XXX only called by xenio_blkif_put_response
  */
-static inline
-blkif_response_t *xenio_blkif_get_response(struct td_xenblkif* const blkif,
-        const RING_IDX rp)
+static inline blkif_response_t *
+xenio_blkif_get_response(struct td_xenblkif* const blkif, const RING_IDX rp)
 {
     blkif_back_rings_t * const rings = &blkif->rings;
     blkif_response_t * p = NULL;
@@ -115,8 +108,8 @@ blkif_response_t *xenio_blkif_get_response(struct td_xenblkif* const blkif,
             p = (blkif_response_t *) RING_GET_RESPONSE(&rings->x86_64, rp);
             break;
         default:
-            /* TODO gracefully fail? */
-            abort();
+            errno = EPROTONOSUPPORT;
+			return NULL;
     }
 
     return p;
@@ -143,15 +136,16 @@ xenio_blkif_put_response(struct td_xenblkif * const blkif,
     if (req) {
         blkif_response_t * msg = xenio_blkif_get_response(blkif,
                 ring->rsp_prod_pvt);
-        ASSERT(msg);
+		if (!msg)
+			return -errno;
 
         ASSERT(status == BLKIF_RSP_EOPNOTSUPP || status == BLKIF_RSP_ERROR
                 || status == BLKIF_RSP_OKAY);
 
-        msg->id = req->id;
+        msg->id = req->msg.id;
 
         /* TODO Why do we have to set this? */
-        msg->operation = req->op;
+        msg->operation = req->msg.operation;
 
         msg->status = status;
 
@@ -164,9 +158,9 @@ xenio_blkif_put_response(struct td_xenblkif * const blkif,
         if (notify) {
             int err = xc_evtchn_notify(blkif->ctx->xce_handle, blkif->port);
             if (err < 0) {
-                err = errno;
+                err = -errno;
                 ERR(blkif, "failed to notify event channel: %s\n",
-                        strerror(err));
+                        strerror(-err));
                 return err;
             }
         }
@@ -187,11 +181,12 @@ guest_copy2(struct td_xenblkif * const blkif,
     ASSERT(blkif);
     ASSERT(blkif->ctx);
     ASSERT(tapreq);
-    ASSERT(BLKIF_OP_READ == tapreq->op || BLKIF_OP_WRITE == tapreq->op);
+    ASSERT(BLKIF_OP_READ == tapreq->msg.operation
+			|| BLKIF_OP_WRITE == tapreq->msg.operation);
 
     vreq = &tapreq->vreq;
 
-    for (i = 0; i < tapreq->nr_segments; i++) {
+    for (i = 0; i < tapreq->msg.nr_segments; i++) {
         struct blkif_request_segment *blkif_seg = &tapreq->msg.seg[i];
         struct gntdev_grant_copy_segment *gcopy_seg = &gcopy.segments[i];
         gcopy_seg->iov.iov_base = tapreq->vma + (i << PAGE_SHIFT)
@@ -204,9 +199,9 @@ guest_copy2(struct td_xenblkif * const blkif,
         gcopy_seg->offset = blkif_seg->first_sect << SECTOR_SHIFT;
     }
 
-    gcopy.dir = BLKIF_OP_WRITE == tapreq->op;
+    gcopy.dir = BLKIF_OP_WRITE == tapreq->msg.operation;
     gcopy.domid = blkif->domid;
-    gcopy.count = tapreq->nr_segments;
+    gcopy.count = tapreq->msg.nr_segments;
 
     err = -ioctl(blkif->ctx->gntdev_fd, IOCTL_GNTDEV_GRANT_COPY, &gcopy);
     if (err)
@@ -232,7 +227,7 @@ tapdisk_xenblkif_complete_request(struct td_xenblkif * const blkif,
 
     if (tapreq->vma) { /* TODO can this ever be NULL? */
         int _err;
-        if (BLKIF_OP_READ == tapreq->op && !err) {
+        if (BLKIF_OP_READ == tapreq->msg.operation && !err) {
             _err = guest_copy2(blkif, tapreq);
             if (_err) {
                 err = _err;
@@ -309,12 +304,10 @@ tapdisk_xenblkif_make_vbd_request(struct td_xenblkif * const blkif,
 
     switch (tapreq->msg.operation) {
     case BLKIF_OP_READ:
-        tapreq->op = BLKIF_OP_READ;
         tapreq->prot = PROT_WRITE;
         vreq->op = TD_OP_READ;
         break;
     case BLKIF_OP_WRITE:
-        tapreq->op = BLKIF_OP_WRITE;
         tapreq->prot = PROT_READ;
         vreq->op = TD_OP_WRITE;
         break;
@@ -325,32 +318,28 @@ tapdisk_xenblkif_make_vbd_request(struct td_xenblkif * const blkif,
     }
 
     /* TODO there should be at least one segment, right? */
-    tapreq->nr_segments = tapreq->msg.nr_segments;
-    if (tapreq->nr_segments < 1
-            || tapreq->nr_segments > BLKIF_MAX_SEGMENTS_PER_REQUEST) {
-        ERR(blkif, "invalid segment count %d\n", tapreq->nr_segments);
+    if (tapreq->msg.nr_segments < 1
+            || tapreq->msg.nr_segments > BLKIF_MAX_SEGMENTS_PER_REQUEST) {
+        ERR(blkif, "invalid segment count %d\n", tapreq->msg.nr_segments);
         err = EINVAL;
         goto out;
     }
 
     err = posix_memalign(&tapreq->vma, XC_PAGE_SIZE,
-            tapreq->nr_segments << XC_PAGE_SHIFT);
+            tapreq->msg.nr_segments << XC_PAGE_SHIFT);
     if (err) {
         ERR(blkif, "failed to allocate memory for request data: %s\n",
                 strerror(err));
         goto out;
     }
 
-    for (i = 0; i < tapreq->nr_segments; i++) {
+    for (i = 0; i < tapreq->msg.nr_segments; i++) {
         struct blkif_request_segment *seg = &tapreq->msg.seg[i];
         tapreq->gref[i] = seg->gref;
 
         /*
          * Note that first and last may be equal, which means only one sector
          * must be transferred.
-         *
-         * FIXME shouldn't we operate on a copy of this in order to avoid
-         * protect against the guest changing this while we're processing it?
          */
         if (seg->last_sect < seg->first_sect) {
             ERR(blkif, "invalid sectors %d-%d\n", seg->first_sect,
@@ -359,8 +348,6 @@ tapdisk_xenblkif_make_vbd_request(struct td_xenblkif * const blkif,
             goto out;
         }
     }
-
-    tapreq->id = tapreq->msg.id;
 
     /*
      * Vectorises the request: creates the struct iovec (in tapreq->iov) that
@@ -375,7 +362,7 @@ tapdisk_xenblkif_make_vbd_request(struct td_xenblkif * const blkif,
     last = NULL;
     page = tapreq->vma;
 
-    for (i = 0; i < tapreq->nr_segments; i++) { /* for each segment */
+    for (i = 0; i < tapreq->msg.nr_segments; i++) { /* for each segment */
         struct blkif_request_segment *seg = &tapreq->msg.seg[i];
         size_t size;
 
@@ -399,7 +386,7 @@ tapdisk_xenblkif_make_vbd_request(struct td_xenblkif * const blkif,
     vreq->iovcnt = iov - tapreq->iov + 1;
     vreq->sec = tapreq->msg.sector_number;
 
-    if (tapreq->op == BLKIF_OP_WRITE) {
+    if (tapreq->msg.operation == BLKIF_OP_WRITE) {
         err = guest_copy2(blkif, tapreq);
         if (err) {
             ERR(blkif, "failed to copy from guest: %s\n", strerror(err));
@@ -419,9 +406,11 @@ tapdisk_xenblkif_make_vbd_request(struct td_xenblkif * const blkif,
     vreq->cb = __tapdisk_xenblkif_request_cb;
 
 out:
-    if (err)
+    if (err) {
         free(tapreq->vma);
-    return 0;
+		tapreq->vma = NULL;
+	}
+    return err;
 }
 
 #define msg_to_tapreq(_req) \

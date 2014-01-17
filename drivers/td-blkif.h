@@ -55,7 +55,8 @@ struct td_xenblkif {
     struct td_xenio_ctx *ctx;
 
     /**
-	 * for linked lists.
+	 * allows struct td_blkif's to be linked into lists, for whomever needs to
+	 * maintain multiple struct td_blkif's
 	 */
     struct list_head entry;
 

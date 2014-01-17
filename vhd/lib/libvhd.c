@@ -35,6 +35,7 @@
 #include <sys/stat.h>
 #include <sys/types.h>
 
+#include "debug.h"
 #include "libvhd.h"
 #include "relative-path.h"
 #include "canonpath.h"
@@ -60,14 +61,6 @@ libvhd_set_log_level(int level)
 			syslog(LOG_INFO, "libvhd::%s: "_f,		\
 			       __func__, ##_a);				\
 	} while (0)
-
-#define ASSERT(_p)							\
-	if (!(_p)) {							\
-		libvhd_set_log_level(1);                                \
-		VHDLOG("%s:%d: FAILED ASSERTION: '%s'\n",		\
-			__FILE__, __LINE__, #_p);			\
-		abort();						\
-	}
 
 #ifdef ENABLE_FAILURE_TESTING
 const char* ENV_VAR_FAIL[NUM_FAIL_TESTS] = {

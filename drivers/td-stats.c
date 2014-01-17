@@ -20,18 +20,10 @@
 #include <stdlib.h>
 #include <xenctrl.h>
 
+#include "debug.h"
 #include "tapdisk-log.h"
 #include "td-stats.h"
 #include "td-ctx.h"
-
-#define ASSERT(p)                                      \
-    do {                                               \
-        if (!(p)) {                                    \
-            EPRINTF("%s:%d: FAILED ASSERTION: '%s'\n", \
-                     __FILE__, __LINE__, #p);          \
-            abort();                                   \
-        }                                              \
-    } while (0)
 
 void
 tapdisk_xenblkif_stats(struct td_xenblkif * blkif, td_stats_t * st)

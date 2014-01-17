@@ -22,25 +22,17 @@
 #include <sys/mman.h>
 #include <xenctrl.h>
 
+#include "debug.h"
 #include "blktap3.h"
 #include "tapdisk.h"
 #include "tapdisk-log.h"
+#include "util.h"
 
 #include "td-blkif.h"
 #include "td-ctx.h"
 #include "td-req.h"
 
-/* FIXME redundant */
-#define ARRAY_SIZE(a) (sizeof(a) / sizeof(a)[0])
-#define ERROR(_f, _a...)           tlog_syslog(TLOG_WARN, "td-blkif: " _f, ##_a)
-#define ASSERT(p)                                      \
-    do {                                               \
-        if (!(p)) {                                    \
-            EPRINTF("%s:%d: FAILED ASSERTION: '%s'\n", \
-                     __FILE__, __LINE__, #p);          \
-            abort();                                   \
-        }                                              \
-    } while (0)
+#define ERROR(_f, _a...)        tlog_syslog(TLOG_WARN, "td-blkif: " _f, ##_a)
 
 struct td_xenblkif *
 tapdisk_xenblkif_find(const domid_t domid, const int devid)
@@ -132,7 +124,7 @@ tapdisk_xenblkif_connect(domid_t domid, int devid, const grant_ref_t * grefs,
     td_blkif = calloc(1, sizeof(*td_blkif));
     if (!td_blkif) {
         /* TODO log error */
-        err = errno;
+        err = -errno;
         goto fail;
     }
 
@@ -168,9 +160,9 @@ tapdisk_xenblkif_connect(domid_t domid, int devid, const grant_ref_t * grefs,
             td_blkif->ring_n_pages, td_blkif->domid, td_blkif->ring_ref,
             PROT_READ | PROT_WRITE);
     if (!sring) {
-        err = errno;
+        err = -errno;
         ERROR("failed to map domain's %d grant references: %s\n",
-                domid, strerror(err));
+                domid, strerror(-err));
         goto fail;
     }
 
@@ -216,9 +208,9 @@ tapdisk_xenblkif_connect(domid_t domid, int devid, const grant_ref_t * grefs,
     td_blkif->port = xc_evtchn_bind_interdomain(td_blkif->ctx->xce_handle,
             td_blkif->domid, port);
     if (td_blkif->port == -1) {
-        err = errno;
+        err = -errno;
         ERROR("failed to bind to event channel port %d of domain "
-                "%d: %s\n", port, td_blkif->domid, strerror(err));
+                "%d: %s\n", port, td_blkif->domid, strerror(-err));
         goto fail;
     }
 

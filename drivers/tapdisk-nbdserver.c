@@ -28,6 +28,7 @@
 #include <sys/wait.h>
 #include <sys/un.h>
 
+#include "debug.h"
 #include "tapdisk.h"
 #include "tapdisk-log.h"
 #include "tapdisk-server.h"
@@ -51,14 +52,6 @@
 
 #define INFO(_f, _a...)            tlog_syslog(TLOG_INFO, "nbd: " _f, ##_a)
 #define ERROR(_f, _a...)           tlog_syslog(TLOG_WARN, "nbd: " _f, ##_a)
-#define ASSERT(p)                                      \
-    do {                                               \
-        if (!(p)) {                                    \
-            EPRINTF("%s:%d: FAILED ASSERTION: '%s'\n", \
-                     __FILE__, __LINE__, #p);          \
-            abort();                                   \
-        }                                              \
-    } while (0)
 
 struct td_nbdserver_req {
 	td_vbd_request_t        vreq;
@@ -690,7 +683,13 @@ tapdisk_nbdserver_listen_unix(td_nbdserver_t *server)
 
 	server->local.sun_family = AF_UNIX;
     strcpy(server->local.sun_path, server->sockpath);
-    unlink(server->local.sun_path); /* FIXME check return code */
+    err = unlink(server->local.sun_path);
+	if (err == -1 && errno != ENOENT) {
+		err = -errno;
+		ERROR("failed to remove %s: %s\n", server->local.sun_path,
+				strerror(-err));
+		goto out;
+	}
     len = strlen(server->local.sun_path) + sizeof(server->local.sun_family);
 	err = bind(server->unix_listening_fd, (struct sockaddr *)&server->local,
 			len);

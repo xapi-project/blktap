@@ -25,6 +25,7 @@
 #include <string.h>
 #include <sys/time.h>
 
+#include "debug.h"
 #include "tapdisk.h"
 #include "scheduler.h"
 #include "tapdisk-log.h"
@@ -44,14 +45,6 @@
 	list_for_each_entry(event, &(s)->events, next)
 #define scheduler_for_each_event_safe(s, event, tmp)	\
 	list_for_each_entry_safe(event, tmp, &(s)->events, next)
-#define ASSERT(p)                                      \
-    do {                                               \
-        if (!(p)) {                                    \
-            EPRINTF("%s:%d: FAILED ASSERTION: '%s'\n", \
-                     __FILE__, __LINE__, #p);          \
-            abort();                                   \
-        }                                              \
-    } while (0)
 
 typedef struct event {
 	char                         mode;

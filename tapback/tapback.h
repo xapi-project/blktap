@@ -32,6 +32,8 @@
 #include <xen/grant_table.h>
 #include <xenstore.h>
 
+#include "debug.h"
+#include "util.h"
 #include "list.h"
 #include "tap-ctl.h"
 #include "blktap3.h"
@@ -39,8 +41,6 @@
 /* TODO */
 #define __printf(_f, _a)        __attribute__((format (printf, _f, _a)))
 #define __scanf(_f, _a)         __attribute__((format (scanf, _f, _a)))
-
-#define ARRAY_SIZE(_a) (sizeof(_a)/sizeof((_a)[0]))
 
 void tapback_log(int prio, const char *fmt, ...);
 void (*tapback_vlog) (int prio, const char *fmt, va_list ap);
@@ -100,16 +100,6 @@ int pretty_time(char *buf, unsigned char buf_len);
     if (unlikely(_cond)) {          \
         printf(fmt, ##__VA_ARGS__); \
     }
-
-#define ASSERT(p)                                                   \
-    do {                                                            \
-        if (!(p)) {                                                 \
-            tapback_log(LOG_WARNING,                                \
-                    "tapback-err:%s:%d: FAILED ASSERTION: '%s'\n",  \
-                    __FILE__, __LINE__, #p);                        \
-            abort();                                                \
-        }                                                           \
-    } while (0)
 
 /*
  * Pre-defined XenStore path components used for running the XenBus protocol.

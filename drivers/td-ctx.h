@@ -63,7 +63,7 @@ struct td_xenio_ctx {
     struct list_head blkifs;
 
     /**
-     * for linked lists
+     * Allow struct td_xenio_ctx to be part of a linked list.
      */
     struct list_head entry;
 
@@ -73,6 +73,8 @@ struct td_xenio_ctx {
 /**
  * Retrieves the context corresponding to the specified pool name, creating it
  * if it doesn't already exist.
+ *
+ * @returns 0 on success, -errno on error
  */
 int
 tapdisk_xenio_ctx_get(const char *pool, struct td_xenio_ctx ** _ctx);

@@ -21,16 +21,8 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "debug.h"
 #include "tap-ctl.h"
-
-#define ASSERT(p)                                      \
-    do {                                               \
-        if (!(p)) {                                    \
-            EPRINTF("%s:%d: FAILED ASSERTION: '%s'\n", \
-                     __FILE__, __LINE__, #p);          \
-            abort();                                   \
-        }                                              \
-    } while (0)
 
 int tap_ctl_info(pid_t pid, unsigned long long *sectors,
 		unsigned int *sector_size, unsigned int *info, const int minor)
@@ -49,7 +41,7 @@ int tap_ctl_info(pid_t pid, unsigned long long *sectors,
     err = tap_ctl_connect_send_and_receive(pid, &message, NULL);
     if (err) {
         EPRINTF("failed to get info from tapdisk %d: %s\n", pid,
-                strerror(err));
+                strerror(-err));
         return err;
     }
 
