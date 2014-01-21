@@ -24,7 +24,7 @@ import SR
 import util
 
 XML_DEFS = '/opt/xensource/sm/XE_SR_ERRORCODES.xml'
-class XenError(object):
+class XenError(Exception):
     def __init__(self, key, opterr=None):
         # Check the XML definition file exists
         if not os.path.exists(XML_DEFS):
