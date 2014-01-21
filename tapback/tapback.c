@@ -154,7 +154,7 @@ signal_cb(int signum) {
         }
 
         tapback_backend_destroy();
-        exit(0);
+        exit(EXIT_SUCCESS);
     }
 }
 
@@ -178,6 +178,27 @@ tapback_backend_create(void)
         err = EINVAL;
         goto fail;
     }
+
+	err = get_my_domid(blktap3_daemon.xs, XBT_NULL);
+	if (err < 0) {
+		/*
+		 * If the domid XenStore key is not yet written, it means we're running
+		 * in dom0, otherwise if we were running in a driver domain the key
+		 * would have been written before the domain had even started.
+		 *
+		 * XXX We can always set a XenStore watch as a fullproof solution.
+		 */
+		if (err == -ENOENT) {
+			INFO(NULL, "domid XenStore key not yet present, assuming we are "
+					"domain 0\n");
+			err = 0;
+		} else {
+			err = -err;
+			WARN(NULL, "failed to get current domain ID: %s\n", strerror(err));
+			goto fail;
+		}
+	}
+	blktap3_daemon.domid = err;
 
     /*
      * Watch the back-end.
@@ -415,4 +436,30 @@ int pretty_time(char *buf, unsigned char buf_len) {
     if (err == 0)
         return EINVAL;
     return 0;
+}
+
+/**
+ * Returns the current domain ID or -errno.
+ */
+int
+get_my_domid(struct xs_handle * const xs, xs_transaction_t xst)
+{
+	char *buf = NULL, *end = NULL;
+	int domid;
+
+	buf = tapback_xs_read(xs, xst, "domid");
+	if (!buf) {
+		domid = -errno;
+		goto out;
+	}
+
+	domid = strtoul(buf, &end, 0);
+	if (*end != 0 || end == buf) {
+		domid = -EINVAL;
+	}
+out:
+	free(buf);
+	if (domid >= 0)
+		ASSERT(domid <= UINT16_MAX);
+	return domid;
 }

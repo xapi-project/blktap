@@ -31,14 +31,18 @@ tapback_xs_vread(struct xs_handle * const xs, xs_transaction_t xst,
 {
     char *path, *data = NULL;
     unsigned int len = 0;
+	int err = 0;
 
     ASSERT(xs);
 
-    if (vasprintf(&path, fmt, ap) == -1)
+    if (vasprintf(&path, fmt, ap) == -1) {
+		err = errno;
         goto fail;
+	}
     ASSERT(path);
 
     data = xs_read(xs, xst, path, &len);
+	err = errno;
     free(path);
 
     if (!data)
@@ -49,9 +53,11 @@ tapback_xs_vread(struct xs_handle * const xs, xs_transaction_t xst,
      */
     if ((len > 0 && data[len - 1] != '\0') || (len == 0 && data[0] != '\0')) {
         char *_data = strndup(data, len);
-        if (!_data)
+        if (!_data) {
+			err = errno;
             /* TODO log error */
             goto fail;
+		}
         free(data);
         data = _data;
     }
@@ -63,13 +69,16 @@ tapback_xs_vread(struct xs_handle * const xs, xs_transaction_t xst,
      * We should be checking for extraneous NULLs before duplicating the
      * buffer, but this way logic is simplified.
      */
-    if ((unsigned int)(strrchr(data, '\0') - data) != len)
+    if ((unsigned int)(strrchr(data, '\0') - data) != len) {
+		err = EINVAL;
         /* TODO log error */
         goto fail;
+	}
 
     return data;
 fail:
     free(data);
+	errno = err;
     return NULL;
 }
 
@@ -167,13 +176,13 @@ tapback_device_printf(vbd_t * const device, xs_transaction_t xst,
     }
 
     if (mkread) {
-        struct xs_permissions perms = {
-            device->domid,
-            XS_PERM_READ
+        struct xs_permissions perms[2] = {
+			{blktap3_daemon.domid, XS_PERM_NONE},
+			{device->domid, XS_PERM_READ}
         };
 
-        if (!(nerr = xs_set_permissions(blktap3_daemon.xs, xst, path, &perms,
-                        1))) {
+        if (!(nerr = xs_set_permissions(blktap3_daemon.xs, xst, path, perms,
+                        ARRAY_SIZE(perms)))) {
             err = -errno;
             goto fail;
         }

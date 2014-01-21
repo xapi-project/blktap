@@ -244,6 +244,8 @@ struct _blktap3_daemon {
      * Unix domain socket for controlling the daemon.
      */
     int ctrl_sock;
+
+	domid_t domid;
 };
 
 extern struct _blktap3_daemon blktap3_daemon;
@@ -332,7 +334,7 @@ tapback_device_read(const vbd_t * const device, xs_transaction_t xst,
  * @param xst XenStore transaction
  * @param fmt format
  * @param ap arguments
- * @returns a buffer containing the value, or NULL on error
+ * @returns a buffer containing the value, or NULL on error, sets errno
  */
 char *
 tapback_xs_vread(struct xs_handle * const xs, xs_transaction_t xst,
@@ -344,7 +346,7 @@ tapback_xs_vread(struct xs_handle * const xs, xs_transaction_t xst,
  * @param xs handle to XenStore
  * @param xst XenStore transaction
  * @param fmt format
- * @returns a buffer containing the value, or NULL on error
+ * @returns a buffer containing the value, or NULL on error, sets errno
  */
 __printf(3, 4)
 char *
@@ -423,5 +425,11 @@ xenbus_switch_state(vbd_t * const device, const XenbusState state);
  */
 int
 frontend_changed(vbd_t * const device, const XenbusState state);
+
+/**
+ * Returns the current domain ID or -errno.
+ */
+int
+get_my_domid(struct xs_handle * const xs, xs_transaction_t xst);
 
 #endif /* __TAPBACK_H__ */
