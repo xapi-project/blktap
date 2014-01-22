@@ -792,6 +792,13 @@ tapdisk_control_close_image(struct tapdisk_ctl_conn *conn,
 	}
 
 	do {
+		if (vbd->sring) {
+			EPRINTF("%s: can't close VBD as the front-end is still connected "
+					"to the ring\n", vbd->name);
+			err = -EBUSY;
+			break;
+		}
+
 		err = tapdisk_blktap_remove_device(vbd->tap);
 
 		if (err == -EBUSY)

@@ -45,7 +45,8 @@ tap_ctl_close(const int id, const int minor, const int force,
 	if (err)
 		return err;
 
-	if (message.type == TAPDISK_MESSAGE_CLOSE_RSP) {
+	if (message.type == TAPDISK_MESSAGE_CLOSE_RSP
+			|| message.type == TAPDISK_MESSAGE_ERROR) {
 		err = message.u.response.error;
 		if (err)
 			EPRINTF("close failed: %s\n", strerror(err));
