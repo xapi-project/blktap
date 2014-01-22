@@ -805,8 +805,26 @@ tapdisk_vbd_resume(td_vbd_t *vbd, const char *name)
 		sleep(TD_VBD_EIO_SLEEP);
 	}
 
+	if (!err) {
+		td_disk_info_t disk_info;
+		err = tapdisk_vbd_get_disk_info(vbd, &disk_info);
+		if (err) {
+			EPRINTF("VBD %d failed to get disk info: %s\n", vbd->uuid,
+					strerror(-err));
+			goto resume_failed;
+		}
+		if (vbd->disk_info.size != disk_info.size
+				|| vbd->disk_info.sector_size != disk_info.sector_size
+				|| vbd->disk_info.info != disk_info.info) {
+			EPRINTF("VBD %d cannot change disk info\n", vbd->uuid);
+			err = -EMEDIUMTYPE;
+			goto resume_failed;
+		}
+	}
+resume_failed:
 	if (err) {
 		td_flag_set(vbd->state, TD_VBD_RESUME_FAILED);
+		tapdisk_vbd_close_vdi(vbd);
 		return err;
 	}
 	td_flag_clear(vbd->state, TD_VBD_RESUME_FAILED);

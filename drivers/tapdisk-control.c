@@ -657,7 +657,6 @@ tapdisk_control_open_image(struct tapdisk_ctl_conn *conn,
 	int err;
 	td_vbd_t *vbd;
 	td_flag_t flags;
-	td_disk_info_t info;
 
     ASSERT(conn);
     ASSERT(request);
@@ -711,14 +710,14 @@ tapdisk_control_open_image(struct tapdisk_ctl_conn *conn,
 	if (err)
 		goto out;
 
-	err = tapdisk_vbd_get_disk_info(vbd, &info);
+	err = tapdisk_vbd_get_disk_info(vbd, &vbd->disk_info);
 	if (err) {
         EPRINTF("VBD %d failed to get disk info: %s\n", vbd->uuid,
 				strerror(-err));
 		goto fail_close;
 	}
 
-	err = tapdisk_blktap_create_device(vbd->tap, &info,
+	err = tapdisk_blktap_create_device(vbd->tap, &vbd->disk_info,
 					   !!(flags & TD_OPEN_RDONLY));
 	if (err && err != -EEXIST) {
 		err = -errno;
@@ -745,9 +744,9 @@ tapdisk_control_open_image(struct tapdisk_ctl_conn *conn,
 
 out:
     if (!err) {
-        response->u.image.sectors = info.size;
-        response->u.image.sector_size = info.sector_size;
-        response->u.image.info = info.info;
+        response->u.image.sectors = vbd->disk_info.size;
+        response->u.image.sector_size = vbd->disk_info.sector_size;
+        response->u.image.info = vbd->disk_info.info;
         response->type = TAPDISK_MESSAGE_OPEN_RSP;
 	}
 	return err;
@@ -1098,9 +1097,8 @@ tapdisk_control_disk_info(
         tapdisk_message_t * request, tapdisk_message_t * const response)
 {
     tapdisk_message_image_t *image;
-    int err;
+    int err = 0;
     td_vbd_t *vbd = NULL;
-    td_disk_info_t info;
 
 	ASSERT(conn);
     ASSERT(request);
@@ -1114,20 +1112,14 @@ tapdisk_control_disk_info(
         goto out;
 	}
 
-    err = tapdisk_vbd_get_disk_info(vbd, &info);
-    if (err) {
-        EPRINTF("VBD %d failed to get info: %s\n", vbd->uuid, strerror(-err));
-        goto out;
-    }
-
     DPRINTF("VBD %d got disk info: sectors=%llu sector size=%ld\n", vbd->uuid,
-			info.size, info.sector_size);
+			vbd->disk_info.size, vbd->disk_info.sector_size);
 out:
     if (!err) {
         response->type = TAPDISK_MESSAGE_DISK_INFO_RSP;
-        image->sectors = info.size;
-        image->sector_size = info.sector_size;
-        image->info = info.info;
+        image->sectors = vbd->disk_info.size;
+        image->sector_size = vbd->disk_info.sector_size;
+        image->info = vbd->disk_info.info;
     }
     return err;
 }

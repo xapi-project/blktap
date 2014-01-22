@@ -110,6 +110,12 @@ struct td_vbd_handle {
 	td_sector_count_t           secs;
 
 	struct td_nbdserver        *nbdserver;
+
+	/**
+	 * We keep a copy of the disk info because we might receive a disk info
+	 * request while we're in the paused state.
+	 */
+	td_disk_info_t              disk_info;
 };
 
 #define tapdisk_vbd_for_each_request(vreq, tmp, list)	                \
