@@ -23,7 +23,6 @@
 #include "tapback.h"
 #include "xenstore.h"
 
-
 /**
  * Removes the XenStore watch from the front-end.
  *
@@ -36,6 +35,7 @@ tapback_device_unwatch_frontend_state(vbd_t * const device)
     ASSERT(device);
 
     if (device->frontend_state_path)
+		/* TODO check return code */
         xs_unwatch(blktap3_daemon.xs, device->frontend_state_path,
                 BLKTAP3_FRONTEND_TOKEN);
 
@@ -47,22 +47,44 @@ tapback_device_unwatch_frontend_state(vbd_t * const device)
  * Destroys and deallocates the back-end part of a VBD.
  *
  * @param device the VBD to destroy
+ * @returns 0 on success, -errno on failure.
  */
-static void
+static int
 tapback_backend_destroy_device(vbd_t * const device)
 {
+	int err;
+
     ASSERT(device);
 
     DBG(device, "removing VBD\n");
+
+	if (device->tap && device->connected) {
+		err = -tap_ctl_disconnect_xenblkif(device->tap->pid,
+				device->domid, device->devid, NULL);
+		/*
+		 * FIXME depending on the return code, we need to decide whether we
+		 * can ignore the error or not. E.g. if the tapdisk has died we can
+		 * safely remove the VBD (detecting whether the tapdisk has died is not
+		 * trivial as we'll received an I/O when trying to talk to it via the
+		 * socket. maybe check whether there's a process with that PID?).
+		 */
+		if (err) {
+			WARN(device, "cannot disconnect tapdisk[%d] from the ring: %s\n",
+					device->tap->pid);
+			return err;
+		}
+	}
 
     list_del(&device->backend_entry);
 
     tapback_device_unwatch_frontend_state(device);
 
-    free(device->tap);
+	free(device->tap);
     free(device->frontend_path);
     free(device->name);
     free(device);
+
+	return 0;
 }
 
 /**
@@ -139,6 +161,8 @@ tapback_backend_create_device(const domid_t domid, const char * const name)
         goto out;
     }
 
+    list_add_tail(&device->backend_entry, &blktap3_daemon.devices);
+
     device->major = -1;
     device->minor = -1;
 
@@ -149,8 +173,6 @@ tapback_backend_create_device(const domid_t domid, const char * const name)
 
 	device->state = XenbusStateUnknown;
 	device->frontend_state = XenbusStateUnknown;
-
-    list_add_tail(&device->backend_entry, &blktap3_daemon.devices);
 
     if (!(device->name = strdup(name))) {
         err = -errno;
@@ -163,8 +185,12 @@ out:
     if (err) {
         WARN(NULL, "%d/%s: error creating device: %s\n", domid, name,
                 strerror(-err));
-        if (device)
-            tapback_backend_destroy_device(device);
+        if (device) {
+            int err2 = tapback_backend_destroy_device(device);
+			if (err2)
+				WARN(device, "error cleaning up: failed to destroy the "
+						"device: %s\n", strerror(-err2));
+		}
         device = NULL;
         errno = err;
     }
@@ -483,8 +509,14 @@ tapback_backend_probe_device(const domid_t domid, const char * const devname,
      * re-create the device, respectively.
      */
 
-    if (remove)
-        tapback_backend_destroy_device(device);
+    if (remove) {
+        err = tapback_backend_destroy_device(device);
+		if (err) {
+			WARN(device, "failed to destroy the device: %s\n", strerror(-err));
+			return err;
+		}
+		device = NULL;
+	}
 
     if (create) {
         device = tapback_backend_create_device(domid, devname);
@@ -522,8 +554,12 @@ tapback_backend_probe_device(const domid_t domid, const char * const devname,
             DBG(device, "ignoring '%s'\n", comp);
     }
 
-    if (err && create && device)
-        tapback_backend_destroy_device(device);
+    if (err && create && device) {
+        int err2 = tapback_backend_destroy_device(device);
+		if (err2)
+			WARN(device, "error cleaning up: failed to destroy the device: "
+					"%s\n", strerror(-err2));
+	}
     return err;
 }
 
