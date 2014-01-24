@@ -79,11 +79,16 @@ tapdisk_xenblkif_disconnect(const domid_t domid, const int devid)
     struct td_xenblkif *blkif;
 
     blkif = tapdisk_xenblkif_find(domid, devid);
-    if (!blkif)
-        return ESRCH;
+    if (!blkif) {
+		ERROR("device %u/%d does not exist\n", domid, devid);
+        return -ENODEV;
+	}
 
-    if (blkif->n_reqs_free != blkif->ring_size)
-        return EBUSY;
+    if (blkif->n_reqs_free != blkif->ring_size) {
+		ERROR("device %u/%d has %d pending requests\n", domid, devid,
+				blkif->ring_size - blkif->n_reqs_free);
+        return -EBUSY;
+	}
 
     blkif->vbd->sring = NULL;
 

@@ -59,18 +59,29 @@ tapback_backend_destroy_device(vbd_t * const device)
     DBG(device, "removing VBD\n");
 
 	if (device->tap && device->connected) {
-		err = -tap_ctl_disconnect_xenblkif(device->tap->pid,
-				device->domid, device->devid, NULL);
-		/*
-		 * FIXME depending on the return code, we need to decide whether we
-		 * can ignore the error or not. E.g. if the tapdisk has died we can
-		 * safely remove the VBD (detecting whether the tapdisk has died is not
-		 * trivial as we'll received an I/O when trying to talk to it via the
-		 * socket. maybe check whether there's a process with that PID?).
-		 */
+
+		DBG(device, "implicitly disconnecting tapdisk[%d] minor=%d from the "
+				"ring\n", device->minor);
+
+		err = tap_ctl_disconnect_xenblkif(device->tap->pid, device->domid,
+				device->devid, NULL);
 		if (err) {
-			WARN(device, "cannot disconnect tapdisk[%d] from the ring: %s\n",
-					device->tap->pid);
+			if (err == -ESRCH) {
+				/*
+				 * TODO tapdisk might have died without cleaning up, in which
+				 * case we'll receieve an I/O error when trying to talk to it
+				 * through the socket, maybe search for a process with that
+				 * PID? Alternatively, we can spawn tapdisks through a daemon
+				 * which will monitor tapdisks for abrupt deaths and clean up
+				 * after them (e.g. remove the socket).
+				 */
+				WARN(device, "tapdisk[%d] not running\n", device->tap->pid);
+				err = 0;
+			} else {
+				WARN(device, "cannot disconnect tapdisk[%d] minor=%d from the "
+						"ring: %s\n", device->tap->pid, device->minor,
+						strerror(-err));
+			}
 			return err;
 		}
 	}

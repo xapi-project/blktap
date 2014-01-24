@@ -64,10 +64,7 @@ tap_ctl_connect_xenblkif(const pid_t pid, const domid_t domid, const int devid,
 		if (!err)
 			err = -message.u.response.error;
         if (err == -EALREADY)
-            /*
-             * TODO include more info
-             */
-            EPRINTF("failed to connect tapdisk %d to the ring: %s\n", pid,
+            EPRINTF("failed to connect tapdisk[%d] to the ring: %s\n", pid,
                     strerror(-err));
 	}
     return err;
@@ -86,12 +83,12 @@ tap_ctl_disconnect_xenblkif(const pid_t pid, const domid_t domid,
     message.u.blkif.devid = devid;
 
     err = tap_ctl_connect_send_and_receive(pid, &message, timeout);
-    if (err)
-        /*
-         * TODO include more info
-         */
-        EPRINTF("failed to disconnect tapdisk %d from the ring: %s\n", pid,
-                strerror(-err));
+	if (err || message.type == TAPDISK_MESSAGE_ERROR) {
+		if (!err)
+			err = -message.u.response.error;
+		EPRINTF("failed to disconnect tapdisk[%d] from the ring: %s\n", pid,
+				strerror(-err));
+	}
 
     return err;
 }

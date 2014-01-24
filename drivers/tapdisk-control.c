@@ -786,37 +786,42 @@ tapdisk_control_close_image(struct tapdisk_ctl_conn *conn,
 	if (!list_empty(&vbd->failed_requests))
 		EPRINTF("closing VBD %d with failed requests\n", request->cookie);
 
-	if(vbd->nbdserver) {
+	if (vbd->nbdserver) {
 	  tapdisk_nbdserver_pause(vbd->nbdserver);
 	}
 
 	do {
 		if (vbd->sring) {
-			EPRINTF("%s: can't close VBD as the front-end is still connected "
-					"to the ring\n", vbd->name);
 			err = -EBUSY;
+			tapdisk_server_iterate();
+		} else {
+			err = 0;
 			break;
 		}
+	}  while (conn->fd >= 0);
 
-		err = tapdisk_blktap_remove_device(vbd->tap);
+	if (!err) {
+		do {
+			err = tapdisk_blktap_remove_device(vbd->tap);
 
-		if (err == -EBUSY)
-			EPRINTF("device %s still open\n", vbd->name);
+			if (err == -EBUSY)
+				EPRINTF("device %s still open\n", vbd->name);
 
-		if (!err || err != -EBUSY)
-			break;
+			if (!err || err != -EBUSY)
+				break;
 
-		tapdisk_server_iterate();
+			tapdisk_server_iterate();
 
-	} while (conn->fd >= 0);
+		} while (conn->fd >= 0);
+	}
 
 	if (err)
 		ERR(err, "failure closing image\n");
 
 	if (err == -ENOTTY) {
 
-	while (!list_empty(&vbd->pending_requests))
-		tapdisk_server_iterate();
+		while (!list_empty(&vbd->pending_requests))
+			tapdisk_server_iterate();
 
 		err = 0;
 	}
@@ -1218,6 +1223,7 @@ tapdisk_control_handle_request(event_id_t id, char mode, void *private)
 	conn->in.busy = 1;
 
 	memset(&response, 0, sizeof(response));
+	response.cookie = message.cookie;
 
     err = conn->info->handler(conn, &message, &response);
     if (err) {

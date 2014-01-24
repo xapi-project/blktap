@@ -214,8 +214,8 @@ connect_tap(vbd_t * const device)
          * active VBDs.
          */
         if (err == EALREADY) {
-            INFO(device, "tapdisk[%d] already connected to the shared ring\n",
-                    device->tap->pid);
+            INFO(device, "tapdisk[%d] minor=%d already connected to the "
+					"shared ring\n", device->tap->pid, device->tap->minor);
             err = 0;
         } else {
             WARN(device, "tapdisk[%d] failed to connect to the shared "
@@ -354,7 +354,7 @@ out:
  *
  * @param xdevice the VBD whose tapdisk should be disconnected
  * @param state unused
- * @returns 0 on success, a positive error code otherwise
+ * @returns 0 on success, a +errno otherwise
  *
  * XXX Only called by frontend_changed.
  */
@@ -370,29 +370,29 @@ backend_close(vbd_t * const device)
          * This VBD might be a CD-ROM device, or a disk device that never went
          * to state Connected.
          */
-        DBG(device, "tapdisk not connected\n");
+		if (device->tap)
+	        DBG(device, "tapdisk[%d] not connected\n", device->tap->pid);
+		else
+	        DBG(device, "no tapdisk connected\n");
     } else {
         ASSERT(device->tap);
 
-        DBG(device, "disconnecting from tapdisk[%d] minor=%d\n",
+        DBG(device, "disconnecting tapdisk[%d] minor=%d from the ring\n",
             device->tap->pid, device->minor);
 
-        if ((err = -tap_ctl_disconnect_xenblkif(device->tap->pid, device->domid,
-                        device->devid, NULL))) {
-
-            /*
-             * TODO I don't see how tap_ctl_disconnect_xenblkif can return
-             * ESRCH, so this is probably wrong. Probably there's another error
-             * code indicating that there's no tapdisk process.
-             */
-            if (errno == ESRCH)
-                WARN(device, "tapdisk not running\n");
-            else {
-                WARN(device, "error disconnecting tapdisk from front-end: %s\n",
-                        strerror(err));
-                return err;
-            }
-        }
+		err = -tap_ctl_disconnect_xenblkif(device->tap->pid, device->domid,
+				device->devid, NULL);
+		if (err) {
+			if (err == ESRCH) {/* tapdisk might have died :-( */
+				WARN(device, "tapdisk[%d] not running\n", device->tap->pid);
+				err = 0;
+			} else {
+				WARN(device, "error disconnecting tapdisk[%d] minor=%d from "
+						"the ring: %s\n", device->tap->pid, device->minor,
+						strerror(err));
+				return err;
+			}
+		}
 
         device->connected = false;
     }
