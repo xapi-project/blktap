@@ -792,13 +792,17 @@ tapdisk_control_close_image(struct tapdisk_ctl_conn *conn,
 
 	do {
 		if (vbd->sring) {
-			err = -EBUSY;
-			tapdisk_server_iterate();
+			err = tapdisk_xenblkif_disconnect(vbd->sring->domid,
+					vbd->sring->devid);
+			if (err == -EBUSY)
+				tapdisk_server_iterate();
+			else
+				break;
 		} else {
 			err = 0;
 			break;
 		}
-	}  while (conn->fd >= 0);
+	} while (conn->fd >= 0);
 
 	if (!err) {
 		do {
