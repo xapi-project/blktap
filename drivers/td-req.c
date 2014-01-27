@@ -222,22 +222,19 @@ static void
 tapdisk_xenblkif_complete_request(struct td_xenblkif * const blkif,
         struct td_xenblkif_req* tapreq, int err, const int final)
 {
+	int _err;
+
     ASSERT(blkif);
     ASSERT(tapreq);
 
-    if (tapreq->vma) { /* TODO can this ever be NULL? */
-        int _err;
-        if (BLKIF_OP_READ == tapreq->msg.operation && !err) {
-            _err = guest_copy2(blkif, tapreq);
-            if (_err) {
-                err = _err;
-                ERR(blkif, "failed to copy from/to guest: %s\n",
-                        strerror(err));
-            }
-        }
-        free(tapreq->vma);
-        tapreq->vma = NULL;
-    }
+	if (BLKIF_OP_READ == tapreq->msg.operation && !err) {
+		_err = guest_copy2(blkif, tapreq);
+		if (_err) {
+			err = _err;
+			ERR(blkif, "failed to copy from/to guest: %s\n",
+					strerror(err));
+		}
+	}
 
     xenio_blkif_put_response(blkif, tapreq,
             (err ? BLKIF_RSP_ERROR : BLKIF_RSP_OKAY), final);
@@ -325,14 +322,6 @@ tapdisk_xenblkif_make_vbd_request(struct td_xenblkif * const blkif,
         goto out;
     }
 
-    err = posix_memalign(&tapreq->vma, XC_PAGE_SIZE,
-            tapreq->msg.nr_segments << XC_PAGE_SHIFT);
-    if (err) {
-        ERR(blkif, "failed to allocate memory for request data: %s\n",
-                strerror(err));
-        goto out;
-    }
-
     for (i = 0; i < tapreq->msg.nr_segments; i++) {
         struct blkif_request_segment *seg = &tapreq->msg.seg[i];
         tapreq->gref[i] = seg->gref;
@@ -406,10 +395,6 @@ tapdisk_xenblkif_make_vbd_request(struct td_xenblkif * const blkif,
     vreq->cb = __tapdisk_xenblkif_request_cb;
 
 out:
-    if (err) {
-        free(tapreq->vma);
-		tapreq->vma = NULL;
-	}
     return err;
 }
 
@@ -493,7 +478,12 @@ tapdisk_xenblkif_queue_requests(struct td_xenblkif * const blkif,
 void
 tapdisk_xenblkif_reqs_free(struct td_xenblkif * const blkif)
 {
+	int i;
+
     ASSERT(blkif);
+
+	for (i = 0; i < blkif->ring_size; i++)
+		free(blkif->reqs[i].vma);
 
     free(blkif->reqs);
     blkif->reqs = NULL;
@@ -514,9 +504,8 @@ tapdisk_xenblkif_reqs_init(struct td_xenblkif *td_blkif)
     ASSERT(td_blkif->ring_size > 0);
 
     td_blkif->reqs =
-        malloc(td_blkif->ring_size * sizeof(struct td_xenblkif_req));
+        calloc(td_blkif->ring_size, sizeof(struct td_xenblkif_req));
     if (!td_blkif->reqs) {
-        /* TODO log error */
         err = -errno;
         goto fail;
     }
@@ -524,14 +513,20 @@ tapdisk_xenblkif_reqs_init(struct td_xenblkif *td_blkif)
     td_blkif->reqs_free =
         malloc(td_blkif->ring_size * sizeof(struct xenio_blkif_req *));
     if (!td_blkif->reqs_free) {
-        /* TODO log error */
         err = -errno;
         goto fail;
     }
 
     td_blkif->n_reqs_free = 0;
-    for (i = 0; i < td_blkif->ring_size; i++)
+    for (i = 0; i < td_blkif->ring_size; i++) {
+		err = posix_memalign(&td_blkif->reqs[i].vma, XC_PAGE_SIZE,
+				BLKIF_MAX_SEGMENTS_PER_REQUEST << XC_PAGE_SHIFT);
+		if (err) {
+			err = -errno;
+			goto fail;
+		}
         tapdisk_xenblkif_free_request(td_blkif, &td_blkif->reqs[i]);
+	}
 
     return 0;
 
