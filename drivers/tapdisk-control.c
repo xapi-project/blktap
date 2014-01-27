@@ -32,6 +32,7 @@
 #include <sys/ioctl.h>
 #include <sys/socket.h>
 #include <sys/mman.h>
+#include <stdbool.h>
 
 #include "debug.h"
 #include "list.h"
@@ -1090,13 +1091,24 @@ tapdisk_control_xenblkif_disconnect(
 
     blkif = &request->u.blkif;
 
-    DPRINTF("disconnecting VBD domid=%d, devid=%d\n", blkif->domid,
+	ASSERT(blkif);
+
+    DPRINTF("disconnecting domid=%d, devid=%d\n", blkif->domid,
             blkif->devid);
 
-    err = tapdisk_xenblkif_disconnect(blkif->domid, blkif->devid);
+	while (true) {
+	    err = tapdisk_xenblkif_disconnect(blkif->domid, blkif->devid);
+		if (err == -EBUSY)
+			tapdisk_server_iterate();
+		else
+			break;
+	}
 
     if (!err)
         response->type = TAPDISK_MESSAGE_XENBLKIF_DISCONNECT_RSP;
+	else
+		EPRINTF("failed to disconnect domid=%d, devid=%d from the "
+				"ring: %s\n", blkif->domid, blkif->devid, strerror(-err));
     return err;
 }
 

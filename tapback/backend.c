@@ -61,7 +61,7 @@ tapback_backend_destroy_device(vbd_t * const device)
 	if (device->tap && device->connected) {
 
 		DBG(device, "implicitly disconnecting tapdisk[%d] minor=%d from the "
-				"ring\n", device->minor);
+				"ring\n", device->tap->pid, device->minor);
 
 		err = tap_ctl_disconnect_xenblkif(device->tap->pid, device->domid,
 				device->devid, NULL);
