@@ -38,18 +38,18 @@ tap_ctl_close(const int id, const int minor, const int force,
     tapdisk_message_t message;
     struct timeval start, now, delta;
 
-    memset(&message, 0, sizeof(message));
-    message.type = TAPDISK_MESSAGE_CLOSE;
-    if (force)
-        message.type = TAPDISK_MESSAGE_FORCE_SHUTDOWN;
-    message.cookie = minor;
-
     /* 
      * Keep retrying till tapdisk becomes available 
      * to process the close request
      */
      gettimeofday(&start, NULL);
      do {
+        memset(&message, 0, sizeof(message));
+        message.type = TAPDISK_MESSAGE_CLOSE;
+        if (force)
+            message.type = TAPDISK_MESSAGE_FORCE_SHUTDOWN;
+        message.cookie = minor;
+
         err = tap_ctl_connect_send_and_receive(id, &message, timeout);
         if (err)
             return err;
