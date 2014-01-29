@@ -23,7 +23,7 @@
 #include "tapdisk.h"
 #include <sys/types.h>
 #include <xen/io/blkif.h>
-#include <sys/uio.h>
+#include <xen/gntdev.h>
 #include "td-blkif.h"
 
 /**
@@ -68,6 +68,9 @@ struct td_xenblkif_req {
 
     grant_ref_t gref[BLKIF_MAX_SEGMENTS_PER_REQUEST];
     int prot;
+
+	struct gntdev_grant_copy_segment
+		gcopy_segs[BLKIF_MAX_SEGMENTS_PER_REQUEST];
 };
 
 struct td_xenblkif;

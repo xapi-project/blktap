@@ -25,7 +25,6 @@
 #include <inttypes.h>
 #include <sys/mman.h>
 #include <unistd.h>
-#include <xen/sys/gntdev.h>
 #include <sys/ioctl.h>
 
 #include "debug.h"
@@ -35,6 +34,7 @@
 #include "tapdisk-vbd.h"
 #include "tapdisk-log.h"
 #include "tapdisk.h"
+#include "util.h"
 
 #define ERR(blkif, fmt, args...) \
     EPRINTF("%d/%d: "fmt, (blkif)->domid, (blkif)->devid, ##args);
@@ -183,12 +183,14 @@ guest_copy2(struct td_xenblkif * const blkif,
     ASSERT(tapreq);
     ASSERT(BLKIF_OP_READ == tapreq->msg.operation
 			|| BLKIF_OP_WRITE == tapreq->msg.operation);
+	ASSERT(tapreq->msg.nr_segments > 0);
+	ASSERT(tapreq->msg.nr_segments <= ARRAY_SIZE(tapreq->gcopy_segs));
 
     vreq = &tapreq->vreq;
 
     for (i = 0; i < tapreq->msg.nr_segments; i++) {
         struct blkif_request_segment *blkif_seg = &tapreq->msg.seg[i];
-        struct gntdev_grant_copy_segment *gcopy_seg = &gcopy.segments[i];
+        struct gntdev_grant_copy_segment *gcopy_seg = &tapreq->gcopy_segs[i];
         gcopy_seg->iov.iov_base = tapreq->vma + (i << PAGE_SHIFT)
             + (blkif_seg->first_sect << SECTOR_SHIFT);
         gcopy_seg->iov.iov_len = (blkif_seg->last_sect
@@ -202,11 +204,30 @@ guest_copy2(struct td_xenblkif * const blkif,
     gcopy.dir = BLKIF_OP_WRITE == tapreq->msg.operation;
     gcopy.domid = blkif->domid;
     gcopy.count = tapreq->msg.nr_segments;
+	gcopy.segments = tapreq->gcopy_segs;
 
     err = -ioctl(blkif->ctx->gntdev_fd, IOCTL_GNTDEV_GRANT_COPY, &gcopy);
-    if (err)
+    if (err) {
         ERR(blkif, "failed to grant-copy: %s\n", strerror(err));
+		goto out;
+	}
 
+	for (i = 0; i < tapreq->msg.nr_segments; i++) {
+		struct gntdev_grant_copy_segment *gcopy_seg = &tapreq->gcopy_segs[i];
+		if (gcopy_seg->status != GNTST_okay) {
+			/*
+			 * TODO use gnttabop_error for reporting errors, defined in
+			 * xen/extras/mini-os/include/gnttab.h (header not available to
+			 * user space)
+			 */
+			ERR(blkif, "failed to grant-copy segment %d: %d\n", i,
+					gcopy_seg->status);
+			err = -EIO;
+			goto out;
+		}
+	}
+
+out:
     return err;
 }
 
