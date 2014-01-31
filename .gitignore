@@ -53,6 +53,7 @@ Makefile.in
 /vhd/lib/Makefile
 /vhd/lib/test/Makefile
 /tapback/Makefile
+mk/config.log
 
 # dist output
 /blktap-*.tar.*
@@ -69,5 +70,3 @@ tags
 
 # diff/patch
 *.orig
-
-mk/config.log
