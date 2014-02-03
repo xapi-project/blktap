@@ -42,7 +42,16 @@ from SR import SROSError
 import resetvdis
 import vhdutil
 
+# For RRDD Plugin Registration
+from SocketServer import UnixStreamServer
+from SimpleXMLRPCServer import SimpleXMLRPCDispatcher, SimpleXMLRPCRequestHandler
+from xmlrpclib import ServerProxy, Fault, Transport
+from socket import socket, AF_UNIX, SOCK_STREAM
+from httplib import HTTP, HTTPConnection
+
 PLUGIN_TAP_PAUSE = "tapdisk-pause"
+
+SOCKPATH = "/var/xapi/xcp-rrdd"
 
 NUM_PAGES_PER_RING = 32 * 11
 MAX_FULL_RINGS = 8
@@ -51,6 +60,19 @@ POOL_SIZE_KEY = "mem-pool-size-rings"
 
 ENABLE_MULTIPLE_ATTACH = "/etc/xensource/allow_multiple_vdi_attach"
 NO_MULTIPLE_ATTACH = not (os.path.exists(ENABLE_MULTIPLE_ATTACH)) 
+
+class UnixStreamHTTPConnection(HTTPConnection):
+    def connect(self):
+        self.sock = socket(AF_UNIX, SOCK_STREAM)
+        self.sock.connect(SOCKPATH)
+
+class UnixStreamHTTP(HTTP):
+    _connection_class = UnixStreamHTTPConnection
+
+class UnixStreamTransport(Transport):
+    def make_connection(self, host):
+        return UnixStreamHTTP(SOCKPATH) # overridden, but prevents IndexError
+
 
 def locking(excType, override=True):
     def locking2(op):
@@ -801,6 +823,14 @@ class Tapdisk(object):
 
         TapCtl.close(self.pid, self.minor, force)
 
+        try:
+            util.SMlog('Attempt to deregister tapdisk with RRDD.')
+            pluginName = "tap" + str(self.pid) + "-" + str(self.minor)
+            proxy = ServerProxy('http://' + SOCKPATH, transport=UnixStreamTransport())
+            proxy.Plugin.deregister({'uid': pluginName})
+        except Exception, e:
+            util.SMlog('ERROR: Failed to deregister tapdisk with RRDD due to %s' % e)
+
         TapCtl.detach(self.pid, self.minor)
 
         self.get_blktap().free()
@@ -1227,6 +1257,14 @@ class VDI(object):
                 blktap.free()
                 raise
             util.SMlog("tap.activate: Launched %s" % tapdisk)
+            #Register tapdisk as rrdd plugin
+            try:
+                util.SMlog('Attempt to register tapdisk with RRDD as a plugin.')
+                pluginName = "tap-" + str(tapdisk.pid) + "-" + str(tapdisk.minor)
+                proxy = ServerProxy('http://' + SOCKPATH, transport=UnixStreamTransport())
+                proxy.Plugin.register({'uid': pluginName, 'frequency': 'Five_seconds'})
+            except Exception, e:
+                util.SMlog('ERROR: Failed to register tapdisk with RRDD due to %s' % e)
         else:
             util.SMlog("tap.activate: Found %s" % tapdisk)
 
