@@ -18,7 +18,7 @@
 
 #define _GNU_SOURCE
 #include <unistd.h>
-#include <xs.h>
+#include <xenstore.h>
 #include "xslib.h"
 #include <errno.h>
 #include <string.h>
