@@ -38,6 +38,7 @@
 
 #define SYSLOG_NAMES
 #include <syslog.h>
+#include <stdarg.h>
 
 #include "tapdisk.h"
 #include "tapdisk-log.h"
@@ -45,6 +46,13 @@
 #include "tapdisk-syslog.h"
 
 #define MIN(a,b) (((a) < (b)) ? (a) : (b))
+
+#define ASSERT(_p)										\
+	if (!(_p)) {											\
+		EPRINTF("%s:%d: FAILED ASSERTION: '%s'\n",			\
+			__FILE__, __LINE__, #_p);						\
+		td_panic();											\
+	}
 
 static int
 tapdisk_syslog_facility_by_name(const char *name)
@@ -275,3 +283,39 @@ uint64_t ntohll(uint64_t a) {
 #endif
 #define htonll ntohll
 
+
+/**
+ * Simplified version of snprintf that return 0 if everything has gone OK and
+ * +errno if not (including the buffer not being large enough to hold the
+ * string).
+ */
+int
+tapdisk_snprintf(char *buf, int * const off, int * const size,
+		unsigned int depth,	const char *format, ...) {
+
+	int err, i;
+	va_list ap;
+
+	ASSERT(buf);
+	ASSERT(off);
+	ASSERT(size);
+
+	for (i = 0; i < depth; i++) {
+		err = snprintf(buf + *off, *size, "  ");
+		if (err < 0)
+			return errno;
+		*off += err;
+		*size -= err;
+	}
+
+	va_start(ap, format);
+	err = vsnprintf(buf + *off, *size, format, ap);
+	va_end(ap);
+	if (err >= *size)
+		return ENOBUFS;
+	else if (err < 0)
+		return errno;
+	*off += err;
+	*size -= err;
+	return 0;
+}
