@@ -894,11 +894,6 @@ class LVHDSR(SR.SR):
         elif base.vdiType == vhdutil.VDI_TYPE_RAW and base.hidden:
             self.lvmCache.setHidden(base.name, False)
 
-        # inflate the parent to fully-allocated size
-        if base.vdiType == vhdutil.VDI_TYPE_VHD:
-            fullSize = lvhdutil.calcSizeVHDLV(vhdInfo.sizeVirt)
-            lvhdutil.inflate(self.journaler, self.uuid, baseUuid, fullSize)
-
         # remove the child nodes
         if clonUuid and lvs.get(clonUuid):
             if lvs[clonUuid].vdiType != vhdutil.VDI_TYPE_VHD:
@@ -908,6 +903,11 @@ class LVHDSR(SR.SR):
                 self.lvActivator.remove(clonUuid, False)
         if lvs.get(origUuid):
             self.lvmCache.remove(lvs[origUuid].name)
+
+        # inflate the parent to fully-allocated size
+        if base.vdiType == vhdutil.VDI_TYPE_VHD:
+            fullSize = lvhdutil.calcSizeVHDLV(vhdInfo.sizeVirt)
+            lvhdutil.inflate(self.journaler, self.uuid, baseUuid, fullSize)
 
         # rename back
         origLV = lvhdutil.LV_PREFIX[base.vdiType] + origUuid
