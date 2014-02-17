@@ -28,8 +28,6 @@
 
 #include "tap-ctl.h"
 
-#define TAPCTL_COMM_RETRY_TIMEOUT 120
-
 int
 tap_ctl_close(const int id, const int minor, const int force,
             struct timeval *timeout)
@@ -38,8 +36,8 @@ tap_ctl_close(const int id, const int minor, const int force,
     tapdisk_message_t message;
     struct timeval start, now, delta;
 
-    /* 
-     * Keep retrying till tapdisk becomes available 
+    /*
+     * Keep retrying till tapdisk becomes available
      * to process the close request
      */
      gettimeofday(&start, NULL);
@@ -58,11 +56,11 @@ tap_ctl_close(const int id, const int minor, const int force,
             || message.type == TAPDISK_MESSAGE_ERROR) {
             err = -message.u.response.error;
 
-            if (err != -EBUSY)  
+            if (err != -EBUSY)
                 break;
 
             sleep(1);
-                
+
             gettimeofday(&now, NULL);
             timersub(&now, &start, &delta);
         }
@@ -72,9 +70,9 @@ tap_ctl_close(const int id, const int minor, const int force,
             err = -EINVAL;
             return err;
         }
-        /* 
-         * TODO: Can VBDs be accessed here to get 
-         * value of TD_VBD_REQUEST_TIMEOUT 
+        /*
+         * TODO: Can VBDs be accessed here to get
+         * value of TD_VBD_REQUEST_TIMEOUT
          */
     } while(delta.tv_sec < TAPCTL_COMM_RETRY_TIMEOUT);
 

@@ -28,6 +28,8 @@
 #include <xen/grant_table.h>
 #include <xen/event_channel.h>
 
+#define TAPCTL_COMM_RETRY_TIMEOUT 120
+
 extern int tap_ctl_debug;
 
 #ifdef TAPCTL
