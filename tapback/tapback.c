@@ -98,8 +98,13 @@ tapback_read_watch(backend_t *backend)
         else
             DBG(NULL, "%s -> \'%s\'\n", path, s);
         free(s);
-    } else
-        DBG(NULL, "%s -> (removed)\n", path);
+    } else {
+		err = errno;
+		if (err == ENOENT)
+	        DBG(NULL, "%s -> (removed)\n", path);
+		else
+			WARN(NULL, "failed to read %s: %s\n", path, strerror(err));
+	}
 
     /*
      * The token indicates which XenStore watch triggered, the front-end one or
@@ -113,6 +118,10 @@ tapback_read_watch(backend_t *backend)
         WARN(NULL, "invalid token \'%s\'\n", token);
         err = EINVAL;
     }
+
+	if (err)
+		WARN(NULL, "failed to process XenStore watch on %s: %s\n",
+				path, strerror(err));
 
     free(watch);
     return;
