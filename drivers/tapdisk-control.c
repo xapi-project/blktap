@@ -65,24 +65,43 @@
 	}
 
 struct tapdisk_ctl_conn {
-	int             fd;
+	int                          fd;
 
+	/**
+	 * processing event
+	 */
+	event_id_t                   event_id;
+
+	/**
+	 * output event
+	 */
 	struct {
-		void           *buf;
-		size_t          bufsz;
-		int             event_id;
-		int             done;
+		void                    *buf;
+		size_t                   bufsz;
+		int                      event_id;
+		int                      done;
 
-		void           *prod;
-		void           *cons;
+		void                    *prod;
+		void                    *cons;
 	} out;
 
+	/**
+	 * input event
+	 */
 	struct {
-		int             event_id;
-		int             busy;
+		int                      event_id;
+		int                      busy;
 	} in;
 
 	struct tapdisk_control_info *info;
+
+	/**
+	 * for linked lists
+	 */
+	struct list_head             entry;
+
+	tapdisk_message_t            request;
+	tapdisk_message_t            response;
 };
 
 #define TAPDISK_MSG_REENTER    (1<<0) /* non-blocking, idempotent */
@@ -104,6 +123,12 @@ struct tapdisk_control {
 	int                n_conn;
 	struct tapdisk_ctl_conn __conn[TD_CTL_MAX_CONNECTIONS];
 	struct tapdisk_ctl_conn *conn[TD_CTL_MAX_CONNECTIONS];
+
+	/**
+	 * List of connections whose processing has been temporarily paused
+	 * (masked) because the current connection requires exclusive access.
+	 */
+	struct list_head  pending;
 };
 
 static struct tapdisk_control td_control;
@@ -132,6 +157,7 @@ tapdisk_ctl_conn_init(struct tapdisk_ctl_conn *conn, size_t bufsz)
 	memset(conn, 0, sizeof(*conn));
 	conn->out.event_id = -1;
 	conn->in.event_id  = -1;
+	conn->event_id     =  0;
 
 	conn->out.buf = malloc(bufsz);
 	if (!conn->out.buf) {
@@ -200,6 +226,9 @@ tapdisk_ctl_conn_unmask_out(struct tapdisk_ctl_conn *conn)
 	tapdisk_server_mask_event(conn->out.event_id, 0);
 }
 
+/**
+ * Returns number of bytes send, or a negative error code in case of failure.
+ */
 static ssize_t
 tapdisk_ctl_conn_send_buf(struct tapdisk_ctl_conn *conn)
 {
@@ -232,7 +261,8 @@ tapdisk_ctl_conn_send_event(event_id_t id, char mode, void *private)
 		return;
 
 	if (rv < 0)
-		ERR(rv, "failure sending message at offset %td/%td\n",
+		ERR(rv, "%s: failure sending message at offset %td/%td\n",
+			tapdisk_message_name(conn->request.type),
 		    conn->out.cons - conn->out.buf,
 		    conn->out.prod - conn->out.buf);
 
@@ -360,6 +390,8 @@ tapdisk_control_initialize(void)
 	}
 
 	td_control.n_conn = 0;
+
+	INIT_LIST_HEAD(&td_control.pending);
 
 	DPRINTF("tapdisk-control: init, %d x %zuk buffers\n",
 		TD_CTL_MAX_CONNECTIONS, TD_CTL_SEND_BUFSZ >> 10);
@@ -1199,87 +1231,149 @@ struct tapdisk_control_info message_infos[] = {
 	},
 };
 
-
-static void
-tapdisk_control_handle_request(event_id_t id, char mode, void *private)
+static int
+tapdisk_control_receive_request(struct tapdisk_ctl_conn *conn)
 {
-	int err, excl;
-	tapdisk_message_t message, response;
-	struct tapdisk_ctl_conn *conn = private;
+	int err;
 
-	conn->info = NULL;
+	ASSERT(conn);
 
-	err = tapdisk_control_read_message(conn->fd, &message, 2);
+	err = tapdisk_control_read_message(conn->fd, &conn->request, 2);
 	if (err)
 		goto close;
 
-	err = tapdisk_control_validate_request(&message);
+	err = tapdisk_control_validate_request(&conn->request);
 	if (err)
 		goto invalid;
 
-	if (message.type > TAPDISK_MESSAGE_EXIT)
+	if (conn->request.type > TAPDISK_MESSAGE_EXIT)
 		goto invalid;
 
-	conn->info = &message_infos[message.type];
+	conn->info = &message_infos[conn->request.type];
 
 	if (!conn->info->handler)
 		goto invalid;
 
 	if (conn->info->flags & TAPDISK_MSG_VERBOSE)
 		DBG("received '%s' message (uuid = %u)\n",
-		    tapdisk_message_name(message.type), message.cookie);
+		    tapdisk_message_name(conn->request.type), conn->request.cookie);
 
 	if (conn->in.busy)
 		goto busy;
 
-	excl = !(conn->info->flags & TAPDISK_MSG_REENTER);
-	if (excl) {
-		if (td_control.busy)
-			goto busy;
-
-		td_control.busy = 1;
-	}
-	conn->in.busy = 1;
-
-	memset(&response, 0, sizeof(response));
-	response.cookie = message.cookie;
-
-    err = conn->info->handler(conn, &message, &response);
-    if (err) {
-        response.type = TAPDISK_MESSAGE_ERROR;
-        response.u.response.error = -err;
-    }
-	if (err || response.type != TAPDISK_MESSAGE_STATS_RSP)
-	    tapdisk_control_write_message(conn, &response);
-
-	conn->in.busy = 0;
-	if (excl)
-		td_control.busy = 0;
-
-	tapdisk_control_release_connection(conn);
-	return;
+	return 0;
 
 error:
-	memset(&response, 0, sizeof(response));
-	response.type = TAPDISK_MESSAGE_ERROR;
-	response.u.response.error = (err ? -err : EINVAL);
-	tapdisk_control_write_message(conn, &response);
+	memset(&conn->response, 0, sizeof(conn->response));
+	conn->response.type = TAPDISK_MESSAGE_ERROR;
+	conn->response.u.response.error = (err ? -err : EINVAL);
+	tapdisk_control_write_message(conn, &conn->response);
 
 close:
 	tapdisk_control_close_connection(conn);
-	return;
+	return err;
 
 busy:
 	err = -EBUSY;
 	ERR(err, "rejecting message '%s' while busy\n",
-	    tapdisk_message_name(message.type));
+	    tapdisk_message_name(conn->request.type));
 	goto error;
 
 invalid:
 	err = -EINVAL;
 	ERR(err, "rejecting unsupported message '%s'\n",
-	    tapdisk_message_name(message.type));
+	    tapdisk_message_name(conn->request.type));
 	goto error;
+}
+
+static void
+tapdisk_control_process_request(event_id_t event_id,
+			char mode __attribute__((unused)), void *private)
+{
+	int err, excl;
+	struct tapdisk_ctl_conn *conn = private;
+
+	ASSERT(conn);
+	ASSERT(event_id == conn->event_id);
+
+	if (conn->event_id)
+		tapdisk_server_unregister_event(conn->event_id);
+
+	excl = !(conn->info->flags & TAPDISK_MSG_REENTER);
+
+	if (excl)
+		td_control.busy = 1;
+	conn->in.busy = 1;
+
+	memset(&conn->response, 0, sizeof(conn->response));
+	conn->response.cookie = conn->request.cookie;
+
+    err = conn->info->handler(conn, &conn->request, &conn->response);
+    if (err) {
+        conn->response.type = TAPDISK_MESSAGE_ERROR;
+        conn->response.u.response.error = -err;
+    }
+	if (err || conn->response.type != TAPDISK_MESSAGE_STATS_RSP)
+	    tapdisk_control_write_message(conn, &conn->response);
+
+	conn->in.busy = 0;
+	if (excl) {
+		if (!list_empty(&td_control.pending)) {
+			struct tapdisk_ctl_conn *cur = list_first_entry(
+					&td_control.pending, struct tapdisk_ctl_conn, entry);
+			list_del(&cur->entry);
+			err = tapdisk_server_event_set_timeout(cur->event_id, 0);
+			ASSERT(!err);
+			tapdisk_server_mask_event(cur->event_id, 0);
+		}
+		td_control.busy = 0;
+	}
+
+	tapdisk_control_release_connection(conn);
+}
+
+
+static void
+tapdisk_control_handle_request(event_id_t id, char mode, void *private)
+{
+	int err;
+	struct tapdisk_ctl_conn *conn = private;
+
+	conn->info = NULL;
+
+	err = tapdisk_control_receive_request(conn);
+	if (err)
+		return;
+
+	conn->event_id = 0;
+
+	if (!(conn->info->flags & TAPDISK_MSG_REENTER) && td_control.busy) {
+
+		err = tapdisk_server_register_event(SCHEDULER_POLL_TIMEOUT, -1,
+				(time_t) - 1, tapdisk_control_process_request,
+				conn);
+
+		if (err == -1) {
+			memset(&conn->response, 0, sizeof(conn->response));
+			conn->response.type = TAPDISK_MESSAGE_ERROR;
+			conn->response.u.response.error = (err ? -err : EINVAL);
+			tapdisk_control_write_message(conn, &conn->response);
+			tapdisk_control_close_connection(conn);
+			ERR(err, "failed to register request process event\n");
+			return;
+		}
+
+		tapdisk_server_unregister_event(conn->in.event_id);
+		conn->in.event_id = 0;
+
+		conn->event_id = err;
+		tapdisk_server_mask_event(conn->event_id, 1);
+		list_add_tail(&conn->entry, &td_control.pending);
+
+		return;
+	}
+
+	tapdisk_control_process_request(0, 0, conn);
 }
 
 static void

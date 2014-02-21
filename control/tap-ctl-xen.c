@@ -32,6 +32,7 @@
 
 #include <stdio.h>
 #include <string.h>
+#include <unistd.h>
 
 #include "tap-ctl.h"
 
@@ -74,21 +75,31 @@ int
 tap_ctl_disconnect_xenblkif(const pid_t pid, const domid_t domid,
         const int devid, struct timeval *timeout)
 {
-    tapdisk_message_t message;
     int err;
+	tapdisk_message_t message;
 
-    memset(&message, 0, sizeof(message));
-    message.type = TAPDISK_MESSAGE_XENBLKIF_DISCONNECT;
-    message.u.blkif.domid = domid;
-    message.u.blkif.devid = devid;
+	memset(&message, 0, sizeof(message));
+	message.type = TAPDISK_MESSAGE_XENBLKIF_DISCONNECT;
+	message.u.blkif.domid = domid;
+	message.u.blkif.devid = devid;
 
-    err = tap_ctl_connect_send_and_receive(pid, &message, timeout);
-	if (err || message.type == TAPDISK_MESSAGE_ERROR) {
-		if (!err)
-			err = -message.u.response.error;
+	err = tap_ctl_connect_send_and_receive(pid, &message, timeout);
+	if (err)
+		goto out;
+
+	if (message.type == TAPDISK_MESSAGE_XENBLKIF_DISCONNECT_RSP
+			|| message.type == TAPDISK_MESSAGE_ERROR)
+		err = -message.u.response.error;
+	else {
+		EPRINTF("got unexpected result '%s' from tapdisk[%d]\n",
+				tapdisk_message_name(message.type), pid);
+		err = -EINVAL;
+	}
+
+out:
+	if (err)
 		EPRINTF("failed to disconnect tapdisk[%d] from the ring: %s\n", pid,
 				strerror(-err));
-	}
 
     return err;
 }
