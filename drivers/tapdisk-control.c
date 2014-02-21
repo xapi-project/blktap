@@ -46,6 +46,7 @@
 #include "tapdisk-stats.h"
 #include "tapdisk-control.h"
 #include "tapdisk-nbdserver.h"
+#include "td-blkif.h"
 
 #define TD_CTL_MAX_CONNECTIONS  10
 #define TD_CTL_SOCK_BACKLOG     32
@@ -1083,21 +1084,21 @@ tapdisk_control_xenblkif_disconnect(
         struct tapdisk_ctl_conn *conn __attribute__((unused)),
         tapdisk_message_t * request, tapdisk_message_t * const response)
 {
-    tapdisk_message_blkif_t *blkif;
+    tapdisk_message_blkif_t *blkif_msg;
 	int err;
 
     ASSERT(request);
     ASSERT(response);
 
-    blkif = &request->u.blkif;
+    blkif_msg = &request->u.blkif;
 
-	ASSERT(blkif);
+	ASSERT(blkif_msg);
 
-    DPRINTF("disconnecting domid=%d, devid=%d\n", blkif->domid,
-            blkif->devid);
+    DPRINTF("disconnecting domid=%d, devid=%d\n", blkif_msg->domid,
+            blkif_msg->devid);
 
 	while (true) {
-	    err = tapdisk_xenblkif_disconnect(blkif->domid, blkif->devid);
+	    err = tapdisk_xenblkif_disconnect(blkif_msg->domid, blkif_msg->devid);
 		if (err == -EBUSY)
 			tapdisk_server_iterate();
 		else
@@ -1108,7 +1109,8 @@ tapdisk_control_xenblkif_disconnect(
         response->type = TAPDISK_MESSAGE_XENBLKIF_DISCONNECT_RSP;
 	else
 		EPRINTF("failed to disconnect domid=%d, devid=%d from the "
-				"ring: %s\n", blkif->domid, blkif->devid, strerror(-err));
+				"ring: %s\n", blkif_msg->domid, blkif_msg->devid,
+				strerror(-err));
     return err;
 }
 

@@ -82,8 +82,14 @@ tapdisk_xenblkif_disconnect(const domid_t domid, const int devid)
     if (!blkif)
         return -ENODEV;
 
-    if (blkif->n_reqs_free != blkif->ring_size)
+    if (blkif->n_reqs_free != blkif->ring_size) {
+		if (td_flag_test(blkif->vbd->state, TD_VBD_PAUSED)) {
+			EPRINTF("cannot disconnect from the ring because there are "
+					"pending requests and the VBD is paused\n");
+			return -ESHUTDOWN;
+		}
         return -EBUSY;
+	}
 
     blkif->vbd->sring = NULL;
 

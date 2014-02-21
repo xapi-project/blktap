@@ -150,7 +150,11 @@ tapdisk_xenblkif_connect(domid_t domid, int devid, const grant_ref_t * grefs,
  *
  * @param domid the domain ID of the guest domain
  * @param devid the device ID of the VBD
- * @returns 0 on success
+ *
+ * @returns 0 on success, or one of the following error codes:
+ * -ENODEV: no such domain and/or device
+ * -EBUSY: there are pending requests in the ring
+ * -ESHUTDOWN: there are pending requests and the VBD is paused
  */
 int
 tapdisk_xenblkif_disconnect(const domid_t domid, const int devid);
