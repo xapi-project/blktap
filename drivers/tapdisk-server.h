@@ -64,4 +64,6 @@ void tapdisk_server_closelog(void);
 void tapdisk_start_logging(const char *, const char *);
 void tapdisk_stop_logging(void);
 
+int tapdisk_server_event_set_timeout(event_id_t, int timeo);
+
 #endif
