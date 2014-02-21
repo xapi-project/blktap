@@ -157,5 +157,7 @@ static inline void list_splice_tail(struct list_head *list,
 	     &pos->member != (head);					\
 	     pos = list_entry(pos->member.next, typeof(*pos), member))
 
+#define list_first_entry(ptr, type, member) \
+	list_entry((ptr)->next, type, member)
 
 #endif /* __LIST_H__ */

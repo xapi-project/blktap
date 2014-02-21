@@ -34,47 +34,25 @@ tap_ctl_close(const int id, const int minor, const int force,
 {
     int err;
     tapdisk_message_t message;
-    struct timeval start, now, delta;
 
-    /*
-     * Keep retrying till tapdisk becomes available
-     * to process the close request
-     */
-     gettimeofday(&start, NULL);
-     do {
-        memset(&message, 0, sizeof(message));
-        message.type = TAPDISK_MESSAGE_CLOSE;
-        if (force)
-            message.type = TAPDISK_MESSAGE_FORCE_SHUTDOWN;
-        message.cookie = minor;
+	memset(&message, 0, sizeof(message));
+	message.type = TAPDISK_MESSAGE_CLOSE;
+	if (force)
+		message.type = TAPDISK_MESSAGE_FORCE_SHUTDOWN;
+	message.cookie = minor;
 
-        err = tap_ctl_connect_send_and_receive(id, &message, timeout);
-        if (err)
-            return err;
+	err = tap_ctl_connect_send_and_receive(id, &message, timeout);
+	if (err)
+		return err;
 
-        if (message.type == TAPDISK_MESSAGE_CLOSE_RSP
-            || message.type == TAPDISK_MESSAGE_ERROR) {
-            err = -message.u.response.error;
-
-            if (err != -EBUSY)
-                break;
-
-            sleep(1);
-
-            gettimeofday(&now, NULL);
-            timersub(&now, &start, &delta);
-        }
-        else {
-            EPRINTF("got unexpected result '%s' from %d\n",
-                tapdisk_message_name(message.type), id);
-            err = -EINVAL;
-            return err;
-        }
-        /*
-         * TODO: Can VBDs be accessed here to get
-         * value of TD_VBD_REQUEST_TIMEOUT
-         */
-    } while(delta.tv_sec < TAPCTL_COMM_RETRY_TIMEOUT);
+	if (message.type == TAPDISK_MESSAGE_CLOSE_RSP
+			|| message.type == TAPDISK_MESSAGE_ERROR)
+		err = -message.u.response.error;
+	else {
+		EPRINTF("got unexpected result '%s' from %d\n",
+				tapdisk_message_name(message.type), id);
+		return err;
+	}
 
     if (err)
         EPRINTF("close failed: %s\n", strerror(-err));

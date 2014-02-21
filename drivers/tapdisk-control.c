@@ -83,6 +83,11 @@ struct tapdisk_ctl_conn {
 	} in;
 
 	struct tapdisk_control_info *info;
+
+	/**
+	 * for linked lists
+	 */
+	struct list_head    entry;
 };
 
 #define TAPDISK_MSG_REENTER    (1<<0) /* non-blocking, idempotent */
@@ -104,6 +109,12 @@ struct tapdisk_control {
 	int                n_conn;
 	struct tapdisk_ctl_conn __conn[TD_CTL_MAX_CONNECTIONS];
 	struct tapdisk_ctl_conn *conn[TD_CTL_MAX_CONNECTIONS];
+
+	/**
+	 * List of connections whose processing has been temporarily paused
+	 * (masked) because the current connection requires exclusive access.
+	 */
+	struct list_head  pending;
 };
 
 static struct tapdisk_control td_control;
@@ -360,6 +371,8 @@ tapdisk_control_initialize(void)
 	}
 
 	td_control.n_conn = 0;
+
+	INIT_LIST_HEAD(&td_control.pending);
 
 	DPRINTF("tapdisk-control: init, %d x %zuk buffers\n",
 		TD_CTL_MAX_CONNECTIONS, TD_CTL_SEND_BUFSZ >> 10);
@@ -1234,8 +1247,11 @@ tapdisk_control_handle_request(event_id_t id, char mode, void *private)
 
 	excl = !(conn->info->flags & TAPDISK_MSG_REENTER);
 	if (excl) {
-		if (td_control.busy)
-			goto busy;
+		if (td_control.busy) {
+			list_add_tail(&conn->entry, &td_control.pending);
+			tapdisk_ctl_conn_mask_out(conn);
+			return;
+		}
 
 		td_control.busy = 1;
 	}
@@ -1253,8 +1269,15 @@ tapdisk_control_handle_request(event_id_t id, char mode, void *private)
 	    tapdisk_control_write_message(conn, &response);
 
 	conn->in.busy = 0;
-	if (excl)
+	if (excl) {
+		while (!list_empty(&td_control.pending)) {
+			struct tapdisk_ctl_conn *cur = list_first_entry(
+					&td_control.pending, struct tapdisk_ctl_conn, entry);
+			list_del(&cur->entry);
+			tapdisk_ctl_conn_unmask_out(cur);
+		}
 		td_control.busy = 0;
+	}
 
 	tapdisk_control_release_connection(conn);
 	return;
