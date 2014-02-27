@@ -917,6 +917,11 @@ class LVHDSR(SR.SR):
             self.lvActivator.replace(baseUuid, origUuid, origLV, False)
         RefCounter.set(origUuid, origRefcountNormal, origRefcountBinary, ns)
 
+        # At this stage, tapdisk and SM vdi will be in paused state. Remove
+        # flag to facilitate vm deactivate
+        origVdiRef = self.session.xenapi.VDI.get_by_uuid(origUuid)
+        self.session.xenapi.VDI.remove_from_sm_config(origVdiRef, 'paused')
+
         # update LVM metadata on slaves 
         slaves = util.get_slaves_attached_on(self.session, [origUuid])
         lvhdutil.lvRefreshOnSlaves(self.session, self.uuid, self.vgname,
