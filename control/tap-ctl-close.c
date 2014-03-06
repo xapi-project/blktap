@@ -76,6 +76,9 @@ tap_ctl_close(const int id, const int minor, const int force,
          */
     } while(delta.tv_sec < TAPCTL_COMM_RETRY_TIMEOUT);
 
+	if (delta.tv_sec >= TAPCTL_COMM_RETRY_TIMEOUT)
+		err = -ETIMEDOUT;
+
     if (err)
         EPRINTF("close failed: %s\n", strerror(-err));
 

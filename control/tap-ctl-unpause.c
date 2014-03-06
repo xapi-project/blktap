@@ -80,6 +80,9 @@ tap_ctl_unpause(const int id, const int minor, const char *params, int flags,
 		}
     } while (delta.tv_sec < TAPCTL_COMM_RETRY_TIMEOUT);
 
+	if (delta.tv_sec >= TAPCTL_COMM_RETRY_TIMEOUT)
+		err = -ETIMEDOUT;
+
 	if (err)
 		EPRINTF("unpause failed: %s\n", strerror(-err));
 

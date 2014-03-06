@@ -66,6 +66,9 @@ tap_ctl_pause(const int id, const int minor, struct timeval *timeout)
 		}
     } while (delta.tv_sec < TAPCTL_COMM_RETRY_TIMEOUT);
 
+	if (delta.tv_sec >= TAPCTL_COMM_RETRY_TIMEOUT)
+		err = -ETIMEDOUT;
+
 	if (err)
 		EPRINTF("pause failed: %s\n", strerror(-err));
 
