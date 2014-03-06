@@ -20,6 +20,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
 
 #include "debug.h"
 #include "tap-ctl.h"
@@ -29,31 +30,55 @@ int tap_ctl_info(pid_t pid, unsigned long long *sectors,
 {
     tapdisk_message_t message;
     int err;
+    struct timeval start, now, delta;
 
     ASSERT(sectors);
     ASSERT(sector_size);
     ASSERT(info);
 
-    memset(&message, 0, sizeof(message));
-    message.type = TAPDISK_MESSAGE_DISK_INFO;
-	message.cookie = minor;
+	gettimeofday(&start, NULL);
+	do {
+		memset(&message, 0, sizeof(message));
+		message.type = TAPDISK_MESSAGE_DISK_INFO;
+		message.cookie = minor;
 
-    err = tap_ctl_connect_send_and_receive(pid, &message, NULL);
-    if (err) {
-        EPRINTF("failed to get info from tapdisk %d: %s\n", pid,
-                strerror(-err));
-        return err;
-    }
+		err = tap_ctl_connect_send_and_receive(pid, &message, NULL);
+		if (err)
+			return err;
 
-    if (TAPDISK_MESSAGE_DISK_INFO_RSP == message.type) {
-        *sectors = message.u.image.sectors;
-        *sector_size = message.u.image.sector_size;
-        *info = message.u.image.info;
-        return 0;
-    } else if (TAPDISK_MESSAGE_ERROR == message.type) {
-       return -message.u.response.error;
-    } else {
-        EPRINTF("unexpected reply %d\n", message.type);
-        return -EINVAL;
-    }
+		if (message.type == TAPDISK_MESSAGE_DISK_INFO_RSP
+				|| message.type == TAPDISK_MESSAGE_ERROR) {
+
+			err = -message.u.response.error;
+
+			if (!err) {
+				*sectors = message.u.image.sectors;
+				*sector_size = message.u.image.sector_size;
+				*info = message.u.image.info;
+				break;
+			}
+
+			if (err != -EBUSY)
+				break;
+
+			sleep(1);
+
+			gettimeofday(&now, NULL);
+			timersub(&now, &start, &delta);
+
+		} else {
+			err = -EINVAL;
+			EPRINTF("got unexpected result '%s' from %d\n",
+					tapdisk_message_name(message.type), pid);
+			break;
+		}
+	} while (delta.tv_sec < TAPCTL_COMM_RETRY_TIMEOUT);
+
+	if (delta.tv_sec >= TAPCTL_COMM_RETRY_TIMEOUT)
+		err = -ETIMEDOUT;
+
+	if (err)
+		EPRINTF("info failed: %s\n", strerror(-err));
+
+	return err;
 }
