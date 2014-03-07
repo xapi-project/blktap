@@ -670,11 +670,11 @@ class VDI:
         after reloading the entire SR in case things have changed while we
         were coalescing"""
         self.validate()
-        self.parent.validate()
+        self.parent.validate(True)
         self.parent._increaseSizeVirt(self.sizeVirt)
         self.sr._updateSlavesOnResize(self.parent)
         self._coalesceVHD(0)
-        self.parent.validate()
+        self.parent.validate(True)
         #self._verifyContents(0)
         self.parent.updateBlockInfo()
 
