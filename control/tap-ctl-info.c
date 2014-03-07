@@ -46,17 +46,14 @@ int tap_ctl_info(pid_t pid, unsigned long long *sectors,
 		if (err)
 			return err;
 
-		if (message.type == TAPDISK_MESSAGE_DISK_INFO_RSP
-				|| message.type == TAPDISK_MESSAGE_ERROR) {
+		if (message.type == TAPDISK_MESSAGE_DISK_INFO_RSP) {
+			*sectors = message.u.image.sectors;
+			*sector_size = message.u.image.sector_size;
+			*info = message.u.image.info;
+			break;
+		} else if (message.type == TAPDISK_MESSAGE_ERROR) {
 
 			err = -message.u.response.error;
-
-			if (!err) {
-				*sectors = message.u.image.sectors;
-				*sector_size = message.u.image.sector_size;
-				*info = message.u.image.info;
-				break;
-			}
 
 			if (err != -EBUSY)
 				break;
