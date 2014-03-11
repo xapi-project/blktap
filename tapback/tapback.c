@@ -90,6 +90,7 @@ tapback_read_watch(backend_t *backend)
      * print the path the watch triggered on for debug purposes
      *
      * TODO include token
+	 * TODO put in an #if DEBUG block
      */
 	s = tapback_xs_read(backend->xs, XBT_NULL, "%s", path);
     if (s) {
