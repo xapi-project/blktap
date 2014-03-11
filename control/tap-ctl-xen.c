@@ -47,6 +47,7 @@ tap_ctl_connect_xenblkif(const pid_t pid, const domid_t domid, const int devid,
 
 	gettimeofday(&start, NULL);
 	do {
+		delta = (struct timeval){0, 0};
 		memset(&message, 0, sizeof(message));
 		message.type = TAPDISK_MESSAGE_XENBLKIF_CONNECT;
 		message.cookie = minor;
@@ -108,6 +109,7 @@ tap_ctl_disconnect_xenblkif(const pid_t pid, const domid_t domid,
 
 	gettimeofday(&start, NULL);
 	do {
+		delta = (struct timeval){0, 0};
 		memset(&message, 0, sizeof(message));
 		message.type = TAPDISK_MESSAGE_XENBLKIF_DISCONNECT;
 		message.u.blkif.domid = domid;

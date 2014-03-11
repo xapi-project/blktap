@@ -36,7 +36,7 @@ tap_ctl_pause(const int id, const int minor, struct timeval *timeout)
 
 	gettimeofday(&start, NULL);
 	do {
-
+		delta = (struct timeval){0, 0};
 		memset(&message, 0, sizeof(message));
 		message.type = TAPDISK_MESSAGE_PAUSE;
 		message.cookie = minor;

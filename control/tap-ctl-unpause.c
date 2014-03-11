@@ -38,6 +38,7 @@ tap_ctl_unpause(const int id, const int minor, const char *params, int flags,
 
     gettimeofday(&start, NULL);
 	do {
+		delta = (struct timeval){0, 0};
 		memset(&message, 0, sizeof(message));
 		message.type = TAPDISK_MESSAGE_RESUME;
 		message.cookie = minor;

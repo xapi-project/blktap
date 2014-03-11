@@ -38,6 +38,7 @@ int tap_ctl_info(pid_t pid, unsigned long long *sectors,
 
 	gettimeofday(&start, NULL);
 	do {
+		delta = (struct timeval){0, 0};
 		memset(&message, 0, sizeof(message));
 		message.type = TAPDISK_MESSAGE_DISK_INFO;
 		message.cookie = minor;
