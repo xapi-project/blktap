@@ -730,7 +730,7 @@ tapback_backend_scan(backend_t *backend)
         free(path);
 
         if (!sub) {
-            WARN(NULL, "error listing %s: %s\n", path, strerror(-err));
+            WARN(NULL, "error listing domain %d: %s\n", domid, strerror(-err));
             goto out;
         }
 
