@@ -249,6 +249,9 @@ out:
 }
 
 
+/**
+ * Returns 0 on success, a negative error code otherwise.
+ */
 static inline int
 connect_frontend(vbd_t *device) {
 
@@ -260,7 +263,7 @@ connect_frontend(vbd_t *device) {
 
     do {
         if (!(xst = xs_transaction_start(device->backend->xs))) {
-            err = errno;
+            err = -errno;
             WARN(device, "failed to start transaction: %s\n", strerror(err));
             goto out;
         }
@@ -279,28 +282,28 @@ connect_frontend(vbd_t *device) {
          */
         if ((err = tapback_device_printf(device, xst, "sector-size", true,
                         "%u", device->sector_size))) {
-            WARN(device, "failed to write sector-size: %s\n", strerror(err));
+            WARN(device, "failed to write sector-size: %s\n", strerror(-err));
             break;
         }
 
         if ((err = tapback_device_printf(device, xst, "sectors", true, "%llu",
                         device->sectors))) {
-            WARN(device, "failed to write sectors: %s\n", strerror(err));
+            WARN(device, "failed to write sectors: %s\n", strerror(-err));
             break;
         }
 
         if ((err = tapback_device_printf(device, xst, "info", true, "%u",
                         device->info))) {
-            WARN(device, "failed to write info: %s\n", strerror(err));
+            WARN(device, "failed to write info: %s\n", strerror(-err));
             break;
         }
 
 		abort_transaction = false;
         if (!xs_transaction_end(device->backend->xs, xst, 0)) {
-            err = errno;
+            err = -errno;
             ASSERT(err);
         }
-    } while (err == EAGAIN);
+    } while (err == -EAGAIN);
 
     if (abort_transaction) {
         if (!xs_transaction_end(device->backend->xs, xst, 1)) {
@@ -311,18 +314,21 @@ connect_frontend(vbd_t *device) {
     }
 
     if (err) {
-        WARN(device, "failed to end transaction: %s\n", strerror(err));
+        WARN(device, "failed to end transaction: %s\n", strerror(-err));
         goto out;
     }
 
-    err = xenbus_switch_state(device, XenbusStateConnected);
+    err = -xenbus_switch_state(device, XenbusStateConnected);
     if (err)
         WARN(device, "failed to switch back-end state to connected: %s\n",
-                strerror(err));
+                strerror(-err));
 out:
     return err;
 }
 
+/*
+ * Returns 0 on success, a positive error code otherwise.
+ */
 static inline int
 connect(vbd_t *device) {
     int err;
@@ -342,7 +348,7 @@ connect(vbd_t *device) {
      */
     if (err && err != -EALREADY)
         goto out;
-    err = connect_frontend(device);
+    err = -connect_frontend(device);
 out:
     return err;
 }
@@ -437,9 +443,6 @@ frontend_changed(vbd_t * const device, const XenbusState state)
     return err;
 }
 
-/*
- * FIXME return error code as negative
- */
 int
 tapback_backend_handle_otherend_watch(backend_t *backend,
 		const char * const path)
