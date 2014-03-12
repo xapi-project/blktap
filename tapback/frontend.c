@@ -257,8 +257,6 @@ connect_frontend(vbd_t *device) {
     bool abort_transaction = false;
 
     ASSERT(device);
-	ASSERT(device->cdrom != -1);
-	ASSERT(device->mode != -1);
 
     do {
         if (!(xst = xs_transaction_start(device->backend->xs))) {
