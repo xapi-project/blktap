@@ -131,7 +131,7 @@ find_tapdisk(const int minor, tap_list_t *tap)
         tap_list_for_each_entry(_tap, &list) {
             if (_tap->minor == minor) {
                 err = 0;
-                memcpy(tap, _tap, sizeof(tap));
+                memcpy(tap, _tap, sizeof(*tap));
                 break;
             }
         }
