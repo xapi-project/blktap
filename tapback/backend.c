@@ -262,6 +262,11 @@ physical_device(vbd_t *device) {
         goto out;
     }
     p = strtok(NULL, ":");
+	if (unlikely(!p)) {
+        WARN(device, "malformed physical device '%s'\n", s);
+        err = -EINVAL;
+        goto out;
+	}
     minor = strtol(p, &end, 16);
     if (*end != 0 || end == p) {
         WARN(device, "malformed physical device '%s'\n", s);
@@ -779,6 +784,11 @@ tapback_backend_handle_backend_watch(backend_t *backend,
      */
 
     s = strtok(_path, "/");
+	if (unlikely(!s)) {
+		WARN(NULL, "invalid path %s\n", _path);
+		err = -EINVAL;
+		goto out;
+	}
     ASSERT(!strcmp(s, XENSTORE_BACKEND));
     if (!(s = strtok(NULL, "/"))) {
         err = tapback_backend_scan(backend);
