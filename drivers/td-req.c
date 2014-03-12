@@ -253,7 +253,7 @@ tapdisk_xenblkif_complete_request(struct td_xenblkif * const blkif,
 		if (_err) {
 			err = _err;
 			ERR(blkif, "failed to copy from/to guest: %s\n",
-					strerror(err));
+					strerror(-err));
 		}
 	}
 
@@ -399,7 +399,7 @@ tapdisk_xenblkif_make_vbd_request(struct td_xenblkif * const blkif,
     if (tapreq->msg.operation == BLKIF_OP_WRITE) {
         err = guest_copy2(blkif, tapreq);
         if (err) {
-            ERR(blkif, "failed to copy from guest: %s\n", strerror(err));
+            ERR(blkif, "failed to copy from guest: %s\n", strerror(-err));
             goto out;
         }
     }
