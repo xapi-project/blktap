@@ -42,7 +42,6 @@ tap_ctl_close(const int id, const int minor, const int force,
      */
      gettimeofday(&start, NULL);
      do {
-		delta = (struct timeval){0, 0};
         memset(&message, 0, sizeof(message));
         message.type = TAPDISK_MESSAGE_CLOSE;
         if (force)
@@ -76,9 +75,6 @@ tap_ctl_close(const int id, const int minor, const int force,
          * value of TD_VBD_REQUEST_TIMEOUT
          */
     } while(delta.tv_sec < TAPCTL_COMM_RETRY_TIMEOUT);
-
-	if (delta.tv_sec >= TAPCTL_COMM_RETRY_TIMEOUT)
-		err = -ETIMEDOUT;
 
     if (err)
         EPRINTF("close failed: %s\n", strerror(-err));
