@@ -19,7 +19,7 @@
 
 import util
 from srmetadata import open_file, close, get_min_blk_size_wrapper, \
-    xs_file_read_wrapper, xs_file_write_wrapper
+    file_read_wrapper, file_write_wrapper
 
 LVM_MAX_NAME_LEN = 127
 
@@ -68,8 +68,7 @@ class Journaler:
                 try:
                     min_block_size = get_min_blk_size_wrapper(fd)
                     data = "%d %s" % (len(val), val)
-                    xs_file_write_wrapper(fd, 0, min_block_size, data,
-                            len(data))
+                    file_write_wrapper(fd, 0, min_block_size, data, len(data))
                 except Exception, e:
                     raise
                 finally:
@@ -152,7 +151,7 @@ class Journaler:
                 try:
                     try:
                         min_block_size = get_min_blk_size_wrapper(fd)
-                        data = xs_file_read_wrapper(fd, 0, min_block_size, min_block_size)
+                        data = file_read_wrapper(fd, 0, min_block_size, min_block_size)
                         length, val = data.split(" ", 1)
                         val = val[:int(length)]
                     except:

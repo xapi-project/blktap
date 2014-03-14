@@ -88,44 +88,40 @@ def unlock_vm(uuid):
     except:
         pass
 
-def select_fd(h):
-    fd = xslib.xs_fileno(h)
-    inputs = [fd]
+def xenstore_watch_trigger(h):
+    DEBUG("Start XS Watch")
     while True:
-        gc.collect()
-        inputready,outputready,exceptready = select.select(inputs, [], [])
-        for s in inputready:
-            if s == fd:
-                path = xslib.control_handle_event(h)
-                if not path:
-                    continue
-                tok = path.split("/")
-                if len(tok) == 4 and tok[3] == 'status' \
-                       and exactmatch_uuid(tok[2]):
-                    uuid = tok[2]
-                    status = xslib.getval(h,"/vss/%s/status" % uuid)
-                    if not status:
-                        continue
-                    if match_complete(status):
-                        DEBUG("COMPLETION STATUS: %s" % status)
-                        continue
+        (path, val) = h.read_watch()
+        DEBUG("XS-PATH -> %s" %path)
+        if not path:
+            continue
+        token = path.split("/")
+        if len(token) == 4 and token[3] == 'status' \
+                and exactmatch_uuid(token[2]):
+            uuid = token[2]
+            status = xslib.getval(h, "/vss/%s/status" %uuid)
+            if status == None:
+                continue
+            if match_complete(status):
+                DEBUG("COMPLETION STATUS: %s" % status)
+                continue
 
-                    DEBUG("STATUS: %s" % status)
-                    if status == "create-snapshots":
-                        th = create_snapshot(uuid)
-                        th.start()
-                    elif status == "import-snapshots":
-                        th = import_snapshot(uuid)
-                        th.start()
-                    elif status == "deport-snapshots":
-                        th = deport_snapshot(uuid)
-                        th.start()
-                    elif status == "destroy-snapshots":
-                        th = destroy_snapshot(uuid)
-                        th.start()
-                    elif status == "create-snapshotinfo":
-                        th = create_snapshotinfo(uuid)
-                        th.start()
+            DEBUG("STATUS: %s" % status)
+            if status == "create-snapshots":
+                th = create_snapshot(uuid)
+                th.start()
+            elif status == "import-snapshots":
+                th = import_snapshot(uuid)
+                th.start()
+            elif status == "deport-snapshots":
+                th = deport_snapshot(uuid)
+                th.start()
+            elif status == "destroy-snapshots":
+                th = destroy_snapshot(uuid)
+                th.start()
+            elif status == "create-snapshotinfo":
+                th = create_snapshotinfo(uuid)
+                th.start()
 
 def exactmatch_uuid(s):
     regex = re.compile("^[0-9a-f]{8}-(([0-9a-f]{4})-){3}[0-9a-f]{12}$")
@@ -152,7 +148,7 @@ def _getDevUUIDlist(h,uuid):
     base = "/vss/%s/snapshot" % uuid
     dirlist = xslib.dirlist(h, base)
     devs = []
-    for i in dirlist.split('|'):
+    for i in dirlist:
         DEBUG("DevUUID requested: %s" % i)
         devs.append(i)
     return devs
@@ -161,7 +157,7 @@ def _getSnapUUIDlist(h,uuid):
     base = "/vss/%s/snapshot" % uuid
     dirlist = xslib.dirlist(h, base)
     vdi_uuids = {}
-    for i in dirlist.split('|'):
+    for i in dirlist:
         try:
             path = "%s/%s/id" % (base,i)
             vdi_uuid = xslib.getval(h,path)
@@ -403,7 +399,7 @@ class SnapParentThread(Thread):
         self.vm_uuid = vm_uuid
         self.base = "/vss/%s" % vm_uuid
         self.session = get_localAPI_session()
-        self.xsh = xslib.xs_daemon_open()
+        self.xsh = xslib.get_xs_handle()
         self.error = ''
         self.vmref = ''
         self.snapmanager = False
@@ -518,7 +514,7 @@ class destroy_snapshot(SnapParentThread):
             status = "snapshot-destroy-failed"
         CleanupSnapParentThread(self)
         xslib.setval(self.xsh, "%s/status"%self.base, status)
-        xslib.xs_daemon_close(self.xsh)
+        del self.xsh
         
 
 class deport_snapshot(SnapParentThread):
@@ -575,7 +571,7 @@ class deport_snapshot(SnapParentThread):
             pass
         CleanupSnapParentThread(self)
         xslib.setval(self.xsh, "%s/status"%self.base, status)
-        xslib.xs_daemon_close(self.xsh)
+        del self.xsh
         
 class import_snapshot(SnapParentThread):
     def run(self):
@@ -658,7 +654,7 @@ class import_snapshot(SnapParentThread):
             status = "snapshot-import-failed"
         CleanupSnapParentThread(self)
         xslib.setval(self.xsh, "%s/status"%self.base, status)
-        xslib.xs_daemon_close(self.xsh)
+        del self.xsh
 
 class create_snapshot(SnapParentThread):
     def run(self):
@@ -675,12 +671,12 @@ class create_snapshot(SnapParentThread):
             domid = get_domid_for_vm_by_uuid(self.vm_uuid)
             xs_flag = '/local/domain/%s/vm-data/allowvssprovider' % domid
             if xslib.xs_exists(self.xsh, xs_flag):
-                if xslib.getval(self.xsh, xs_flag) == 'false':
+                if xslib.getval(self.xsh, xs_flag) == 'None':
                     DEBUG("VSS snapshots not allowed on VM %s." % self.vm_uuid)
                     CleanupSnapParentThread(self)
                     xslib.setval(self.xsh, '%s/status' % self.base,
                                  'snapshots-failed')
-                    xslib.xs_daemon_close(self.xsh)
+                    del self.xsh
                     return
                 else:
                     xslib.setval(self.xsh, xs_flag, 'false')
@@ -798,7 +794,7 @@ class create_snapshot(SnapParentThread):
         except:
             CleanupSnapParentThread(self)
             xslib.setval(self.xsh, "%s/status"%self.base, "snapshots-failed")
-            xslib.xs_daemon_close(self.xsh)
+            del self.xsh
             return
 
         dict = {}
@@ -810,7 +806,7 @@ class create_snapshot(SnapParentThread):
         xslib.setval(self.xsh, "%s/snapuuid"%self.base, snapuuid)
         CleanupSnapParentThread(self)
         xslib.setval(self.xsh, "%s/status"%self.base, "snapshots-created")
-        xslib.xs_daemon_close(self.xsh)
+        del self.xsh
 
 class create_snapshotinfo(SnapParentThread):
     def run(self):
@@ -875,11 +871,11 @@ class create_snapshotinfo(SnapParentThread):
             except:
                 CleanupSnapParentThread(self)
                 xslib.setval(self.xsh, "%s/status"%self.base, "snapshotinfo-failed")
-                xslib.xs_daemon_close(self.xsh)
+                del self.xsh
                 return
         CleanupSnapParentThread(self)
         xslib.setval(self.xsh, "%s/status"%self.base, "snapshotinfo-created")
-        xslib.xs_daemon_close(self.xsh)
+        del self.xsh
                 
 # Snapshot GC thread
 class SnapGC(Thread):
@@ -987,18 +983,17 @@ if DAEMONISE:
     util.daemon()
 
 # Initialise XS and XAPI
-h = xslib.xs_daemon_open()
+h = xslib.get_xs_handle()
 
-if xslib.register_base_watch(h) != 0:
-    print "Error initialising XS watch"
-    sys.exit(-1)    
-
+if xslib.set_watch(h, "/vss") != None:
+    print "Error setting xenstore watch"
+    sys.exit(-1)
 try:
     s = SnapGC();
     s.start();
-    select_fd(h)
+    xenstore_watch_trigger(h)
 except:
     pass
-xslib.remove_base_watch(h)
-xslib.xs_daemon_close(h)
+xslib.unwatch(h, "/vss")
+del h
 DEBUG("SNAPWATCHD - Daemon halted")

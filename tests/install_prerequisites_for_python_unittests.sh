@@ -17,4 +17,4 @@ else
 fi
 
 # Install other dependences
-apt-get -qy install swig libxen-dev make
+apt-get -qy install libxen-dev make

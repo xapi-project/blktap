@@ -9,7 +9,7 @@ License: LGPL
 URL:  http://www.citrix.com
 Source0: sm-@SM_VERSION@.tar.bz2
 BuildRoot: %{_tmppath}/%{name}-%{version}-root
-BuildRequires: swig python-devel xen-devel
+BuildRequires: python-devel xen-devel
 
 %description
 This package contains storage backends used in XCP
@@ -226,7 +226,6 @@ cp -f /etc/lvm/lvm.conf.orig /etc/lvm/lvm.conf || exit $?
 /opt/xensource/sm/scsi_host_rescan.py
 /opt/xensource/sm/scsi_host_rescan.pyc
 /opt/xensource/sm/scsi_host_rescan.pyo
-/opt/xensource/sm/snapwatchd/_xslib.so
 /opt/xensource/sm/snapwatchd/snapwatchd
 /opt/xensource/sm/snapwatchd/xslib.py
 /opt/xensource/sm/snapwatchd/xslib.pyc

@@ -84,7 +84,6 @@ SM_PY_FILES = $(foreach LIB, $(SM_LIBS), drivers/$(LIB).py) $(foreach DRIVER, $(
 .PHONY: build
 build:
 	make -C dcopy 
-	make -C snapwatchd
 	make -C mpathroot
 
 .PHONY: precommit

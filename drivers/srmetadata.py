@@ -22,8 +22,6 @@ import metadata
 import os
 import sys
 sys.path.insert(0,'/opt/xensource/sm/snapwatchd')
-from xslib import get_min_blk_size, open_file_for_write, open_file_for_read, \
-    xs_file_write, xs_file_read, close_file
 import xs_errors
 import lvutil
 import xml.sax.saxutils
@@ -71,58 +69,53 @@ HEADER_SEP = ':'
 METADATA_UPDATE_OBJECT_TYPE_TAG = 'objtype'
 METADATA_OBJECT_TYPE_SR = 'sr'
 METADATA_OBJECT_TYPE_VDI = 'vdi'
+METADATA_BLK_SIZE = 512
 
 # ----------------- # General helper functions - begin # -----------------
 def get_min_blk_size_wrapper(fd):
-    result = get_min_blk_size(fd)
-    if result.result == -1:
-        raise "Failed to get minimum block size for the metadata file. "\
-            "Error: %s" % os.strerror(result.err) 
-    else:
-        return result.result
+    return METADATA_BLK_SIZE
     
 def open_file(path, write = False): 
     if write:
-        result = open_file_for_write(path)
-        if result.result == -1:
-            raise IOError("Failed to open file %s for write. Error: %s" % \
-                          (path, os.strerror(result.err)))
+        try:
+            file_p = os.open(path, os.O_RDWR )
+        except OSError, e:
+            raise OSError("Failed to open file %s for read-write. Error: %s" % \
+                          (path, (e.errno)))
     else:
-        result = open_file_for_read(path)
-        if result.result == -1:
-            raise IOError("Failed to open file %s for read. Error: %s" % \
-                          (path, os.strerror(result.err)))
+        try:
+            file_p = os.open(path, os.O_RDONLY)
+        except OSError, e:
+            raise OSError("Failed to open file %s for read. Error: %s" % \
+                          (path, (e.errno)))
+    return file_p
 
-    return result.result
-
-def xs_file_write_wrapper(fd, offset, blocksize, data, length):
-    result = xs_file_write(fd, offset, blocksize, data, length)
-    if result.result == -1:
-        raise IOError("Failed to write file with params %s. Error: %s" % \
+def file_write_wrapper(fd, offset, blocksize, data, length):
+    try:
+        newlength = length
+        if length % blocksize:
+            newlength = length + (blocksize - length % blocksize)
+        os.lseek(fd, offset, os.SEEK_SET)
+        result = os.write(fd, data + ' ' * (newlength - length))
+    except OSError, e:
+        raise OSError("Failed to write file with params %s. Error: %s" % \
                           ([fd, offset, blocksize, data, length], \
-                            os.strerror(result.err)))
-    return result.result
+                            (e.errno)))
+    return result
 
-def xs_file_read_wrapper(fd, offset, bytesToRead, min_block_size):
-    result = xs_file_read(fd, offset, bytesToRead, min_block_size)
-    if result.result == -1:
-        util.SMlog("Failed to read file with params %s. Error: %s" % \
-                          ([fd, offset, bytesToRead, min_block_size], \
-                            os.strerror(result.err)))
-        util.SMlog("Return from read: result: %d, readString: %s, "
-                   "noOfBytesRead: %d, err: %s" % (result.result,
-                   result.readString,
-                   result.noOfBytesRead,
-                   os.strerror(result.err)))
-        
-        raise IOError("Failed to read file with params %s. Error: %s" % \
-                          ([fd, offset, bytesToRead, min_block_size], \
-                            os.strerror(result.err)))
-    return result.readString
-        
+def file_read_wrapper(fd, offset, bytesToRead, min_block_size):
+    try:
+        os.lseek(fd, offset, os.SEEK_SET)
+        result = os.read(fd, bytesToRead)
+    except OSError, e:
+        raise OSError("Failed to write file with params %s. Error: %s" % \
+                          ([fd, offset, min_block_size, bytesToRead], \
+                            (e.errno)))
+    return result
+
 def close(fd):
     if fd != -1:
-        close_file(fd)
+        os.close(fd)
 
 # get a range which is block aligned, contains 'offset' and allows
 # length bytes to be written
@@ -178,12 +171,12 @@ def updateLengthInHeader(fd, length, major = metadata.MD_MAJOR, \
     try:
         min_block_size = get_min_blk_size_wrapper(fd)
         md = ''
-        md = xs_file_read_wrapper(fd, 0, min_block_size, min_block_size)
+        md = file_read_wrapper(fd, 0, min_block_size, min_block_size)
         updated_md = buildHeader(length, major, minor)
         updated_md += md[SECTOR_SIZE:]
         
         # Now write the new length
-        xs_file_write_wrapper(fd, 0, min_block_size, updated_md, len(updated_md))
+        file_write_wrapper(fd, 0, min_block_size, updated_md, len(updated_md))
     except Exception, e:
         util.SMlog("Exception updating metadata length with length: %d." 
                    "Error: %s" % (length, str(e)))
@@ -192,7 +185,7 @@ def updateLengthInHeader(fd, length, major = metadata.MD_MAJOR, \
 def getMetadataLength(fd):
     try:
         min_blk_size = get_min_blk_size_wrapper(fd)
-        sector1 = xs_file_read_wrapper(fd, 0, SECTOR_SIZE, min_blk_size)
+        sector1 = file_read_wrapper(fd, 0, SECTOR_SIZE, min_blk_size)
         lenstr = sector1.split(HEADER_SEP)[1]
         len = int(lenstr.strip(' '))
         return len
@@ -223,7 +216,7 @@ def requiresUpgrade(path):
             fd = open_file(path)
             min_blk_size = get_min_blk_size_wrapper(fd)
             sector1 = \
-                xs_file_read_wrapper(fd, 0, SECTOR_SIZE, min_blk_size).strip()
+                file_read_wrapper(fd, 0, SECTOR_SIZE, min_blk_size).strip()
             hdr = unpackHeader(sector1)
             mdmajor = int(hdr[2])
             mdminor = int(hdr[3])
@@ -443,7 +436,7 @@ class MetadataHandler:
                 value = self.getMetadataToWrite(md['sr_info'], md['vdi_info'], \
                         md['lower'], md['upper'], Dict, mdlength)
             
-            xs_file_write_wrapper(self.fd, md['lower'], min_block_size, \
+            file_write_wrapper(self.fd, md['lower'], min_block_size, \
                                   value, len(value))
             
             if md.has_key('foundDeleted'):
@@ -479,7 +472,7 @@ class MetadataHandler:
            
             # Read in the metadata fil
             metadataxml = ''
-            metadataxml = xs_file_read_wrapper(self.fd, 0, length, min_blk_size)
+            metadataxml = file_read_wrapper(self.fd, 0, length, min_blk_size)
            
             # At this point we have the complete metadata in metadataxml
             offset = SECTOR_SIZE + len(XML_HEADER)
@@ -585,7 +578,7 @@ class MetadataHandler:
                 # generate the remaining VDI
                 value += self.generateVDIsForRange(vdi_info_by_offset, lower, upper)
             
-            xs_file_write_wrapper(self.fd, lower, \
+            file_write_wrapper(self.fd, lower, \
                 get_min_blk_size_wrapper(self.fd), value, len(value))
         else:
             raise Exception("SR Update operation not supported for "
@@ -600,7 +593,7 @@ class MetadataHandler:
             md = self.getMetadataInternal({'vdi_uuid': Dict[UUID_TAG]})
             value = self.getMetadataToWrite(md['sr_info'], md['vdi_info'], \
                         md['lower'], md['upper'], Dict, md['offset'])
-            xs_file_write_wrapper(self.fd, md['lower'], min_block_size, value, len(value))
+            file_write_wrapper(self.fd, md['lower'], min_block_size, value, len(value))
             return True
         except Exception, e:
             util.SMlog("Exception updating vdi with info: %s. Error: %s" % \
@@ -621,7 +614,7 @@ class MetadataHandler:
            
             # Now write the metadata on disk.
             min_block_size = get_min_blk_size_wrapper(self.fd)
-            xs_file_write_wrapper(self.fd, 0, min_block_size, md, len(md))
+            file_write_wrapper(self.fd, 0, min_block_size, md, len(md))
             updateLengthInHeader(self.fd, len(md))
            
         except Exception, e:
