@@ -97,6 +97,7 @@ libtapdisk_la_SOURCES += td-stats.h
 libtapdisk_la_LIBADD  = ../vhd/lib/libvhd.la
 libtapdisk_la_LIBADD += -laio
 libtapdisk_la_LIBADD += -lxenctrl
+libtapdisk_la_LIBADD += -lcrypto
 
 logrotatedir = $(sysconfdir)/logrotate.d
 dist_logrotate_DATA = blktap

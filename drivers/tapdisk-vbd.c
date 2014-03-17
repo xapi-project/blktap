@@ -28,6 +28,9 @@
 #include <libgen.h>
 #include <sys/mman.h>
 #include <sys/ioctl.h>
+#include <openssl/md5.h>
+#include <sys/stat.h>
+#include <sys/types.h>
 
 #include "debug.h"
 #include "libvhd.h"
@@ -42,6 +45,13 @@
 #include "tapdisk-storage.h"
 #include "tapdisk-nbdserver.h"
 #include "td-stats.h"
+#include "tapdisk-utils.h"
+
+/*
+ * FIXME blktap3 stores the page size in a global variable, use that once
+ * blktap3 gets merged
+ */
+#define RRD_SHM_SIZE 4096
 
 #define DBG(_level, _f, _a...) tlog_write(_level, _f, ##_a)
 #define ERR(_err, _f, _a...) tlog_error(_err, _f, ##_a)
@@ -116,9 +126,122 @@ tapdisk_vbd_validate_chain(td_vbd_t *vbd)
 	return tapdisk_image_validate_chain(&vbd->images);
 }
 
+static int
+vbd_stats_destroy(td_vbd_t *vbd) {
+
+    int err = 0;
+
+    ASSERT(vbd);
+
+    if (vbd->rrd.mem) {
+        err = munmap(vbd->rrd.mem, RRD_SHM_SIZE);
+        if (err == -1) {
+            err = errno;
+            EPRINTF("failed to munmap %s: %s\n", vbd->rrd.path,
+                    strerror(err));
+            goto out;
+        }
+        vbd->rrd.mem = NULL;
+    }
+
+    if (vbd->rrd.fd > 0) {
+        do {
+            err = close(vbd->rrd.fd);
+            if (err)
+                err = errno;
+        } while (err == EINTR);
+        if (err) {
+            EPRINTF("failed to close %s: %s\n", vbd->rrd.path, strerror(err));
+            goto out;
+        }
+        vbd->rrd.fd = 0;
+    }
+
+    if (vbd->rrd.path) {
+
+        err = unlink(vbd->rrd.path);
+        if (err == -1) {
+            err = errno;
+            if (err != ENOENT)
+                goto out;
+        }
+        free(vbd->rrd.path);
+        vbd->rrd.path = NULL;
+    }
+
+out:
+    return -err;
+}
+
+static int
+vbd_stats_create(td_vbd_t *vbd) {
+
+    int err;
+
+    ASSERT(vbd);
+
+	err = mkdir("/dev/shm/metrics", S_IRUSR | S_IWUSR);
+	if (err && errno != EEXIST)
+		goto out;
+
+    /*
+     * FIXME we use tap-<tapdisk PID>-<minor number> for now, might want to
+     * reconsider
+     */
+    err = asprintf(&vbd->rrd.path, "/dev/shm/metrics/tap-%d-%d", getpid(),
+            vbd->uuid);
+    if (err == -1) {
+        err = errno;
+        vbd->rrd.path = NULL;
+        EPRINTF("failed to create metric file: %s\n", strerror(err));
+        goto out;
+    }
+    err = 0;
+
+    vbd->rrd.fd = open(vbd->rrd.path, O_CREAT | O_TRUNC | O_RDWR | O_EXCL,
+            S_IRUSR | S_IWUSR);
+    if (vbd->rrd.fd == -1) {
+        err = errno;
+        EPRINTF("failed to open %s: %s\n", vbd->rrd.path, strerror(err));
+        goto out;
+    }
+
+    err = ftruncate(vbd->rrd.fd, RRD_SHM_SIZE);
+    if (err == -1) {
+        err = errno;
+        EPRINTF("failed to truncate %s: %s\n", vbd->rrd.path, strerror(err));
+        goto out;
+    }
+
+    vbd->rrd.mem = mmap(NULL, RRD_SHM_SIZE, PROT_READ | PROT_WRITE, MAP_SHARED,
+            vbd->rrd.fd, 0);
+    if (vbd->rrd.mem == MAP_FAILED) {
+        err = errno;
+        EPRINTF("failed to mmap %s: %s\n", vbd->rrd.path, strerror(err));
+        goto out;
+    }
+
+out:
+    if (err) {
+        int err2 = vbd_stats_destroy(vbd);
+        if (err2)
+            EPRINTF("failed to clean up failed RRD shared memory creation: "
+                    "%s (error ignored)\n", strerror(-err2));
+    }
+    return -err;
+}
+
 void
 tapdisk_vbd_close_vdi(td_vbd_t *vbd)
 {
+    int err;
+
+    err = vbd_stats_destroy(vbd);
+    if (err) {
+        EPRINTF("failed to destroy RRD stats file: %s (error ignored)\n",
+                strerror(-err));
+    }
+
 	tapdisk_image_close_chain(&vbd->images);
 
 	if (vbd->secondary &&
@@ -481,6 +604,10 @@ tapdisk_vbd_open_vdi(td_vbd_t *vbd, const char *name, td_flag_t flags, int prt_d
 			err = 0;
 		}
 	}
+
+    err = vbd_stats_create(vbd);
+    if (err)
+        goto fail;
 
 	if (tmp != vbd->name)
 		free(tmp);
@@ -893,9 +1020,121 @@ tapdisk_vbd_check_queue_state(td_vbd_t *vbd)
 
 }
 
+static inline int
+tapdisk_vbd_produce_rrds(td_vbd_t *vbd) {
+
+	td_image_t *leaf;
+	int off = 0, size = 0;
+	int err;
+	int i, j;
+	char *buf;
+	int json_str_len_off, md5sum_str_len_off, json_data_off, json_data_len;
+	const int json_str_len = 8 + 1, md5sum_str_len = 32 + 1;
+	char tmp[md5sum_str_len + 1];
+	time_t t;
+	MD5_CTX md5_ctx;
+	unsigned char md5_out[MD5_DIGEST_LENGTH];
+
+	ASSERT(vbd);
+
+	buf = vbd->rrd.mem;
+
+	/*
+	 * If no VDI has been opened yet there's nothing to report.
+	 */
+	if (!buf)
+		return 0;
+
+	/*
+	 * Produce RRDs every five seconds.
+	 */
+	t = time(NULL);
+	if (t - vbd->rrd.last < 5)
+		return 0;
+	vbd->rrd.last = t;
+
+	size = RRD_SHM_SIZE - off;
+	err = tapdisk_snprintf(buf, &off, &size, 0, "DATASOURCES\n");
+	if (err)
+		return err;
+
+	/*
+	 * reserve space for JSON string length
+	 */
+	json_str_len_off = off;
+	off += json_str_len, size -= json_str_len;
+
+	/*
+	 * reserve space for MD5 sum of JSON string
+	 */
+	md5sum_str_len_off = off;
+	off += md5sum_str_len, size -= md5sum_str_len;
+
+	json_data_off = off;
+	err = tapdisk_snprintf(buf, &off, &size, 0,	"{\n");
+	err += tapdisk_snprintf(buf, &off, &size, 1, "\"timestamp\": %lu,\n",
+			time(NULL));
+	err += tapdisk_snprintf(buf, &off, &size, 1, "\"datasources\": {\n");
+	if (err)
+		return err;
+
+	leaf = tapdisk_vbd_first_image(vbd);
+
+	/*
+	 * XXX We're only reporting RRDs for leaves. We could traverse the list
+	 * of parent and report RRDs for each one of them, if there is something
+	 * to report. However, for internal VHD files there's nothing to report
+	 * so that would end up in a useless traverse of the list. We could address
+	 * this issue by keeping a list of images that do have an RRD callback.
+	 */
+	if (leaf && leaf->driver->ops->td_rrd) {
+		err = leaf->driver->ops->td_rrd(leaf->driver, buf, &off, &size);
+		if (err)
+			return err;
+		err = tapdisk_snprintf(buf, &off, &size, 0, ",\n");
+		if (err)
+			return err;
+	}
+
+	err += tapdisk_snprintf(buf, &off, &size, 2, "\"io_errors\": {\n");
+	err += tapdisk_snprintf(buf, &off, &size, 3,
+			"\"description\": \"Number of I/O errors\",\n");
+	err += tapdisk_snprintf(buf, &off, &size, 3, "\"owner\": \"host\",\n");
+	err += tapdisk_snprintf(buf, &off, &size, 3,  "\"type\": "
+			"\"absolute\",\n");
+	err += tapdisk_snprintf(buf, &off, &size, 3, "\"units\": \"units\",\n");
+	err += tapdisk_snprintf(buf, &off, &size, 3, "\"min\": \"0.00\",\n");
+	err += tapdisk_snprintf(buf, &off, &size, 3, "\"max\": \"inf\",\n");
+	err += tapdisk_snprintf(buf, &off, &size, 3, "\"value\": \"%llu\",\n",
+			vbd->errors);
+	err += tapdisk_snprintf(buf, &off, &size, 3, "\"value_type\": \"float\"\n");
+	err += tapdisk_snprintf(buf, &off, &size, 2, "}\n");
+	err += tapdisk_snprintf(buf, &off, &size, 1, "}\n");
+	err += tapdisk_snprintf(buf, &off, &size, 0, "}\n");
+	if (err)
+		return err;
+
+	json_data_len = off - json_str_len;
+	sprintf(tmp, "%08x\n", json_data_len);
+	strncpy(buf + json_str_len_off, tmp, json_str_len);
+
+	MD5_Init(&md5_ctx);
+	MD5_Update(&md5_ctx, buf + json_data_off, json_data_len);
+	MD5_Final(md5_out, &md5_ctx);
+	for (i = 0, j = 0; i < MD5_DIGEST_LENGTH; i++)
+		j += sprintf(buf + md5sum_str_len_off + j, "%02x", md5_out[i]);
+	buf[(md5sum_str_len_off + j)] = '\n';
+
+	memset(buf + off, '\0', size - off);
+	return msync(buf, RRD_SHM_SIZE, MS_ASYNC);
+}
+
 void
 tapdisk_vbd_check_state(td_vbd_t *vbd)
 {
+
+	tapdisk_vbd_produce_rrds(vbd);
+
 	tapdisk_vbd_check_queue_state(vbd);
 
 	if (td_flag_test(vbd->state, TD_VBD_QUIESCE_REQUESTED))

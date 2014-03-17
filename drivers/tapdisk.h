@@ -187,6 +187,15 @@ struct tap_disk {
 	void (*td_queue_write)       (td_driver_t *, td_request_t);
 	void (*td_debug)             (td_driver_t *);
 	void (*td_stats)             (td_driver_t *, td_stats_t *);
+
+    /**
+     * Callback to produce RRD output.
+	 *
+	 * Return a positive integer on success, 0 if the RRD has not been updated,
+	 * and -errno on failure.
+     */
+    int (*td_rrd)                (td_driver_t *, char *buf,
+									int * const off, int * const size);
 };
 
 struct td_sector_count {

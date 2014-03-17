@@ -47,6 +47,31 @@
 
 struct td_nbdserver;
 
+struct td_vbd_rrd {
+    /*
+     * file descriptor for the file in /dev/shm
+     */
+    int fd;
+
+    /*
+     * memory address returned by mmap
+     */
+    char *mem;
+
+    /*
+     * /path/to/file in /dev/shm
+     */
+    char *path;
+
+    /*
+     * Previous value of td_vbd_handle.errors. We maintain this in order to
+     * tell whether we need to update the RRD.
+     */
+    uint64_t last_errors;
+
+	time_t last;
+};
+
 struct td_vbd_handle {
     /**
      * type:/path/to/file
@@ -116,6 +141,8 @@ struct td_vbd_handle {
 	 * request while we're in the paused state.
 	 */
 	td_disk_info_t              disk_info;
+
+    struct td_vbd_rrd           rrd;
 };
 
 #define tapdisk_vbd_for_each_request(vreq, tmp, list)	                \
