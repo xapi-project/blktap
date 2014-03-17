@@ -1,4 +1,4 @@
-/* 
+/*
  * Copyright (C) Citrix Systems Inc.
  *
  * This program is free software; you can redistribute it and/or
@@ -24,6 +24,7 @@
 #include <sys/socket.h>
 #include <sys/un.h>
 #include <sys/types.h>
+#include <sys/stat.h>
 #include <netdb.h>
 #include <arpa/inet.h>
 #include <netinet/tcp.h>
@@ -45,13 +46,13 @@
 
 #define N_PASSED_FDS 10
 #define TAPDISK_NBDCLIENT_MAX_PATH_LEN 256
-#define TAPDISK_NBDCLIENT_LISTEN_SOCK_PATH "/var/run/blktap-control/nbdclient"
+
 #define MAX_NBD_REQS TAPDISK_DATA_REQUESTS
 #define NBD_TIMEOUT 30
 
-/* 
+/*
  * We'll only ever have one nbdclient fd receiver per tapdisk process, so let's 
- * just store it here globally. We'll also keep track of the passed fds here 
+ * just store it here globally. We'll also keep track of the passed fds here
  * too.
  */
 
@@ -95,7 +96,12 @@ struct tdnbd_data
 	struct td_nbd_request  *curr_reply_req;
 
 	int                     socket;
+	/*
+	 * TODO tapdisk can talk to an Internet socket or a UNIX domain socket.
+	 * Try to group struct members accordingly e.g. in a union.
+	 */
 	struct sockaddr_in     *remote;
+	struct sockaddr_un      remote_un;
 	char                   *peer_ip;
 	int                     port;
 	char                   *name;
@@ -136,8 +142,8 @@ tdnbd_stash_passed_fd(int fd, char *msg, void *data)
 
 }
 
-static int 
-tdnbd_retreive_passed_fd(const char *name) 
+static int
+tdnbd_retreive_passed_fd(const char *name)
 {
 	int fd, i;
 
@@ -155,8 +161,8 @@ tdnbd_retreive_passed_fd(const char *name)
 	return -1;
 }
 
-void 
-tdnbd_fdreceiver_start() 
+void
+tdnbd_fdreceiver_start()
 {
 	char fdreceiver_path[TAPDISK_NBDCLIENT_MAX_PATH_LEN];
 	int i;
@@ -393,8 +399,6 @@ tdnbd_queue_request(struct tdnbd_data *prv, int type, uint64_t offset,
 		req->timeout_event = -1;
 	}
 
-	INFO("request: %s timeout %d", req->nreq.handle, req->timeout_event);
-
 	req->nreq.magic = htonl(NBD_REQUEST_MAGIC);
 	req->nreq.type = htonl(type);
 	req->nreq.from = htonll(offset);
@@ -566,7 +570,7 @@ tdnbd_nbd_negotiate(struct tdnbd_data *prv, td_driver_t *driver)
 		ERROR("Short read in negotiation(1) (%d)\n", rc);
 		close(sock);
 		return -1;
-	} 
+	}
 
 	if (memcmp(buffer, "NBDMAGIC", 8) != 0) {
 		buffer[8] = 0;
@@ -586,7 +590,7 @@ tdnbd_nbd_negotiate(struct tdnbd_data *prv, td_driver_t *driver)
 		ERROR("Short read in negotiation(2) (%d)\n", rc);
 
 		return -1;
-	} 
+	}
 
 	if (ntohll(magic) != NBD_NEGOTIATION_MAGIC) {
 		ERROR("Not enough magic in negotiation(2) (%"PRIu64")\n",
@@ -606,7 +610,7 @@ tdnbd_nbd_negotiate(struct tdnbd_data *prv, td_driver_t *driver)
 		ERROR("Short read in negotiation(3) (%d)\n", rc);
 		close(sock);
 		return -1;
-	} 
+	}
 
 	INFO("Got size: %"PRIu64"", ntohll(size));
 
@@ -625,7 +629,7 @@ tdnbd_nbd_negotiate(struct tdnbd_data *prv, td_driver_t *driver)
 		ERROR("Short read in negotiation(4) (%d)\n", rc);
 		close(sock);
 		return -1;
-	} 
+	}
 
 	INFO("Got flags: %"PRIu32"", ntohl(flags));
 
@@ -721,6 +725,7 @@ tdnbd_open(td_driver_t* driver, const char* name, td_flag_t flags)
 	int port;
 	int rc;
 	int i;
+	struct stat buf;
 
 	driver->info.sector_size = 512;
 	driver->info.info = 0;
@@ -742,38 +747,64 @@ tdnbd_open(td_driver_t* driver, const char* name, td_flag_t flags)
 	prv->nr_free_count = MAX_NBD_REQS;
 	prv->cur_reply_qio.buffer = (char *)&prv->current_reply;
 	prv->cur_reply_qio.len = sizeof(struct nbd_reply);
-	rc = sscanf(name, "%255[^:]:%d", peer_ip, &port);
-	if (rc == 2) {
-		prv->peer_ip = malloc(strlen(peer_ip) + 1);
-		if (!prv->peer_ip) {
-			ERROR("Failure to malloc for NBD destination");
-			return -1;
-		}
-		strcpy(prv->peer_ip, peer_ip);
-		prv->port = port;
-		prv->name = NULL;
-		INFO("Export peer=%s port=%d\n", prv->peer_ip, prv->port);
-		if (tdnbd_connect_import_session(prv, driver) < 0)
-			return -1;
 
-	} else {
-		prv->socket = tdnbd_retreive_passed_fd(name);
-		if (prv->socket < 0) {
-			ERROR("Couldn't find fd named: %s", name);
+	bzero(&buf, sizeof(buf));
+	rc = stat(name, &buf);
+	if (!rc && S_ISSOCK(buf.st_mode)) {
+		int len = 0;
+		if ((prv->socket = socket(AF_UNIX, SOCK_STREAM, 0)) == -1) {
+			ERROR("failed to create UNIX domain socket: %s\n",
+					strerror(errno));
 			return -1;
 		}
-		INFO("Found passed fd. Connecting...");
-		prv->remote = NULL;
-		prv->peer_ip = NULL;
-		prv->name = strdup(name);
-		prv->port = -1;
-		if (tdnbd_nbd_negotiate(prv, driver) < 0) {
-			ERROR("Failed to negotiate");
+		prv->remote_un.sun_family = AF_UNIX;
+		strcpy(prv->remote_un.sun_path, name);
+		len = strlen(prv->remote_un.sun_path)
+			+ sizeof(prv->remote_un.sun_family);
+		if ((rc = connect(prv->socket, (struct sockaddr*)&prv->remote_un, len)
+					== -1)) {
+			ERROR("failed to connect to %s: %s\n", name, strerror(errno));
 			return -1;
+		}
+		rc = tdnbd_nbd_negotiate(prv, driver);
+		if (rc) {
+			ERROR("failed to negotiate with the NBD server\n");
+			return -1;
+		}
+	} else {
+		rc = sscanf(name, "%255[^:]:%d", peer_ip, &port);
+		if (rc == 2) {
+			prv->peer_ip = malloc(strlen(peer_ip) + 1);
+			if (!prv->peer_ip) {
+				ERROR("Failure to malloc for NBD destination");
+				return -1;
+			}
+			strcpy(prv->peer_ip, peer_ip);
+			prv->port = port;
+			prv->name = NULL;
+			INFO("Export peer=%s port=%d\n", prv->peer_ip, prv->port);
+			if (tdnbd_connect_import_session(prv, driver) < 0)
+				return -1;
+
+		} else {
+			prv->socket = tdnbd_retreive_passed_fd(name);
+			if (prv->socket < 0) {
+				ERROR("Couldn't find fd named: %s", name);
+				return -1;
+			}
+			INFO("Found passed fd. Connecting...");
+			prv->remote = NULL;
+			prv->peer_ip = NULL;
+			prv->name = strdup(name);
+			prv->port = -1;
+			if (tdnbd_nbd_negotiate(prv, driver) < 0) {
+				ERROR("Failed to negotiate");
+				return -1;
+			}
 		}
 	}
 
-	prv->reader_event_id = 
+	prv->reader_event_id =
 		tapdisk_server_register_event(SCHEDULER_POLL_READ_FD,
 				prv->socket, 0,
 				tdnbd_reader_cb,
@@ -800,7 +831,7 @@ tdnbd_close(td_driver_t* driver)
 
 	if (prv->closed == 3) {
 		INFO("NBD close: already decided that the connection is dead.");
-		if (prv->socket >= 0) 
+		if (prv->socket >= 0)
 			close(prv->socket);
 		prv->socket = -1;
 		return 0;
@@ -828,7 +859,7 @@ tdnbd_close(td_driver_t* driver)
 		tdnbd_stash_passed_fd(prv->socket, prv->name, 0);
 		free(prv->name);
 	} else {
-		if (prv->socket >= 0) 
+		if (prv->socket >= 0)
 			close(prv->socket);
 		prv->socket = -1;
 	}
@@ -848,7 +879,6 @@ tdnbd_queue_read(td_driver_t* driver, td_request_t treq)
 	else
 		tdnbd_queue_request(prv, NBD_CMD_READ, offset, treq.buf, size,
 				treq, 0);
-
 }
 
 static void

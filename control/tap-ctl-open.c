@@ -1,4 +1,4 @@
-/* 
+/*
  * Copyright (C) Citrix Systems Inc.
  *
  * This program is free software; you can redistribute it and/or
@@ -69,7 +69,7 @@ tap_ctl_open(const int id, const int minor, const char *params, int flags,
 		break;
 	case TAPDISK_MESSAGE_ERROR:
 		err = -message.u.response.error;
-		EPRINTF("open failed, err %d\n", err);
+		EPRINTF("open failed: %s\n", strerror(-err));
 		break;
 	default:
 		EPRINTF("got unexpected result '%s' from %d\n",

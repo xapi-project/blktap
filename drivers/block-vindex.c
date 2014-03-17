@@ -24,6 +24,7 @@
 #include <unistd.h>
 #include <stdlib.h>
 
+#include "debug.h"
 #include "tapdisk.h"
 #include "tapdisk-utils.h"
 #include "tapdisk-driver.h"
@@ -36,12 +37,6 @@
 #define DBG(_level, _f, _a...)       tlog_write(_level, _f, ##_a)
 #define ERR(_err, _f, _a...)         tlog_error(_err, _f, ##_a)
 #define WARN(_f, _a...)              tlog_write(TLOG_WARN, _f, ##_a)
-
-#define ASSERT(condition)					\
-	if (!(condition)) {					\
-		WARN("FAILED ASSERTION: '%s'\n", #condition);	\
-		td_panic();					\
-	}
 
 #define VHD_INDEX_FILE_POOL_SIZE     12
 #define VHD_INDEX_CACHE_SIZE         4

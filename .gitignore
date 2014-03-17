@@ -40,6 +40,7 @@ Makefile.in
 /vhd/vhd-util
 /vhd/lib/test/random-copy
 /vhd/lib/test/test-snapshot
+/tapback/tapback
 
 # generated makefiles
 /Makefile
@@ -51,6 +52,7 @@ Makefile.in
 /vhd/Makefile
 /vhd/lib/Makefile
 /vhd/lib/test/Makefile
+/tapback/Makefile
 mk/config.log
 
 # dist output

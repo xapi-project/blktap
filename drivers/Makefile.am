@@ -1,6 +1,6 @@
-
 AM_CFLAGS  = -Wall
 AM_CFLAGS += -Werror
+# TODO add -Wextra
 
 AM_CPPFLAGS  = -D_GNU_SOURCE
 AM_CPPFLAGS += -I$(top_srcdir)/include
@@ -84,8 +84,19 @@ libtapdisk_la_SOURCES += block-lcache.c
 libtapdisk_la_SOURCES += block-llcache.c
 libtapdisk_la_SOURCES += block-nbd.c
 
+# shared ring
+libtapdisk_la_SOURCES += td-blkif.c
+libtapdisk_la_SOURCES += td-blkif.h
+libtapdisk_la_SOURCES += td-req.c
+libtapdisk_la_SOURCES += td-req.h
+libtapdisk_la_SOURCES += td-ctx.c
+libtapdisk_la_SOURCES += td-ctx.h
+libtapdisk_la_SOURCES += td-stats.c
+libtapdisk_la_SOURCES += td-stats.h
+
 libtapdisk_la_LIBADD  = ../vhd/lib/libvhd.la
 libtapdisk_la_LIBADD += -laio
+libtapdisk_la_LIBADD += -lxenctrl
 libtapdisk_la_LIBADD += -lcrypto
 
 logrotatedir = $(sysconfdir)/logrotate.d

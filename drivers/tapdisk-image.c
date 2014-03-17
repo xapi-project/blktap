@@ -1,4 +1,4 @@
-/* 
+/*
  * Copyright (C) Citrix Systems Inc.
  *
  * This program is free software; you can redistribute it and/or
@@ -33,6 +33,7 @@
 #include "tapdisk-interface.h"
 #include "tapdisk-disktype.h"
 #include "tapdisk-storage.h"
+#include "util.h"
 
 #define DBG(_f, _a...)       tlog_syslog(TLOG_DBG, _f, ##_a)
 #define INFO(_f, _a...)      tlog_syslog(TLOG_INFO, _f, ##_a)
@@ -45,8 +46,6 @@
 		ERR(-EINVAL, "(%s) = %d", #_cond, _cond);	\
 		BUG();						\
 	}
-
-#define ARRAY_SIZE(_a) (sizeof(_a)/sizeof((_a)[0]))
 
 td_image_t *
 tapdisk_image_allocate(const char *file, int type, td_flag_t flags)
@@ -269,6 +268,16 @@ tapdisk_image_close_chain(struct list_head *list)
 		tapdisk_image_close(image);
 }
 
+/**
+ * Opens the image and all of its parents.
+ *
+ * @param type DISK_TYPE_* (see tapdisk-disktype.h)
+ * @param name /path/to/file
+ * @param flags
+ * @param _head
+ * @param prt_devnum parent minor (optional)
+ * @returns
+ */
 static int
 __tapdisk_image_open_chain(int type, const char *name, int flags,
 			   struct list_head *_head, int prt_devnum)

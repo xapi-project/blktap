@@ -1,4 +1,4 @@
-/* 
+/*
  * Copyright (C) Citrix Systems Inc.
  *
  * This program is free software; you can redistribute it and/or
@@ -40,7 +40,10 @@ static void
 tap_cli_list_usage(FILE *stream)
 {
 	fprintf(stream,
-		"usage: list [-h] [-p pid] [-m minor] [-t type] [-f file]\n");
+		"usage: list [-h] [-p pid] [-m minor] [-t type] [-f file]\n"
+		"\n"
+		"Lists tapdisks in the following format:\n"
+		"%8s %4s %4s %10s %s\n", "pid", "minor", "state", "type", "file");
 }
 
 static void
@@ -110,7 +113,7 @@ tap_cli_list(int argc, char **argv)
 		switch (c) {
 		case 'm':
 			minor = atoi(optarg);
-			break;
+		break;
 		case 'p':
 			pid = atoi(optarg);
 			break;
@@ -244,12 +247,12 @@ usage:
 static void
 tap_cli_create_usage(FILE *stream)
 {
-	fprintf(stream, "usage: create <-a args> [-d device name] [-R readonly] "
+	fprintf(stream, "usage: create <-a type:/path/to/file> [-d device name] [-R readonly] "
 		"[-e <minor> stack on existing tapdisk for the parent chain] "
 		"[-r turn on read caching into leaf node] [-2 <path> "
 		"use secondary image (in mirror mode if no -s)] [-s "
 		"fail over to the secondary image on ENOSPC] "
-		"[-t request timeout in seconds]\n");
+			"[-t request timeout in seconds]\n");
 }
 
 static int
@@ -604,7 +607,7 @@ usage:
 static void
 tap_cli_unpause_usage(FILE *stream)
 {
-	fprintf(stream, "usage: unpause <-p pid> <-m minor> [-a args] "
+	fprintf(stream, "usage: unpause <-p pid> <-m minor> [-a type:/path/to/file] "
 			"[-2 secondary]\n");
 }
 
@@ -615,11 +618,11 @@ tap_cli_unpause(int argc, char **argv)
 	char *secondary;
 	int c, pid, minor, flags;
 
-	pid   = -1;
+	pid        = -1;
 	minor = -1;
 	args  = NULL;
-	secondary = NULL;
-	flags = 0;
+	secondary  = NULL;
+	flags      = 0;
 
 	optind = 0;
 	while ((c = getopt(argc, argv, "p:m:a:2:h")) != -1) {
@@ -706,7 +709,7 @@ usage:
 static void
 tap_cli_open_usage(FILE *stream)
 {
-	fprintf(stream, "usage: open <-p pid> <-m minor> <-a args> [-R readonly] "
+	fprintf(stream, "usage: open <-p pid> <-m minor> <-a type:/path/to/file> [-R readonly] "
 		"[-e <minor> stack on existing tapdisk for the parent chain] "
 		"[-r turn on read caching into leaf node] [-2 <path> "
 		"use secondary image (in mirror mode if no -s)] [-s "
@@ -720,13 +723,13 @@ tap_cli_open(int argc, char **argv)
 	const char *args, *secondary;
 	int c, pid, minor, flags, prt_minor, timeout;
 
-	flags     = 0;
-	pid       = -1;
+	flags      = 0;
+	pid        = -1;
 	minor     = -1;
 	prt_minor = -1;
-	timeout   = 0;
+	timeout    = 0;
 	args      = NULL;
-	secondary = NULL;
+	secondary  = NULL;
 
 	optind = 0;
 	while ((c = getopt(argc, argv, "a:Rm:p:e:r2:st:h")) != -1) {
@@ -782,7 +785,10 @@ usage:
 static void
 tap_cli_stats_usage(FILE *stream)
 {
-	fprintf(stream, "usage: stats <-p pid> <-m minor>\n");
+	fprintf(stream, "usage: stats <-p pid> <-m minor>\n"
+			"\n"
+			"Prints a Python dictionary with the VBD stats. The images are "
+			"listed in reverse order (leaf to root)\n");
 }
 
 static int
@@ -791,7 +797,7 @@ tap_cli_stats(int argc, char **argv)
 	pid_t pid;
 	int c, minor, err;
 
-	pid     = -1;
+	pid  = -1;
 	minor   = -1;
 
 	optind = 0;
@@ -964,6 +970,10 @@ main(int argc, char *argv[])
 	ret = cmd->func(cnt, cargv);
 
 	free(cargv);
+
+	if (ret)
+		/* FIXME errors are not always returned as negative numbers */
+		fprintf(stderr, "%s\n", strerror(abs(ret)));
 
 	return (ret >= 0 ? ret : -ret);
 }

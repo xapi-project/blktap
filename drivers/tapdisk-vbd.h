@@ -1,4 +1,4 @@
-/* 
+/*
  * Copyright (C) Citrix Systems Inc.
  *
  * This program is free software; you can redistribute it and/or
@@ -24,6 +24,7 @@
 #include "scheduler.h"
 #include "tapdisk-image.h"
 #include "tapdisk-blktap.h"
+#include "td-blkif.h"
 
 #define TD_VBD_REQUEST_TIMEOUT      120
 #define TD_VBD_MAX_RETRIES          100
@@ -40,7 +41,7 @@
 #define TD_VBD_LOG_DROPPED          0x0100
 #define TD_VBD_RESUME_FAILED        0x0200
 
-#define TD_VBD_SECONDARY_DISABLED   0 
+#define TD_VBD_SECONDARY_DISABLED   0
 #define TD_VBD_SECONDARY_MIRROR     1
 #define TD_VBD_SECONDARY_STANDBY    2
 
@@ -72,15 +73,26 @@ struct td_vbd_rrd {
 };
 
 struct td_vbd_handle {
+    /**
+     * type:/path/to/file
+     */
 	char                       *name;
 
 	td_blktap_t                *tap;
 
 	td_uuid_t                   uuid;
 
+    /**
+     * shared ring
+     */
+    struct td_xenblkif         *sring;
+
 	td_flag_t                   flags;
 	td_flag_t                   state;
 
+	/**
+	 * List of images: the leaf is at the head, the tree root is at the tail.
+	 */
 	struct list_head            images;
 
 	int                         parent_devnum;
@@ -123,6 +135,12 @@ struct td_vbd_handle {
 	td_sector_count_t           secs;
 
 	struct td_nbdserver        *nbdserver;
+
+	/**
+	 * We keep a copy of the disk info because we might receive a disk info
+	 * request while we're in the paused state.
+	 */
+	td_disk_info_t              disk_info;
 
     struct td_vbd_rrd           rrd;
 };
@@ -183,7 +201,20 @@ int tapdisk_vbd_initialize(int, int, td_uuid_t);
 int tapdisk_vbd_open(td_vbd_t *, const char *, int, const char *, td_flag_t);
 int tapdisk_vbd_close(td_vbd_t *);
 
-int tapdisk_vbd_open_vdi(td_vbd_t *, const char *, td_flag_t, int);
+/**
+ * Opens a VDI.
+ *
+ * @params vbd output parameter that receives a handle to the opened VDI
+ * @param params type:/path/to/file
+ * @params flags TD_OPEN_* TODO which TD_OPEN_* flags are honored? How does
+ * each flag affect the behavior of this functions? Move TD_OPEN_* flag
+ * definitions close to this function (check if they're used only by this
+ * function)?
+ * @param prt_devnum parent minor (optional)
+ * @returns 0 on success
+ */
+int tapdisk_vbd_open_vdi(td_vbd_t * vbd, const char *params, td_flag_t flags,
+        int prt_devnum);
 void tapdisk_vbd_close_vdi(td_vbd_t *);
 
 int tapdisk_vbd_attach(td_vbd_t *, const char *, int);

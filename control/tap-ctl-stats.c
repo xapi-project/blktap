@@ -1,4 +1,4 @@
-/* 
+/*
  * Copyright (C) Citrix Systems Inc.
  *
  * This program is free software; you can redistribute it and/or
@@ -63,7 +63,7 @@ tap_ctl_stats(pid_t pid, int minor, char *buf, size_t size)
 	if (err)
 		return err;
 
-	len= message.u.info.length;
+	len = message.u.info.length;
 	if (len < 0) {
 		err = len;
 		goto out;

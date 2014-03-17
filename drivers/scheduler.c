@@ -1,4 +1,4 @@
-/* 
+/*
  * Copyright (C) Citrix Systems Inc.
  *
  * This program is free software; you can redistribute it and/or
@@ -25,6 +25,7 @@
 #include <string.h>
 #include <sys/time.h>
 
+#include "debug.h"
 #include "tapdisk.h"
 #include "scheduler.h"
 #include "tapdisk-log.h"
@@ -332,11 +333,19 @@ scheduler_wait_for_events(scheduler_t *s)
 	DBG("timeout: %d, max_timeout: %d\n",
 	    s->timeout, s->max_timeout);
 
-	ret = select(s->max_fd + 1, &s->read_fds,
-		     &s->write_fds, &s->except_fds, &tv);
+    do {
+    	ret = select(s->max_fd + 1, &s->read_fds, &s->write_fds,
+                &s->except_fds, &tv);
+        if (ret < 0) {
+            ret = -errno;
+            ASSERT(ret);
+        }
+    } while (ret == -EINTR);
 
-	if (ret < 0)
-		goto out;
+    if (ret < 0) {
+        EPRINTF("select failed: %s\n", strerror(-ret));
+        goto out;
+    }
 
 	ret = scheduler_check_events(s, ret);
 	BUG_ON(ret);

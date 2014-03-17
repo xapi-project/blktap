@@ -1,4 +1,4 @@
-/* 
+/*
  * Copyright (C) Citrix Systems Inc.
  *
  * This program is free software; you can redistribute it and/or
@@ -23,6 +23,12 @@
 #include <sys/time.h>
 #include <tapdisk-message.h>
 #include <list.h>
+
+#include <xen/xen.h>
+#include <xen/grant_table.h>
+#include <xen/event_channel.h>
+
+#define TAPCTL_COMM_RETRY_TIMEOUT 120
 
 extern int tap_ctl_debug;
 
@@ -101,7 +107,20 @@ int tap_ctl_open(const int id, const int minor, const char *params, int flags,
 int tap_ctl_close(const int id, const int minor, const int force,
 		  struct timeval *timeout);
 
+/**
+ * Pauses the VBD.
+ */
 int tap_ctl_pause(const int id, const int minor, struct timeval *timeout);
+
+/**
+ * Unpauses the VBD
+ *
+ * @param pid the process ID of the tapdisk
+ * @param flags TODO
+ * @param secondary TODO
+ * @param uuid
+ * @param new_params the new VDI to use (type:/path/to/file), optional
+ */
 int tap_ctl_unpause(const int id, const int minor, const char *params,
 		int flags, char *secondary);
 
@@ -109,5 +128,65 @@ ssize_t tap_ctl_stats(pid_t pid, int minor, char *buf, size_t size);
 int tap_ctl_stats_fwrite(pid_t pid, int minor, FILE *out);
 
 int tap_ctl_blk_major(void);
+
+/**
+ * Instructs a tapdisk to connect to the shared ring.
+ *
+ * @param pid the process ID of the tapdisk that should connect to the shared
+ * ring
+ * @param domid the domain ID of the guest VM
+ * @param devid the device ID
+ * @param grefs the grant references
+ * @param order number of grant references, expressed as a 2's order
+ * @param port event channel port
+ * @param proto the protocol: native (XENIO_BLKIF_PROTO_NATIVE),
+ * x86 (XENIO_BLKIF_PROTO_X86_32), or x64 (XENIO_BLKIF_PROTO_X86_64)
+ * @param pool a string used as an identifier to group two or more VBDs
+ * beloning to the same tapdisk process. For VBDs with the same pool name, a
+ * single event channel is used.
+ * @param minor
+ * @returns 0 on success, a negative error code otherwise
+ */
+int tap_ctl_connect_xenblkif(const pid_t pid, const domid_t domid, const int
+		devid, const grant_ref_t * grefs, const int order, const evtchn_port_t
+		port, int proto, const char *pool, const int minor);
+
+/**
+ * Instructs a tapdisk to disconnect from the shared ring.
+ *
+ * @param pid process ID of the tapdisk
+ * @param domid the ID of the guest VM
+ * @param devid the device ID of the virtual block device
+ * @param timeout timeout to wait, if NULL the function will wait indefinitely
+ * @returns 0 on success, a negative error code otherwise
+ */
+int tap_ctl_disconnect_xenblkif(const pid_t pid, const domid_t domid,
+        const int devid, struct timeval *timeout);
+
+/**
+ * Retrieves virtual disk information from a tapdisk.
+ *
+ * @param pid the process ID of the tapdisk process
+ * @param sectors output parameter that receives the number of sectors
+ * @param sector_size output parameter that receives the size of the sector
+ * @param info TODO ?
+ * @param minor
+ *
+ */
+int tap_ctl_info(pid_t pid, unsigned long long *sectors, unsigned int
+		*sector_size, unsigned int *info, const int minor);
+
+/**
+ * Parses a type:/path/to/file string, storing the type and path to the output
+ * parameters. Upon successful completion the caller must free @type and @path,
+ * otherwise their values are undefined.
+ *
+ * @param params type:/path/to/file to parse
+ * @param type output parameter the receives the type
+ * @param path output paramter that receives the path
+ * @returns 0 on success
+ */
+int
+parse_params(const char *params, char **type, char **path);
 
 #endif

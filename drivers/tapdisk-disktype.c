@@ -24,6 +24,7 @@
 #include <errno.h>
 
 #include "tapdisk-disktype.h"
+#include "util.h"
 
 static const disk_info_t aio_disk = {
        "aio",
@@ -188,8 +189,6 @@ const struct tap_disk *tapdisk_disk_drivers[] = {
 	[DISK_TYPE_NBD]         = &tapdisk_nbd,
 	0,
 };
-
-#define ARRAY_SIZE(_a) (sizeof(_a)/sizeof((_a)[0]))
 
 int
 tapdisk_disktype_find(const char *name)

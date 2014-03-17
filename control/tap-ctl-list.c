@@ -1,4 +1,4 @@
-/* 
+/*
  * Copyright (C) Citrix Systems Inc.
  *
  * This program is free software; you can redistribute it and/or
@@ -40,11 +40,11 @@ _tap_list_alloc(void)
 	if (!tl)
 		return NULL;
 
-	tl->pid   = -1;
+	tl->pid     = -1;
 	tl->minor = -1;
-	tl->state = -1;
-	tl->type  = NULL;
-	tl->path  = NULL;
+	tl->state   = -1;
+	tl->type    = NULL;
+	tl->path    = NULL;
 
 	INIT_LIST_HEAD(&tl->entry);
 
@@ -106,6 +106,10 @@ tap_ctl_list_free(struct list_head *list)
 		_tap_list_free(tl);
 }
 
+/**
+ * Returns a list running tapdisks. tapdisks are searched for by looking for
+ * their control socket.
+ */
 static int
 _tap_ctl_find_minors(struct list_head *list)
 {
@@ -225,6 +229,13 @@ fail:
 	goto out;
 }
 
+/**
+ * Retrieves all the VBDs a tapdisk is serving.
+ *
+ * @param pid the process ID of the tapdisk whose VBDs should be retrieved
+ * @param list output parameter that receives the list of VBD
+ * @returns 0 on success, an error code otherwise
+ */
 int
 _tap_ctl_list_tapdisk(pid_t pid, struct list_head *list)
 {
@@ -306,8 +317,10 @@ tap_ctl_list(struct list_head *list)
 		goto fail;
 
 	err = _tap_ctl_find_tapdisks(&tapdisks);
-	if (err < 0)
+	if (err < 0) {
+		EPRINTF("error finding tapdisks: %s\n", strerror(-err));
 		goto fail;
+	}
 
 	INIT_LIST_HEAD(list);
 
@@ -340,7 +353,7 @@ tap_ctl_list(struct list_head *list)
 	return 0;
 
 fail:
-	tap_ctl_list_free(list);
+		tap_ctl_list_free(list);
 
 	tap_ctl_list_free(&vbds);
 	tap_ctl_list_free(&tapdisks);

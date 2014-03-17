@@ -1,4 +1,4 @@
-/* 
+/*
  * Copyright (C) Citrix Systems Inc.
  *
  * This program is free software; you can redistribute it and/or
@@ -32,22 +32,45 @@ tap_ctl_pause(const int id, const int minor, struct timeval *timeout)
 {
 	int err;
 	tapdisk_message_t message;
+    struct timeval start, now, delta;
 
-	memset(&message, 0, sizeof(message));
-	message.type = TAPDISK_MESSAGE_PAUSE;
-	message.cookie = minor;
+	gettimeofday(&start, NULL);
+	do {
+		delta = (struct timeval){0, 0};
+		memset(&message, 0, sizeof(message));
+		message.type = TAPDISK_MESSAGE_PAUSE;
+		message.cookie = minor;
 
-	err = tap_ctl_connect_send_and_receive(id, &message, timeout);
+		err = tap_ctl_connect_send_and_receive(id, &message, timeout);
+		if (err)
+			return err;
+
+		if (message.type == TAPDISK_MESSAGE_PAUSE_RSP
+				|| message.type == TAPDISK_MESSAGE_ERROR) {
+
+			err = -message.u.response.error;
+
+			if (err != -EBUSY)
+				break;
+
+			sleep(1);
+
+			gettimeofday(&now, NULL);
+			timersub(&now, &start, &delta);
+
+		} else {
+			err = -EINVAL;
+			EPRINTF("got unexpected result '%s' from %d\n",
+					tapdisk_message_name(message.type), id);
+			break;
+		}
+    } while (delta.tv_sec < TAPCTL_COMM_RETRY_TIMEOUT);
+
+	if (delta.tv_sec >= TAPCTL_COMM_RETRY_TIMEOUT)
+		err = -ETIMEDOUT;
+
 	if (err)
-		return err;
-
-	if (message.type == TAPDISK_MESSAGE_PAUSE_RSP)
-		err = message.u.response.error;
-	else {
-		err = EINVAL;
-		EPRINTF("got unexpected result '%s' from %d\n",
-			tapdisk_message_name(message.type), id);
-	}
+		EPRINTF("pause failed: %s\n", strerror(-err));
 
 	return err;
 }

@@ -1,4 +1,4 @@
-/* 
+/*
  * Copyright (C) Citrix Systems Inc.
  *
  * This program is free software; you can redistribute it and/or
@@ -32,6 +32,7 @@
 #include <sys/stat.h>
 #include <sys/types.h>
 
+#include "debug.h"
 #include "libvhd.h"
 #include "tapdisk-blktap.h"
 #include "tapdisk-image.h"
@@ -43,6 +44,7 @@
 #include "tapdisk-stats.h"
 #include "tapdisk-storage.h"
 #include "tapdisk-nbdserver.h"
+#include "td-stats.h"
 #include "tapdisk-utils.h"
 
 /*
@@ -57,19 +59,6 @@
 #define INFO(_f, _a...)            tlog_syslog(TLOG_INFO, "vbd: " _f, ##_a)
 #define ERROR(_f, _a...)           tlog_syslog(TLOG_WARN, "vbd: " _f, ##_a)
 
-#if 1                                                                        
-#define ASSERT(p)							\
-	do {								\
-		if (!(p)) {						\
-			DPRINTF("Assertion '%s' failed, line %d, "	\
-				"file %s", #p, __LINE__, __FILE__);	\
-			abort();					\
-		}							\
-	} while (0)
-#else
-#define ASSERT(p) ((void)0)
-#endif 
-
 #define TD_VBD_EIO_RETRIES          10
 #define TD_VBD_EIO_SLEEP            1
 #define TD_VBD_WATCHDOG_TIMEOUT     10
@@ -78,7 +67,7 @@ static void tapdisk_vbd_complete_vbd_request(td_vbd_t *, td_vbd_request_t *);
 static int  tapdisk_vbd_queue_ready(td_vbd_t *);
 static void tapdisk_vbd_check_queue_state(td_vbd_t *);
 
-/* 
+/*
  * initialization
  */
 
@@ -943,8 +932,26 @@ tapdisk_vbd_resume(td_vbd_t *vbd, const char *name)
 		sleep(TD_VBD_EIO_SLEEP);
 	}
 
+	if (!err) {
+		td_disk_info_t disk_info;
+		err = tapdisk_vbd_get_disk_info(vbd, &disk_info);
+		if (err) {
+			EPRINTF("VBD %d failed to get disk info: %s\n", vbd->uuid,
+					strerror(-err));
+			goto resume_failed;
+		}
+		if (vbd->disk_info.size != disk_info.size
+				|| vbd->disk_info.sector_size != disk_info.sector_size
+				|| vbd->disk_info.info != disk_info.info) {
+			EPRINTF("VBD %d cannot change disk info\n", vbd->uuid);
+			err = -EMEDIUMTYPE;
+			goto resume_failed;
+		}
+	}
+resume_failed:
 	if (err) {
 		td_flag_set(vbd->state, TD_VBD_RESUME_FAILED);
+		tapdisk_vbd_close_vdi(vbd);
 		return err;
 	}
 	td_flag_clear(vbd->state, TD_VBD_RESUME_FAILED);
@@ -1696,6 +1703,14 @@ tapdisk_vbd_start_nbdserver(td_vbd_t *vbd)
 		return -1;
 	}
 
+	err = tapdisk_nbdserver_listen_unix(vbd->nbdserver);
+	if (err) {
+		tapdisk_nbdserver_free(vbd->nbdserver);
+		EPRINTF("failed to listen on the UNIX domain socket: %s\n",
+				strerror(-err));
+		return err;
+	}
+
 	return 0;
 }
 
@@ -1720,6 +1735,12 @@ tapdisk_vbd_stats(td_vbd_t *vbd, td_stats_t *st)
 	if (vbd->tap) {
 		tapdisk_stats_field(st, "tap", "{");
 		tapdisk_blktap_stats(vbd->tap, st);
+		tapdisk_stats_leave(st, '}');
+	}
+
+	if (vbd->sring) {
+		tapdisk_stats_field(st, "xenbus", "{");
+		tapdisk_xenblkif_stats(vbd->sring, st);
 		tapdisk_stats_leave(st, '}');
 	}
 

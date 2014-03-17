@@ -24,6 +24,7 @@
 #include <byteswap.h>
 
 #include "partition.h"
+#include "util.h"
 
 #if BYTE_ORDER == LITTLE_ENDIAN
   #define le16_to_cpu(x) (x)
@@ -36,8 +37,6 @@
   #define cpu_to_le16(x) bswap_16(x)
   #define cpu_to_le32(x) bswap_32(x)
 #endif
-
-#define ARRAY_SIZE(a) (sizeof(a) / sizeof(a)[0])
 
 void
 primary_partition_in(struct primary_partition *p)
