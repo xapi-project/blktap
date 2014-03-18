@@ -478,4 +478,29 @@ def ensure_daemon_running_ok(localiqn):
             set_current_initiator_name(localiqn)
             restart_daemon()
 
-        
+
+def get_iscsi_interfaces():
+    result = []
+    try:
+        # Get all configured iscsiadm interfaces
+        cmd = ["iscsiadm", "-m", "iface"]
+        (stdout,stderr)= exn_on_failure(cmd,
+                            "Failure occured querying iscsi daemon");
+        # Get the interface (first column) from a line such as default
+        # tcp,<empty>,<empty>,<empty>,<empty>
+        for line in stdout.split("\n"):
+            line_element = line.split(" ")
+            interface_name = line_element[0];
+            # ignore interfaces which aren't marked as starting with
+            # c_.
+            if len(line_element)==2 and interface_name[:2]=="c_":
+                result.append(interface_name)
+    except:
+        # Ignore exception from exn on failure, still return the default
+        # interface
+        pass
+    # In case there are no configured interfaces, still add the default
+    # interface
+    if len(result) == 0:
+        result.append("default")
+    return result

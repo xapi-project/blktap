@@ -298,7 +298,7 @@ class ISCSISR(SR.SR):
                         map = iscsilib.discovery(self.target, self.port,
                                                   self.chapuser, self.chappassword,
                                                   self.targetIQN,
-                                                  self._get_iscsi_interfaces())
+                                                  iscsilib.get_iscsi_interfaces())
                     if len(map) == 0:
                         self._scan_IQNs()
                         raise xs_errors.XenError('ISCSIDiscovery', 
@@ -486,7 +486,7 @@ class ISCSISR(SR.SR):
 
         map = iscsilib.discovery(self.target, self.port, self.chapuser,
                                  self.chappassword,
-                                 interfaceArray=self._get_iscsi_interfaces())
+                                 interfaceArray=iscsilib.get_iscsi_interfaces())
         map.append(("%s:%d" % (self.targetlist,self.port),"0","*"))
         self.print_entries(map)
 
@@ -703,33 +703,6 @@ class ISCSISR(SR.SR):
             return False
         regex = re.compile("LUN")
         return regex.search(s, 0)    
-        
-
-    def _get_iscsi_interfaces(self):
-        result = []
-        try:
-            # Get all configured iscsiadm interfaces
-            cmd = ["iscsiadm", "-m", "iface"]
-            (stdout,stderr)= iscsilib.exn_on_failure(cmd,
-                                                    "Failure occured querying iscsi daemon");
-            # Get the interface (first column) from a line such as default
-            # tcp,<empty>,<empty>,<empty>,<empty>
-            for line in stdout.split("\n"):
-                line_element = line.split(" ")
-                interface_name = line_element[0];
-                # ignore interfaces which aren't marked as starting with
-                # c_.
-                if len(line_element)==2 and interface_name[:2]=="c_":
-                    result.append(interface_name)
-        except:
-            # Ignore exception from exn on failure, still return the default
-            # interface
-            pass
-        # In case there are no configured interfaces, still add the default
-        # interface
-        if len(result) == 0:
-            result.append("default")
-        return result
 
 if __name__ == '__main__':
     SRCommand.run(ISCSISR, DRIVER_INFO)
