@@ -1331,7 +1331,7 @@ class LVHDVDI(VDI.VDI):
     def attach(self, sr_uuid, vdi_uuid):
         util.SMlog("LVHDVDI.attach for %s" % self.uuid)
         if self.sr.journaler.hasJournals(self.uuid):
-            raise xs_errors.XenError('VDIUnavailable', 
+            raise xs_errors.XenError('VDIUnavailable',
                     opterr='Interrupted operation detected on this VDI, '
                     'scan SR first to trigger auto-repair')
 
