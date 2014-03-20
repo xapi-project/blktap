@@ -18,6 +18,7 @@
 # LVM-based journaling
 
 import util
+import errno
 from srmetadata import open_file, close, get_min_blk_size_wrapper, \
     file_read_wrapper, file_write_wrapper
 
@@ -167,7 +168,7 @@ class Journaler:
                     continue
                 else:
                     raise
-            except CommandException, e:
+            except util.CommandException, e:
                 if e.code == errno.ENOENT:
                     util.SMlog("Ignoring ENOENT errors for journal %s" % lvName)
                     continue

@@ -1498,15 +1498,6 @@ class VDI(object):
             target.sr.srcmd.params = params
             driver_info = target.sr.srcmd.driver_info
             self.target = self.TargetDriver(target, driver_info)
-            try:
-                session = util.get_localhost_uuid()
-                session.xenapi.login_with_password('root', '')
-                self._updateCacheRecord(session, self.target.vdi.uuid,
-                        params.get(self.CONF_KEY_MODE_ON_BOOT),
-                        params.get(self.CONF_KEY_ALLOW_CACHING))
-                session.xenapi.logout()
-            except:
-                util.SMlog("Unable to obtain local XAPI session")
 
         try:
             util.fistpoint.activate_custom_fn(
