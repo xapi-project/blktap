@@ -825,7 +825,7 @@ class Tapdisk(object):
 
         try:
             util.SMlog('Attempt to deregister tapdisk with RRDD.')
-            pluginName = "tap" + str(self.pid) + "-" + str(self.minor)
+            pluginName = "tap-" + str(self.pid) + "-" + str(self.minor)
             proxy = ServerProxy('http://' + SOCKPATH, transport=UnixStreamTransport())
             proxy.Plugin.deregister({'uid': pluginName})
         except Exception, e:
