@@ -791,7 +791,8 @@ class create_snapshot(SnapParentThread):
                 if len(remainingSnaps) > 0:
                     DEBUG("Unable to service full snap request list: %s" % uuidlist)
                     raise Exception
-        except:
+        except Exception, e:
+            DEBUG("VSS snapshots failed for VM %s. err: %s" % (self.vm_uuid, e))
             CleanupSnapParentThread(self)
             xslib.setval(self.xsh, "%s/status"%self.base, "snapshots-failed")
             del self.xsh

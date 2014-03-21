@@ -50,9 +50,7 @@ def remove_xs_entry(h, dom_uuid, dom_path):
         try:
             h.rm('', path)
         except:
-            raise "Unable to remove xenstore-node"
-    else:
-        raise "Invalid dom and path specified"
+            raise Exception("Unable to remove xenstore-node")
 
 def set_watch(h, path):
     return h.watch(path, '')
