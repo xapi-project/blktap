@@ -169,8 +169,9 @@ class Journaler:
                 else:
                     raise
             except util.CommandException, e:
-                if e.code in [errno.ENOENT, errno.EIO]:
-                    util.SMlog("Ignoring EIO/ENOENT errors for journal %s" % lvName)
+                if e.code in [errno.ENOENT, errno.EIO, -1]:
+                    util.SMlog("Ignoring EIO/ENOENT/LV not activate errors for"
+                               "journal %s" % lvName)
                     continue
                 else:
                     raise
