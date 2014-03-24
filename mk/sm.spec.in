@@ -233,6 +233,9 @@ cp -f /etc/lvm/lvm.conf.orig /etc/lvm/lvm.conf || exit $?
 /opt/xensource/sm/snapwatchd/xslib.py
 /opt/xensource/sm/snapwatchd/xslib.pyc
 /opt/xensource/sm/snapwatchd/xslib.pyo
+/opt/xensource/sm/snapwatchd/snapdebug.py
+/opt/xensource/sm/snapwatchd/snapdebug.pyc
+/opt/xensource/sm/snapwatchd/snapdebug.pyo
 /opt/xensource/sm/sysdevice.py
 /opt/xensource/sm/sysdevice.pyc
 /opt/xensource/sm/sysdevice.pyo

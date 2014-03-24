@@ -29,10 +29,10 @@ import gc
 import xs_errors
 import glob
 import xmlrpclib
+import snapdebug
 from threading import Thread
 from xml.dom.minidom import parseString
 
-DEBUG_OUT = False
 LOGFILE = ""
 DAEMONISE = True
 MAXDEV = 20
@@ -52,10 +52,6 @@ def help():
     print "Usage: snapwatchd -f : run in foreground"
     print "                  -d : send debug output to SMlog"
     sys.exit(-1)
-    
-def DEBUG(str):
-    if DEBUG_OUT:
-        util.SMlog(str, ident="snapwatchd", priority=util.LOG_DEBUG)
 
 def match_complete(s):
     regex = re.compile("^snapshot")
@@ -73,7 +69,7 @@ def lock_vm(uuid):
                 f = open(file, 'r')
                 date = f.readline()
                 if (time.time() - float(date)) > MAX_LOCK_TIMEOUT:
-                    DEBUG("Lock expired, deleting")
+                    snapdebug.DEBUG("Lock expired, deleting")
                     os.unlink(file)
                     return True
             except:
@@ -89,10 +85,10 @@ def unlock_vm(uuid):
         pass
 
 def xenstore_watch_trigger(h):
-    DEBUG("Start XS Watch")
+    snapdebug.DEBUG("Start XS Watch")
     while True:
         (path, val) = h.read_watch()
-        DEBUG("XS-PATH -> %s" %path)
+        snapdebug.DEBUG("XS-PATH -> %s" %path)
         if not path:
             continue
         token = path.split("/")
@@ -103,10 +99,10 @@ def xenstore_watch_trigger(h):
             if status == None:
                 continue
             if match_complete(status):
-                DEBUG("COMPLETION STATUS: %s" % status)
+                snapdebug.DEBUG("COMPLETION STATUS: %s" % status)
                 continue
 
-            DEBUG("STATUS: %s" % status)
+            snapdebug.DEBUG("STATUS: %s" % status)
             if status == "create-snapshots":
                 th = create_snapshot(uuid)
                 th.start()
@@ -149,7 +145,7 @@ def _getDevUUIDlist(h,uuid):
     dirlist = xslib.dirlist(h, base)
     devs = []
     for i in dirlist:
-        DEBUG("DevUUID requested: %s" % i)
+        snapdebug.DEBUG("DevUUID requested: %s" % i)
         devs.append(i)
     return devs
 
@@ -163,7 +159,7 @@ def _getSnapUUIDlist(h,uuid):
             vdi_uuid = xslib.getval(h,path)
             if util.match_uuid(vdi_uuid):
                 vdi_uuids[vdi_uuid] = os.path.join(base,i)
-                DEBUG("Snap VDI UUID %s requested" % vdi_uuid)
+                snapdebug.DEBUG("Snap VDI UUID %s requested" % vdi_uuid)
         except:
             pass
     return vdi_uuids
@@ -194,7 +190,7 @@ def get_domid_for_vm_by_uuid(vm_uuid):
         domainLine = filter(lambda x: vm_uuid in x, domainLines)[0]
         return domainLine.split('|')[0].strip()
     except:
-        DEBUG("Couldn't get domain id for vm with uuid %s" % vm_uuid)
+        snapdebug.DEBUG("Couldn't get domain id for vm with uuid %s" % vm_uuid)
         raise
 
 def gen_asynch_snap(session, vmref, name, timeout):
@@ -209,7 +205,7 @@ def gen_asynch_snap(session, vmref, name, timeout):
             break
         time.sleep(1)
     if cancel:
-        DEBUG("Adding task to the cleanup queue...")
+        snapdebug.DEBUG("Adding task to the cleanup queue...")
         add_task_to_snapgc_queue(task, SNAP_GC_VM_TASK_TAG)
         return ''
     if session.xenapi.task.get_status(task) == "success":
@@ -222,19 +218,19 @@ def add_task_to_snapgc_queue(task, tag):
     try:
         # Add the task to the GC cleanup queue for cleanup later
         fileName = SNAP_GC_FILE_LOCATION + SNAP_GC_FILE_PREFIX + SNAP_GC_FIELD_SEPARATOR + tag + SNAP_GC_FIELD_SEPARATOR + task.split(":")[1];
-        DEBUG("Generated the task cleanup GC file name: %s" % fileName)
+        snapdebug.DEBUG("Generated the task cleanup GC file name: %s" % fileName)
         fileHandle = open(fileName, 'w');
         fileHandle.close();	    
     except:
         # Adding task to the GC cleanup failed. 
-        DEBUG("Failed to add task %s to the GC cleanup queue. Please cleanup the task manually." % task)
+        snapdebug.DEBUG("Failed to add task %s to the GC cleanup queue. Please cleanup the task manually." % task)
     
 def gen_asynch_vdi_snaps(session, vdilist, timeout):
     tasklist = []
     snapvdilist = []
     starttime = time.time()
     srvdireflist = {}
-    DEBUG("Entered gen_asynch_vdi_snaps with vdilist: %s" % vdilist)
+    snapdebug.DEBUG("Entered gen_asynch_vdi_snaps with vdilist: %s" % vdilist)
     
     try:
         # Create a SR based vdi ref list with first_task pointing to the 
@@ -255,7 +251,7 @@ def gen_asynch_vdi_snaps(session, vdilist, timeout):
             else:
                 srvdireflist[sr_uuid] = {'vdireflist': [vdi_ref], 'first_task': None}
                 srvdireflist[sr_uuid]['first_task'] = session.xenapi.Async.VDI.snapshot(vdi_ref)
-                DEBUG("===== task_id: %s vdi: %s" % (srvdireflist[sr_uuid]['first_task'], vdi))
+                snapdebug.DEBUG("===== task_id: %s vdi: %s" % (srvdireflist[sr_uuid]['first_task'], vdi))
                 tasklist.append(srvdireflist[sr_uuid]['first_task'])
 
         # Go through the list again to see if the snapshot tasks are completed,
@@ -265,16 +261,16 @@ def gen_asynch_vdi_snaps(session, vdilist, timeout):
         while srvdireflist:
             for k, v in srvdireflist.items():
                 if session.xenapi.task.get_status(v['first_task']) == "pending":
-                    DEBUG("Task %s still pending" % v['first_task'])
+                    snapdebug.DEBUG("Task %s still pending" % v['first_task'])
                 else:
                     # Check the previous snap status. If fail no point in 
                     # continuing, else invoke the next vdi snap if any
                     if session.xenapi.task.get_status(v['first_task']) != "success":
-                        DEBUG("Asynch task for VDI snapshot failed: %s" % v['first_task'])
+                        snapdebug.DEBUG("Asynch task for VDI snapshot failed: %s" % v['first_task'])
                         success = False
                         break
                     else:
-                        DEBUG("Task %s completed successfully" % v['first_task'])
+                        snapdebug.DEBUG("Task %s completed successfully" % v['first_task'])
                         # Delete SR node if current snap was the last one, else
                         # pop the first elem, invoke snapshot for the new first
                         if len(v['vdireflist']) == 1:
@@ -289,7 +285,7 @@ def gen_asynch_vdi_snaps(session, vdilist, timeout):
             curtime = time.time()
             if success == False or (curtime - starttime) >= timeout:
                 if success == True:
-                    DEBUG("Asynch snapshot of VDIs timed out.")
+                    snapdebug.DEBUG("Asynch snapshot of VDIs timed out.")
                 # Changing success for rolling back snapshot in case  of failure
                 success = False
                 break;
@@ -297,7 +293,7 @@ def gen_asynch_vdi_snaps(session, vdilist, timeout):
 
         # Roll back snapshot operations in case of failure
         if success == False:
-            DEBUG("Adding VDI snapshot tasks to the cleanup queue...")
+            snapdebug.DEBUG("Adding VDI snapshot tasks to the cleanup queue...")
             for task in tasklist:
                 add_task_to_snapgc_queue(task, SNAP_GC_VDI_TASK_TAG)
             return ''
@@ -308,7 +304,7 @@ def gen_asynch_vdi_snaps(session, vdilist, timeout):
                 snapvdilist.append(objectlist.childNodes[0].data)
             return snapvdilist
     except Exception, e:
-        DEBUG("There was an exception in creating asynch VDI snapshots: %s"  % str(e))
+        snapdebug.DEBUG("There was an exception in creating asynch VDI snapshots: %s"  % str(e))
     return ''
 
 
@@ -394,7 +390,7 @@ class SnapParentThread(Thread):
         Thread.__init__(self)
         self.lock = lock_vm(vm_uuid)
         if not self.lock:
-            DEBUG("Invalid Event, VM locked...")
+            snapdebug.DEBUG("Invalid Event, VM locked...")
             return
         self.vm_uuid = vm_uuid
         self.base = "/vss/%s" % vm_uuid
@@ -416,7 +412,7 @@ class SnapParentThread(Thread):
             pass
 
     def create_VBD_on_VM_for_VDI(self, vm_uuid, vdi_uuid):
-        DEBUG("Creating VBD in VM %s for VDI %s" % (vm_uuid, vdi_uuid))
+        snapdebug.DEBUG("Creating VBD in VM %s for VDI %s" % (vm_uuid, vdi_uuid))
 
         # get the OpaqueRefs we need
         vm_ref = self.session.xenapi.VM.get_by_uuid(vm_uuid)
@@ -425,9 +421,9 @@ class SnapParentThread(Thread):
         # find available device on VM to create VBD
         free_devs = self.session.xenapi.VM.get_allowed_VBD_devices(vm_ref)
         if not len(free_devs):
-            DEBUG("No free VBD devices found!")
+            snapdebug.DEBUG("No free VBD devices found!")
             raise Exception('No free VBD devices found!')
-        DEBUG("%s allowed VBD devices: (using device %s)" % (len(free_devs), free_devs[0]))
+        snapdebug.DEBUG("%s allowed VBD devices: (using device %s)" % (len(free_devs), free_devs[0]))
 
         # populate the VBD entry
         e = {'VM': vm_ref,
@@ -442,7 +438,7 @@ class SnapParentThread(Thread):
              'qos_algorithm_type': '',
              'qos_algorithm_params': {}}
 
-        DEBUG("Creating VBD: %s" % e)
+        snapdebug.DEBUG("Creating VBD: %s" % e)
         vbd = self.session.xenapi.VBD.create(e)
         return vbd
 
@@ -451,13 +447,13 @@ def CleanupSnapParentThread(thread):
     
     # clean session variable
     try:
-        DEBUG("Logging out from xapi session.")
+        snapdebug.DEBUG("Logging out from xapi session.")
         thread.session.xenapi.session.logout()
     except:
-        DEBUG("Logging out from xapi session failed. The session may have already been logged out.")    
+        snapdebug.DEBUG("Logging out from xapi session failed. The session may have already been logged out.")    
         
     # unlock vm
-    DEBUG("Unlocking the VM.")
+    snapdebug.DEBUG("Unlocking the VM.")
     unlock_vm(thread.vm_uuid)
     
 class destroy_snapshot(SnapParentThread):
@@ -480,13 +476,13 @@ class destroy_snapshot(SnapParentThread):
                     vdis = self.session.xenapi.VDI.get_snapshots(vdi_ref)
                     for v in vdis:
                         snapVDIs[v] = srcuuid
-                        DEBUG("Snap: %s for parent %s" % (v,srcuuid))
+                        snapdebug.DEBUG("Snap: %s for parent %s" % (v,srcuuid))
                 except:
                     pass
             idlist = _getDevUUIDlist(self.xsh,self.vm_uuid)
             for id in idlist:
                 try:
-                    DEBUG("Requesting VDI ref for [%s]" % id)
+                    snapdebug.DEBUG("Requesting VDI ref for [%s]" % id)
                     vdi_ref = self.session.xenapi.VDI.get_by_uuid(id)
                     if snapVDIs.has_key(vdi_ref) or self.snapmanager:
                         
@@ -501,13 +497,13 @@ class destroy_snapshot(SnapParentThread):
                             if len(disksMap) == 1 and vbd in disksMap:
                                 # this is the only disk on the VM and we are about the destroy the vdi
                                 # so delete this VM
-                                DEBUG("Destroying VM [%s]" % snapVM)
+                                snapdebug.DEBUG("Destroying VM [%s]" % snapVM)
                                 self.session.xenapi.VM.destroy(snapVM)
                         self.session.xenapi.VDI.destroy(vdi_ref)
-                        DEBUG("Deleted VDI [%s]" % id)                        
+                        snapdebug.DEBUG("Deleted VDI [%s]" % id)                        
                     else:
                         status = "snapshot-destroy-failed"
-                        DEBUG("Delete not allowed, VM doesn't own this snap [%s]" % id)
+                        snapdebug.DEBUG("Delete not allowed, VM doesn't own this snap [%s]" % id)
                 except:
                     status = "snapshot-destroy-failed"
         except:
@@ -534,7 +530,7 @@ class deport_snapshot(SnapParentThread):
                     pass
             idlist = _getDevUUIDlist(self.xsh,self.vm_uuid)
             for id in idlist:
-                DEBUG("Requesting VDI ref for [%s]" % id)
+                snapdebug.DEBUG("Requesting VDI ref for [%s]" % id)
                 vdi_ref = self.session.xenapi.VDI.get_by_uuid(id)
                 sr_ref = self.session.xenapi.VDI.get_SR(vdi_ref)
                 sr_uuid = self.session.xenapi.SR.get_uuid(sr_ref)
@@ -544,29 +540,29 @@ class deport_snapshot(SnapParentThread):
                     detached = False
                     for i in range(0,3):
                         try:
-                            DEBUG('Disabling snapshot marker for VDI: %s.'
+                            snapdebug.DEBUG('Disabling snapshot marker for VDI: %s.'
                                     % id)
                             try:
                                 _disable_snapshot_disk_header(sr_uuid, id)
                             except:
-                                DEBUG('Disabling snapshot disk marker failed.')
+                                snapdebug.DEBUG('Disabling snapshot disk marker failed.')
                                 raise
-                            DEBUG('Disabling snapshot disk marker complete.')
+                            snapdebug.DEBUG('Disabling snapshot disk marker complete.')
 
                             self.session.xenapi.VBD.unplug(V)
-                            DEBUG("Unplugged VBD: %s" % V)
+                            snapdebug.DEBUG("Unplugged VBD: %s" % V)
                         except XenAPI.Failure, e:
-                            DEBUG("VBD.unplug failed, attempt %d, error code %s" % (i,e.details[0]))
+                            snapdebug.DEBUG("VBD.unplug failed, attempt %d, error code %s" % (i,e.details[0]))
                             if e.details[0] != 'DEVICE_ALREADY_DETACHED':
                                 time.sleep(5)
                                 continue
-                            DEBUG("Safe failure, continuing")
+                            snapdebug.DEBUG("Safe failure, continuing")
                         detached = True
                         break
                     if not detached:
                         raise Exception
                     self.session.xenapi.VBD.destroy(V)
-                    DEBUG("Destroyed VBD: %s" % V)
+                    snapdebug.DEBUG("Destroyed VBD: %s" % V)
         except:
             pass
         CleanupSnapParentThread(self)
@@ -594,40 +590,40 @@ class import_snapshot(SnapParentThread):
                     vdis = self.session.xenapi.VDI.get_snapshots(vdi_ref)
                     for v in vdis:
                         snapVDIs[v] = srcuuid
-                        DEBUG("Snap: %s for parent %s" % (v,srcuuid))
+                        snapdebug.DEBUG("Snap: %s for parent %s" % (v,srcuuid))
                 except:
-                    DEBUG("Exception generating source to snapshot vdi mapping.")
+                    snapdebug.DEBUG("Exception generating source to snapshot vdi mapping.")
                     raise
             
             try:
                 idlist = _getDevUUIDlist(self.xsh,self.vm_uuid)
                 for id in idlist:
-                    DEBUG("Handling snap request for VDI %s" % id)
+                    snapdebug.DEBUG("Handling snap request for VDI %s" % id)
 
                     vdi_ref = self.session.xenapi.VDI.get_by_uuid(id)
                     sr_ref = self.session.xenapi.VDI.get_SR(vdi_ref)
                     sr_uuid = self.session.xenapi.SR.get_uuid(sr_ref)
 
-                    DEBUG('Enabling snapshot marker for VDI: %s on SR: %s.' %
+                    snapdebug.DEBUG('Enabling snapshot marker for VDI: %s on SR: %s.' %
                           (id, sr_uuid))
                     try:
                         try:
-                            DEBUG('Attaching VDI to dom0.')
+                            snapdebug.DEBUG('Attaching VDI to dom0.')
                             vbd_dom0 = self.create_VBD_on_VM_for_VDI(
                                 get_dom0_uuid(), id)
                             self.session.xenapi.VBD.plug(vbd_dom0)
                             _enable_snapshot_disk_header(sr_uuid, id)
                         except:
-                            DEBUG('Enabling snapshot disk marker failed.')
+                            snapdebug.DEBUG('Enabling snapshot disk marker failed.')
                             raise
                     finally:
                         try:
                             self.session.xenapi.VBD.unplug(vbd_dom0)
                             self.session.xenapi.VBD.destroy(vbd_dom0)
                         except:
-                            DEBUG('Could not cleanup dom0 VBD.')
+                            snapdebug.DEBUG('Could not cleanup dom0 VBD.')
 
-                    DEBUG('Enabling snapshot disk marker complete.')
+                    snapdebug.DEBUG('Enabling snapshot disk marker complete.')
 
                     if snapVDIs.has_key(vdi_ref) or self.snapmanager:
                         V = self.create_VBD_on_VM_for_VDI(self.vm_uuid, id)
@@ -635,20 +631,20 @@ class import_snapshot(SnapParentThread):
                         self.session.xenapi.VBD.plug(V)
 
                     else:
-                        DEBUG("Invalid request from this VM. It does not appear to own the snap.")
+                        snapdebug.DEBUG("Invalid request from this VM. It does not appear to own the snap.")
                         raise Exception
             except:
-                DEBUG("Exception while importing VBDs, cleaning up created VBDs.")
+                snapdebug.DEBUG("Exception while importing VBDs, cleaning up created VBDs.")
                 for snapVBD in snapVBDs:
                     try:
                         self.session.xenapi.VBD.unplug(snapVBD)
                     except:
-                        DEBUG("Could not unplug vbd %s" % snapVBD)
+                        snapdebug.DEBUG("Could not unplug vbd %s" % snapVBD)
                     
                     try:
                         self.session.xenapi.VBD.destroy(snapVBD)
                     except:
-                        DEBUG("Could not destroy vbd %s" % snapVBD)    
+                        snapdebug.DEBUG("Could not destroy vbd %s" % snapVBD)    
                 raise
         except:
             status = "snapshot-import-failed"
@@ -672,7 +668,7 @@ class create_snapshot(SnapParentThread):
             xs_flag = '/local/domain/%s/vm-data/allowvssprovider' % domid
             if xslib.xs_exists(self.xsh, xs_flag):
                 if xslib.getval(self.xsh, xs_flag) == 'None':
-                    DEBUG("VSS snapshots not allowed on VM %s." % self.vm_uuid)
+                    snapdebug.DEBUG("VSS snapshots not allowed on VM %s." % self.vm_uuid)
                     CleanupSnapParentThread(self)
                     xslib.setval(self.xsh, '%s/status' % self.base,
                                  'snapshots-failed')
@@ -704,35 +700,35 @@ class create_snapshot(SnapParentThread):
             if self.maketemplate and len(disklist) == len(uuidlist):
             # Insert VM.snapshot here
                 if not xslib.setval(self.xsh,'/vss/%s/snaptype' % self.vm_uuid,"vm"):
-                    DEBUG("Setval failed on key [%s] with val [%s]" % ('/vss/%s/snaptype' % self.vm_uuid,"vm"))
+                    snapdebug.DEBUG("Setval failed on key [%s] with val [%s]" % ('/vss/%s/snaptype' % self.vm_uuid,"vm"))
                 name = "Snapshot of %s [%s]" % (self.vm_uuid,date)
-                DEBUG("Generating snap: %s" % name)
+                snapdebug.DEBUG("Generating snap: %s" % name)
                 snapref = gen_asynch_snap(self.session,vmref,name,timeout)
                 if not len(snapref):
-                    DEBUG("Asynch VM.snapshot was timed out")
+                    snapdebug.DEBUG("Asynch VM.snapshot was timed out")
                     raise Exception
         
-                DEBUG("Snap generated %s" % snapref)
+                snapdebug.DEBUG("Snap generated %s" % snapref)
                 snapuuid = self.session.xenapi.VM.get_uuid(snapref)
-                DEBUG("Devlist returned: [%s]" % uuidlist)
+                snapdebug.DEBUG("Devlist returned: [%s]" % uuidlist)
 
                 # Generate a list of child snaps
                 snapVDIs = {}
                 for uuid in uuidlist:
-                    DEBUG("Looping through devlist: %s" % uuid)
+                    snapdebug.DEBUG("Looping through devlist: %s" % uuid)
                     try:
                         vdi_ref = self.session.xenapi.VDI.get_by_uuid(uuid)
                         vdis = self.session.xenapi.VDI.get_snapshots(vdi_ref)
                         for v in vdis:
                             v_uuid = self.session.xenapi.VDI.get_uuid(v)
                             snapVDIs[v_uuid] = uuid
-                            DEBUG("Snap: %s for parent %s" % (v_uuid,uuid))
+                            snapdebug.DEBUG("Snap: %s for parent %s" % (v_uuid,uuid))
                     except:
                         pass
 
                 # Now loop through the new snap VBDs
                 VBDs = self.session.xenapi.VM.get_VBDs(snapref)
-                DEBUG(VBDs)
+                snapdebug.DEBUG(VBDs)
                 for vbd in VBDs:
                     try:
                         vdi_ref = self.session.xenapi.VBD.get_VDI(vbd)
@@ -742,34 +738,34 @@ class create_snapshot(SnapParentThread):
                             path = "/vss/%s/snapshot/%s/id" % \
                                (self.vm_uuid, snapVDIs[devuuid])
                             if not xslib.setval(self.xsh,path,devuuid):
-                                DEBUG("Setval failed on key [%s] with val [%s]"\
+                                snapdebug.DEBUG("Setval failed on key [%s] with val [%s]"\
                                   % (path,devuuid))
                             else:
                                 uuidlist.remove(snapVDIs[devuuid])
-                                DEBUG("Setval succeeded on key [%s] with val [%s]"\
+                                snapdebug.DEBUG("Setval succeeded on key [%s] with val [%s]"\
                                       % (path,devuuid))
                     except:
                         pass
                 if len(uuidlist) > 0:
-                    DEBUG("Unable to find snap of VDIs: %s" % uuidlist)
+                    snapdebug.DEBUG("Unable to find snap of VDIs: %s" % uuidlist)
                     raise Exception
             else:
                 # Generate individual snaps
                 # First check if this is a legal operation
-                DEBUG("Generate individual snaps")
+                snapdebug.DEBUG("Generate individual snaps")
                 if not xslib.setval(self.xsh,'/vss/%s/snaptype' % self.vm_uuid,"vdi"):
-                    DEBUG("Setval failed on key [%s] with val [%s]" % ('/vss/%s/snaptype' % self.vm_uuid,"vdi"))
+                    snapdebug.DEBUG("Setval failed on key [%s] with val [%s]" % ('/vss/%s/snaptype' % self.vm_uuid,"vdi"))
                 for uuid in uuidlist:
                     if not uuid in disklist:
-                        DEBUG("Snap not permitted, VM does not own VDI")
+                        snapdebug.DEBUG("Snap not permitted, VM does not own VDI")
                         raise Exception
                 # Now try to snapshot the relevant VDIs
                 snapvdilist = gen_asynch_vdi_snaps(self.session, uuidlist, timeout)
                 if len(snapvdilist) == 0:
-                    DEBUG("Asynch VDI snapshots failed for this snapshot set.")
+                    snapdebug.DEBUG("Asynch VDI snapshots failed for this snapshot set.")
                     raise Exception
                 # Snapshots were successful now do the rest and quit
-                DEBUG("Asynch VDI Snapshots were successful now do the rest and quit.")
+                snapdebug.DEBUG("Asynch VDI Snapshots were successful now do the rest and quit.")
                 remainingSnaps =[]
                 for index in range(len(uuidlist)):
                     uuid = uuidlist[index]
@@ -779,20 +775,20 @@ class create_snapshot(SnapParentThread):
                     path = "/vss/%s/snapshot/%s/id" % \
                                (self.vm_uuid, uuid)
                     if not xslib.setval(self.xsh,'/vss/%s/vdisnap/%s' % (self.vm_uuid, uuid),snapuuid):
-                        DEBUG("Setval failed on key [%s] with val [%s]" % ('/vss/%s/vdisnap/%s' % (self.vm_uuid, uuid),snapuuid))
+                        snapdebug.DEBUG("Setval failed on key [%s] with val [%s]" % ('/vss/%s/vdisnap/%s' % (self.vm_uuid, uuid),snapuuid))
                     if not xslib.setval(self.xsh,path,snapuuid):
-                        DEBUG("Setval failed on key [%s] with val [%s]"\
+                        snapdebug.DEBUG("Setval failed on key [%s] with val [%s]"\
                               % (path,snapuuid))
                     else:
                         remainingSnaps.remove(uuid)
-                        DEBUG("Setval succeeded on key [%s] with val [%s]"\
+                        snapdebug.DEBUG("Setval succeeded on key [%s] with val [%s]"\
                               % (path,snapuuid))
                 
                 if len(remainingSnaps) > 0:
-                    DEBUG("Unable to service full snap request list: %s" % uuidlist)
+                    snapdebug.DEBUG("Unable to service full snap request list: %s" % uuidlist)
                     raise Exception
         except Exception, e:
-            DEBUG("VSS snapshots failed for VM %s. err: %s" % (self.vm_uuid, e))
+            snapdebug.DEBUG("VSS snapshots failed for VM %s. err: %s" % (self.vm_uuid, e))
             CleanupSnapParentThread(self)
             xslib.setval(self.xsh, "%s/status"%self.base, "snapshots-failed")
             del self.xsh
@@ -813,7 +809,7 @@ class create_snapshotinfo(SnapParentThread):
     def run(self):
         if not self.lock:
             return
-        DEBUG("Generating snapshotinfo")
+        snapdebug.DEBUG("Generating snapshotinfo")
 
         uuidlist = _getDevUUIDlist(self.xsh,self.vm_uuid)
         for uuid in uuidlist:
@@ -832,38 +828,38 @@ class create_snapshotinfo(SnapParentThread):
                 if XSdata.has_key('scsi/0x12/default'):
                     SCSIpath = os.path.join(xspath,"scsi/0x12/default")
                     if not xslib.setval(self.xsh,SCSIpath,XSdata['scsi/0x12/default']):
-                        DEBUG("Failed to setval %s: [%s]" % (SCSIpath,XSdata['scsi/0x12/default']))
+                        snapdebug.DEBUG("Failed to setval %s: [%s]" % (SCSIpath,XSdata['scsi/0x12/default']))
                 if XSdata.has_key('scsi/0x12/0x80'):
                     SCSIpath = os.path.join(xspath,"scsi/0x12/0x80")
                     xslib.setval(self.xsh,SCSIpath,XSdata['scsi/0x12/0x80'])
                     if not xslib.setval(self.xsh,SCSIpath,XSdata['scsi/0x12/0x80']):
-                        DEBUG("Failed to setval %s: [%s]" % (SCSIpath,XSdata['scsi/0x12/0x80']))
+                        snapdebug.DEBUG("Failed to setval %s: [%s]" % (SCSIpath,XSdata['scsi/0x12/0x80']))
                 if XSdata.has_key('scsi/0x12/0x83'):
                     SCSIpath = os.path.join(xspath,"scsi/0x12/0x83")
                     xslib.setval(self.xsh,SCSIpath,XSdata['scsi/0x12/0x83'])
                     if not xslib.setval(self.xsh,SCSIpath,XSdata['scsi/0x12/0x83']):
-                        DEBUG("Failed to setval %s: [%s]" % (SCSIpath,XSdata['scsi/0x12/0x83']))
+                        snapdebug.DEBUG("Failed to setval %s: [%s]" % (SCSIpath,XSdata['scsi/0x12/0x83']))
 
-                DEBUG('Disabling snapshot marker for VDI: %s on SR: %s.'
+                snapdebug.DEBUG('Disabling snapshot marker for VDI: %s on SR: %s.'
                         % (uuid, sr_uuid))
                 try:
                     _disable_snapshot_disk_header(sr_uuid, uuid)
                 except:
-                    DEBUG('Disabling snapshot disk marker failed.')
+                    snapdebug.DEBUG('Disabling snapshot disk marker failed.')
                     raise
-                DEBUG('Disabling snapshot disk marker complete.')
+                snapdebug.DEBUG('Disabling snapshot disk marker complete.')
 
                 detached = False
                 for i in range(0,3):
                     try:
                         self.session.xenapi.VBD.unplug(V)
                     except XenAPI.Failure, e:
-                        DEBUG("VBD.unplug failed, attempt %d, error code %s" % (i,e.details[0]))
+                        snapdebug.DEBUG("VBD.unplug failed, attempt %d, error code %s" % (i,e.details[0]))
                         if e.details[0] != 'DEVICE_ALREADY_DETACHED':
-                            DEBUG("Non-Safe failure, retrying after 5 secs")
+                            snapdebug.DEBUG("Non-Safe failure, retrying after 5 secs")
                             time.sleep(5)
                             continue
-                        DEBUG("Safe failure, continuing")
+                        snapdebug.DEBUG("Safe failure, continuing")
                     detached = True
                     break
                 if not detached:
@@ -899,24 +895,24 @@ class SnapGC(Thread):
                         status = session.xenapi.task.get_status(task);
 
                     except:
-                        DEBUG("Snapshot Cleanup - Getting status failed. Remove GC file: %s " % fileName)
+                        snapdebug.DEBUG("Snapshot Cleanup - Getting status failed. Remove GC file: %s " % fileName)
                         os.remove(fileName);
                         continue;
 
                     if status == "pending":
                         continue
                     elif status == "success":
-                        DEBUG("Snapshot Cleanup - Task %s was successful. Get task object id." % task)
+                        snapdebug.DEBUG("Snapshot Cleanup - Task %s was successful. Get task object id." % task)
                         taskObject = fileName.split(SNAP_GC_FIELD_SEPARATOR)[1];
                         dom = parseString(session.xenapi.task.get_result(task));
                         objectlist = dom.getElementsByTagName("value")[0];
                         if taskObject == SNAP_GC_VM_TASK_TAG:
                             snapvmuuid = session.xenapi.VM.get_uuid(objectlist.childNodes[0].data)
-                            DEBUG("Snapshot Cleanup - Snapshot VM id: %s" % snapvmuuid)
+                            snapdebug.DEBUG("Snapshot Cleanup - Snapshot VM id: %s" % snapvmuuid)
             
                             # Getting VBD list for this vm
                             VBDs = session.xenapi.VM.get_VBDs(objectlist.childNodes[0].data)
-                            DEBUG("Snapshot Cleanup - VBDs for the snapshot VM: [%s]" % VBDs)
+                            snapdebug.DEBUG("Snapshot Cleanup - VBDs for the snapshot VM: [%s]" % VBDs)
             
                             # For each VBD get the VDI and destroy both
                             for vbd in VBDs:
@@ -928,38 +924,38 @@ class SnapGC(Thread):
             
                                     # Destroy this VBD
                                     session.xenapi.VBD.destroy(vbd)
-                                    DEBUG("Snapshot Cleanup - Destroyed vbd: %s " % vbd)
+                                    snapdebug.DEBUG("Snapshot Cleanup - Destroyed vbd: %s " % vbd)
               
                                     # Destroy this VDI
                                     session.xenapi.VDI.destroy(vdi_ref)
-                                    DEBUG("Snapshot Cleanup - Destroyed vdi: %s " % vdi_ref)
+                                    snapdebug.DEBUG("Snapshot Cleanup - Destroyed vdi: %s " % vdi_ref)
                                 except:
-                                    DEBUG("Snapshot Cleanup - Cleanup failed for VBD: %s. Please cleanup the VBD and VDI manually. " % vbd)
+                                    snapdebug.DEBUG("Snapshot Cleanup - Cleanup failed for VBD: %s. Please cleanup the VBD and VDI manually. " % vbd)
                                     pass
             
                             # Now destroy the VM template.
                             session.xenapi.VM.destroy(objectlist.childNodes[0].data);
-                            DEBUG("Snapshot Cleanup - Destroyed the snapshot VM: %s" % objectlist.childNodes[0].data)
+                            snapdebug.DEBUG("Snapshot Cleanup - Destroyed the snapshot VM: %s" % objectlist.childNodes[0].data)
                             os.remove(fileName)
-                            DEBUG("Snapshot Cleanup - Deleted the snapshot GC file. %s" % fileName)
-                            DEBUG("Snapshot Cleanup - Stale snapshot VM %s was successfully cleaned up." % snapvmuuid)
+                            snapdebug.DEBUG("Snapshot Cleanup - Deleted the snapshot GC file. %s" % fileName)
+                            snapdebug.DEBUG("Snapshot Cleanup - Stale snapshot VM %s was successfully cleaned up." % snapvmuuid)
                         elif taskObject == SNAP_GC_VDI_TASK_TAG:
                             session.xenapi.VDI.destroy(objectlist.childNodes[0].data)
-                            DEBUG("Snapshot Cleanup - Destroyed vdi: %s " % objectlist.childNodes[0].data)
+                            snapdebug.DEBUG("Snapshot Cleanup - Destroyed vdi: %s " % objectlist.childNodes[0].data)
                             os.remove(fileName)
-                            DEBUG("Snapshot Cleanup - Deleted the snapshot GC file. %s" % fileName)
+                            snapdebug.DEBUG("Snapshot Cleanup - Deleted the snapshot GC file. %s" % fileName)
                     elif status == "cancelled":
-                        DEBUG("Snapshot Cleanup - The snapshot task has been cancelled. Just remove the GC node.")              
+                        snapdebug.DEBUG("Snapshot Cleanup - The snapshot task has been cancelled. Just remove the GC node.")              
                         os.remove(fileName)
-                        DEBUG("Snapshot Cleanup - Deleted the snapshot GC file. %s" % fileName)
+                        snapdebug.DEBUG("Snapshot Cleanup - Deleted the snapshot GC file. %s" % fileName)
                     elif status == "cancelling":
                         pass
                     else:               
                         # delete this snapGC node and exit
-                        DEBUG("Snapshot Cleanup - The snapshot task status is something other than pending or success, it may have failed. Remove GC node. %s" % fileName)
+                        snapdebug.DEBUG("Snapshot Cleanup - The snapshot task status is something other than pending or success, it may have failed. Remove GC node. %s" % fileName)
                         os.remove(fileName);
             except:
-                DEBUG("Snapshot Cleanup - There was an exception in the Snapshot GC thread." )
+                snapdebug.DEBUG("Snapshot Cleanup - There was an exception in the Snapshot GC thread." )
             if session != None:
                 session.xenapi.session.logout()
 
@@ -969,9 +965,9 @@ if len(sys.argv) > 1:
         if sys.argv[i] == "-f":
             DAEMONISE = False
         elif sys.argv[i] == "-d":
-            DEBUG_OUT = True
+            snapdebug.DEBUG_OUT = True
             try:
-                DEBUG("SNAPWATCHD - Daemon started (%s)" % VERSION)
+                snapdebug.DEBUG("SNAPWATCHD - Daemon started (%s)" % VERSION)
             except:
                 print "Logging failed"
                 help()
@@ -997,4 +993,4 @@ except:
     pass
 xslib.unwatch(h, "/vss")
 del h
-DEBUG("SNAPWATCHD - Daemon halted")
+snapdebug.DEBUG("SNAPWATCHD - Daemon halted")
