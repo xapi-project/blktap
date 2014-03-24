@@ -1285,7 +1285,16 @@ class VDI(object):
             util.SMlog("tap.deactivate: Shut down %s" % tapdisk)
 
     @classmethod
-    def tap_pause(cls, session, sr_uuid, vdi_uuid):
+    def tap_pause(cls, session, sr_uuid, vdi_uuid, failfast=False):
+        """
+        Pauses the tapdisk.
+
+        session: a XAPI session
+        sr_uuid: the UUID of the SR on which VDI lives
+        vdi_uuid: the UUID of the VDI to pause
+        failfast: controls whether the VDI lock should be acquired in a
+            non-blocking manner
+        """
         util.SMlog("Pause request for %s" % vdi_uuid)
         vdi_ref = session.xenapi.VDI.get_by_uuid(vdi_uuid)
         session.xenapi.VDI.add_to_sm_config(vdi_ref, 'paused', 'true')
@@ -1294,7 +1303,7 @@ class VDI(object):
             host_ref = key[len('host_'):]
             util.SMlog("Calling tap-pause on host %s" % host_ref)
             if not cls.call_pluginhandler(session, host_ref,
-                    sr_uuid, vdi_uuid, "pause"):
+                    sr_uuid, vdi_uuid, "pause", failfast):
                 # Failed to pause node
                 session.xenapi.VDI.remove_from_sm_config(vdi_ref, 'paused')
                 return False
@@ -1332,10 +1341,11 @@ class VDI(object):
 
     @classmethod
     def call_pluginhandler(cls, session, host_ref, sr_uuid, vdi_uuid, action,
-            secondary = None, activate_parents = False):
+            secondary = None, activate_parents = False, failfast=False):
         """Optionally, activate the parent LV before unpausing"""
         try:
-            args = {"sr_uuid":sr_uuid,"vdi_uuid":vdi_uuid}
+            args = {"sr_uuid":sr_uuid, "vdi_uuid":vdi_uuid,
+                    "failfast": str(failfast)}
             if secondary:
                 args["secondary"] = secondary
             if activate_parents:
@@ -1344,8 +1354,8 @@ class VDI(object):
                     host_ref, PLUGIN_TAP_PAUSE, action,
                     args)
             return ret == "True"
-        except:
-            util.logException("BLKTAP2:call_pluginhandler")
+        except Exception, e:
+            util.logException("BLKTAP2:call_pluginhandler %s" % e)
             return False
 
 
