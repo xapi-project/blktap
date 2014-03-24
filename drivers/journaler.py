@@ -163,14 +163,14 @@ class Journaler:
                         close(fd)
                         self.lvmCache.deactivateNoRefcount(lvName)
             except OSError, e:
-                if e.errno == errno.EIO:
-                    util.SMlog("Ignoring EIO errors for journal %s" % lvName)
+                if e.errno in [errno.EIO, errno.ENOENT]:
+                    util.SMlog("Ignoring EIO/ENOENT errors for journal %s" % lvName)
                     continue
                 else:
                     raise
             except util.CommandException, e:
-                if e.code == errno.ENOENT:
-                    util.SMlog("Ignoring ENOENT errors for journal %s" % lvName)
+                if e.code in [errno.ENOENT, errno.EIO]:
+                    util.SMlog("Ignoring EIO/ENOENT errors for journal %s" % lvName)
                     continue
                 else:
                     raise
