@@ -35,8 +35,10 @@ TAPDEV_PHYPATH_PFX = "/dev/sm/phy"
 def locking(excType, override=True):
     def locking2(op):
         def wrapper(self, *args):
-            if self.failfast and not self.lock.acquireNoblock():
-                raise xs_errors.XenError(excType, opterr='VDI already locked')
+            if self.failfast:
+                if not self.lock.acquireNoblock():
+                    raise xs_errors.XenError(excType,
+                            opterr='VDI already locked')
             else:
                 self.lock.acquire()
             try:
