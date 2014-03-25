@@ -124,7 +124,8 @@ class Journaler:
 
     def hasJournals(self, id):
         """Return True if there any journals for "id", False otherwise"""
-        entries = self._getAllEntries()
+        # Pass False as an argument to skip opening journal files
+        entries = self._getAllEntries(False)
         for type, ids in entries.iteritems():
             if ids.get(id):
                 return True
@@ -133,7 +134,7 @@ class Journaler:
     def _getNameLV(self, type, id, val = 1):
         return "%s%s%s%s%s" % (type, self.SEPARATOR, id, self.SEPARATOR, val)
 
-    def _getAllEntries(self):
+    def _getAllEntries(self, readFile = True):
         lvList = self.lvmCache.getTagged(self.LV_TAG)
         entries = dict()
         for lvName in lvList:
@@ -141,25 +142,26 @@ class Journaler:
             if len(parts) != 3:
                 raise JournalerException("Bad LV name: %s" % lvName)
             type, id, val = parts
-            # For clone and leaf journals, additional
-            # data is written inside file
-            # TODO: Remove dependency on journal type
-            if type == self.JRN_CLONE or type == self.JRN_LEAF:
-                fullPath = self.lvmCache._getPath(lvName)
-                self.lvmCache.activateNoRefcount(lvName,False)
-                fd = open_file(fullPath)
-                try:
+            if readFile:
+                # For clone and leaf journals, additional
+                # data is written inside file
+                # TODO: Remove dependency on journal type
+                if type == self.JRN_CLONE or type == self.JRN_LEAF:
+                    fullPath = self.lvmCache._getPath(lvName)
+                    self.lvmCache.activateNoRefcount(lvName,False)
+                    fd = open_file(fullPath)
                     try:
-                        min_block_size = get_min_blk_size_wrapper(fd)
-                        data = file_read_wrapper(fd, 0, min_block_size, min_block_size)
-                        length, val = data.split(" ", 1)
-                        val = val[:int(length)]
-                    except:
-                       raise JournalerException("Failed to read from journal %s" \
-                           % lvName)
-                finally:
-                    close(fd)
-                    self.lvmCache.deactivateNoRefcount(lvName)
+                        try:
+                            min_block_size = get_min_blk_size_wrapper(fd)
+                            data = file_read_wrapper(fd, 0, min_block_size, min_block_size)
+                            length, val = data.split(" ", 1)
+                            val = val[:int(length)]
+                        except:
+                            raise JournalerException("Failed to read from journal %s" \
+                                  % lvName)
+                    finally:
+                        close(fd)
+                        self.lvmCache.deactivateNoRefcount(lvName)
             if not entries.get(type):
                 entries[type] = dict()
             entries[type][id] = val

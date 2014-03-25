@@ -812,15 +812,15 @@ class LVHDSR(SR.SR):
             cleanup.gc_force(self.session, self.uuid)
             self.lvmCache.refresh()
 
-    def _handleInterruptedCloneOp(self, clonUuid, jval, forceUndo = False):
+    def _handleInterruptedCloneOp(self, origUuid, jval, forceUndo = False):
         """Either roll back or finalize the interrupted snapshot/clone
         operation. Rolling back is unsafe if the leaf VHDs have already been
         in use and written to. However, it is always safe to roll back while
         we're still in the context of the failed snapshot operation since the
         VBD is paused for the duration of the operation"""
-        util.SMlog("*** INTERRUPTED CLONE OP: for %s (%s)" % (clonUuid, jval))
+        util.SMlog("*** INTERRUPTED CLONE OP: for %s (%s)" % (origUuid, jval))
         lvs = lvhdutil.getLVInfo(self.lvmCache)
-        baseUuid, origUuid = jval.split("_")
+        baseUuid, clonUuid = jval.split("_")
 
         # is there a "base copy" VDI?
         if not lvs.get(baseUuid):
@@ -1615,8 +1615,8 @@ class LVHDVDI(VDI.VDI):
         clonUuid = ""
         if snapType == self.SNAPSHOT_DOUBLE:
             clonUuid = util.gen_uuid()
-        jval = "%s_%s" % (baseUuid, origUuid)
-        self.sr.journaler.create(self.JRN_CLONE, clonUuid, jval)
+        jval = "%s_%s" % (baseUuid, clonUuid)
+        self.sr.journaler.create(self.JRN_CLONE, origUuid, jval)
         util.fistpoint.activate("LVHDRT_clone_vdi_after_create_journal",self.sr.uuid)
 
         try:
@@ -1668,9 +1668,9 @@ class LVHDVDI(VDI.VDI):
 
         except (util.SMException, XenAPI.Failure), e:
             util.logException("LVHDVDI._snapshot")
-            self._failClone(clonUuid, jval, str(e))
+            self._failClone(origUuid, jval, str(e))
         util.fistpoint.activate("LVHDRT_clone_vdi_before_remove_journal",self.sr.uuid)
-        self.sr.journaler.remove(self.JRN_CLONE, clonUuid)
+        self.sr.journaler.remove(self.JRN_CLONE, origUuid)
 
         return self._finishSnapshot(snapVDI, snapVDI2, cloneOp, snapType)
 
