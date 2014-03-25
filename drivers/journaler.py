@@ -18,7 +18,6 @@
 # LVM-based journaling
 
 import util
-import errno
 from srmetadata import open_file, close, get_min_blk_size_wrapper, \
     file_read_wrapper, file_write_wrapper
 
@@ -145,36 +144,22 @@ class Journaler:
             # For clone and leaf journals, additional
             # data is written inside file
             # TODO: Remove dependency on journal type
-            try:
-                if type == self.JRN_CLONE or type == self.JRN_LEAF:
-                    fullPath = self.lvmCache._getPath(lvName)
-                    self.lvmCache.activateNoRefcount(lvName,False)
-                    fd = open_file(fullPath)
+            if type == self.JRN_CLONE or type == self.JRN_LEAF:
+                fullPath = self.lvmCache._getPath(lvName)
+                self.lvmCache.activateNoRefcount(lvName,False)
+                fd = open_file(fullPath)
+                try:
                     try:
-                        try:
-                            min_block_size = get_min_blk_size_wrapper(fd)
-                            data = file_read_wrapper(fd, 0, min_block_size, min_block_size)
-                            length, val = data.split(" ", 1)
-                            val = val[:int(length)]
-                        except:
-                            raise JournalerException("Failed to read from journal %s" \
-                                % lvName)
-                    finally:
-                        close(fd)
-                        self.lvmCache.deactivateNoRefcount(lvName)
-            except OSError, e:
-                if e.errno in [errno.EIO, errno.ENOENT]:
-                    util.SMlog("Ignoring EIO/ENOENT errors for journal %s" % lvName)
-                    continue
-                else:
-                    raise
-            except util.CommandException, e:
-                if e.code in [errno.ENOENT, errno.EIO, -1]:
-                    util.SMlog("Ignoring EIO/ENOENT/LV not activate errors for"
-                               "journal %s" % lvName)
-                    continue
-                else:
-                    raise
+                        min_block_size = get_min_blk_size_wrapper(fd)
+                        data = file_read_wrapper(fd, 0, min_block_size, min_block_size)
+                        length, val = data.split(" ", 1)
+                        val = val[:int(length)]
+                    except:
+                       raise JournalerException("Failed to read from journal %s" \
+                           % lvName)
+                finally:
+                    close(fd)
+                    self.lvmCache.deactivateNoRefcount(lvName)
             if not entries.get(type):
                 entries[type] = dict()
             entries[type][id] = val
