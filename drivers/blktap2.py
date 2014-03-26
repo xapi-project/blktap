@@ -1277,7 +1277,7 @@ class VDI(object):
             host_ref = key[len('host_'):]
             util.SMlog("Calling tap-pause on host %s" % host_ref)
             if not cls.call_pluginhandler(session, host_ref,
-                    sr_uuid, vdi_uuid, "pause", failfast):
+                    sr_uuid, vdi_uuid, "pause", failfast=failfast):
                 # Failed to pause node
                 session.xenapi.VDI.remove_from_sm_config(vdi_ref, 'paused')
                 return False
