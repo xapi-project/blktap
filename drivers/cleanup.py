@@ -491,9 +491,9 @@ class VDI:
             Util.log("Unpausing VDI %s" % self)
             self.unpause()
 
-    def pause(self, failfast=False):
+    def pause(self):
         if not blktap2.VDI.tap_pause(self.sr.xapi.session, self.sr.uuid,
-                self.uuid, failfast):
+                self.uuid):
             raise util.SMException("Failed to pause VDI %s" % self)
 
     def unpause(self):
@@ -1768,7 +1768,7 @@ class SR:
                 return False
 
             uuid = vdi.uuid
-            vdi.pause(failfast=True)
+            vdi.pause()
             try:
                 try:
                     # "vdi" object will no longer be valid after this call
