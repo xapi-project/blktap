@@ -1344,8 +1344,8 @@ class VDI(object):
                     host_ref, PLUGIN_TAP_PAUSE, action,
                     args)
             return ret == "True"
-        except:
-            util.logException("BLKTAP2:call_pluginhandler")
+        except Exception, e:
+            util.logException("BLKTAP2:call_pluginhandler %s" % e)
             return False
 
 
