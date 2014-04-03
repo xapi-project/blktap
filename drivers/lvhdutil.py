@@ -47,7 +47,7 @@ JRN_INFLATE = "inflate"
 
 JVHD_TAG = "jvhd"
 
-LOCK_RETRY_ATTEMPTS = 10
+LOCK_RETRY_ATTEMPTS = 20
 
 # ref counting for VDI's: we need a ref count for LV activation/deactivation
 # on the master
