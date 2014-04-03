@@ -1461,25 +1461,11 @@ class LVHDVDI(VDI.VDI):
         if self.sr.srcmd.params['driver_params'].get("mirror"):
             secondary = self.sr.srcmd.params['driver_params']["mirror"]
 
-        if not blktap2.VDI.tap_pause(self.session, sr_uuid, vdi_uuid):
-            raise util.SMException("failed to pause VDI %s" % vdi_uuid)
-
-        snapResult = None
-        try:
-            snapResult = self._snapshot(snapType)
-        except Exception, e1:
-            try:
-                blktap2.VDI.tap_unpause(self.session, sr_uuid, vdi_uuid, None)
-            except Exception, e2:
-                util.SMlog('WARNING: failed to clean up failed snapshot: '
-                        '%s (error ignored)' % e2)
-            raise e1
-
-        blktap2.VDI.tap_unpause(self.session, sr_uuid, vdi_uuid, secondary)
-        return snapResult
+        return self._do_snapshot(sr_uuid, vdi_uuid, snapType, secondary=secondary)
 
     def clone(self, sr_uuid, vdi_uuid):
-        return self._snapshot(self.SNAPSHOT_DOUBLE, True)
+        return self._do_snapshot(
+                     sr_uuid, vdi_uuid, self.SNAPSHOT_DOUBLE, cloneOp=True)
 
     def compose(self, sr_uuid, vdi1, vdi2):
         util.SMlog("LVHDSR.compose for %s -> %s" % (vdi2, vdi1))
@@ -1539,6 +1525,23 @@ class LVHDVDI(VDI.VDI):
     def _detach(self):
         self._chainSetActive(False, True)
         self.attached = False
+
+    def _do_snapshot(self, sr_uuid, vdi_uuid, snapType, cloneOp=False, secondary=None):
+        if not blktap2.VDI.tap_pause(self.session, sr_uuid, vdi_uuid):
+            raise util.SMException("failed to pause VDI %s" % vdi_uuid)
+        
+        snapResult = None
+        try:
+            snapResult = self._snapshot(snapType, cloneOp)
+        except Exception, e1:
+            try:
+                blktap2.VDI.tap_unpause(self.session, sr_uuid, vdi_uuid, None)
+            except Exception, e2:
+                util.SMlog('WARNING: failed to clean up failed snapshot: '
+                        '%s (error ignored)' % e2)
+                raise e1
+        blktap2.VDI.tap_unpause(self.session, sr_uuid, vdi_uuid, secondary)
+        return snapResult
 
     def _snapshot(self, snapType, cloneOp = False):
         util.SMlog("LVHDVDI._snapshot for %s (type %s)" % (self.uuid, snapType))
