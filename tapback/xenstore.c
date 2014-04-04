@@ -50,17 +50,15 @@ tapback_xs_vread(struct xs_handle * const xs, xs_transaction_t xst,
         return NULL;
 
     /*
-     * Make sure the returned string is NULL-terminated.
+     * According to the documentation of xs_read the string is NULL-terminated,
+     * though in the prototype there was code checking for that, so lets ensure
+     * this is correct.
      */
-    if ((len > 0 && data[len - 1] != '\0') || (len == 0 && data[0] != '\0')) {
-        char *_data = strndup(data, len);
-        if (!_data) {
-			err = errno;
-            /* TODO log error */
-            goto fail;
-		}
-        free(data);
-        data = _data;
+    if (data[len] != '\0') {
+        err = EINVAL;
+        WARN(NULL, "XenStore value '%.*s' is not NULL-terminated\n", len,
+                data);
+        goto fail;
     }
 
     /*
@@ -69,7 +67,8 @@ tapback_xs_vread(struct xs_handle * const xs, xs_transaction_t xst,
      */
     if ((unsigned int)(strchr(data, '\0') - data) != len) {
 		err = EINVAL;
-        WARN(NULL, "XenStore value '%.*s' contains extraneous NULLs\n", len,
+        /* TODO print extraneous '\0' characters */
+        WARN(NULL, "XenStore value '%s' contains extraneous NULLs\n", len,
                 data);
         goto fail;
 	}
