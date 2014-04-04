@@ -521,7 +521,7 @@ tapdisk_nbdserver_newclient_unix(event_id_t id, char mode, void *data)
 {
 	int new_fd = 0;
 	struct sockaddr_un remote;
-	size_t t = sizeof(remote);
+	socklen_t t = sizeof(remote);
 	td_nbdserver_t *server = data;
 
 	ASSERT(server);
