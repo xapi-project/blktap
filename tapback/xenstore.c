@@ -37,6 +37,7 @@ tapback_xs_vread(struct xs_handle * const xs, xs_transaction_t xst,
 
     if (vasprintf(&path, fmt, ap) == -1) {
 		err = errno;
+        WARN(NULL, "failed to vasprintf: %s\n", strerror(err));
         goto fail;
 	}
     ASSERT(path);
@@ -65,13 +66,11 @@ tapback_xs_vread(struct xs_handle * const xs, xs_transaction_t xst,
     /*
      * Make sure the returned string does not containing NULL characters, apart
      * from the NULL-terminating one.
-     *
-     * We should be checking for extraneous NULLs before duplicating the
-     * buffer, but this way logic is simplified.
      */
-    if ((unsigned int)(strrchr(data, '\0') - data) != len) {
+    if ((unsigned int)(strchr(data, '\0') - data) != len) {
 		err = EINVAL;
-        /* TODO log error */
+        WARN(NULL, "XenStore value '%.*s' contains extraneous NULLs\n", len,
+                data);
         goto fail;
 	}
 

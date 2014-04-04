@@ -505,9 +505,10 @@ tapback_backend_handle_otherend_watch(backend_t *backend,
 		}
     } else {
         state = strtol(s, &end, 0);
-        if (*end != 0 || end == s)
+        if (*end != 0 || end == s) {
+            WARN(device, "invalid XenBus state '%s'\n", s);
             err = EINVAL;
-        else
+        } else
             err = frontend_changed(device, state);
     }
 
