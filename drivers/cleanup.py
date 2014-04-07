@@ -166,8 +166,9 @@ class Util:
                     resultFlag.set("success")
                 else:
                     resultFlag.set("failure")
-            except:
+            except Exception, e:
                 resultFlag.set("failure")
+                Util.log("Child process failed with : (%s)" % e)
             os._exit(0)
     runAbortable = staticmethod(runAbortable)
 
@@ -754,6 +755,7 @@ class VDI:
             # in a separate process context and errors will not be caught and
             # reported by anyone.
             try:
+                # Report coalesce errors back to user via XC
                 VDI._reportCoalesceError(vdi, ce)
             except Exception, e:
                 util.SMlog('failed to create XenCenter message: %s' % e)
@@ -765,8 +767,26 @@ class VDI:
     def _coalesceVHD(self, timeOut):
         Util.log("  Running VHD coalesce on %s" % self)
         abortTest = lambda:IPCFlag(self.sr.uuid).test(FLAG_TYPE_ABORT)
-        Util.runAbortable(lambda: VDI._doCoalesceVHD(self), None,
-                self.sr.uuid, abortTest, VDI.POLL_INTERVAL, timeOut)
+        try:
+            Util.runAbortable(lambda: VDI._doCoalesceVHD(self), None,
+                    self.sr.uuid, abortTest, VDI.POLL_INTERVAL, timeOut)
+        except:
+            #exception at this phase could indicate a failure in vhd coalesce
+            # or a kill of vhd coalesce by runAbortable due to  timeOut
+            # Try a repair and reraise the exception
+            parent = ""
+            try:
+                parent = vhdutil.getParent(self.path, lambda x: x.strip())
+                # Repair error is logged and ignored. Error reraised later
+                util.SMlog('Coalesce failed on %s, attempting repair on ' \
+                           'parent %s' % (self.uuid, parent))
+                vhdutil.repair(parent)
+            except Exception, e:
+                util.SMlog('(error ignored) Failed to repair parent %s ' \
+                           'after failed coalesce on %s, err: %s' % 
+                           (parent, self.path, e))
+            raise
+
         util.fistpoint.activate("LVHDRT_coalescing_VHD_data",self.sr.uuid)
 
     def _relinkSkip(self):

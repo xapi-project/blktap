@@ -340,7 +340,6 @@ def setInnerNodeRefcounts(lvmCache, srUuid):
 
     return pathsNotInUse
 
-
 if __name__ == "__main__":
     # used by the master changeover script
     from lvmcache import LVMCache

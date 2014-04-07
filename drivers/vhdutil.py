@@ -335,3 +335,7 @@ def _getVHDParentNoCheck(path):
                 vdi = vdi[1:]
             return vdi
     return None
+def repair(path):
+    """Repairs the VHD."""
+    ioretry([VHD_UTIL, 'repair', '-n', path])
+
