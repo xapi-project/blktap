@@ -116,7 +116,7 @@ tapback_backend_destroy_device(vbd_t * const device)
 static inline int
 find_tapdisk(const int minor, tap_list_t *tap)
 {
-    struct list_head list;
+    LIST_HEAD(list);
     tap_list_t *_tap;
     int err;
 
@@ -131,7 +131,7 @@ find_tapdisk(const int minor, tap_list_t *tap)
         tap_list_for_each_entry(_tap, &list) {
             if (_tap->minor == minor) {
                 err = 0;
-                memcpy(tap, _tap, sizeof(tap));
+                memcpy(tap, _tap, sizeof(*tap));
                 break;
             }
         }
@@ -262,6 +262,11 @@ physical_device(vbd_t *device) {
         goto out;
     }
     p = strtok(NULL, ":");
+	if (unlikely(!p)) {
+        WARN(device, "malformed physical device '%s'\n", s);
+        err = -EINVAL;
+        goto out;
+	}
     minor = strtol(p, &end, 16);
     if (*end != 0 || end == p) {
         WARN(device, "malformed physical device '%s'\n", s);
@@ -730,7 +735,7 @@ tapback_backend_scan(backend_t *backend)
         free(path);
 
         if (!sub) {
-            WARN(NULL, "error listing %s: %s\n", path, strerror(-err));
+            WARN(NULL, "error listing domain %d: %s\n", domid, strerror(-err));
             goto out;
         }
 
@@ -779,6 +784,11 @@ tapback_backend_handle_backend_watch(backend_t *backend,
      */
 
     s = strtok(_path, "/");
+	if (unlikely(!s)) {
+		WARN(NULL, "invalid path %s\n", _path);
+		err = -EINVAL;
+		goto out;
+	}
     ASSERT(!strcmp(s, XENSTORE_BACKEND));
     if (!(s = strtok(NULL, "/"))) {
         err = tapback_backend_scan(backend);
