@@ -895,6 +895,9 @@ tapdisk_vbd_pause(td_vbd_t *vbd)
 	if (vbd->nbdserver)
 		tapdisk_nbdserver_pause(vbd->nbdserver);
 
+	if (vbd->sring)
+		tapdisk_server_mask_event(tapdisk_xenblkif_event_id(vbd->sring), 1);
+
 	err = tapdisk_vbd_quiesce_queue(vbd);
 	if (err)
 		return err;
@@ -965,6 +968,9 @@ resume_failed:
 
 	if (vbd->nbdserver)
 		tapdisk_nbdserver_unpause(vbd->nbdserver);
+
+	if (vbd->sring)
+		tapdisk_server_mask_event(tapdisk_xenblkif_event_id(vbd->sring), 0);
 
 	DBG(TLOG_DBG, "state checked\n");
 

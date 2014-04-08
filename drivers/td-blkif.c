@@ -238,3 +238,9 @@ fail:
 
     return err;
 }
+
+event_id_t
+tapdisk_xenblkif_event_id(const struct td_xenblkif *blkif)
+{
+	return blkif->ctx->ring_event;
+}
