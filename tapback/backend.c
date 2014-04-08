@@ -654,6 +654,81 @@ tapback_backend_probe_device(backend_t *backend,
     return err;
 }
 
+static int
+tapback_domain_scan(backend_t *backend, const domid_t domid)
+{
+	char *path = NULL, **sub = NULL;
+	int err = 0;
+	unsigned i, n = 0;
+
+	ASSERT(backend);
+
+	/*
+	 * Read the devices of this domain.
+	 */
+	if (asprintf(&path, "%s/%d", backend->path, domid) == -1) {
+		/* TODO log error */
+		err = -errno;
+		goto out;
+	}
+	sub = xs_directory(backend->xs, XBT_NULL, path, &n);
+	err = -errno;
+	free(path);
+
+	if (!sub)
+		goto out;
+
+	/*
+	 * Probe each device.
+	 */
+	for (i = 0; i < n; i++) {
+		/*
+		 * FIXME check that there is no compoment.
+		 */
+		err = tapback_backend_probe_device(backend, domid, sub[i], NULL);
+		if (err) {
+			WARN(NULL, "%d/%s: error probing device %s of domain %d: %s\n",
+					domid, sub[i], strerror(-err));
+			goto out;
+		}
+	}
+
+out:
+	free(sub);
+	return err;
+}
+
+static int
+tapback_probe_domain(backend_t *backend, const domid_t domid)
+{
+    vbd_t *device = NULL, *next = NULL;
+	int err;
+
+	ASSERT(backend);
+
+	/*
+     * scrap all non-existent devices
+     * TODO Why do we do this? Is this costly?
+     */
+	tapback_backend_for_each_device(backend, device, next) {
+		if (device->domid == domid) {
+			err = tapback_backend_probe_device(backend, device->domid,
+					device->name, NULL);
+			if (err) {
+				WARN(device, "error probing device : %s\n", strerror(-err));
+				/* TODO Should we fail in this case of keep probing? */
+				goto out;
+			}
+		}
+	}
+
+	err = tapback_domain_scan(backend, domid);
+	if (err == -ENOENT)
+		err = 0;
+out:
+	return err;
+}
+
 /**
  * Scans XenStore for all blktap3 devices and probes each one of them.
  *
@@ -665,7 +740,7 @@ static int
 tapback_backend_scan(backend_t *backend)
 {
     vbd_t *device = NULL, *next = NULL;
-    unsigned int i = 0, j = 0, n = 0, m = 0;
+    unsigned int i = 0, n = 0;
     char **dir = NULL;
     int err = 0;
 
@@ -677,19 +752,18 @@ tapback_backend_scan(backend_t *backend)
      * scrap all non-existent devices
      * TODO Why do we do this? Is this costly?
      */
-
-    tapback_backend_for_each_device(backend, device, next) {
-        /*
-         * FIXME check that there is no compoment.
-         */
-        err = tapback_backend_probe_device(backend, device->domid,
+	tapback_backend_for_each_device(backend, device, next) {
+		/*
+		 * FIXME check that there is no compoment.
+		 */
+		err = tapback_backend_probe_device(backend, device->domid,
 				device->name, NULL);
-        if (err) {
-            WARN(device, "error probing device : %s\n", strerror(-err));
-            /* TODO Should we fail in this case of keep probing? */
-            goto out;
-        }
-    }
+		if (err) {
+			WARN(device, "error probing device : %s\n", strerror(-err));
+			/* TODO Should we fail in this case of keep probing? */
+			goto out;
+		}
+	}
 
     /*
      * probe the new ones
@@ -712,7 +786,7 @@ tapback_backend_scan(backend_t *backend)
     DBG(NULL, "probing %d domains\n", n);
 
     for (i = 0; i < n; i++) { /* for each domain */
-        char *path = NULL, **sub = NULL, *end = NULL;
+        char *end = NULL;
         domid_t domid = 0;
 
         /*
@@ -722,39 +796,10 @@ tapback_backend_scan(backend_t *backend)
         if (*end != 0 || end == dir[i])
             continue;
 
-        /*
-         * Read the devices of this domain.
-         */
-        if (asprintf(&path, "%s/%d", backend->path, domid) == -1) {
-            /* TODO log error */
-            err = -errno;
-            goto out;
-        }
-        sub = xs_directory(backend->xs, XBT_NULL, path, &m);
-        err = -errno;
-        free(path);
-
-        if (!sub) {
-            WARN(NULL, "error listing domain %d: %s\n", domid, strerror(-err));
-            goto out;
-        }
-
-        /*
-         * Probe each device.
-         */
-        for (j = 0; j < m; j++) {
-            /*
-             * FIXME check that there is no compoment.
-             */
-            err = tapback_backend_probe_device(backend, domid, sub[j], NULL);
-            if (err) {
-                WARN(NULL, "%d/%s: error probing device %s of domain %d: %s\n",
-                        domid, sub[j], strerror(-err));
-                goto out;
-            }
-        }
-
-        free(sub);
+		err = tapback_domain_scan(backend, domid);
+		if (err)
+			WARN(NULL, "error scanning domain %d: %s\n", domid,
+					strerror(-err));
     }
 
 out:
@@ -808,13 +853,9 @@ tapback_backend_handle_backend_watch(backend_t *backend,
         goto out;
     }
 
-    /*
-     * TODO Optimisation: since we know which domain changed, we don't have to
-     * scan the whole thing. Add the domid as an optional parameter to
-     * tapback_backend_scan.
-     */
     if (!(name = strtok(NULL, "/"))) {
-        err = tapback_backend_scan(backend);
+		DBG(NULL, "probing domain %d\n", domid);
+        err = tapback_probe_domain(backend, domid);
         goto out;
     }
 
