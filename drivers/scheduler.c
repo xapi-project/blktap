@@ -55,7 +55,20 @@ typedef struct event {
 	event_id_t                   id;
 
 	int                          fd;
+
+	/**
+	 * Timeout in number of seconds, relative to the time of the registration
+	 * of the event. Use the special value (time_t)-1 to indicate infinity.
+	 */
 	int                          timeout;
+
+	/**
+	 * Expiration date in number of seconds after Epoch. Once current time
+	 * becomes larger than or equal to this value, the event is considered
+	 * expired and can be run. If event.timeout is set to infinity, this member
+	 * should not be used.
+	 *
+	 */
 	int                          deadline;
 
 	event_cb_t                   cb;
@@ -99,7 +112,8 @@ scheduler_prepare_events(scheduler_t *s)
 			s->max_fd = MAX(event->fd, s->max_fd);
 		}
 
-		if (event->mode & SCHEDULER_POLL_TIMEOUT) {
+		if (event->mode & SCHEDULER_POLL_TIMEOUT
+				&& event->timeout != (time_t) - 1) {
 			diff = event->deadline - now.tv_sec;
 			if (diff > 0)
 				s->timeout = MIN(s->timeout, diff);
@@ -148,6 +162,10 @@ scheduler_check_fd_events(scheduler_t *s, int nfds)
 	return nfds;
 }
 
+/**
+ * Checks all scheduler events whose mode is set to SCHEDULER_POLL_TIMEOUT
+ * whether their time out has elapsed, and if so it makes them runnable.
+ */
 static void
 scheduler_check_timeouts(scheduler_t *s)
 {
@@ -166,6 +184,9 @@ scheduler_check_timeouts(scheduler_t *s)
 			continue;
 
 		if (!(event->mode & SCHEDULER_POLL_TIMEOUT))
+			continue;
+
+		if (event->timeout == (time_t) - 1)
 			continue;
 
 		if (event->deadline > now.tv_sec)
@@ -189,7 +210,8 @@ scheduler_check_events(scheduler_t *s, int nfds)
 static void
 scheduler_event_callback(event_t *event, char mode)
 {
-	if (event->mode & SCHEDULER_POLL_TIMEOUT) {
+	if (event->mode & SCHEDULER_POLL_TIMEOUT
+			&& event->timeout != (time_t) - 1) {
 		struct timeval now;
 		gettimeofday(&now, NULL);
 		event->deadline = now.tv_sec + event->timeout;
@@ -247,7 +269,11 @@ scheduler_register_event(scheduler_t *s, char mode, int fd,
 	event->mode     = mode;
 	event->fd       = fd;
 	event->timeout  = timeout;
-	event->deadline = now.tv_sec + timeout;
+	if (event->timeout == (time_t) - 1)
+		/* initialise it to something meaningful */
+		event->deadline = (time_t) - 1;
+	else
+		event->deadline = now.tv_sec + timeout;
 	event->cb       = cb;
 	event->private  = private;
 	event->id       = s->uuid++;
@@ -378,3 +404,33 @@ scheduler_initialize(scheduler_t *s)
 
 	INIT_LIST_HEAD(&s->events);
 }
+
+int
+scheduler_event_set_timeout(scheduler_t *sched, event_id_t event_id, int timeo)
+{
+	event_t *event;
+
+	ASSERT(sched);
+
+	if (!event_id || timeo < 0)
+		return -EINVAL;
+
+	scheduler_for_each_event(sched, event) {
+		if (event->id == event_id) {
+			if (!(event->mode & SCHEDULER_POLL_TIMEOUT))
+				return -EINVAL;
+			event->timeout = timeo;
+			if (event->timeout == (time_t) - 1)
+				event->deadline = (time_t) - 1;
+			else {
+				struct timeval now;
+				gettimeofday(&now, NULL);
+				event->deadline = now.tv_sec + event->timeout;
+			}
+			return 0;
+		}
+	}
+
+	return -ENOENT;
+}
+

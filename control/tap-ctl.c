@@ -920,6 +920,14 @@ main(int argc, char *argv[])
 	const char *msg;
 	struct command *cmd;
 	int cargc, i, cnt, ret;
+	char *path = NULL, *prgname = NULL;
+
+	path = strdup(argv[0]);
+	if (path)
+		prgname = basename(path);
+	else
+		prgname = "tap-ctl";
+	openlog(prgname, LOG_PID, LOG_USER);
 
 #ifdef CORE_DUMP
 	#include <sys/resource.h>
@@ -970,6 +978,7 @@ main(int argc, char *argv[])
 	ret = cmd->func(cnt, cargv);
 
 	free(cargv);
+	free(path);
 
 	if (ret)
 		/* FIXME errors are not always returned as negative numbers */
