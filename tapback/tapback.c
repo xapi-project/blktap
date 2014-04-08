@@ -111,7 +111,7 @@ tapback_read_watch(backend_t *backend)
      * the back-end one.
      */
     if (!strcmp(token, BLKTAP3_FRONTEND_TOKEN)) {
-        err = tapback_backend_handle_otherend_watch(backend, path);
+        err = -tapback_backend_handle_otherend_watch(backend, path);
     } else if (!strcmp(token, backend->token)) {
         err = -tapback_backend_handle_backend_watch(backend, path);
     } else {

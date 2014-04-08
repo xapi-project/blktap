@@ -377,7 +377,7 @@ tapback_xs_read(struct xs_handle * const xs, xs_transaction_t xst,
  * change occured on the state, otherwise immediatelly return.
  *
  * @param path the front-end's XenStore path that changed
- * @returns 0 on success, an error code otherwise
+ * @returns 0 on success, a positive error code otherwise
  *
  * XXX Only called by tapback_read_watch
  */
@@ -395,7 +395,7 @@ tapback_backend_handle_otherend_watch(backend_t *backend,
  * is probed.
  *
  * @param path the back-end's XenStore path that changed @returns 0 on success,
- * an error code otherwise
+ * a positive error code otherwise
  *
  * XXX Only called by tapback_read_watch.
  */
