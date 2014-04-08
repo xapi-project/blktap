@@ -178,4 +178,7 @@ tapdisk_xenblkif_destroy(struct td_xenblkif * blkif);
 struct td_xenblkif *
 tapdisk_xenblkif_find(const domid_t domid, const int devid);
 
+event_id_t
+tapdisk_xenblkif_event_id(const struct td_xenblkif *blkif);
+
 #endif /* __TD_BLKIF_H__ */
