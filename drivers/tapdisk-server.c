@@ -439,3 +439,9 @@ tapdisk_server_run()
 
 	return 0;
 }
+
+int
+tapdisk_server_event_set_timeout(event_id_t event_id, int timeo) {
+	return scheduler_event_set_timeout(&server.scheduler, event_id, timeo);
+}
+

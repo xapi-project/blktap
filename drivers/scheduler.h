@@ -59,5 +59,6 @@ void scheduler_unregister_event(scheduler_t *,  event_id_t);
 void scheduler_mask_event(scheduler_t *, event_id_t, int masked);
 void scheduler_set_max_timeout(scheduler_t *, int);
 int scheduler_wait_for_events(scheduler_t *);
-
+int scheduler_event_set_timeout(scheduler_t *sched, event_id_t event_id,
+		int timeo);
 #endif

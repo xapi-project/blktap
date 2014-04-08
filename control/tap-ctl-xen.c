@@ -43,59 +43,31 @@ tap_ctl_connect_xenblkif(const pid_t pid, const domid_t domid, const int devid,
 {
     tapdisk_message_t message;
     int i, err;
-    struct timeval start, now, delta;
 
-	gettimeofday(&start, NULL);
-	do {
-		delta = (struct timeval){0, 0};
-		memset(&message, 0, sizeof(message));
-		message.type = TAPDISK_MESSAGE_XENBLKIF_CONNECT;
-		message.cookie = minor;
+	memset(&message, 0, sizeof(message));
+    message.type = TAPDISK_MESSAGE_XENBLKIF_CONNECT;
+    message.cookie = minor;
 
-		message.u.blkif.domid = domid;
-		message.u.blkif.devid = devid;
-		for (i = 0; i < 1 << order; i++)
-			message.u.blkif.gref[i] = grefs[i];
-		message.u.blkif.order = order;
-		message.u.blkif.port = port;
-		message.u.blkif.proto = proto;
-		if (pool)
-			strncpy(message.u.blkif.pool, pool, sizeof(message.u.blkif.pool));
-		else
-			message.u.blkif.pool[0] = 0;
+    message.u.blkif.domid = domid;
+    message.u.blkif.devid = devid;
+    for (i = 0; i < 1 << order; i++)
+        message.u.blkif.gref[i] = grefs[i];
+    message.u.blkif.order = order;
+    message.u.blkif.port = port;
+    message.u.blkif.proto = proto;
+    if (pool)
+        strncpy(message.u.blkif.pool, pool, sizeof(message.u.blkif.pool));
+    else
+        message.u.blkif.pool[0] = 0;
 
-		err = tap_ctl_connect_send_and_receive(pid, &message, NULL);
-		if (err)
-			goto out;
-
-		if (message.type == TAPDISK_MESSAGE_XENBLKIF_CONNECT_RSP
-				|| message.type == TAPDISK_MESSAGE_ERROR) {
-
+    err = tap_ctl_connect_send_and_receive(pid, &message, NULL);
+    if (err || message.type == TAPDISK_MESSAGE_ERROR) {
+		if (!err)
 			err = -message.u.response.error;
-
-			if (err != -EBUSY)
-				break;
-
-			sleep(1);
-
-			gettimeofday(&now, NULL);
-			timersub(&now, &start, &delta);
-
-		} else {
-			EPRINTF("got unexpected result '%s' from tapdisk[%d]\n",
-					tapdisk_message_name(message.type), pid);
-			err = -EINVAL;
-			break;
-		}
-    } while (delta.tv_sec < TAPCTL_COMM_RETRY_TIMEOUT);
-
-	if (delta.tv_sec >= TAPCTL_COMM_RETRY_TIMEOUT)
-		err = -ETIMEDOUT;
-
-out:
-	if (err && err != -EALREADY)
-		EPRINTF("failed to connect tapdisk[%d] to the ring: %s\n", pid,
-				strerror(-err));
+        if (err == -EALREADY)
+            EPRINTF("failed to connect tapdisk[%d] to the ring: %s\n", pid,
+                    strerror(-err));
+	}
     return err;
 }
 
@@ -105,43 +77,24 @@ tap_ctl_disconnect_xenblkif(const pid_t pid, const domid_t domid,
 {
     int err;
 	tapdisk_message_t message;
-    struct timeval start, now, delta;
 
-	gettimeofday(&start, NULL);
-	do {
-		delta = (struct timeval){0, 0};
-		memset(&message, 0, sizeof(message));
-		message.type = TAPDISK_MESSAGE_XENBLKIF_DISCONNECT;
-		message.u.blkif.domid = domid;
-		message.u.blkif.devid = devid;
+	memset(&message, 0, sizeof(message));
+	message.type = TAPDISK_MESSAGE_XENBLKIF_DISCONNECT;
+	message.u.blkif.domid = domid;
+	message.u.blkif.devid = devid;
 
-		err = tap_ctl_connect_send_and_receive(pid, &message, timeout);
-		if (err)
-			goto out;
+	err = tap_ctl_connect_send_and_receive(pid, &message, timeout);
+	if (err)
+		goto out;
 
-		if (message.type == TAPDISK_MESSAGE_XENBLKIF_DISCONNECT_RSP
-				|| message.type == TAPDISK_MESSAGE_ERROR) {
-
-			err = -message.u.response.error;
-
-			if (err != -EBUSY)
-				break;
-
-			sleep(1);
-
-			gettimeofday(&now, NULL);
-			timersub(&now, &start, &delta);
-
-		} else {
-			EPRINTF("got unexpected result '%s' from tapdisk[%d]\n",
-					tapdisk_message_name(message.type), pid);
-			err = -EINVAL;
-			break;
-		}
-    } while (delta.tv_sec < TAPCTL_COMM_RETRY_TIMEOUT);
-
-	if (delta.tv_sec >= TAPCTL_COMM_RETRY_TIMEOUT)
-		err = -ETIMEDOUT;
+	if (message.type == TAPDISK_MESSAGE_XENBLKIF_DISCONNECT_RSP
+			|| message.type == TAPDISK_MESSAGE_ERROR)
+		err = -message.u.response.error;
+	else {
+		EPRINTF("got unexpected result '%s' from tapdisk[%d]\n",
+				tapdisk_message_name(message.type), pid);
+		err = -EINVAL;
+	}
 
 out:
 	if (err)
