@@ -1168,8 +1168,8 @@ tapdisk_control_disk_info(
 	}
 
     DPRINTF("VBD %d got disk info: sectors=%llu sector size=%ld, info=%d\n",
-			vbd->uuid, vbd->disk_info.size, vbd->disk_info.sector_size,
-			vbd->disk_info.info);
+            vbd->uuid, (unsigned long long)vbd->disk_info.size,
+            vbd->disk_info.sector_size, vbd->disk_info.info);
 out:
     if (!err) {
         response->type = TAPDISK_MESSAGE_DISK_INFO_RSP;
