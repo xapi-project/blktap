@@ -49,6 +49,10 @@ typedef struct tapdisk_server {
 
 static tapdisk_server_t server;
 
+unsigned int PAGE_SIZE;
+unsigned int PAGE_MASK;
+unsigned int PAGE_SHIFT;
+
 #define tapdisk_server_for_each_vbd(vbd, tmp)			        \
 	list_for_each_entry_safe(vbd, tmp, &server.vbds, next)
 
@@ -359,6 +363,13 @@ tapdisk_server_signal_handler(int signal)
 int
 tapdisk_server_init(void)
 {
+	unsigned int i = 0;
+
+	PAGE_SIZE = sysconf(_SC_PAGESIZE);
+	PAGE_MASK = ~(PAGE_SIZE - 1);
+
+	for (i = PAGE_SIZE, PAGE_SHIFT = 0; i > 1; i >>= 1, PAGE_SHIFT++);
+
 	memset(&server, 0, sizeof(server));
 	INIT_LIST_HEAD(&server.vbds);
 
