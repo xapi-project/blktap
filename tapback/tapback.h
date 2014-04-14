@@ -30,7 +30,7 @@
 #include <xen/io/xenbus.h>
 #include <xen/event_channel.h>
 #include <xen/grant_table.h>
-#include <xenstore.h>
+#include <xs.h>
 
 #include "debug.h"
 #include "util.h"

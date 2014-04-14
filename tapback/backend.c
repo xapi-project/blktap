@@ -21,7 +21,7 @@
  */
 
 #include "tapback.h"
-#include "xenstore.h"
+#include "xs.h"
 #include <xen/io/blkif.h>
 
 /**
