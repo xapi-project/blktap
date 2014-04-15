@@ -35,7 +35,12 @@ TAPDEV_PHYPATH_PFX = "/dev/sm/phy"
 def locking(excType, override=True):
     def locking2(op):
         def wrapper(self, *args):
-            self.lock.acquire()
+            if self.failfast:
+                if not self.lock.acquireNoblock():
+                    raise xs_errors.XenError(excType,
+                            opterr='VDI already locked')
+            else:
+                self.lock.acquire()
             try:
                 try:
                     ret = op(self, *args)
@@ -105,6 +110,11 @@ class Tapdisk:
     def __init__(self, session, args):
         self.sr_uuid = args["sr_uuid"]
         self.vdi_uuid = args["vdi_uuid"]
+        # Tells whether the lock must be acquired in a non-blocking manner.
+        if 'failfast' in args:
+            self.failfast = eval(args['failfast'])
+        else:
+            self.failfast = False
         self.session = session
         self.path = os.path.join(TAPDEV_BACKPATH_PFX,self.sr_uuid,self.vdi_uuid)
         self.phypath = os.path.join(TAPDEV_PHYPATH_PFX,self.sr_uuid,self.vdi_uuid)
