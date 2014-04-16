@@ -46,6 +46,10 @@
 #include <sys/un.h>
 #include <signal.h>
 
+static const char *log_dir = "/var/log/tapback";
+const char *tapback_name = "tapback";
+char *log_file = NULL;
+
 void tapback_log(int prio, const char *fmt, ...);
 void (*tapback_vlog) (int prio, const char *fmt, va_list ap);
 
@@ -166,9 +170,10 @@ signal_cb(int signum) {
 
     if (signum == SIGHUP) {
         if (tapback_log_fp) {
+            INFO(NULL, "re-opening log on SIGHUP\n");
             fflush(tapback_log_fp);
             fclose(tapback_log_fp);
-            tapback_log_fp = fopen(TAPBACK_LOG, "a+");
+            tapback_log_fp = fopen(log_file, "a+");
         }
     } else {
 		backend_t *backend, *tmp;
@@ -368,7 +373,13 @@ tapback_backend_run(backend_t *backend)
 
 	fd = xs_fileno(backend->xs);
 
-    INFO(NULL, "tapback (user-space blkback for tapdisk3) daemon started\n");
+    if (tapback_is_master(backend))
+        INFO(NULL, "master tapback[%d] (user-space blkback for tapdisk3) "
+                " daemon started\n", getpid());
+    else
+        INFO(NULL, "slave tapback[%d] (user-space blkback for tapdisk3) "
+                "daemon started, only serving domain %d\n",
+                getpid(), backend->slave_domid);
 
     do {
         fd_set rfds;
@@ -396,7 +407,6 @@ tapback_backend_run(backend_t *backend)
 
         if (FD_ISSET(fd, &rfds))
             tapback_read_watch(backend);
-        DBG(NULL, "--\n");
     } while (1);
 
     return err;
@@ -444,10 +454,11 @@ extern char *optarg;
 int main(int argc, char **argv)
 {
     const char *prog = NULL;
-    char *opt_name = "vbd3", *opt_pidfile = NULL;
+    char *opt_name = "vbd3", *opt_pidfile = NULL, *end = NULL;
     bool opt_debug = false, opt_verbose = false;
     int err = 0;
 	backend_t *backend = NULL;
+    domid_t opt_domid = 0;
 
 	if (access("/dev/xen/gntdev", F_OK ) == -1) {
 		WARN(NULL, "grant device does not exist\n");
@@ -466,10 +477,12 @@ int main(int argc, char **argv)
             {"verbose", 0, NULL, 'v'},
             {"name", 0, NULL, 'n'},
             {"pidfile", 0, NULL, 'p'},
+            {"domain", 0, NULL, 'x'},
+
         };
         int c;
 
-        c = getopt_long(argc, argv, "hdvn:p:", longopts, NULL);
+        c = getopt_long(argc, argv, "hdvn:p:x:", longopts, NULL);
         if (c < 0)
             break;
 
@@ -497,19 +510,61 @@ int main(int argc, char **argv)
                 goto fail;
             }
             break;
+        case 'x':
+            opt_domid = strtoul(optarg, &end, 0);
+            if (*end != 0 || end == optarg) {
+                WARN(NULL, "invalid domain ID %s\n", optarg);
+                err = EINVAL;
+                goto fail;
+            }
+            INFO(NULL, "only serving domain %d\n", opt_domid);
+            break;
         case '?':
             goto usage;
         }
     } while (1);
 
+    if (!opt_debug) {
+        if ((err = daemon(0, 0))) {
+            err = -errno;
+            goto fail;
+        }
+    }
+
     if (opt_verbose) {
+        err = mkdir(log_dir, S_IRUSR | S_IWUSR | S_IXUSR
+                | S_IRGRP | S_IXGRP
+                | S_IROTH | S_IXOTH);
+        if (err == -1) {
+            err = errno;
+            if (err != EEXIST) {
+                fprintf(stderr, "cannot create log directory: %s\n",
+                        strerror(err));
+                exit(EXIT_FAILURE);
+            }
+        }
+        if (opt_domid)
+            /*
+             * XXX per-domain tapback log file name format:
+             * tapback.<domain ID>.log
+             * This is fairly tentative, change it to whatever looks best. Just
+             * make sure to update the bugtool accordingly.
+             */
+            err = asprintf(&log_file, "%s/%s.%d.log", log_dir, tapback_name,
+                    opt_domid);
+        else
+            err = asprintf(&log_file, "%s/%s.log", log_dir, tapback_name);
+        if (err == -1) {
+            err = errno;
+            WARN(NULL, "failed to sprintf: %s\n", strerror(err));
+            goto fail;
+        }
         blkback_ident = "";
-        tapback_log_fp = fopen(TAPBACK_LOG, "a+");
+        tapback_log_fp = fopen(log_file, "a+");
         if (!tapback_log_fp)
             return errno;
         tapback_vlog = blkback_vlog_fprintf;
-    }
-    else {
+    } else {
         blkback_ident = opt_name;
         openlog(blkback_ident, 0, LOG_DAEMON);
         setlogmask(LOG_UPTO(LOG_INFO));
@@ -525,7 +580,7 @@ int main(int argc, char **argv)
 	backend = tapback_backend_create(opt_name, opt_pidfile);
 	if (!backend) {
 		err = errno;
-        WARN(NULL, "error creating blkback: %s\n", strerror(err));
+        WARN(NULL, "error creating back-end: %s\n", strerror(err));
         goto fail;
     }
 

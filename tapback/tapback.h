@@ -45,8 +45,6 @@
 void tapback_log(int prio, const char *fmt, ...);
 void (*tapback_vlog) (int prio, const char *fmt, va_list ap);
 
-#define TAPBACK_LOG "/var/log/tapback.log"
-
 /**
  * Fills in the buffer with a pretty timestamp.
  *
