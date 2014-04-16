@@ -166,6 +166,8 @@ connect_tap(vbd_t * const device)
      * Read the guest VM's ABI.
      */
     if (!(proto_str = tapback_device_read_otherend(device, XBT_NULL, PROTO)))
+        proto = BLKIF_PROTOCOL_X86_32;
+    else if (!strcmp(proto_str, XEN_IO_PROTO_ABI_NATIVE))
         proto = BLKIF_PROTOCOL_NATIVE;
     else if (!strcmp(proto_str, XEN_IO_PROTO_ABI_X86_32))
         proto = BLKIF_PROTOCOL_X86_32;
@@ -176,6 +178,8 @@ connect_tap(vbd_t * const device)
         err = EINVAL;
         goto out;
     }
+
+    DBG(device, "protocol=%d\n", proto);
 
     /*
      * Does the front-end support persistent grants?
