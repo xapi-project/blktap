@@ -188,6 +188,26 @@ signal_cb(int signum) {
     }
 }
 
+static int
+tapback_write_pid(const char *pidfile)
+{
+    FILE *fp;
+    int err = 0;
+
+    ASSERT(pidfile);
+
+    fp = fopen(pidfile, "w");
+    if (!fp)
+        return errno;
+    err = fprintf(fp, "%d\n", getpid());
+    if (err < 0)
+        err = errno;
+    else
+        err = 0;
+    fclose(fp);
+    return err;
+}
+
 /**
  * Initializes the back-end descriptor. There is one back-end per tapback
  * process. Also, it initiates a watch to XenStore on backend/<backend name>.
@@ -195,7 +215,7 @@ signal_cb(int signum) {
  * @returns a new back-end, NULL on failure, sets errno
  */
 static backend_t *
-tapback_backend_create(const char *name)
+tapback_backend_create(const char *name, const char *pidfile)
 {
     int err;
     struct sockaddr_un local;
@@ -203,6 +223,15 @@ tapback_backend_create(const char *name)
 	backend_t *backend = NULL;
 
     ASSERT(name);
+
+    if (pidfile) {
+        err = tapback_write_pid(pidfile);
+        if (err) {
+            WARN(NULL, "failed to write PID to %s: %s\n",
+                    pidfile, strerror(err));
+            goto out;
+        }
+    }
 
 	backend = calloc(1, sizeof(*backend));
 	if (!backend) {
@@ -415,7 +444,7 @@ extern char *optarg;
 int main(int argc, char **argv)
 {
     const char *prog = NULL;
-    char *opt_name = "vbd3";
+    char *opt_name = "vbd3", *opt_pidfile = NULL;
     bool opt_debug = false, opt_verbose = false;
     int err = 0;
 	backend_t *backend = NULL;
@@ -436,10 +465,11 @@ int main(int argc, char **argv)
             {"debug", 0, NULL, 'd'},
             {"verbose", 0, NULL, 'v'},
             {"name", 0, NULL, 'n'},
+            {"pidfile", 0, NULL, 'p'},
         };
         int c;
 
-        c = getopt_long(argc, argv, "hdvn:", longopts, NULL);
+        c = getopt_long(argc, argv, "hdvn:p:", longopts, NULL);
         if (c < 0)
             break;
 
@@ -456,6 +486,13 @@ int main(int argc, char **argv)
         case 'n':
             opt_name = strdup(optarg);
             if (!opt_name) {
+                err = errno;
+                goto fail;
+            }
+            break;
+        case 'p':
+            opt_pidfile = strdup(optarg);
+            if (!opt_pidfile) {
                 err = errno;
                 goto fail;
             }
@@ -485,7 +522,7 @@ int main(int argc, char **argv)
         }
     }
 
-	backend = tapback_backend_create(opt_name);
+	backend = tapback_backend_create(opt_name, opt_pidfile);
 	if (!backend) {
 		err = errno;
         WARN(NULL, "error creating blkback: %s\n", strerror(err));
@@ -497,6 +534,16 @@ int main(int argc, char **argv)
     tapback_backend_destroy(backend);
 
 fail:
+    if (opt_pidfile) {
+        int err2 = unlink(opt_pidfile);
+        if (err2 == -1) {
+            err2 = errno;
+            if (err2 != ENOENT) {
+                WARN(NULL, "failed to remove PID file %s: %s\n",
+                        opt_pidfile, strerror(err2));
+            }
+        }
+    }
     if (tapback_log_fp) {
         INFO(NULL, "tapback shut down\n");
         fclose(tapback_log_fp);
