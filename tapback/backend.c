@@ -579,8 +579,8 @@ tapback_backend_probe_device(backend_t *backend,
     /*
      * Ask XenStore if the device _should_ exist.
      */
-    s = tapback_xs_read(backend->xs, XBT_NULL, "%s/%d/%s",
-            backend->path, domid, devname);
+    s = tapback_xs_read(backend->xs, XBT_NULL, "%s/%s",
+            backend->path, devname);
     should_exist = s != NULL;
     free(s);
 
@@ -621,6 +621,7 @@ tapback_backend_probe_device(backend_t *backend,
                     strerror(err));
             return err;
         }
+
         err = reconnect(device);
         if (err)
             WARN(device, "failed to reconnect: %s\n", strerror(-err));
@@ -834,6 +835,21 @@ tapback_backend_handle_backend_watch(backend_t *backend,
         err = -EINVAL;
         goto out;
     }
+
+    /*
+     * The backend/vbd3/<domain ID> path was either created or removed.
+     */
+    n = s - _path + strlen(s);
+    err = tapback_xs_exists(backend->xs, XBT_NULL, path, &n);
+    if (err < 0) {
+        WARN(NULL, "failed to read XenStore key %s: %s\n",
+                &path[(s - _path)], strerror(-err));
+        goto out;
+    }
+    if (err == 0)
+        exists = false;
+    else
+        exists = true;
 
     /*
      * Master tapback: check if there's tapback for this domain. If there isn't

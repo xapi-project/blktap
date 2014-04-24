@@ -229,7 +229,6 @@ tapback_backend_create(const char *name, const char *pidfile,
 		err = errno;
 		goto out;
 	}
-    backend->path = backend->token = NULL;
 
     backend->name = strdup(name);
     if (!backend->name) {
@@ -237,20 +236,29 @@ tapback_backend_create(const char *name, const char *pidfile,
         goto out;
     }
 
-    err = asprintf(&backend->path, "%s/%s", XENSTORE_BACKEND,
-            backend->name);
-    if (err == -1) {
-        backend->path = NULL;
-        err = errno;
-        goto out;
+    backend->path = backend->token = NULL;
 
     INIT_LIST_HEAD(&backend->entry);
 
     if (domid) {
         backend->slave_domid = domid;
         INIT_LIST_HEAD(&backend->slave.slave.devices);
+        err = asprintf(&backend->path, "%s/%s/%d", XENSTORE_BACKEND,
+                backend->name, backend->slave_domid);
+        if (err == -1) {
+            backend->path = NULL;
+            err = errno;
+            goto out;
+        }
     } else {
         backend->master.slaves = NULL;
+        err = asprintf(&backend->path, "%s/%s", XENSTORE_BACKEND,
+                backend->name);
+        if (err == -1) {
+            backend->path = NULL;
+            err = errno;
+            goto out;
+        }
     }
 
     err = asprintf(&backend->token, "%s-%s", XENSTORE_BACKEND,
@@ -295,8 +303,7 @@ tapback_backend_create(const char *name, const char *pidfile,
     /*
      * Watch the back-end.
      */
-    if (!xs_watch(backend->xs, backend->path,
-                backend->token)) {
+    if (!xs_watch(backend->xs, backend->path, backend->token)) {
         err = errno;
         goto out;
     }

@@ -104,8 +104,8 @@ tapback_device_read(const vbd_t * const device, xs_transaction_t xst,
     ASSERT(device);
     ASSERT(path);
 
-    return tapback_xs_read(device->backend->xs, xst, "%s/%d/%s/%s",
-            device->backend->path, device->domid, device->name, path);
+    return tapback_xs_read(device->backend->xs, xst, "%s/%s/%s",
+            device->backend->path, device->name, path);
 }
 
 char *
@@ -152,8 +152,8 @@ tapback_device_printf(vbd_t * const device, xs_transaction_t xst,
     ASSERT(device);
     ASSERT(key);
 
-    if (-1 == asprintf(&path, "%s/%d/%s/%s", device->backend->path,
-                device->domid, device->name, key)) {
+    if (-1 == asprintf(&path, "%s/%s/%s", device->backend->path,
+                device->name, key)) {
         err = -errno;
         goto fail;
     }
