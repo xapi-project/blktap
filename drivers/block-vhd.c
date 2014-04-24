@@ -121,6 +121,7 @@ unsigned int SPB;
 #define VHD_FLAG_OPEN_STRICT         8
 #define VHD_FLAG_OPEN_QUERY          16
 #define VHD_FLAG_OPEN_PREALLOCATE    32
+#define VHD_FLAG_OPEN_NO_O_DIRECT    64
 
 #define VHD_FLAG_BAT_LOCKED          1
 #define VHD_FLAG_BAT_WRITE_STARTED   2
@@ -635,6 +636,9 @@ __vhd_open(td_driver_t *driver, const char *name, vhd_flag_t flags)
 
 	o_flags = ((test_vhd_flag(flags, VHD_FLAG_OPEN_RDONLY)) ? 
 		   VHD_OPEN_RDONLY : VHD_OPEN_RDWR);
+	if (test_vhd_flag(flags, VHD_FLAG_OPEN_RDONLY) &&
+	    test_vhd_flag(flags, VHD_FLAG_OPEN_NO_O_DIRECT))
+		set_vhd_flag(o_flags, VHD_OPEN_CACHED);
 
 	if (test_vhd_flag(flags, VHD_FLAG_OPEN_STRICT))
 		set_vhd_flag(o_flags, VHD_OPEN_STRICT);
@@ -703,6 +707,8 @@ _vhd_open(td_driver_t *driver, const char *name, td_flag_t flags)
 
 	if (flags & TD_OPEN_RDONLY)
 		vhd_flags |= VHD_FLAG_OPEN_RDONLY;
+	if (flags & TD_OPEN_NO_O_DIRECT)
+		vhd_flags |= VHD_FLAG_OPEN_NO_O_DIRECT;
 	if (flags & TD_OPEN_QUIET)
 		vhd_flags |= VHD_FLAG_OPEN_QUIET;
 	if (flags & TD_OPEN_STRICT)
@@ -850,8 +856,10 @@ vhd_get_parent_id(td_driver_t *driver, td_disk_id_t *id)
 	int err;
 	char *parent;
 	struct vhd_state *s;
+	int flags;
 
 	DBG(TLOG_DBG, "\n");
+	flags = id->flags;
 	memset(id, 0, sizeof(td_disk_id_t));
 
 	s = (struct vhd_state *)driver->data;
@@ -865,7 +873,7 @@ vhd_get_parent_id(td_driver_t *driver, td_disk_id_t *id)
 
 	id->name   = parent;
 	id->type   = vhd_parent_raw(&s->vhd) ? DISK_TYPE_AIO : DISK_TYPE_VHD;
-	id->flags |= TD_OPEN_SHAREABLE|TD_OPEN_RDONLY;
+	id->flags  = flags|TD_OPEN_SHAREABLE|TD_OPEN_RDONLY;
 
 	return 0;
 }

@@ -715,6 +715,8 @@ tapdisk_control_open_image(struct tapdisk_ctl_conn *conn,
 	flags = 0;
 	if (request->u.params.flags & TAPDISK_MESSAGE_FLAG_RDONLY)
 		flags |= TD_OPEN_RDONLY;
+	if (request->u.params.flags & TAPDISK_MESSAGE_FLAG_NO_O_DIRECT)
+		flags |= TD_OPEN_NO_O_DIRECT;
 	if (request->u.params.flags & TAPDISK_MESSAGE_FLAG_SHARED)
 		flags |= TD_OPEN_SHAREABLE;
 	if (request->u.params.flags & TAPDISK_MESSAGE_FLAG_ADD_CACHE)
