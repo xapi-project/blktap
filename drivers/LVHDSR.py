@@ -1313,13 +1313,18 @@ class LVHDVDI(VDI.VDI):
         self.sm_config = self.sr.srcmd.params["vdi_sm_config"]
         self.sr._ensureSpaceAvailable(lvSize)
 
-        self.sr.lvmCache.create(self.lvname, lvSize)
-        if self.vdi_type == vhdutil.VDI_TYPE_RAW:
-            self.size = self.sr.lvmCache.getSize(self.lvname)
-        else:
-            vhdutil.create(self.path, long(size), False, lvhdutil.MSIZE_MB)
-            self.size = vhdutil.getSizeVirt(self.path)
-        self.sr.lvmCache.deactivateNoRefcount(self.lvname)
+        try:
+            self.sr.lvmCache.create(self.lvname, lvSize)
+            if self.vdi_type == vhdutil.VDI_TYPE_RAW:
+                self.size = self.sr.lvmCache.getSize(self.lvname)
+            else:
+               vhdutil.create(self.path, long(size), False, lvhdutil.MSIZE_MB)
+               self.size = vhdutil.getSizeVirt(self.path)
+            self.sr.lvmCache.deactivateNoRefcount(self.lvname)
+        except util.CommandException, e:
+            util.SMlog("Unable to create VDI");
+            self.sr.lvmCache.remove(self.lvname)
+            raise xs_errors.XenError('VDICreate', opterr='error %d' % e.code)
 
         self.utilisation = lvSize
         self.sm_config["vdi_type"] = self.vdi_type
