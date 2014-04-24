@@ -1,4 +1,5 @@
-/var/log/tapback.log {
+/var/log/tapback/tapback*.log {
+    sharedscripts
     missingok
     rotate 5
     size 16M
