@@ -626,13 +626,17 @@ class ISCSISR(SR.SR):
     def print_LUNs(self):
         self.LUNs = {}
         if os.path.exists(self.path):
+            dom0_disks = util.dom0_disks()
             for file in util.listdir(self.path):
                 if file.find("LUN") != -1 and file.find("_") == -1:
                     vdi_path = os.path.join(self.path,file)
-                    LUNid = file.replace("LUN","")
-                    obj = self.vdi(self.uuid)
-                    obj._query(vdi_path, LUNid)
-                    self.LUNs[obj.uuid] = obj
+                    if os.path.realpath(vdi_path) in dom0_disks:
+                        util.SMlog("Hide dom0 boot disk LUN")
+                    else:
+                        LUNid = file.replace("LUN","")
+                        obj = self.vdi(self.uuid)
+                        obj._query(vdi_path, LUNid)
+                        self.LUNs[obj.uuid] = obj
 
     def print_entries(self, map):
         dom = xml.dom.minidom.Document()
