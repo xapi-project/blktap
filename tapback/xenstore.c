@@ -192,3 +192,48 @@ fail:
 
     return err;
 }
+
+int
+tapback_xs_exists(struct xs_handle * const xs, xs_transaction_t xst,
+        char *path, const int *len)
+{
+    int err = 0;
+    char *s = NULL;
+    bool exists = false;
+    char c;
+
+    ASSERT(xs);
+    ASSERT(path);
+
+    if (len) {
+        c = path[*len];
+        path[*len] = '\0';
+    }
+
+    s = tapback_xs_read(xs, xst, "%s", path);
+    if (s)
+        exists = true;
+    else {
+        err = errno;
+        ASSERT(err != 0);
+        if (err == ENOENT) {
+            err = 0;
+            exists = false;
+        }
+    }
+
+    free(s);
+
+    if (len)
+        path[*len] = c;
+
+    if (!err) {
+        if (exists) {
+            return 1;
+        } else {
+            return 0;
+        }
+    } else {
+        return -err;
+    }
+}

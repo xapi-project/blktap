@@ -522,3 +522,18 @@ out:
     free(_path);
     return err;
 }
+
+struct backend_slave*
+tapback_find_slave(const backend_t *master, const domid_t domid) {
+
+    struct backend_slave _slave, **__slave = NULL;
+
+    ASSERT(master);
+
+    _slave.master.domid = domid;
+
+    __slave = tfind(&_slave, &master->master.slaves, compare);
+    if (!__slave)
+        return NULL;
+    return *__slave;
+}

@@ -23,6 +23,9 @@
 #include "tapback.h"
 #include "xs.h"
 #include <xen/io/blkif.h>
+#include <unistd.h>
+#include <signal.h>
+#include <stdlib.h>
 
 /**
  * Removes the XenStore watch from the front-end.
@@ -175,7 +178,8 @@ tapback_backend_create_device(backend_t *backend,
     }
 
 	device->backend = backend;
-    list_add_tail(&device->backend_entry, &device->backend->devices);
+    list_add_tail(&device->backend_entry,
+            &device->backend->slave.slave.devices);
 
     device->major = -1;
     device->minor = -1;
@@ -568,6 +572,8 @@ tapback_backend_probe_device(backend_t *backend,
 	ASSERT(backend);
     ASSERT(devname);
 
+    ASSERT(!tapback_is_master(backend));
+
     DBG(NULL, "%d/%s probing device\n", domid, devname);
 
     /*
@@ -580,8 +586,6 @@ tapback_backend_probe_device(backend_t *backend,
 
     /*
      * Search the device list for this specific device.
-     *
-     * TODO Use a faster data structure.
      */
     tapback_backend_find_device(backend, device,
             device->domid == domid && !strcmp(device->name, devname));
@@ -626,13 +630,13 @@ tapback_backend_probe_device(backend_t *backend,
      * Examine what happened to the XenStore component on which the watch
      * triggered.
      *
-     * FIXME Why not set a watch on these paths when creating the device?  This
+     * XXX Why not set a watch on these paths when creating the device?  This
      * is how blkback does it. I suspect this has to do with avoiding setting
      * too many XenStore watches.
      */
     if (!remove && comp) {
         /*
-         * TODO Replace this with a hash table mapping XenStore keys to
+         * TODO Replace this with a despatch table mapping XenStore keys to
          * callbacks.
          */
         if (!strcmp(PHYS_DEV_KEY, comp))
@@ -663,69 +667,43 @@ tapback_domain_scan(backend_t *backend, const domid_t domid)
 
 	ASSERT(backend);
 
-	/*
-	 * Read the devices of this domain.
-	 */
-	if (asprintf(&path, "%s/%d", backend->path, domid) == -1) {
-		/* TODO log error */
-		err = -errno;
-		goto out;
-	}
-	sub = xs_directory(backend->xs, XBT_NULL, path, &n);
-	err = -errno;
-	free(path);
+    if (tapback_is_master(backend)) {
+        /*
+         * FIXME The master tapback can reach this only if it has been
+         * restarted. We need to figure out which slaves are running and
+         * reconstruct state.
+         */
+        WARN(NULL, "master restart not yet implemented, ignoring domain %d\n",
+                domid);
+    } else {
+        /*
+         * Read the devices of this domain.
+         */
+        sub = xs_directory(backend->xs, XBT_NULL, backend->path, &n);
+        err = -errno;
+        free(path);
 
-	if (!sub)
-		goto out;
+        if (!sub)
+            goto out;
 
-	/*
-	 * Probe each device.
-	 */
-	for (i = 0; i < n; i++) {
-		/*
-		 * FIXME check that there is no compoment.
-		 */
-		err = tapback_backend_probe_device(backend, domid, sub[i], NULL);
-		if (err) {
-			WARN(NULL, "%d/%s: error probing device %s of domain %d: %s\n",
-					domid, sub[i], strerror(-err));
-			goto out;
-		}
-	}
+        /*
+         * Probe each device.
+         */
+        for (i = 0; i < n; i++) {
+            /*
+             * FIXME check that there is no compoment.
+             */
+            err = tapback_backend_probe_device(backend, domid, sub[i], NULL);
+            if (err) {
+                WARN(NULL, "%d/%s: error probing device %s of domain %d: %s\n",
+                        domid, sub[i], strerror(-err));
+                goto out;
+            }
+        }
+    }
 
 out:
 	free(sub);
-	return err;
-}
-
-static int
-tapback_probe_domain(backend_t *backend, const domid_t domid)
-{
-    vbd_t *device = NULL, *next = NULL;
-	int err;
-
-	ASSERT(backend);
-
-	/*
-     * scrap all non-existent devices
-     * TODO Why do we do this? Is this costly?
-     */
-	tapback_backend_for_each_device(backend, device, next) {
-		if (device->domid == domid) {
-			err = tapback_backend_probe_device(backend, device->domid,
-					device->name, NULL);
-			if (err) {
-				WARN(device, "error probing device : %s\n", strerror(-err));
-				/* TODO Should we fail in this case of keep probing? */
-				goto out;
-			}
-		}
-	}
-
-	err = tapback_domain_scan(backend, domid);
-	if (err == -ENOENT)
-		err = 0;
-out:
 	return err;
 }
 
@@ -748,22 +726,24 @@ tapback_backend_scan(backend_t *backend)
 
     DBG(NULL, "scanning entire back-end\n");
 
-    /*
-     * scrap all non-existent devices
-     * TODO Why do we do this? Is this costly?
-     */
-	tapback_backend_for_each_device(backend, device, next) {
-		/*
-		 * FIXME check that there is no compoment.
-		 */
-		err = tapback_backend_probe_device(backend, device->domid,
-				device->name, NULL);
-		if (err) {
-			WARN(device, "error probing device : %s\n", strerror(-err));
-			/* TODO Should we fail in this case of keep probing? */
-			goto out;
-		}
-	}
+    if (!tapback_is_master(backend)) {
+        /*
+         * scrap all non-existent devices
+         * TODO Why do we do this? Is this costly?
+         */
+        tapback_backend_for_each_device(backend, device, next) {
+            /*
+             * FIXME check that there is no compoment.
+             */
+            err = tapback_backend_probe_device(backend, device->domid,
+                    device->name, NULL);
+            if (err) {
+                WARN(device, "error probing device : %s\n", strerror(-err));
+                /* TODO Should we fail in this case of keep probing? */
+                goto out;
+            }
+        }
+    }
 
     /*
      * probe the new ones
@@ -811,9 +791,11 @@ int
 tapback_backend_handle_backend_watch(backend_t *backend,
 		char * const path)
 {
-    char *s = NULL, *end = NULL, *name = NULL, *_path = NULL;
+    char *s = NULL, *end = NULL, *_path = NULL;
     domid_t domid = 0;
     int err = 0;
+    bool exists = false;
+    int n = 0;
 
 	ASSERT(backend);
     ASSERT(path);
@@ -853,21 +835,117 @@ tapback_backend_handle_backend_watch(backend_t *backend,
         goto out;
     }
 
-    if (!(name = strtok(NULL, "/"))) {
-		DBG(NULL, "probing domain %d\n", domid);
-        err = tapback_probe_domain(backend, domid);
-        goto out;
-    }
-
     /*
-     * Create or remove a specific device.
-     *
-     * TODO tapback_backend_probe_device reads xenstore again to see if the
-     * device should exist, but we already know that in the current function.
-     * Optimise this case.
+     * Master tapback: check if there's tapback for this domain. If there isn't
+     * one, create it, otherwise ignore this event, the per-domain tapback will
+     * take care of it.
      */
-    err = tapback_backend_probe_device(backend, domid, name,
-			strtok(NULL, "/"));
+    if (tapback_is_master(backend)) {
+        struct backend_slave *slave = tapback_find_slave(backend, domid),
+                             **_slave = NULL;
+
+        if (!exists && slave) {
+            DBG(NULL, "de-register slave[%d]\n", slave->master.pid);
+            /*
+             * remove the slave
+             */
+            tdelete(slave, &backend->master.slaves, compare);
+            free(slave);
+        }
+        else if (exists && !slave) {
+            pid_t pid;
+
+            DBG(NULL, "need to create slave for domain %d\n", domid);
+
+            pid = fork();
+            if (pid == -1) {
+                err = -errno;
+                WARN(NULL, "failed to fork: %s\n", strerror(-err));
+                goto out;
+            } else if (pid != 0) { /* parent */
+                slave = malloc(sizeof(*slave));
+                if (!slave) {
+                    int err2;
+                    WARN(NULL, "failed to allocate memory\n");
+                    err = -ENOMEM;
+                    err2 = kill(pid, SIGKILL);
+                    if (err2 != 0) {
+                        err2 = errno;
+                        WARN(NULL, "failed to kill process %d: %s "
+                                "(error ignored)\n", pid, strerror(err2));
+                    }
+                    goto out;
+                }
+                slave->master.pid = pid;
+                slave->master.domid = domid;
+                _slave = tsearch(slave, &backend->master.slaves, compare);
+                ASSERT(slave == *_slave);
+
+                DBG(NULL, "created slave[%d] for domain %d\n",
+                        slave->master.pid, slave->master.domid);
+
+                /*
+                 * FIXME Shall we watch the child process?
+                 */
+            } else { /* child */
+                char *args[6];
+
+                args[0] = (char*)tapback_name;
+                args[1] = "-v";
+                args[2] = "-d";
+                args[3] = "-x";
+                err = asprintf(&args[4], "%d", domid);
+                if (err == -1) {
+                    err = -errno;
+                    WARN(NULL, "failed to asprintf: %s\n", strerror(-err));
+                    abort();
+                }
+                args[5] = NULL;
+                /*
+                 * TODO we're hard-coding the name of the binary, better let
+                 * the build system supply it.
+                 */
+                err = execvp(tapback_name, args);
+                err = -errno;
+                WARN(NULL, "failed to replace master process with slave: %s\n",
+                        strerror(-err));
+                abort();
+            }
+        }
+        err = 0;
+    } else {
+        char *device = NULL;
+
+        ASSERT(domid == backend->slave_domid);
+
+        if (!exists) {
+            /*
+             * Time to go.
+             */
+            INFO(NULL, "domain removed, exit\n");
+            exit(EXIT_SUCCESS);
+        }
+
+        /*
+         * There's no device yet, the domain just got created, nothing to do
+         * just yet.
+         */
+        device = strtok(NULL, "/");
+        if (!device)
+            goto out;
+
+        /*
+         * Create or remove a specific device.
+         *
+         * TODO tapback_backend_probe_device reads xenstore again to see if the
+         * device should exist, but we already know that in the current
+         * function.
+         *
+         * Optimise this case.
+         */
+        err = tapback_backend_probe_device(backend, domid, device,
+                strtok(NULL, "/"));
+    }
 out:
     free(_path);
     return err;

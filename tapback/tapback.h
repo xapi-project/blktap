@@ -25,6 +25,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdbool.h>
+#include <search.h>
 
 #include <xen/xen.h>
 #include <xen/io/xenbus.h>
@@ -41,6 +42,8 @@
 /* TODO */
 #define __printf(_f, _a)        __attribute__((format (printf, _f, _a)))
 #define __scanf(_f, _a)         __attribute__((format (scanf, _f, _a)))
+
+extern const char *tapback_name;
 
 void tapback_log(int prio, const char *fmt, ...);
 void (*tapback_vlog) (int prio, const char *fmt, va_list ap);
@@ -119,6 +122,34 @@ int pretty_time(char *buf, unsigned char buf_len);
 #define PROTO                   "protocol"
 #define FRONTEND_KEY            "frontend"
 
+struct backend_master {
+    void *slaves;
+};
+
+int
+compare(const void *pa, const void *pb);
+
+struct backend_slave {
+    union {
+        struct {
+            /**
+             * The list of virtual block devices.
+             */
+            struct list_head devices;
+
+            /**
+             * TODO From xen/include/public/io/blkif.h: "The maximum supported
+             * size of the request ring buffer"
+             */
+            int max_ring_page_order;
+        } slave;
+        struct {
+            pid_t pid;
+            domid_t domid;
+        } master;
+    };
+};
+
 /**
  * The collection of all necessary handles and descriptors.
  */
@@ -140,28 +171,26 @@ typedef struct backend {
      */
     struct xs_handle *xs;
 
-    /**
-     * The list of virtual block devices.
-     *
-     * TODO We sometimes have to scan the whole list to find the device/domain
-     * we're interested in, should we optimise this? E.g. use a hash table
-     * for O(1) access?
-     * TODO Replace with a hash table (hcreate etc.)?
-     */
-    struct list_head devices;
-
-    /**
-     * TODO From xen/include/public/io/blkif.h: "The maximum supported size of
-     * the request ring buffer"
-     */
-    int max_ring_page_order;
+    union {
+        struct backend_master master;
+        struct backend_slave slave;
+    };
 
     /**
      * Unix domain socket for controlling the daemon.
      */
     int ctrl_sock;
 
+    /**
+     * Domain ID in which tapback is running.
+     */
 	domid_t domid;
+
+    /**
+     * Domain ID served by this tapback. If it's zero it means that this is the
+     * master tapback.
+     */
+    domid_t slave_domid;
 
 	/**
 	 * for linked lists
@@ -265,7 +294,8 @@ typedef struct vbd {
 } vbd_t;
 
 #define tapback_backend_for_each_device(_backend, _device, _next)			\
-	list_for_each_entry_safe(_device, _next, &backend->devices,				\
+    ASSERT(!tapback_is_master(_backend));                                   \
+	list_for_each_entry_safe(_device, _next, &backend->slave.slave.devices,	\
             backend_entry)
 
 /**
@@ -276,6 +306,7 @@ typedef struct vbd {
 do {																\
     vbd_t *__next;													\
     int found = 0;													\
+    ASSERT(!tapback_is_master(_backend));                           \
     tapback_backend_for_each_device(_backend, _device, __next) {	\
         if (_cond) {												\
             found = 1;												\
@@ -442,5 +473,27 @@ frontend_changed(vbd_t * const device, const XenbusState state);
  */
 int
 get_my_domid(struct xs_handle * const xs, xs_transaction_t xst);
+
+bool
+tapback_is_master(const backend_t *backend);
+
+struct backend_slave*
+tapback_find_slave(const backend_t *master_backend, const domid_t domid);
+
+/**
+ * Tells whether a XenStore key exists. XXX This function temporarily modifies
+ * the path argument, so it's not thread-safe.
+ *
+ * @param xs handle to XenStore
+ * @param xst XenStore transaction
+ * @param path path to check for existence
+ * @param len optional argument that if non-NULL, it's value is used to limit
+ * the length of the path to be checked
+ *
+ * Returns 0 if the key does not exist, 1 if it does, and -errno on error.
+ */
+int
+tapback_xs_exists(struct xs_handle * const xs, xs_transaction_t xst,
+        char *path, const int *len);
 
 #endif /* __TAPBACK_H__ */

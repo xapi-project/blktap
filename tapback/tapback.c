@@ -94,6 +94,7 @@ tapback_read_watch(backend_t *backend)
      * the back-end one.
      */
     if (!strcmp(token, BLKTAP3_FRONTEND_TOKEN)) {
+        ASSERT(!tapback_is_master(backend));
         err = -tapback_backend_handle_otherend_watch(backend, path);
     } else if (!strcmp(token, backend->token)) {
         err = -tapback_backend_handle_backend_watch(backend, path);
@@ -156,12 +157,18 @@ signal_cb(int signum) {
     } else {
 		backend_t *backend, *tmp;
 
+        INFO(NULL, "terminating on signal `%s'\n", getpid());
+
 		list_for_each_entry(backend, &backends, entry) {
-			if (!list_empty(&backend->devices)) {
-				WARN(NULL, "refusing to shutdown while back-end %s has active "
-						"VBDs\n", backend->name);
-				return;
-			}
+            if (tapback_is_master(backend))
+                break;
+            else {
+                if (!list_empty(&backend->slave.slave.devices)) {
+                    WARN(NULL, "refusing to shut down slave while back-end "
+                            "%s has active VBDs\n", backend->name);
+                    return;
+                }
+            }
 		}
 
 		list_for_each_entry_safe(backend, tmp, &backends, entry)
@@ -198,7 +205,8 @@ tapback_write_pid(const char *pidfile)
  * @returns a new back-end, NULL on failure, sets errno
  */
 static backend_t *
-tapback_backend_create(const char *name, const char *pidfile)
+tapback_backend_create(const char *name, const char *pidfile,
+        const domid_t domid)
 {
     int err;
     struct sockaddr_un local;
@@ -221,9 +229,6 @@ tapback_backend_create(const char *name, const char *pidfile)
 		err = errno;
 		goto out;
 	}
-	INIT_LIST_HEAD(&backend->entry);
-	INIT_LIST_HEAD(&backend->devices);
-
     backend->path = backend->token = NULL;
 
     backend->name = strdup(name);
@@ -238,6 +243,14 @@ tapback_backend_create(const char *name, const char *pidfile)
         backend->path = NULL;
         err = errno;
         goto out;
+
+    INIT_LIST_HEAD(&backend->entry);
+
+    if (domid) {
+        backend->slave_domid = domid;
+        INIT_LIST_HEAD(&backend->slave.slave.devices);
+    } else {
+        backend->master.slaves = NULL;
     }
 
     err = asprintf(&backend->token, "%s-%s", XENSTORE_BACKEND,
@@ -250,7 +263,6 @@ tapback_backend_create(const char *name, const char *pidfile)
 
     err = 0;
 
-    INIT_LIST_HEAD(&backend->devices);
     backend->ctrl_sock = -1;
 
     if (!(backend->xs = xs_daemon_open())) {
@@ -296,6 +308,9 @@ tapback_backend_create(const char *name, const char *pidfile)
         err = EINVAL;
         goto out;
     }
+
+    if (!domid)
+        signal(SIGCHLD, SIG_IGN);
 
     /*
      * Create the control socket.
@@ -555,7 +570,7 @@ int main(int argc, char **argv)
         }
     }
 
-	backend = tapback_backend_create(opt_name, opt_pidfile);
+	backend = tapback_backend_create(opt_name, opt_pidfile, opt_domid);
 	if (!backend) {
 		err = errno;
         WARN(NULL, "error creating back-end: %s\n", strerror(err));
@@ -633,4 +648,27 @@ out:
 	if (domid >= 0)
 		ASSERT(domid <= UINT16_MAX);
 	return domid;
+}
+
+bool
+tapback_is_master(const backend_t *backend)
+{
+    if (backend->slave_domid == 0)
+        return true;
+    else
+        return false;
+}
+
+int
+compare(const void *pa, const void *pb)
+{
+    const struct backend_slave *_pa, *_pb;
+
+    ASSERT(pa);
+    ASSERT(pb);
+
+    _pa = pa;
+    _pb = pb;
+
+    return _pa->master.domid - _pb->master.domid;
 }
