@@ -659,6 +659,9 @@ tapback_backend_probe_device(backend_t *backend,
     return err;
 }
 
+/**
+ * Scans XenStore and probes any device found.
+ */
 static int
 tapback_domain_scan(backend_t *backend, const domid_t domid)
 {
@@ -691,13 +694,10 @@ tapback_domain_scan(backend_t *backend, const domid_t domid)
          * Probe each device.
          */
         for (i = 0; i < n; i++) {
-            /*
-             * FIXME check that there is no compoment.
-             */
             err = tapback_backend_probe_device(backend, domid, sub[i], NULL);
             if (err) {
-                WARN(NULL, "%d/%s: error probing device %s of domain %d: %s\n",
-                        domid, sub[i], strerror(-err));
+                WARN(NULL, "error probing device %s: %s\n",
+                        sub[i], strerror(-err));
                 goto out;
             }
         }
@@ -706,6 +706,40 @@ tapback_domain_scan(backend_t *backend, const domid_t domid)
 out:
 	free(sub);
 	return err;
+}
+
+/**
+ * Compares the devices between XenStore and the device list, and
+ * creates/destroys devices accordingly.
+ */
+static int
+tapback_probe_domain(backend_t *backend, const domid_t domid)
+{
+    vbd_t *device = NULL, *next = NULL;
+    int err;
+
+    ASSERT(backend);
+
+    /*
+     * scrap all non-existent devices
+     */
+    tapback_backend_for_each_device(backend, device, next) {
+        if (device->domid == domid) {
+            err = tapback_backend_probe_device(backend, device->domid,
+                    device->name, NULL);
+            if (err) {
+                WARN(device, "error probing device : %s\n", strerror(-err));
+                /* TODO Should we fail in this case of keep probing? */
+                goto out;
+            }
+        }
+    }
+
+    err = tapback_domain_scan(backend, domid);
+    if (err == -ENOENT)
+        err = 0;
+out:
+    return err;
 }
 
 /**
@@ -850,6 +884,7 @@ tapback_backend_handle_backend_watch(backend_t *backend,
         exists = false;
     else
         exists = true;
+    err = 0;
 
     /*
      * Master tapback: check if there's tapback for this domain. If there isn't
@@ -936,6 +971,14 @@ tapback_backend_handle_backend_watch(backend_t *backend,
 
         if (!exists) {
             /*
+             * The entire domain may be removed in one go, so we need to tear
+             * down all devices.
+             */
+            err = tapback_probe_domain(backend, domid);
+            if (err)
+                WARN(NULL, "failed to probe domain: %s\n", strerror(-err));
+
+            /*
              * Time to go.
              */
             INFO(NULL, "domain removed, exit\n");
@@ -945,6 +988,10 @@ tapback_backend_handle_backend_watch(backend_t *backend,
         /*
          * There's no device yet, the domain just got created, nothing to do
          * just yet.
+         *
+         * FIXME Is it possible for entire sub-trees to be created in one go?
+         * If so, we need to create multiple devices upon a single XenStore
+         * watch triggering, calling tapback_probe_domain should suffice.
          */
         device = strtok(NULL, "/");
         if (!device)
