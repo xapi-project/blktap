@@ -200,7 +200,7 @@ tapback_xs_exists(struct xs_handle * const xs, xs_transaction_t xst,
     int err = 0;
     char *s = NULL;
     bool exists = false;
-    char c;
+    char c = '\0';
 
     ASSERT(xs);
     ASSERT(path);
