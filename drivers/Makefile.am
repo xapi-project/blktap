@@ -86,3 +86,4 @@ libtapdisk_la_SOURCES += block-nbd.c
 
 libtapdisk_la_LIBADD  = ../vhd/lib/libvhd.la
 libtapdisk_la_LIBADD += -laio
+libtapdisk_la_LIBADD += -lcrypto

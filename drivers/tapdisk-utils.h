@@ -47,4 +47,13 @@ int tapdisk_linux_version(void);
 uint64_t ntohll(uint64_t);
 #define htonll ntohll
 
+
+/**
+ * Simplified version of snprintf that returns 0 if everything has gone OK and
+ * +errno if not (including the buffer not being large enough to hold the
+ * string).
+ */
+int
+tapdisk_snprintf(char *buf, int * const off, int * const size,
+		unsigned int depth,	const char *format, ...);
 #endif
