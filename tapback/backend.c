@@ -203,8 +203,7 @@ tapback_backend_create_device(backend_t *backend,
 
 out:
     if (err) {
-        WARN(NULL, "%d/%s: error creating device: %s\n", domid, name,
-                strerror(-err));
+        WARN(NULL, "%s: error creating device: %s\n", name, strerror(-err));
         if (device) {
             int err2 = tapback_backend_destroy_device(device);
 			if (err2)
@@ -615,7 +614,7 @@ tapback_backend_probe_device(backend_t *backend,
         device = tapback_backend_create_device(backend, domid, devname);
         if (!device) {
             err = errno;
-            WARN(NULL, "%d/%s error creating device: %s\n", domid, devname,
+            WARN(NULL, "%s error creating device: %s\n", devname,
                     strerror(err));
             return err;
         }

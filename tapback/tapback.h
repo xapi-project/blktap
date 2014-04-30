@@ -61,8 +61,8 @@ int pretty_time(char *buf, unsigned char buf_len);
         char buf[32];                                                       \
         pretty_time(buf, ARRAY_SIZE(buf));                                  \
         if (_device) {                                                      \
-            tapback_log(LOG_DEBUG, "%s %s:%d %d/%d "_fmt, buf, __FILE__,    \
-                    __LINE__, _device->domid, _device->devid, ##_args);     \
+            tapback_log(LOG_DEBUG, "%s %s:%d %d "_fmt, buf, __FILE__,       \
+                    __LINE__, _device->devid, ##_args);                     \
          } else {                                                           \
             tapback_log(LOG_DEBUG, "%s %s:%d "_fmt, buf, __FILE__, __LINE__,\
                 ##_args);                                                   \
@@ -75,8 +75,8 @@ int pretty_time(char *buf, unsigned char buf_len);
         char buf[32];                                                       \
         pretty_time(buf, ARRAY_SIZE(buf));                                  \
         if (_device) {                                                      \
-            tapback_log(LOG_INFO, "%s %s:%d %d/%d "_fmt, buf, __FILE__,     \
-                    __LINE__, _device->domid, _device->devid, ##_args);     \
+            tapback_log(LOG_INFO, "%s %s:%d %%d "_fmt, buf, __FILE__,       \
+                    __LINE__, _device->devid, ##_args);                     \
          } else {                                                           \
             tapback_log(LOG_INFO, "%s %s:%d "_fmt, buf, __FILE__, __LINE__, \
                 ##_args);                                                   \
@@ -89,8 +89,8 @@ int pretty_time(char *buf, unsigned char buf_len);
         char buf[32];                                                       \
         pretty_time(buf, ARRAY_SIZE(buf));                                  \
         if (_device) {                                                      \
-            tapback_log(LOG_WARNING, "%s %s:%d %d/%d "_fmt, buf, __FILE__,  \
-                    __LINE__, _device->domid, _device->devid, ##_args);     \
+            tapback_log(LOG_WARNING, "%s %s:%d %d "_fmt, buf, __FILE__,     \
+                    __LINE__, _device->devid, ##_args);                     \
          } else {                                                           \
             tapback_log(LOG_WARNING, "%s %s:%d "_fmt, buf, __FILE__,        \
                     __LINE__, ##_args);                                     \
