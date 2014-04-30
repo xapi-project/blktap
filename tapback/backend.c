@@ -289,8 +289,6 @@ physical_device(vbd_t *device) {
     device->major = major;
     device->minor = minor;
 
-    DBG(device, "need to find tapdisk serving minor=%d\n", device->minor);
-
     device->tap = malloc(sizeof(*device->tap));
     if (!device->tap) {
         err = -ENOMEM;
@@ -298,11 +296,13 @@ physical_device(vbd_t *device) {
     }
     err = find_tapdisk(device->minor, device->tap);
     if (err) {
-        WARN(device, "error looking for tapdisk: %s\n", strerror(-err));
+        WARN(device, "error looking for tapdisk serving minor=%d: %s\n",
+                device->minor, strerror(-err));
         goto out;
     }
 
-    DBG(device, "found tapdisk[%d]\n", device->tap->pid);
+    DBG(device, "found tapdisk[%d] serving minor=%d\n", device->tap->pid,
+            device->minor);
 
     /*
      * get the VBD parameters from the tapdisk
@@ -574,8 +574,6 @@ tapback_backend_probe_device(backend_t *backend,
 
     ASSERT(!tapback_is_master(backend));
 
-    DBG(NULL, "%d/%s probing device\n", domid, devname);
-
     /*
      * Ask XenStore if the device _should_ exist.
      */
@@ -646,8 +644,6 @@ tapback_backend_probe_device(backend_t *backend,
             err = frontend(device);
 		else if (!strcmp(HOTPLUG_STATUS_KEY, comp))
 			err = hotplug_status_changed(device);
-        else
-            DBG(device, "ignoring '%s'\n", comp);
     }
 
     if (err && create && device) {

@@ -198,8 +198,6 @@ connect_tap(vbd_t * const device)
             goto out;
         }
     }
-    else
-        DBG(device, "front-end doesn't support persistent grants\n");
 
     /*
      * persistent grants are not yet supported
