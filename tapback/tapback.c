@@ -81,6 +81,7 @@ tapback_read_watch(backend_t *backend)
     char **watch = NULL, *path = NULL, *token = NULL;
     unsigned int n = 0;
     int err = 0;
+    char *s;
 
 	ASSERT(backend);
 
@@ -88,6 +89,27 @@ tapback_read_watch(backend_t *backend)
     watch = xs_read_watch(backend->xs, &n);
     path = watch[XS_WATCH_PATH];
     token = watch[XS_WATCH_TOKEN];
+
+    /*
+     * print the path the watch triggered on for debug purposes
+     *
+     * TODO include token
+	 * TODO put in an #if DEBUG block
+     */
+	s = tapback_xs_read(backend->xs, XBT_NULL, "%s", path);
+    if (s) {
+        if (0 == strlen(s))
+            DBG(NULL, "%s -> (created)\n", path);
+        else
+            DBG(NULL, "%s -> \'%s\'\n", path, s);
+        free(s);
+    } else {
+		err = errno;
+		if (err == ENOENT)
+	        DBG(NULL, "%s -> (removed)\n", path);
+		else
+			WARN(NULL, "failed to read %s: %s\n", path, strerror(err));
+	}
 
     /*
      * The token indicates which XenStore watch triggered, the front-end one or
@@ -407,6 +429,7 @@ tapback_backend_run(backend_t *backend)
 
         if (FD_ISSET(fd, &rfds))
             tapback_read_watch(backend);
+        DBG(NULL, "--\n");
     } while (1);
 
     return err;

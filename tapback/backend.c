@@ -288,6 +288,8 @@ physical_device(vbd_t *device) {
     device->major = major;
     device->minor = minor;
 
+    DBG(device, "need to find tapdisk serving minor=%d\n", device->minor);
+
     device->tap = malloc(sizeof(*device->tap));
     if (!device->tap) {
         err = -ENOMEM;
@@ -295,13 +297,11 @@ physical_device(vbd_t *device) {
     }
     err = find_tapdisk(device->minor, device->tap);
     if (err) {
-        WARN(device, "error looking for tapdisk serving minor=%d: %s\n",
-                device->minor, strerror(-err));
+        WARN(device, "error looking for tapdisk: %s\n", strerror(-err));
         goto out;
     }
 
-    DBG(device, "found tapdisk[%d] serving minor=%d\n", device->tap->pid,
-            device->minor);
+    DBG(device, "found tapdisk[%d]\n", device->tap->pid);
 
     /*
      * get the VBD parameters from the tapdisk
@@ -361,7 +361,8 @@ frontend(vbd_t *device) {
     if (!(device->frontend_path = tapback_device_read(device, XBT_NULL,
                     FRONTEND_KEY))) {
         err = -errno;
-        WARN(device, "failed to read front-end path: %s\n", strerror(-err));
+        if (err != -ENOENT)
+            WARN(device, "failed to read front-end path: %s\n", strerror(-err));
         goto out;
     }
 
@@ -438,6 +439,7 @@ hotplug_status_changed(vbd_t * const device) {
 		goto out;
 	}
 	if (!strcmp(hotplug_status, "connected")) {
+        DBG(device, "physical device available\n");
 		device->hotplug_status_connected = true;
 		err = frontend_changed(device, device->frontend_state);
 	}
@@ -512,11 +514,14 @@ reconnect(vbd_t *device) {
 
     int err;
 
+    DBG(device, "attempting reconnect\n");
+
     err = physical_device(device);
     if (err) {
-        if (err == -ENOENT)
+        if (err == -ENOENT) {
+            DBG(device, "no physical device yet\n");
             err = 0;
-        else {
+        } else {
             WARN(device, "failed to retrieve physical device information: "
                     "%s\n", strerror(-err));
             goto out;
@@ -525,11 +530,15 @@ reconnect(vbd_t *device) {
     err = frontend(device);
     if (err) {
         /*
-         * The tapdisk or the front-end state path are not available.
+         * tapdisk or the front-end state path are not available.
          */
-        if (err == -ENOENT || err == -ESRCH)
+        if (err == -ENOENT) {
+            DBG(device, "front-end not yet ready\n");
             err = 0;
-        else
+        } else if (err == -ESRCH) {
+            DBG(device, "tapdisk not yet available\n");
+            err = 0;
+        } else
             WARN(device, "failed to watch front-end path: %s\n",
                     strerror(-err));
         goto out;
@@ -538,9 +547,10 @@ reconnect(vbd_t *device) {
     err = -tapback_backend_handle_otherend_watch(device->backend,
 			device->frontend_state_path);
     if (err) {
-        if (err == -ENOENT)
+        if (err == -ENOENT) {
+            DBG(device, "front-end not yet ready\n");
             err = 0;
-        else
+        } else
             WARN(device, "error running the Xenbus protocol: %s\n",
                     strerror(-err));
     }
@@ -572,6 +582,8 @@ tapback_backend_probe_device(backend_t *backend,
     ASSERT(devname);
 
     ASSERT(!tapback_is_master(backend));
+
+    DBG(NULL, "%d/%s probing device\n", domid, devname);
 
     /*
      * Ask XenStore if the device _should_ exist.
@@ -643,6 +655,8 @@ tapback_backend_probe_device(backend_t *backend,
             err = frontend(device);
 		else if (!strcmp(HOTPLUG_STATUS_KEY, comp))
 			err = hotplug_status_changed(device);
+        else
+            DBG(device, "ignoring '%s'\n", comp);
     }
 
     if (err && create && device) {
@@ -978,6 +992,10 @@ tapback_backend_handle_backend_watch(backend_t *backend,
              */
             INFO(NULL, "domain removed, exit\n");
             exit(EXIT_SUCCESS);
+
+            /*
+             * R.I.P.
+             */
         }
 
         /*

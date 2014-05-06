@@ -198,6 +198,8 @@ connect_tap(vbd_t * const device)
             goto out;
         }
     }
+    else
+        DBG(device, "front-end doesn't support persistent grants\n");
 
     /*
      * persistent grants are not yet supported
@@ -414,7 +416,7 @@ frontend_changed(vbd_t * const device, const XenbusState state)
 {
     int err = 0;
 
-    DBG(device, "front-end went into state %s\n", xenbus_strstate(state));
+    DBG(device, "front-end switched to state %s\n", xenbus_strstate(state));
 	device->frontend_state = state;
 
     switch (state) {
@@ -424,12 +426,15 @@ frontend_changed(vbd_t * const device, const XenbusState state)
             break;
         case XenbusStateInitialised:
     	case XenbusStateConnected:
-            /*
-             * Already connected when the front-end switched to Initialising?
-             */
-            if (device->hotplug_status_connected
-					&& device->state != XenbusStateConnected)
-                err = connect(device);
+            if (!device->hotplug_status_connected)
+                DBG(device, "physical device not available\n");
+            else {
+                if (device->state != XenbusStateConnected) {
+                    DBG(device, "connecting to front-end\n");
+                    err = connect(device);
+                } else
+                    DBG(device, "already connected\n");
+            }
             break;
         case XenbusStateClosing:
             err = xenbus_switch_state(device, XenbusStateClosing);
