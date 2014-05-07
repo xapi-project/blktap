@@ -44,6 +44,10 @@
  * the start of the VHD epoch. */
 #define VHD_EPOCH_START 946684800
 
+/* VHD uses an epoch of 12:00AM, Jan 1, 2000. This is the Unix timestamp for 
+ * the start of the VHD epoch. */
+#define VHD_EPOCH_START 946684800
+
 #define VHD_HEADER_MAX_RETRIES 10
 
 static int libvhd_dbg = 0;
