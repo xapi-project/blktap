@@ -169,7 +169,7 @@ tapback_backend_create_device(backend_t *backend,
 	ASSERT(backend);
     ASSERT(name);
 
-    DBG(NULL, "%d/%s creating device\n", domid, name);
+    DBG(NULL, "%s creating device\n", name);
 
     if (!(device = calloc(1, sizeof(*device)))) {
         WARN(NULL, "error allocating memory\n");
@@ -1000,15 +1000,15 @@ tapback_backend_handle_backend_watch(backend_t *backend,
 
         /*
          * There's no device yet, the domain just got created, nothing to do
-         * just yet.
-         *
-         * FIXME Is it possible for entire sub-trees to be created in one go?
-         * If so, we need to create multiple devices upon a single XenStore
-         * watch triggering, calling tapback_probe_domain should suffice.
+         * just yet. However, the entire sub-tree might have gotten created
+         * before the slave so we still need to check whether there are any
+         * devices.
          */
         device = strtok(NULL, "/");
-        if (!device)
+        if (!device) {
+            err = tapback_probe_domain(backend, domid);
             goto out;
+        }
 
         /*
          * Create or remove a specific device.
