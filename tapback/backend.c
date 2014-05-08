@@ -248,7 +248,7 @@ device_set_mode(vbd_t *device, const char *mode) {
  * Returns 0 on success, a negative error code otherwise.
  */
 static int
-physical_device(vbd_t *device) {
+physical_device_changed(vbd_t *device) {
 
     char * s = NULL, *p = NULL, *end = NULL;
     char *device_type = NULL;
@@ -389,15 +389,14 @@ physical_device(vbd_t *device) {
      * The front-end might have switched to state Connected before
      * physical-device is written. Check it's state and connect if necessary.
      *
-     * FIXME This is not very efficient. Consider doing it like blkback: store
-     * the state in the VBD in-memory structure.
+     * TODO blkback ignores connection errors, let's do the same until we
+     * know better.
      */
-    if (device->frontend_state_path) {
-        int err2 = -tapback_backend_handle_otherend_watch(device->backend,
-                device->frontend_state_path);
-        if (err2)
-            WARN(device, "failed to switch state: %s\n", strerror(-err2));
-    }
+    err = -frontend_changed(device, device->frontend_state);
+    if (err)
+        WARN(device, "failed to switch state: %s (error ignored)\n",
+                strerror(-err));
+    err = 0;
 out:
     if (err) {
         free(device->tap);
@@ -410,6 +409,9 @@ out:
     return err;
 }
 
+/**
+ * Start watching the front-end state path.
+ */
 static int
 frontend(vbd_t *device) {
 
@@ -440,8 +442,8 @@ frontend(vbd_t *device) {
      */
     if (asprintf(&device->frontend_state_path, "%s/state",
                 device->frontend_path) == -1) {
-        /* TODO log error */
         err = -errno;
+        WARN(device, "failed to asprintf: %s\n", strerror(-err));
         goto out;
     }
 
@@ -470,14 +472,19 @@ out:
 }
 
 /**
- * Reads the hotplug-status XenStore key from the back-end.
+ * Reads the hotplug-status XenStore key from the back-end and attemps to
+ * connect to the front-end.
+ *
+ * Connecting to the front-end requires the physical-device key to have been
+ * written. This function will attempt to connect anyway, and connecting will
+ * fail half-way through. This is expected.
  *
  * Returns 0 in success, -errno on failure.
  */
 static int
 hotplug_status_changed(vbd_t * const device) {
 
-	int err;
+	int err = 0;
 	char *hotplug_status = NULL;
 
 	ASSERT(device);
@@ -490,12 +497,22 @@ hotplug_status_changed(vbd_t * const device) {
 	if (!strcmp(hotplug_status, "connected")) {
         DBG(device, "physical device available (hotplug scripts ran)\n");
 		device->hotplug_status_connected = true;
-        if (device->frontend_state != XenbusStateUnknown)
+        /*
+         * Attempt to connect as everything may be ready and the only thing the
+         * back-end is waiting for is this XenStore key to be written.
+         */
+        err = frontend_changed(device, device->frontend_state);
+        if (err) {
             /*
-             * FIXME why do we do this here and not at the end of the function?
-             * And why do we ignore the return value?
+             * Ignore connection errors as the front-end might not yet be
+             * ready. blkback doesn't wait for this XenStore key to be written,
+             * so we choose to handle this the same way we do with
+             * physical-device.
              */
-    		err = frontend_changed(device, device->frontend_state);
+            INFO(device, "failed to connect to the front-end: %s "
+                    "(error ignored)\n", strerror(err));
+        }
+        err = 0;
 	}
 	else {
 		WARN(device, "invalid hotplug-status value %s\n", hotplug_status);
@@ -510,7 +527,12 @@ out:
 
 /**
  * Attempts to reconnected the back-end to the fornt-end if possible (e.g.
- * after a tapback restart).
+ * after a tapback restart), or after the slave tapback has started.
+ *
+ * The order we call the functions is not important, apart from
+ * tapback_backend_handle_otherend_watch that MUST be at the end, because each
+ * function attemps to reconnect but won't do so because the front-end state
+ * won't have been read.
  *
  * returns 0 on success, an error code otherwise
  *
@@ -521,13 +543,9 @@ reconnect(vbd_t *device) {
 
     int err;
 
-    /*
-     * FIXME The order the functions are called is important.
-     */
-
     DBG(device, "attempting reconnect\n");
 
-    err = physical_device(device);
+    err = physical_device_changed(device);
     if (err) {
         if (err == -ENOENT) {
             DBG(device, "no physical device yet\n");
@@ -538,6 +556,19 @@ reconnect(vbd_t *device) {
             goto out;
         }
     }
+
+    err = hotplug_status_changed(device);
+    if (err) {
+        if (err == -ENOENT) {
+            DBG(device, "udev scripts haven't yet run\n");
+            err = 0;
+        } else {
+            WARN(device, "failed to retrieve hotplug information: %s\n",
+                    strerror(-err));
+            goto out;
+        }
+    }
+
     err = frontend(device);
     if (err) {
         /*
@@ -553,18 +584,6 @@ reconnect(vbd_t *device) {
             WARN(device, "failed to watch front-end path: %s\n",
                     strerror(-err));
         goto out;
-    }
-
-    err = hotplug_status_changed(device);
-    if (err) {
-        if (err == -ENOENT) {
-            DBG(device, "hotplug information not yet available\n");
-            err = 0;
-        } else {
-            WARN(device, "failed to retrieve hotplug information: %s\n",
-                    strerror(-err));
-            goto out;
-        }
     }
 
     err = -tapback_backend_handle_otherend_watch(device->backend,
@@ -672,7 +691,7 @@ tapback_backend_probe_device(backend_t *backend,
          * callbacks.
          */
         if (!strcmp(PHYS_DEV_KEY, comp))
-            err = physical_device(device);
+            err = physical_device_changed(device);
         else if (!strcmp(FRONTEND_KEY, comp))
             err = frontend(device);
 		else if (!strcmp(HOTPLUG_STATUS_KEY, comp))
