@@ -216,6 +216,25 @@ out:
     return device;
 }
 
+static int
+device_set_mode(vbd_t *device, const char *mode) {
+
+	ASSERT(device);
+	ASSERT(mode);
+
+	if (!strcmp(mode, "r"))
+		device->mode = false;
+	else if (!strcmp(mode, "w"))
+		device->mode = true;
+	else {
+		WARN(device, "invalid value %s for XenStore key %s\n",
+				mode, MODE_KEY);
+		return -EINVAL;
+	}
+
+	return 0;
+}
+
 /**
  * Retrieves the minor number and locates the corresponding tapdisk, storing
  * all relevant information in @device. Then, it attempts to advance the Xenbus
@@ -232,8 +251,10 @@ static int
 physical_device(vbd_t *device) {
 
     char * s = NULL, *p = NULL, *end = NULL;
+    char *device_type = NULL;
+    char *mode = NULL;
     int err = 0, major = 0, minor = 0;
-	unsigned int info;
+    unsigned int info;
 
     ASSERT(device);
 
@@ -288,13 +309,68 @@ physical_device(vbd_t *device) {
     device->major = major;
     device->minor = minor;
 
-    DBG(device, "need to find tapdisk serving minor=%d\n", device->minor);
+    device_type = tapback_device_read_otherend(device, XBT_NULL,
+			"device-type");
+	if (!device_type) {
+		err = -errno;
+		WARN(device, "failed to read device-type: %s\n", strerror(-err));
+		goto out;
+	}
+	if (!strcmp(device_type, "cdrom"))
+		device->cdrom = true;
+	else if (!strcmp(device_type, "disk"))
+		device->cdrom = false;
+	else {
+		WARN(device, "unsupported device type %s\n", device_type);
+		err = -EOPNOTSUPP;
+		goto out;
+	}
+
+	mode = tapback_device_read(device, XBT_NULL, MODE_KEY);
+	if (!mode) {
+		err = -errno;
+		WARN(device, "failed to read XenStore key %s: %s\n",
+				MODE_KEY, strerror(-err));
+		goto out;
+	}
+	err = device_set_mode(device, mode);
+	if (err) {
+		WARN(device, "failed to set device R/W mode: %s\n",
+				strerror(-err));
+		goto out;
+	}
+
+	if (device->cdrom)
+		device->info |= VDISK_CDROM;
+	if (!device->mode)
+		device->info |= VDISK_READONLY;
+
+    /*
+     * FIXME Why do we write it here since we already write it in
+     * connect_frontend?
+     */
+	err = tapback_device_printf(device, XBT_NULL, "info", false, "%d",
+			device->info);
+	if (err) {
+		WARN(device, "failed to write info: %s\n", strerror(-err));
+		goto out;
+	}
 
     device->tap = malloc(sizeof(*device->tap));
     if (!device->tap) {
         err = -ENOMEM;
         goto out;
     }
+
+    /*
+     * XXX If the physical-device key has been written we expect a tapdisk to
+     * have been created. If tapdisk is created after the physical-device key
+     * is written we have no way of being notified, so we will not be able to
+     * advance the back-end state.
+     */
+
+    DBG(device, "need to find tapdisk serving minor=%d\n", device->minor);
+
     err = find_tapdisk(device->minor, device->tap);
     if (err) {
         WARN(device, "error looking for tapdisk: %s\n", strerror(-err));
@@ -339,6 +415,8 @@ out:
         device->tap = NULL;
         device->sector_size = device->sectors = device->info = 0;
     }
+    free(device_type);
+	free(mode);
     free(s);
     return err;
 }
@@ -402,25 +480,6 @@ out:
     return err;
 }
 
-static int
-device_set_mode(vbd_t *device, const char *mode) {
-
-	ASSERT(device);
-	ASSERT(mode);
-
-	if (!strcmp(mode, "r"))
-		device->mode = false;
-	else if (!strcmp(mode, "w"))
-		device->mode = true;
-	else {
-		WARN(device, "invalid value %s for XenStore key %s\n",
-				mode, MODE_KEY);
-		return -EINVAL;
-	}
-
-	return 0;
-}
-
 /**
  * Reads the hotplug-status XenStore key from the back-end.
  *
@@ -431,8 +490,6 @@ hotplug_status_changed(vbd_t * const device) {
 
 	int err;
 	char *hotplug_status = NULL;
-	char *device_type = NULL;
-	char *mode = NULL;
 
 	ASSERT(device);
 
@@ -444,7 +501,7 @@ hotplug_status_changed(vbd_t * const device) {
 	if (!strcmp(hotplug_status, "connected")) {
         DBG(device, "physical device available (hotplug scripts ran)\n");
 		device->hotplug_status_connected = true;
-        if (device->frontend_state)
+        if (device->frontend_state != XenbusStateUnknown)
             /*
              * FIXME why do we do this here and not at the end of the function?
              * And why do we ignore the return value?
@@ -456,52 +513,8 @@ hotplug_status_changed(vbd_t * const device) {
 		err = -EINVAL;
 	}
 
-	device_type = tapback_device_read_otherend(device, XBT_NULL,
-			"device-type");
-	if (!device_type) {
-		err = -errno;
-		WARN(device, "failed to read device-type: %s\n", strerror(-err));
-		goto out;
-	}
-	if (!strcmp(device_type, "cdrom"))
-		device->cdrom = true;
-	else if (!strcmp(device_type, "disk"))
-		device->cdrom = false;
-	else {
-		WARN(device, "unsupported device type %s\n", device_type);
-		err = -EOPNOTSUPP;
-		goto out;
-	}
-
-	mode = tapback_device_read(device, XBT_NULL, MODE_KEY);
-	if (!mode) {
-		err = -errno;
-		WARN(device, "failed to read XenStore key %s: %s\n",
-				MODE_KEY, strerror(-err));
-		goto out;
-	}
-	err = device_set_mode(device, mode);
-	if (err) {
-		WARN(device, "failed to set device R/W mode: %s\n",
-				strerror(-err));
-		goto out;
-	}
-
-	if (device->cdrom)
-		device->info |= VDISK_CDROM;
-	if (!device->mode)
-		device->info |= VDISK_READONLY;
-
-	err = tapback_device_printf(device, XBT_NULL, "info", false, "%d",
-			device->info);
-	if (err) {
-		WARN(device, "failed to write info: %s\n", strerror(-err));
-		goto out;
-	}
 out:
 	free(hotplug_status);
-	free(device_type);
-	free(mode);
 
 	return err;
 }
@@ -518,6 +531,10 @@ static inline int
 reconnect(vbd_t *device) {
 
     int err;
+
+    /*
+     * FIXME The order the functions are called is important.
+     */
 
     DBG(device, "attempting reconnect\n");
 
