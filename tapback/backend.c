@@ -345,17 +345,6 @@ physical_device(vbd_t *device) {
 	if (!device->mode)
 		device->info |= VDISK_READONLY;
 
-    /*
-     * FIXME Why do we write it here since we already write it in
-     * connect_frontend?
-     */
-	err = tapback_device_printf(device, XBT_NULL, "info", false, "%d",
-			device->info);
-	if (err) {
-		WARN(device, "failed to write info: %s\n", strerror(-err));
-		goto out;
-	}
-
     device->tap = malloc(sizeof(*device->tap));
     if (!device->tap) {
         err = -ENOMEM;
