@@ -217,14 +217,14 @@ out:
 }
 
 /**
- * Retrieves the minor number and tapdisk-related information, and stores them
- * in @device.
+ * Retrieves the minor number and locates the corresponding tapdisk, storing
+ * all relevant information in @device. Then, it attempts to advance the Xenbus
+ * state as it might be that everything is ready and all that was missing was
+ * the physical device.
  *
  * We might already have read the major/minor, but if the physical-device
  * key triggered we need to make sure it hasn't changed. This also protects us
  * against restarted transactions.
- *
- * TODO include domid/devid in messages
  *
  * Returns 0 on success, a negative error code otherwise.
  */
@@ -335,7 +335,6 @@ physical_device(vbd_t *device) {
     }
 out:
     if (err) {
-        device->major = device->minor = -1;
         free(device->tap);
         device->tap = NULL;
         device->sector_size = device->sectors = device->info = 0;
@@ -421,6 +420,8 @@ device_set_mode(vbd_t *device, const char *mode) {
 }
 
 /**
+ * Reads the hotplug-status XenStore key from the back-end.
+ *
  * Returns 0 in success, -errno on failure.
  */
 static int
@@ -439,14 +440,16 @@ hotplug_status_changed(vbd_t * const device) {
 		goto out;
 	}
 	if (!strcmp(hotplug_status, "connected")) {
-        DBG(device, "physical device available\n");
+        DBG(device, "physical device available (hotplug scripts ran)\n");
 		device->hotplug_status_connected = true;
-		err = frontend_changed(device, device->frontend_state);
+        if (device->frontend_state)
+            /*
+             * FIXME why do we do this here and not at the end of the function?
+             * And why do we ignore the return value?
+             */
+    		err = frontend_changed(device, device->frontend_state);
 	}
 	else {
-		/*
-		 * FIXME what other values can it receive?
-		 */
 		WARN(device, "invalid hotplug-status value %s\n", hotplug_status);
 		err = -EINVAL;
 	}
@@ -533,7 +536,7 @@ reconnect(vbd_t *device) {
          * tapdisk or the front-end state path are not available.
          */
         if (err == -ENOENT) {
-            DBG(device, "front-end not yet ready\n");
+            DBG(device, "front-end XenStore sub-tree does not yet exist\n");
             err = 0;
         } else if (err == -ESRCH) {
             DBG(device, "tapdisk not yet available\n");
@@ -542,6 +545,18 @@ reconnect(vbd_t *device) {
             WARN(device, "failed to watch front-end path: %s\n",
                     strerror(-err));
         goto out;
+    }
+
+    err = hotplug_status_changed(device);
+    if (err) {
+        if (err == -ENOENT) {
+            DBG(device, "hotplug information not yet available\n");
+            err = 0;
+        } else {
+            WARN(device, "failed to retrieve hotplug information: %s\n",
+                    strerror(-err));
+            goto out;
+        }
     }
 
     err = -tapback_backend_handle_otherend_watch(device->backend,
@@ -583,7 +598,7 @@ tapback_backend_probe_device(backend_t *backend,
 
     ASSERT(!tapback_is_master(backend));
 
-    DBG(NULL, "%d/%s probing device\n", domid, devname);
+    DBG(NULL, "%s probing device\n", devname);
 
     /*
      * Ask XenStore if the device _should_ exist.
@@ -640,9 +655,8 @@ tapback_backend_probe_device(backend_t *backend,
      * Examine what happened to the XenStore component on which the watch
      * triggered.
      *
-     * XXX Why not set a watch on these paths when creating the device?  This
-     * is how blkback does it. I suspect this has to do with avoiding setting
-     * too many XenStore watches.
+     * We don't set a XenStore watch on these paths in order to limit the
+     * number of watches for performance reasons.
      */
     if (!remove && comp) {
         /*

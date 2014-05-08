@@ -422,7 +422,7 @@ tapback_backend_run(backend_t *backend)
         if (nfds == -1) {
             if (errno == EINTR)
                 continue;
-            WARN(NULL, "error monitoring XenStore");
+            WARN(NULL, "error monitoring XenStore\n");
             err = -errno;
             break;
         }

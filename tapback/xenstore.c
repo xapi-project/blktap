@@ -114,6 +114,7 @@ tapback_device_read_otherend(vbd_t * const device, xs_transaction_t xst,
 {
     ASSERT(device);
     ASSERT(path);
+    ASSERT(device->frontend_path);
 
     return tapback_xs_read(device->backend->xs, xst, "%s/%s",
             device->frontend_path, path);

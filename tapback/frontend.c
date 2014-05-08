@@ -125,9 +125,6 @@ connect_tap(vbd_t * const device)
          * +10 is for INT_MAX, +1 for NULL termination
          */
 
-        /*
-         * TODO include domid/devid in the error messages
-         */
         static const size_t len = sizeof(RING_REF) + 10 + 1;
         char ring_ref[len];
         for (i = 0; i < nr_pages; i++) {
@@ -427,7 +424,8 @@ frontend_changed(vbd_t * const device, const XenbusState state)
         case XenbusStateInitialised:
     	case XenbusStateConnected:
             if (!device->hotplug_status_connected)
-                DBG(device, "physical device not available\n");
+                DBG(device, "physical device not available "
+                        "(udev scripts haven't yet run)\n");
             else {
                 if (device->state != XenbusStateConnected) {
                     DBG(device, "connecting to front-end\n");
@@ -444,7 +442,7 @@ frontend_changed(vbd_t * const device, const XenbusState state)
             break;
         default:
             err = EINVAL;
-            WARN(device, "invalid front-end state %d", state);
+            WARN(device, "invalid front-end state %d\n", state);
             break;
     }
     return err;
