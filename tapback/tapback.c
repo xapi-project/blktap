@@ -98,6 +98,13 @@ tapback_read_watch(backend_t *backend)
 	s = tapback_xs_read(backend->xs, XBT_NULL, "%s", path);
     if (s) {
         if (0 == strlen(s))
+            /*
+             * XXX "(created)" might be printed when the a XenStore directory
+             * gets removed, the XenStore watch fires, and a XenStore node is
+             * created under the directory that just got removed. This usually
+             * happens when the toolstack removes the VBD from XenStore and
+             * then immediately writes the tools/xenops/cancel key in it.
+             */
             DBG(NULL, "%s -> (created)\n", path);
         else
             DBG(NULL, "%s -> \'%s\'\n", path, s);

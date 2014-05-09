@@ -824,6 +824,10 @@ tapdisk_control_close_image(struct tapdisk_ctl_conn *conn,
 	  tapdisk_nbdserver_pause(vbd->nbdserver);
 	}
 
+    if (vbd->sring)
+        DPRINTF("implicitly disconnecting domid=%d, devid=%d\n",
+                vbd->sring->domid, vbd->sring->devid);
+
 	do {
 		if (vbd->sring) {
 			err = tapdisk_xenblkif_disconnect(vbd->sring->domid,
