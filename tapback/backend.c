@@ -251,8 +251,6 @@ static int
 physical_device_changed(vbd_t *device) {
 
     char * s = NULL, *p = NULL, *end = NULL;
-    char *device_type = NULL;
-    char *mode = NULL;
     int err = 0, major = 0, minor = 0;
     unsigned int info;
 
@@ -308,42 +306,6 @@ physical_device_changed(vbd_t *device) {
 
     device->major = major;
     device->minor = minor;
-
-    device_type = tapback_device_read_otherend(device, XBT_NULL,
-			"device-type");
-	if (!device_type) {
-		err = -errno;
-		WARN(device, "failed to read device-type: %s\n", strerror(-err));
-		goto out;
-	}
-	if (!strcmp(device_type, "cdrom"))
-		device->cdrom = true;
-	else if (!strcmp(device_type, "disk"))
-		device->cdrom = false;
-	else {
-		WARN(device, "unsupported device type %s\n", device_type);
-		err = -EOPNOTSUPP;
-		goto out;
-	}
-
-	mode = tapback_device_read(device, XBT_NULL, MODE_KEY);
-	if (!mode) {
-		err = -errno;
-		WARN(device, "failed to read XenStore key %s: %s\n",
-				MODE_KEY, strerror(-err));
-		goto out;
-	}
-	err = device_set_mode(device, mode);
-	if (err) {
-		WARN(device, "failed to set device R/W mode: %s\n",
-				strerror(-err));
-		goto out;
-	}
-
-	if (device->cdrom)
-		device->info |= VDISK_CDROM;
-	if (!device->mode)
-		device->info |= VDISK_READONLY;
 
     device->tap = malloc(sizeof(*device->tap));
     if (!device->tap) {
@@ -403,8 +365,6 @@ out:
         device->tap = NULL;
         device->sector_size = device->sectors = device->info = 0;
     }
-    free(device_type);
-	free(mode);
     free(s);
     return err;
 }
@@ -475,6 +435,9 @@ out:
  * Reads the hotplug-status XenStore key from the back-end and attemps to
  * connect to the front-end.
  *
+ * FIXME This function REQUIRES the device->frontend_path member to be
+ * populated, and this is done by frontend().
+ *
  * Connecting to the front-end requires the physical-device key to have been
  * written. This function will attempt to connect anyway, and connecting will
  * fail half-way through. This is expected.
@@ -485,7 +448,7 @@ static int
 hotplug_status_changed(vbd_t * const device) {
 
 	int err = 0;
-	char *hotplug_status = NULL;
+	char *hotplug_status = NULL, *device_type = NULL, *mode = NULL;
 
 	ASSERT(device);
 
@@ -495,8 +458,47 @@ hotplug_status_changed(vbd_t * const device) {
 		goto out;
 	}
 	if (!strcmp(hotplug_status, "connected")) {
+
         DBG(device, "physical device available (hotplug scripts ran)\n");
+
 		device->hotplug_status_connected = true;
+
+        device_type = tapback_device_read_otherend(device, XBT_NULL,
+                "device-type");
+        if (!device_type) {
+            err = -errno;
+            WARN(device, "failed to read device-type: %s\n", strerror(-err));
+            goto out;
+        }
+        if (!strcmp(device_type, "cdrom"))
+            device->cdrom = true;
+        else if (!strcmp(device_type, "disk"))
+            device->cdrom = false;
+        else {
+            WARN(device, "unsupported device type %s\n", device_type);
+            err = -EOPNOTSUPP;
+            goto out;
+        }
+
+        mode = tapback_device_read(device, XBT_NULL, MODE_KEY);
+        if (!mode) {
+            err = -errno;
+            WARN(device, "failed to read XenStore key %s: %s\n",
+                    MODE_KEY, strerror(-err));
+            goto out;
+        }
+        err = device_set_mode(device, mode);
+        if (err) {
+            WARN(device, "failed to set device R/W mode: %s\n",
+                    strerror(-err));
+            goto out;
+        }
+
+        if (device->cdrom)
+            device->info |= VDISK_CDROM;
+        if (!device->mode)
+            device->info |= VDISK_READONLY;
+
         /*
          * Attempt to connect as everything may be ready and the only thing the
          * back-end is waiting for is this XenStore key to be written.
@@ -521,6 +523,8 @@ hotplug_status_changed(vbd_t * const device) {
 
 out:
 	free(hotplug_status);
+    free(device_type);
+	free(mode);
 
 	return err;
 }
@@ -545,6 +549,26 @@ reconnect(vbd_t *device) {
 
     DBG(device, "attempting reconnect\n");
 
+    /*
+     * frontend() must be called before all other functions.
+     */
+    err = frontend(device);
+    if (err) {
+        /*
+         * tapdisk or the front-end state path are not available.
+         */
+        if (err == -ENOENT) {
+            DBG(device, "front-end XenStore sub-tree does not yet exist\n");
+            err = 0;
+        } else if (err == -ESRCH) {
+            DBG(device, "tapdisk not yet available\n");
+            err = 0;
+        } else
+            WARN(device, "failed to watch front-end path: %s\n",
+                    strerror(-err));
+        goto out;
+    }
+
     err = physical_device_changed(device);
     if (err) {
         if (err == -ENOENT) {
@@ -567,23 +591,6 @@ reconnect(vbd_t *device) {
                     strerror(-err));
             goto out;
         }
-    }
-
-    err = frontend(device);
-    if (err) {
-        /*
-         * tapdisk or the front-end state path are not available.
-         */
-        if (err == -ENOENT) {
-            DBG(device, "front-end XenStore sub-tree does not yet exist\n");
-            err = 0;
-        } else if (err == -ESRCH) {
-            DBG(device, "tapdisk not yet available\n");
-            err = 0;
-        } else
-            WARN(device, "failed to watch front-end path: %s\n",
-                    strerror(-err));
-        goto out;
     }
 
     err = -tapback_backend_handle_otherend_watch(device->backend,
@@ -689,6 +696,10 @@ tapback_backend_probe_device(backend_t *backend,
         /*
          * TODO Replace this with a despatch table mapping XenStore keys to
          * callbacks.
+         *
+         * XXX physical_device_changed() and hotplug_status_changed() require
+         * frontend() to have been called beforehand. This is achieved by
+         * calling reconnect by calling reconnect() when the VBD is created.
          */
         if (!strcmp(PHYS_DEV_KEY, comp))
             err = physical_device_changed(device);
