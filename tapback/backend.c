@@ -41,7 +41,7 @@ tapback_device_unwatch_frontend_state(vbd_t * const device)
     if (device->frontend_state_path)
 		/* TODO check return code */
         xs_unwatch(device->backend->xs, device->frontend_state_path,
-                BLKTAP3_FRONTEND_TOKEN);
+                device->backend->frontend_token);
 
     free(device->frontend_state_path);
     device->frontend_state_path = NULL;
@@ -385,8 +385,10 @@ frontend(vbd_t *device) {
      * changed.
      */
     if (!xs_watch(device->backend->xs, device->frontend_state_path,
-                BLKTAP3_FRONTEND_TOKEN)) {
+                device->backend->frontend_token)) {
         err = -errno;
+        WARN(device, "failed to watch the front-end path (%s): %s\n",
+                device->frontend_state_path, strerror(-err));
         goto out;
     }
 

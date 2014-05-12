@@ -111,7 +111,6 @@ int pretty_time(char *buf, unsigned char buf_len);
  * Pre-defined XenStore path components used for running the XenBus protocol.
  */
 #define XENSTORE_BACKEND			"backend"
-#define BLKTAP3_FRONTEND_TOKEN		"otherend-state"
 #define PHYS_DEV_KEY                "physical-device"
 #define HOTPLUG_STATUS_KEY			"hotplug-status"
 #define MODE_KEY					"mode"
@@ -169,7 +168,6 @@ typedef struct backend {
      * FIXME document
      */
     char *path;
-    char *token;
 
     /**
      * A handle to XenStore.
@@ -198,6 +196,9 @@ typedef struct backend {
      * master tapback.
      */
     domid_t slave_domid;
+
+    char *frontend_token;
+    char *backend_token;
 
 	/**
 	 * for linked lists
