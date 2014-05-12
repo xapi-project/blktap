@@ -118,10 +118,10 @@ tapback_read_watch(backend_t *backend)
      * The token indicates which XenStore watch triggered, the front-end one or
      * the back-end one.
      */
-    if (!strcmp(token, BLKTAP3_FRONTEND_TOKEN)) {
+    if (!strcmp(token, backend->frontend_token)) {
         ASSERT(!tapback_is_master(backend));
         err = -tapback_backend_handle_otherend_watch(backend, path);
-    } else if (!strcmp(token, backend->token)) {
+    } else if (!strcmp(token, backend->backend_token)) {
         err = -tapback_backend_handle_backend_watch(backend, path);
     } else {
         WARN(NULL, "invalid token \'%s\'\n", token);
@@ -146,7 +146,8 @@ tapback_backend_destroy(backend_t *backend)
 
     free(backend->name);
     free(backend->path);
-    free(backend->token);
+    free(backend->frontend_token);
+    free(backend->backend_token);
 
     if (backend->xs) {
         xs_daemon_close(backend->xs);
@@ -293,7 +294,7 @@ tapback_backend_create(const char *name, const char *pidfile,
         goto out;
     }
 
-    backend->path = backend->token = NULL;
+    backend->path = NULL;
 
     INIT_LIST_HEAD(&backend->entry);
 
@@ -318,12 +319,38 @@ tapback_backend_create(const char *name, const char *pidfile,
         }
     }
 
-    err = asprintf(&backend->token, "%s-%s", XENSTORE_BACKEND,
-            backend->name);
-    if (err == -1) {
-        backend->token = NULL;
-        err = errno;
-        goto out;
+    if (domid) {
+        err = asprintf(&backend->frontend_token, "%s-%d-front", tapback_name,
+                domid);
+        if (err == -1) {
+            backend->frontend_token = NULL;
+            err = errno;
+            goto out;
+        }
+
+        err = asprintf(&backend->backend_token, "%s-%d-back", tapback_name,
+                domid);
+        if (err == -1) {
+            backend->backend_token = NULL;
+            err = errno;
+            goto out;
+        }
+    } else {
+        err = asprintf(&backend->frontend_token, "%s-master-front",
+                tapback_name);
+        if (err == -1) {
+            backend->backend_token = NULL;
+            err = errno;
+            goto out;
+        }
+
+        err = asprintf(&backend->backend_token, "%s-master-back",
+                tapback_name);
+        if (err == -1) {
+            backend->backend_token = NULL;
+            err = errno;
+            goto out;
+        }
     }
 
     err = 0;
@@ -360,7 +387,7 @@ tapback_backend_create(const char *name, const char *pidfile,
     /*
      * Watch the back-end.
      */
-    if (!xs_watch(backend->xs, backend->path, backend->token)) {
+    if (!xs_watch(backend->xs, backend->path, backend->backend_token)) {
         err = errno;
         goto out;
     }
