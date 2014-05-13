@@ -26,6 +26,9 @@
 #include <string.h>
 #include <stdbool.h>
 #include <search.h>
+#include <sys/types.h>
+#include <sys/socket.h>
+#include <sys/un.h>
 
 #include <xen/xen.h>
 #include <xen/io/xenbus.h>
@@ -182,6 +185,8 @@ typedef struct backend {
      * Unix domain socket for controlling the daemon.
      */
     int ctrl_sock;
+
+    struct sockaddr_un local;
 
     /**
      * Domain ID in which tapback is running.
@@ -497,5 +502,8 @@ tapback_find_slave(const backend_t *master_backend, const domid_t domid);
 int
 tapback_xs_exists(struct xs_handle * const xs, xs_transaction_t xst,
         char *path, const int *len);
+
+void
+tapback_backend_destroy(backend_t *backend);
 
 #endif /* __TAPBACK_H__ */

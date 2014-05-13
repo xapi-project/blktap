@@ -41,9 +41,6 @@
 #include "stdio.h" /* TODO tap-ctl.h needs to include stdio.h */
 #include "tap-ctl.h"
 #include "tapback.h"
-#include <sys/types.h>
-#include <sys/socket.h>
-#include <sys/un.h>
 #include <signal.h>
 
 static const char *log_dir = "/var/log/tapback";
@@ -139,7 +136,7 @@ tapback_read_watch(backend_t *backend)
     return;
 }
 
-static void
+void
 tapback_backend_destroy(backend_t *backend)
 {
     int err;
@@ -156,7 +153,7 @@ tapback_backend_destroy(backend_t *backend)
         backend->xs = NULL;
     }
 
-    err = unlink(TAPBACK_CTL_SOCK_PATH);
+    err = unlink(backend->local.sun_path);
     if (err == -1 && errno != ENOENT) {
         err = errno;
         WARN(NULL, "failed to remove %s: %s\n", TAPBACK_CTL_SOCK_PATH,
@@ -270,7 +267,6 @@ tapback_backend_create(const char *name, const char *pidfile,
         const domid_t domid)
 {
     int err;
-    struct sockaddr_un local;
     int len;
 	backend_t *backend = NULL;
 
@@ -391,19 +387,39 @@ tapback_backend_create(const char *name, const char *pidfile,
         WARN(NULL, "failed to create control socket: %s\n", strerror(errno));
         goto out;
     }
-    local.sun_family = AF_UNIX;
-    strcpy(local.sun_path, TAPBACK_CTL_SOCK_PATH);
-    err = unlink(local.sun_path);
-    if (err && errno != ENOENT) {
+    backend->local.sun_family = AF_UNIX;
+    if (domid)
+        err = snprintf(backend->local.sun_path,
+                ARRAY_SIZE(backend->local.sun_path),
+                "/var/run/%s.%d", tapback_name, domid);
+    else
+        err = snprintf(backend->local.sun_path,
+                ARRAY_SIZE(backend->local.sun_path),
+                "/var/run/%s.master", tapback_name);
+    if (err >= (int)ARRAY_SIZE(backend->local.sun_path)) {
+        err = ENAMETOOLONG;
+        WARN(NULL, "UNIX domain socket name too long\n");
+        goto out;
+    } else if (err < 0) {
         err = errno;
-        WARN(NULL, "failed to remove %s: %s\n", local.sun_path, strerror(err));
+        WARN(NULL, "failed to snprintf: %s\n", strerror(err));
         goto out;
     }
-    len = strlen(local.sun_path) + sizeof(local.sun_family);
-    err = bind(backend->ctrl_sock, (struct sockaddr *)&local, len);
+    err = 0;
+
+    err = unlink(backend->local.sun_path);
+    if (err && errno != ENOENT) {
+        err = errno;
+        WARN(NULL, "failed to remove %s: %s\n", backend->local.sun_path,
+                strerror(err));
+        goto out;
+    }
+    len = strlen(backend->local.sun_path) + sizeof(backend->local.sun_family);
+    err = bind(backend->ctrl_sock, (struct sockaddr *)&backend->local, len);
     if (err == -1) {
         err = errno;
-        WARN(NULL, "failed to bind to %s: %s\n", local.sun_path, strerror(err));
+        WARN(NULL, "failed to bind to %s: %s\n", backend->local.sun_path,
+                strerror(err));
         goto out;
     }
 
