@@ -70,16 +70,16 @@ tapback_backend_destroy_device(vbd_t * const device)
 		err = tap_ctl_disconnect_xenblkif(device->tap->pid, device->domid,
 				device->devid, NULL);
 		if (err) {
-			if (err == -ESRCH) {
+			if (err == -ESRCH || err == -ENOENT) {
 				/*
 				 * TODO tapdisk might have died without cleaning up, in which
-				 * case we'll receieve an I/O error when trying to talk to it
+				 * case we'll receive an I/O error when trying to talk to it
 				 * through the socket, maybe search for a process with that
 				 * PID? Alternatively, we can spawn tapdisks through a daemon
 				 * which will monitor tapdisks for abrupt deaths and clean up
 				 * after them (e.g. remove the socket).
 				 */
-				WARN(device, "tapdisk[%d] not running\n", device->tap->pid);
+				INFO(device, "tapdisk[%d] not running\n", device->tap->pid);
 				err = 0;
 			} else {
 				WARN(device, "cannot disconnect tapdisk[%d] minor=%d from the "
@@ -718,11 +718,12 @@ tapback_domain_scan(backend_t *backend, const domid_t domid)
          */
         for (i = 0; i < n; i++) {
             err = tapback_backend_probe_device(backend, domid, sub[i], NULL);
-            if (err) {
-                WARN(NULL, "error probing device %s: %s\n",
+            if (unlikely(err))
+                /*
+                 * Keep probing other devices.
+                 */
+                WARN(NULL, "%s error probing device: %s\n",
                         sub[i], strerror(-err));
-                goto out;
-            }
         }
     }
 
@@ -750,18 +751,17 @@ tapback_probe_domain(backend_t *backend, const domid_t domid)
         if (device->domid == domid) {
             err = tapback_backend_probe_device(backend, device->domid,
                     device->name, NULL);
-            if (err) {
-                WARN(device, "error probing device : %s\n", strerror(-err));
-                /* TODO Should we fail in this case of keep probing? */
-                goto out;
-            }
+            if (unlikely(err))
+                /*
+                 * Keep probing other devices.
+                 */
+                WARN(device, "error probing device: %s\n", strerror(-err));
         }
     }
 
     err = tapback_domain_scan(backend, domid);
     if (err == -ENOENT)
         err = 0;
-out:
     return err;
 }
 
@@ -795,11 +795,11 @@ tapback_backend_scan(backend_t *backend)
              */
             err = tapback_backend_probe_device(backend, device->domid,
                     device->name, NULL);
-            if (err) {
-                WARN(device, "error probing device : %s\n", strerror(-err));
-                /* TODO Should we fail in this case of keep probing? */
-                goto out;
-            }
+            if (unlikely(err))
+                /*
+                 * Keep probing other devices.
+                 */
+                WARN(device, "error probing device: %s\n", strerror(-err));
         }
     }
 
