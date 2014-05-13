@@ -68,8 +68,7 @@ tapback_xs_vread(struct xs_handle * const xs, xs_transaction_t xst,
     if ((unsigned int)(strchr(data, '\0') - data) != len) {
 		err = EINVAL;
         /* TODO print extraneous '\0' characters */
-        WARN(NULL, "XenStore value '%s' contains extraneous NULLs\n", len,
-                data);
+        WARN(NULL, "XenStore value '%s' contains extraneous NULLs\n", data);
         goto fail;
 	}
 

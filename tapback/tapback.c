@@ -49,9 +49,8 @@
 static const char *log_dir = "/var/log/tapback";
 const char *tapback_name = "tapback";
 char *log_file = NULL;
-
-void tapback_log(int prio, const char *fmt, ...);
-void (*tapback_vlog) (int prio, const char *fmt, va_list ap);
+unsigned log_level;
+int tapback_log_fd = -1;
 
 LIST_HEAD(backends);
 
@@ -162,32 +161,48 @@ tapback_backend_destroy(backend_t *backend)
 	free(backend);
 }
 
-static FILE *tapback_log_fp = NULL;
+/**
+ * strlen is not async-signal-safe.
+ */
+static unsigned mystrlen(const char *s)
+{
+    unsigned i = 0;
+    while (s[i] != '\0')
+        i++;
+    return i;
+}
 
 static void
-signal_cb(int signum) {
-
-    ASSERT(signum == SIGINT || signum == SIGTERM || signum == SIGHUP);
+_signal_cb(int signum)
+{
+    int dummy;
 
     if (signum == SIGHUP) {
-        if (tapback_log_fp) {
-            INFO(NULL, "re-opening log on SIGHUP\n");
-            fflush(tapback_log_fp);
-            fclose(tapback_log_fp);
-            tapback_log_fp = fopen(log_file, "a+");
+        if (likely(tapback_log_fd != -1)) {
+            static const char msg[] = "re-opening log on SIGHUP\n";
+            dummy = write(tapback_log_fd, msg, mystrlen(msg));
+            close(tapback_log_fd);
+            tapback_log_fd = open(log_file, O_APPEND | O_CREAT | O_WRONLY,
+                    S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP, S_IROTH);
         }
-    } else {
+    } else if (signum == SIGINT || signum == SIGTERM) {
 		backend_t *backend, *tmp;
 
-        INFO(NULL, "terminating on signal %d\n", signum);
+        if (likely(tapback_log_fd != -1)) {
+            static const char msg[] = "terminating on SIGINT or SIGTERM\n";
+            dummy = write(tapback_log_fd, msg, mystrlen(msg));
+        }
 
 		list_for_each_entry(backend, &backends, entry) {
             if (tapback_is_master(backend))
                 break;
             else {
                 if (!list_empty(&backend->slave.slave.devices)) {
-                    WARN(NULL, "refusing to shut down slave while back-end "
-                            "%s has active VBDs\n", backend->name);
+                    if (likely(tapback_log_fd != -1)) {
+                        static const char msg[] = "refusing to shut down "
+                            "slave while back-end has active VBDs\n";
+                        dummy = write(tapback_log_fd, msg, mystrlen(msg));
+                    }
                     return;
                 }
             }
@@ -196,8 +211,25 @@ signal_cb(int signum) {
 		list_for_each_entry_safe(backend, tmp, &backends, entry)
 			tapback_backend_destroy(backend);
 
-        exit(EXIT_SUCCESS);
+        _exit(EXIT_SUCCESS);
+    } else {
+        if (likely(tapback_log_fd != -1)) {
+            static const char msg[] = "invalid signal\n";
+            dummy = write(tapback_log_fd, msg, mystrlen(msg));
+        }
     }
+}
+
+bool in_signal_handler = false;
+
+static void
+signal_cb(int signum)
+{
+    in_signal_handler = true;
+
+    _signal_cb(signum);
+
+    in_signal_handler = false;
 }
 
 static int
@@ -416,7 +448,7 @@ tapback_backend_run(backend_t *backend)
          */
         nfds = select(fd + 1, &rfds, NULL, NULL, &ttl);
         if (nfds == 0) {
-            fflush(tapback_log_fp);
+            fdatasync(tapback_log_fd);
             continue;
         }
         if (nfds == -1) {
@@ -433,26 +465,6 @@ tapback_backend_run(backend_t *backend)
     } while (1);
 
     return err;
-}
-
-static char *blkback_ident = NULL;
-
-static void
-blkback_vlog_fprintf(const int prio, const char * const fmt, va_list ap)
-{
-    static const char *strprio[] = {
-        [LOG_DEBUG] = "DBG",
-        [LOG_INFO] = "INF",
-        [LOG_WARNING] = "WRN"
-    };
-
-    assert(LOG_DEBUG == prio || LOG_INFO == prio || LOG_WARNING == prio);
-    assert(strprio[prio]);
-
-    if (tapback_log_fp) {
-        fprintf(tapback_log_fp, "%s[%s] ", blkback_ident, strprio[prio]);
-        vfprintf(tapback_log_fp, fmt, ap);
-    }
 }
 
 /**
@@ -554,44 +566,46 @@ int main(int argc, char **argv)
         }
     }
 
-    if (opt_verbose) {
-        err = mkdir(log_dir, S_IRUSR | S_IWUSR | S_IXUSR
-                | S_IRGRP | S_IXGRP
-                | S_IROTH | S_IXOTH);
-        if (err == -1) {
-            err = errno;
-            if (err != EEXIST) {
-                fprintf(stderr, "cannot create log directory: %s\n",
-                        strerror(err));
-                exit(EXIT_FAILURE);
-            }
+    err = mkdir(log_dir, S_IRUSR | S_IWUSR | S_IXUSR
+            | S_IRGRP | S_IXGRP
+            | S_IROTH | S_IXOTH);
+    if (err == -1) {
+        err = errno;
+        if (err != EEXIST) {
+            fprintf(stderr, "cannot create log directory: %s\n",
+                    strerror(err));
+            exit(EXIT_FAILURE);
         }
-        if (opt_domid)
-            /*
-             * XXX per-domain tapback log file name format:
-             * tapback.<domain ID>.log
-             * This is fairly tentative, change it to whatever looks best. Just
-             * make sure to update the bugtool accordingly.
-             */
-            err = asprintf(&log_file, "%s/%s.%d.log", log_dir, tapback_name,
-                    opt_domid);
-        else
-            err = asprintf(&log_file, "%s/%s.log", log_dir, tapback_name);
-        if (err == -1) {
-            err = errno;
-            WARN(NULL, "failed to sprintf: %s\n", strerror(err));
-            goto fail;
-        }
-        blkback_ident = "";
-        tapback_log_fp = fopen(log_file, "a+");
-        if (!tapback_log_fp)
-            return errno;
-        tapback_vlog = blkback_vlog_fprintf;
-    } else {
-        blkback_ident = opt_name;
-        openlog(blkback_ident, 0, LOG_DAEMON);
-        setlogmask(LOG_UPTO(LOG_INFO));
     }
+    if (opt_domid)
+        /*
+         * XXX per-domain tapback log file name format:
+         * tapback.<domain ID>.log
+         * This is fairly tentative, change it to whatever looks best. Just
+         * make sure to update the bugtool accordingly.
+         */
+        err = asprintf(&log_file, "%s/%s.%d.log", log_dir, tapback_name,
+                opt_domid);
+    else
+        err = asprintf(&log_file, "%s/%s.log", log_dir, tapback_name);
+    if (err == -1) {
+        err = errno;
+        WARN(NULL, "failed to sprintf: %s\n", strerror(err));
+        goto fail;
+    }
+    tapback_log_fd = open(log_file, O_APPEND | O_CREAT | O_WRONLY,
+            S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP, S_IROTH);
+    if (tapback_log_fd == -1) {
+        err = errno;
+        fprintf(stderr, "failed to open log %s: %s\n", log_file,
+                strerror(err));
+        return err;
+    }
+
+    if (opt_verbose)
+        log_level = LOG_DEBUG;
+    else
+        log_level = LOG_INFO;
 
     if (!opt_debug) {
         if ((err = daemon(0, 0))) {
@@ -622,9 +636,9 @@ fail:
             }
         }
     }
-    if (tapback_log_fp) {
+    if (tapback_log_fd != -1) {
         INFO(NULL, "tapback shut down\n");
-        fclose(tapback_log_fp);
+        close(tapback_log_fd);
     }
     return err ? -err : 0;
 

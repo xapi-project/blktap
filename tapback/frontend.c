@@ -496,8 +496,7 @@ tapback_backend_handle_otherend_watch(backend_t *backend,
                     device->backend->name, device->domid, device->devid);
             if (err == -1) {
                 err = errno;
-                WARN(device, "failed to asprintf for %d/%d: %s\n",
-                        strerror(err));
+                WARN(device, "failed to asprintf: %s\n", strerror(err));
                 goto out;
             }
             err = 0;

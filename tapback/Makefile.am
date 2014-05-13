@@ -8,8 +8,7 @@ AM_CPPFLAGS += -I$(top_srcdir)/control
 
 bin_PROGRAMS = tapback
 
-tapback_SOURCES  = log.c
-tapback_SOURCES += xenstore.c
+tapback_SOURCES  = xenstore.c
 tapback_SOURCES += frontend.c
 tapback_SOURCES += backend.c
 tapback_SOURCES += tapback.h

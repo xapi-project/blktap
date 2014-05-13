@@ -316,7 +316,7 @@ physical_device(vbd_t *device) {
 
     if (device->sector_size & 0x1ff || device->sectors <= 0) {
         WARN(device, "warning: unexpected device characteristics: sector "
-                "size=%d, sectors=%lu\n", device->sector_size,
+                "size=%d, sectors=%llu\n", device->sector_size,
 				device->sectors);
     }
 
