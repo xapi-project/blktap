@@ -179,7 +179,7 @@ signal_cb(int signum) {
     } else {
 		backend_t *backend, *tmp;
 
-        INFO(NULL, "terminating on signal `%s'\n", getpid());
+        INFO(NULL, "terminating on signal %d\n", signum);
 
 		list_for_each_entry(backend, &backends, entry) {
             if (tapback_is_master(backend))
