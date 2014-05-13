@@ -1005,6 +1005,7 @@ tapback_backend_handle_backend_watch(backend_t *backend,
              * Time to go.
              */
             INFO(NULL, "domain removed, exit\n");
+            tapback_backend_destroy(backend);
             exit(EXIT_SUCCESS);
 
             /*

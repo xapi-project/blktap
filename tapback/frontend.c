@@ -331,7 +331,7 @@ out:
  * Returns 0 on success, a positive error code otherwise.
  */
 static inline int
-connect(vbd_t *device) {
+xenbus_connect(vbd_t *device) {
     int err;
 
     ASSERT(device);
@@ -429,7 +429,7 @@ frontend_changed(vbd_t * const device, const XenbusState state)
             else {
                 if (device->state != XenbusStateConnected) {
                     DBG(device, "connecting to front-end\n");
-                    err = connect(device);
+                    err = xenbus_connect(device);
                 } else
                     DBG(device, "already connected\n");
             }
