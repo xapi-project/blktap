@@ -29,6 +29,7 @@ import exceptions
 import traceback
 import base64
 import zlib
+import errno
 
 import XenAPI
 import util
@@ -61,6 +62,12 @@ FLAG_TYPE_ABORT = "abort"     # flag to request aborting of GC/coalesce
 LOCK_TYPE_RUNNING = "running" 
 lockRunning = None
 
+# Default coalesce error rate limit, in messages per minute. A zero value
+# disables throttling, and a negative value disables error reporting.
+DEFAULT_COALESCE_ERR_RATE = 1.0/60
+
+COALESCE_LAST_ERR_TAG = 'last-coalesce-error'
+COALESCE_ERR_RATE_TAG = 'coalesce-error-rate'
 
 class AbortException(util.SMException):
     pass
@@ -159,8 +166,9 @@ class Util:
                     resultFlag.set("success")
                 else:
                     resultFlag.set("failure")
-            except:
+            except Exception, e:
                 resultFlag.set("failure")
+                Util.log("Child process failed with : (%s)" % e)
             os._exit(0)
     runAbortable = staticmethod(runAbortable)
 
@@ -407,6 +415,7 @@ class VDI:
     DB_VHD_BLOCKS = "vhd-blocks"
     DB_VDI_PAUSED = "paused"
     DB_GC = "gc"
+    DB_COALESCE = "coalesce"
     DB_LEAFCLSC = "leaf-coalesce" # config key
     LEAFCLSC_DISABLED = "false"  # set by user; means do not leaf-coalesce
     LEAFCLSC_FORCE = "force"     # set by user; means skip snap-coalesce
@@ -422,6 +431,7 @@ class VDI:
             DB_VHD_BLOCKS:   XAPI.CONFIG_SM,
             DB_VDI_PAUSED:   XAPI.CONFIG_SM,
             DB_GC:           XAPI.CONFIG_OTHER,
+            DB_COALESCE:     XAPI.CONFIG_OTHER,
             DB_LEAFCLSC:     XAPI.CONFIG_OTHER,
             DB_ONBOOT:       XAPI.CONFIG_ON_BOOT,
     }
@@ -665,11 +675,11 @@ class VDI:
         after reloading the entire SR in case things have changed while we
         were coalescing"""
         self.validate()
-        self.parent.validate()
+        self.parent.validate(True)
         self.parent._increaseSizeVirt(self.sizeVirt)
         self.sr._updateSlavesOnResize(self.parent)
         self._coalesceVHD(0)
-        self.parent.validate()
+        self.parent.validate(True)
         #self._verifyContents(0)
         self.parent.updateBlockInfo()
 
@@ -687,11 +697,100 @@ class VDI:
         Util.doexec(cmd, 0)
         return True
 
+    def _reportCoalesceError(vdi, ce):
+        """Reports a coalesce error to XenCenter.
+
+        vdi: the VDI object on which the coalesce error occured
+        ce: the CommandException that was raised"""
+
+        msg_name = os.strerror(ce.code)
+        if ce.code == errno.ENOSPC:
+            # TODO We could add more information here, e.g. exactly how much
+            # space is required for the particular coalesce, as well as actions
+            # to be taken by the user and consequences of not taking these
+            # actions.
+            msg_body = 'Run out of space while coalescing.'
+        elif ce.code == errno.EIO:
+            msg_body = 'I/O error while coalescing.'
+        else:
+            msg_body = ''
+        util.SMlog('Coalesce failed on SR %s: %s (%s)'
+                % (vdi.sr.uuid, msg_name, msg_body))
+
+        # Create a XenCenter message, but don't spam.
+        xapi = vdi.sr.xapi.session.xenapi
+        sr_ref = xapi.SR.get_by_uuid(vdi.sr.uuid)
+        oth_cfg = xapi.SR.get_other_config(sr_ref)
+        if COALESCE_ERR_RATE_TAG in oth_cfg:
+            coalesce_err_rate = float(oth_cfg[COALESCE_ERR_RATE_TAG])
+        else:
+            coalesce_err_rate = DEFAULT_COALESCE_ERR_RATE
+
+        xcmsg = False
+        if coalesce_err_rate == 0:
+            xcmsg = True
+        elif coalesce_err_rate > 0:
+            now = datetime.datetime.now()
+            sm_cfg = xapi.SR.get_sm_config(sr_ref)
+            if COALESCE_LAST_ERR_TAG in sm_cfg:
+                # seconds per message (minimum distance in time between two
+                # messages in seconds)
+                spm = datetime.timedelta(seconds=(1.0/coalesce_err_rate)*60)
+                last = datetime.datetime.fromtimestamp(
+                        float(sm_cfg[COALESCE_LAST_ERR_TAG]))
+                if now - last >= spm:
+                    xapi.SR.remove_from_sm_config(sr_ref,
+                            COALESCE_LAST_ERR_TAG)
+                    xcmsg = True
+            else:
+                xcmsg = True
+            if xcmsg:
+                xapi.SR.add_to_sm_config(sr_ref, COALESCE_LAST_ERR_TAG,
+                        str(now.strftime('%s')))
+        if xcmsg:
+            xapi.message.create(msg_name, "3", "SR", vdi.sr.uuid, msg_body)
+    _reportCoalesceError = staticmethod(_reportCoalesceError)
+
+    def _doCoalesceVHD(vdi):
+        try:
+            vhdutil.coalesce(vdi.path)
+        except util.CommandException, ce:
+            # We use try/except for the following piece of code because it runs
+            # in a separate process context and errors will not be caught and
+            # reported by anyone.
+            try:
+                # Report coalesce errors back to user via XC
+                VDI._reportCoalesceError(vdi, ce)
+            except Exception, e:
+                util.SMlog('failed to create XenCenter message: %s' % e)
+            raise ce
+        except:
+            raise
+    _doCoalesceVHD = staticmethod(_doCoalesceVHD)
+
     def _coalesceVHD(self, timeOut):
         Util.log("  Running VHD coalesce on %s" % self)
         abortTest = lambda:IPCFlag(self.sr.uuid).test(FLAG_TYPE_ABORT)
-        Util.runAbortable(lambda: vhdutil.coalesce(self.path), None,
-                self.sr.uuid, abortTest, VDI.POLL_INTERVAL, timeOut)
+        try:
+            Util.runAbortable(lambda: VDI._doCoalesceVHD(self), None,
+                    self.sr.uuid, abortTest, VDI.POLL_INTERVAL, timeOut)
+        except:
+            #exception at this phase could indicate a failure in vhd coalesce
+            # or a kill of vhd coalesce by runAbortable due to  timeOut
+            # Try a repair and reraise the exception
+            parent = ""
+            try:
+                parent = vhdutil.getParent(self.path, lambda x: x.strip())
+                # Repair error is logged and ignored. Error reraised later
+                util.SMlog('Coalesce failed on %s, attempting repair on ' \
+                           'parent %s' % (self.uuid, parent))
+                vhdutil.repair(parent)
+            except Exception, e:
+                util.SMlog('(error ignored) Failed to repair parent %s ' \
+                           'after failed coalesce on %s, err: %s' % 
+                           (parent, self.path, e))
+            raise
+
         util.fistpoint.activate("LVHDRT_coalescing_VHD_data",self.sr.uuid)
 
     def _relinkSkip(self):
@@ -1326,6 +1425,14 @@ class SR:
         """Find a coalesceable VDI. Return a vdi that should be coalesced
         (choosing one among all coalesceable candidates according to some
         criteria) or None if there is no VDI that could be coalesced"""
+
+        candidates = []
+
+        srSwitch = self.xapi.srRecord["other_config"].get(VDI.DB_COALESCE)
+        if srSwitch == "false":
+            Util.log("Coalesce disabled for this SR")
+            return candidates
+
         # finish any VDI for which a relink journal entry exists first
         journals = self.journaler.getAll(VDI.JRN_RELINK)
         for uuid in journals.iterkeys():
@@ -1333,7 +1440,6 @@ class SR:
             if vdi and vdi not in self._failedCoalesceTargets:
                 return vdi
 
-        candidates = []
         for vdi in self.vdis.values():
             if vdi.isCoalesceable() and vdi not in self._failedCoalesceTargets:
                 candidates.append(vdi)
@@ -1364,6 +1470,10 @@ class SR:
     def findLeafCoalesceable(self):
         """Find leaf-coalesceable VDIs in each VHD tree"""
         candidates = []
+        srSwitch = self.xapi.srRecord["other_config"].get(VDI.DB_COALESCE)
+        if srSwitch == "false":
+            Util.log("Coalesce disabled for this SR")
+            return candidates
         srSwitch = self.xapi.srRecord["other_config"].get(VDI.DB_LEAFCLSC)
         if srSwitch == VDI.LEAFCLSC_DISABLED:
             Util.log("Leaf-coalesce disabled for this SR")
@@ -1926,7 +2036,7 @@ class FileSR(SR):
 
             lockId = uuid
             parentUuid = None
-            if rec and rec["managed"]:
+            if rec["managed"]:
                 parentUuid = rec["sm_config"].get("vhd-parent")
             if parentUuid:
                 lockId = parentUuid
@@ -2466,16 +2576,24 @@ def _gc(session, srUuid, dryRun):
         sr.logFilter.logState()
         del sr.xapi
 
-def _abort(srUuid):
-    """If successful, we return holding lockRunning; otherwise exception
-    raised."""
+def _abort(srUuid, soft=False):
+    """Aborts an GC/coalesce.
+
+    srUuid: the UUID of the SR whose GC/coalesce must be aborted
+    soft: If set to True and there is a pending abort signal, the function
+    doesn't do anything. If set to False, a new abort signal is issued.
+
+    returns: If soft is set to False, we return True holding lockRunning. If
+    soft is set to False and an abort signal is pending, we return False
+    without holding lockRunning. An exception is raised in case of error."""
     Util.log("=== SR %s: abort ===" % (srUuid))
     init(srUuid)
     if not lockRunning.acquireNoblock():
         gotLock = False
         Util.log("Aborting currently-running instance (SR %s)" % srUuid)
         abortFlag = IPCFlag(srUuid)
-        abortFlag.set(FLAG_TYPE_ABORT)
+        if not abortFlag.set(FLAG_TYPE_ABORT, soft):
+            return False
         for i in range(SR.LOCK_RETRY_ATTEMPTS):
             gotLock = lockRunning.acquireNoblock()
             if gotLock:
@@ -2483,8 +2601,9 @@ def _abort(srUuid):
             time.sleep(SR.LOCK_RETRY_INTERVAL)
         abortFlag.clear(FLAG_TYPE_ABORT)
         if not gotLock:
-            raise util.SMException("SR %s: error aborting existing process" % \
-                    srUuid)
+            raise util.CommandException(code=errno.ETIMEDOUT,
+                    reason="SR %s: error aborting existing process" % srUuid)
+    return True
 
 def init(srUuid):
     global lockRunning
@@ -2530,12 +2649,15 @@ Debug:
 #
 #  API
 #
-def abort(srUuid):
+def abort(srUuid, soft=False):
     """Abort GC/coalesce if we are currently GC'ing or coalescing a VDI pair.
     """
-    _abort(srUuid)
-    Util.log("abort: releasing the process lock")
-    lockRunning.release()
+    if _abort(srUuid, soft):
+        Util.log("abort: releasing the process lock")
+        lockRunning.release()
+        return True
+    else:
+        return False
 
 def gc(session, srUuid, inBackground, dryRun = False):
     """Garbage collect all deleted VDIs in SR "srUuid". Fork & return 

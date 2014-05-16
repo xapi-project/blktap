@@ -27,7 +27,6 @@ import nfs
 import vhdutil
 from lock import Lock
 import cleanup
-import XenAPI
 
 CAPABILITIES = ["SR_PROBE","SR_UPDATE", "SR_CACHING",
                 "VDI_CREATE","VDI_DELETE","VDI_ATTACH","VDI_DETACH",
@@ -75,6 +74,15 @@ class NFSSR(FileSR.FileSR):
         if not self.dconf.has_key('server'):
             raise xs_errors.XenError('ConfigServerMissing')
         self.remoteserver = self.dconf['server']
+        self.nosubdir = False
+        if self.sr_ref and self.session is not None :
+            self.sm_config = self.session.xenapi.SR.get_sm_config(self.sr_ref)
+        else:
+            self.sm_config = self.srcmd.params.get('sr_sm_config') or {}
+        self.nosubdir = self.sm_config.get('nosubdir') == "true"
+        if self.dconf.has_key('serverpath'):
+            self.remotepath = os.path.join(self.dconf['serverpath'],
+                                           not self.nosubdir and sr_uuid or "")
         self.path = os.path.join(SR.MOUNT_BASE, sr_uuid)
 
         # Test for the optional 'nfsoptions' dconf attribute
@@ -103,28 +111,25 @@ class NFSSR(FileSR.FileSR):
                                      opterr=exc.errstr)
 
 
-    def mount(self, mountpoint, remotepath, timeout = 0):
+    def mount(self, mountpoint, remotepath):
         try:
-            nfs.soft_mount(mountpoint, self.remoteserver, remotepath,
-                    self.transport, timeout)
+            nfs.soft_mount(mountpoint, self.remoteserver, remotepath, self.transport)
         except nfs.NfsException, exc:
             raise xs_errors.XenError('NFSMount', opterr=exc.errstr)
 
 
     def attach(self, sr_uuid):
-        self.validate_remotepath(False)
-        self.remotepath = os.path.join(self.dconf['serverpath'], sr_uuid)
-        util._testHost(self.dconf['server'], NFSPORT, 'NFSTarget')
-        io_timeout = util.get_nfs_timeout(self.session, sr_uuid)
-        self.mount_remotepath(sr_uuid, io_timeout)
+        if not self._checkmount():
+            self.validate_remotepath(False)
+            util._testHost(self.dconf['server'], NFSPORT, 'NFSTarget')
+            self.mount_remotepath(sr_uuid)
+        self.attached = True
 
 
-    def mount_remotepath(self, sr_uuid, timeout = 0):
+    def mount_remotepath(self, sr_uuid):
         if not self._checkmount():
             self.check_server()
-            self.mount(self.path, self.remotepath, timeout)
-
-        return super(NFSSR, self).attach(sr_uuid)
+            self.mount(self.path, self.remotepath)
 
 
     def probe(self):
@@ -136,7 +141,7 @@ class NFSSR(FileSR.FileSR):
 
         temppath = os.path.join(SR.MOUNT_BASE, PROBE_MOUNTPOINT)
 
-        self.mount(temppath, self.dconf['serverpath'])
+        self.mount(temppath, self.remotepath)
         try:
             return nfs.scan_srlist(temppath)
         finally:
@@ -161,7 +166,7 @@ class NFSSR(FileSR.FileSR):
         except nfs.NfsException, exc:
             raise xs_errors.XenError('NFSUnMount', opterr=exc.errstr)
 
-        return super(NFSSR, self).detach(sr_uuid)
+        self.attached = False
         
 
     def create(self, sr_uuid, size):
@@ -182,20 +187,21 @@ class NFSSR(FileSR.FileSR):
                 pass
             raise exn
 
-        newpath = os.path.join(self.path, sr_uuid)
-        if util.ioretry(lambda: util.pathexists(newpath)):
-            if len(util.ioretry(lambda: util.listdir(newpath))) != 0:
-                self.detach(sr_uuid)
-                raise xs_errors.XenError('SRExists')
-        else:
-            try:
-                util.ioretry(lambda: util.makedirs(newpath))
-            except util.CommandException, inst:
-                if inst.code != errno.EEXIST:
+        if not self.nosubdir:
+            newpath = os.path.join(self.path, sr_uuid)
+            if util.ioretry(lambda: util.pathexists(newpath)):
+                if len(util.ioretry(lambda: util.listdir(newpath))) != 0:
                     self.detach(sr_uuid)
-                    raise xs_errors.XenError('NFSCreate', 
-                        opterr='remote directory creation error is %d' 
-                        % inst.code)
+                    raise xs_errors.XenError('SRExists')
+            else:
+                try:
+                    util.ioretry(lambda: util.makedirs(newpath))
+                except util.CommandException, inst:
+                    if inst.code != errno.EEXIST:
+                        self.detach(sr_uuid)
+                        raise xs_errors.XenError('NFSCreate',
+                            opterr='remote directory creation error is %d'
+                            % inst.code)
         self.detach(sr_uuid)
 
     def delete(self, sr_uuid):
@@ -209,10 +215,10 @@ class NFSSR(FileSR.FileSR):
             # so that we can remove the target SR directory
             self.remotepath = self.dconf['serverpath']
             self.mount_remotepath(sr_uuid)
-            newpath = os.path.join(self.path, sr_uuid)
-
-            if util.ioretry(lambda: util.pathexists(newpath)):
-                util.ioretry(lambda: os.rmdir(newpath))
+            if not self.nosubdir:
+                newpath = os.path.join(self.path, sr_uuid)
+                if util.ioretry(lambda: util.pathexists(newpath)):
+                    util.ioretry(lambda: os.rmdir(newpath))
             self.detach(sr_uuid)
         except util.CommandException, inst:
             self.detach(sr_uuid)
@@ -224,10 +230,6 @@ class NFSSR(FileSR.FileSR):
             return NFSFileVDI(self, uuid)
         return NFSFileVDI(self, uuid)
     
-    def _checkmount(self):
-        return util.ioretry(lambda: util.pathexists(self.path)) \
-               and util.ioretry(lambda: util.ismount(self.path))
-
     def scan_exports(self, target):
         util.SMlog("scanning2 (target=%s)" % target)
         dom = nfs.scan_exports(target)
@@ -250,6 +252,7 @@ class NFSFileVDI(FileSR.FileVDI):
         resp['device_config'] = self.sr.dconf
         resp['sr_uuid'] = sr_uuid
         resp['vdi_uuid'] = vdi_uuid
+        resp['sr_sm_config'] = self.sr.sm_config
         resp['command'] = 'vdi_attach_from_config'
         # Return the 'config' encoded within a normal XMLRPC response so that
         # we can use the regular response/error parsing code.

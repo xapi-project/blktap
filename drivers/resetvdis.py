@@ -20,10 +20,10 @@
 
 import util
 import lock
+from vhdutil import LOCK_TYPE_SR
+from cleanup import LOCK_TYPE_RUNNING
 
 def reset_sr(session, host_uuid, sr_uuid, is_sr_master):
-    from vhdutil import LOCK_TYPE_SR
-    from cleanup import LOCK_TYPE_RUNNING
     gc_lock = lock.Lock(LOCK_TYPE_RUNNING, sr_uuid)
     sr_lock = lock.Lock(LOCK_TYPE_SR, sr_uuid)
     gc_lock.acquire()
@@ -52,12 +52,11 @@ def reset_sr(session, host_uuid, sr_uuid, is_sr_master):
     sr_lock.release()
     gc_lock.release()
 
-def reset_vdi(session, vdi_uuid, force, term_output=True, writable=True):
+def reset_vdi(session, vdi_uuid, force):
     vdi_ref = session.xenapi.VDI.get_by_uuid(vdi_uuid)
     vdi_rec = session.xenapi.VDI.get_record(vdi_ref)
     sm_config = vdi_rec["sm_config"]
     host_ref = None
-    clean = True
     for key, val in sm_config.iteritems():
         if key.startswith("host_"):
             host_ref = key[len("host_"):]
@@ -68,12 +67,8 @@ def reset_vdi(session, vdi_uuid, force, term_output=True, writable=True):
                 host_uuid = host_rec["uuid"]
                 host_str = "%s (%s)" % (host_uuid, host_rec["name_label"])
             except XenAPI.Failure, e:
-                msg = "Invalid host: %s (%s)" % (host_ref, e)
-                util.SMlog(msg)
-                if term_output:
-                    print msg
+                print "Invalid host: %s (%s)" % (host_ref, e)
                 if not force:
-                    clean = False
                     continue
 
             if force:
@@ -81,38 +76,25 @@ def reset_vdi(session, vdi_uuid, force, term_output=True, writable=True):
                 msg = "Force-cleared %s for %s on host %s" % \
                         (val, vdi_uuid, host_str)
                 util.SMlog(msg)
-                if term_output:
-                    print msg
+                print msg
                 continue
 
             ret = session.xenapi.host.call_plugin(
                     host_ref, "on-slave", "is_open",
                     {"vdiUuid": vdi_uuid, "srRef": vdi_rec["SR"]})
             if ret != "False":
-                util.SMlog("VDI %s is still open on host %s, not resetting" % \
-                        (vdi_uuid, host_str))
-                if term_output:
-                    print "ERROR: VDI %s is still open on host %s" % \
-                            (vdi_uuid, host_str)
-                if writable:
-                    return False
-                else:
-                    clean = False
+                print "ERROR: VDI %s is still open on host %s" % \
+                        (vdi_uuid, host_str)
+                return
             else:
                 session.xenapi.VDI.remove_from_sm_config(vdi_ref, key)
                 msg = "Cleared %s for %s on host %s" % \
                         (val, vdi_uuid, host_str)
                 util.SMlog(msg)
-                if term_output:
-                    print msg
+                print msg
 
     if not host_ref:
-        msg = "VDI %s is not marked as attached anywhere, nothing to do" \
-            % vdi_uuid
-        util.SMlog(msg)
-        if term_output:
-            print msg
-    return clean
+        print "VDI is not marked as attached anywhere, nothing to do"
 
 def usage():
     print "Usage:"

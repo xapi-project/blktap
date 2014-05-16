@@ -893,11 +893,6 @@ class LVHDSR(SR.SR):
         elif base.vdiType == vhdutil.VDI_TYPE_RAW and base.hidden:
             self.lvmCache.setHidden(base.name, False)
 
-        # inflate the parent to fully-allocated size
-        if base.vdiType == vhdutil.VDI_TYPE_VHD:
-            fullSize = lvhdutil.calcSizeVHDLV(vhdInfo.sizeVirt)
-            lvhdutil.inflate(self.journaler, self.uuid, baseUuid, fullSize)
-
         # remove the child nodes
         if clonUuid and lvs.get(clonUuid):
             if lvs[clonUuid].vdiType != vhdutil.VDI_TYPE_VHD:
@@ -908,6 +903,11 @@ class LVHDSR(SR.SR):
         if lvs.get(origUuid):
             self.lvmCache.remove(lvs[origUuid].name)
 
+        # inflate the parent to fully-allocated size
+        if base.vdiType == vhdutil.VDI_TYPE_VHD:
+            fullSize = lvhdutil.calcSizeVHDLV(vhdInfo.sizeVirt)
+            lvhdutil.inflate(self.journaler, self.uuid, baseUuid, fullSize)
+
         # rename back
         origLV = lvhdutil.LV_PREFIX[base.vdiType] + origUuid
         self.lvmCache.rename(base.name, origLV)
@@ -915,6 +915,11 @@ class LVHDSR(SR.SR):
         if self.lvActivator.get(baseUuid, False):
             self.lvActivator.replace(baseUuid, origUuid, origLV, False)
         RefCounter.set(origUuid, origRefcountNormal, origRefcountBinary, ns)
+
+        # At this stage, tapdisk and SM vdi will be in paused state. Remove
+        # flag to facilitate vm deactivate
+        origVdiRef = self.session.xenapi.VDI.get_by_uuid(origUuid)
+        self.session.xenapi.VDI.remove_from_sm_config(origVdiRef, 'paused')
 
         # update LVM metadata on slaves 
         slaves = util.get_slaves_attached_on(self.session, [origUuid])
@@ -1155,7 +1160,16 @@ class LVHDSR(SR.SR):
         if not lockRunning.acquireNoblock():
             if cleanup.should_preempt(self.session, self.uuid):
                 util.SMlog("Aborting currently-running coalesce of garbage VDI")
-                cleanup.abort(self.uuid)
+                try:
+                    if not cleanup.abort(self.uuid, soft=True):
+                        util.SMlog("The GC has already been scheduled to "
+                                "re-start")
+                except util.CommandException, e:
+                    if e.code != errno.ETIMEDOUT:
+                        raise
+                    util.SMlog('failed to abort the GC')
+                    return
+                return
             else:
                 util.SMlog("A GC instance already running, not kicking")
                 return
@@ -1251,13 +1265,18 @@ class LVHDVDI(VDI.VDI):
         self.sm_config = self.sr.srcmd.params["vdi_sm_config"]
         self.sr._ensureSpaceAvailable(lvSize)
 
-        self.sr.lvmCache.create(self.lvname, lvSize)
-        if self.vdi_type == vhdutil.VDI_TYPE_RAW:
-            self.size = self.sr.lvmCache.getSize(self.lvname)
-        else:
-            vhdutil.create(self.path, long(size), False, lvhdutil.MSIZE_MB)
-            self.size = vhdutil.getSizeVirt(self.path)
-        self.sr.lvmCache.deactivateNoRefcount(self.lvname)
+        try:
+            self.sr.lvmCache.create(self.lvname, lvSize)
+            if self.vdi_type == vhdutil.VDI_TYPE_RAW:
+                self.size = self.sr.lvmCache.getSize(self.lvname)
+            else:
+               vhdutil.create(self.path, long(size), False, lvhdutil.MSIZE_MB)
+               self.size = vhdutil.getSizeVirt(self.path)
+            self.sr.lvmCache.deactivateNoRefcount(self.lvname)
+        except util.CommandException, e:
+            util.SMlog("Unable to create VDI");
+            self.sr.lvmCache.remove(self.lvname)
+            raise xs_errors.XenError('VDICreate', opterr='error %d' % e.code)
 
         self.utilisation = lvSize
         self.sm_config["vdi_type"] = self.vdi_type
@@ -1446,15 +1465,11 @@ class LVHDVDI(VDI.VDI):
         if self.sr.srcmd.params['driver_params'].get("mirror"):
             secondary = self.sr.srcmd.params['driver_params']["mirror"]
 
-        if not blktap2.VDI.tap_pause(self.session, sr_uuid, vdi_uuid):
-            raise util.SMException("failed to pause VDI %s" % vdi_uuid)
-        try:
-            return self._snapshot(snapType)
-        finally:
-            blktap2.VDI.tap_unpause(self.session, sr_uuid, vdi_uuid, secondary)
+        return self._do_snapshot(sr_uuid, vdi_uuid, snapType, secondary=secondary)
+
 
     def clone(self, sr_uuid, vdi_uuid):
-        return self._snapshot(self.SNAPSHOT_DOUBLE, True)
+        return self._do_snapshot(sr_uuid, vdi_uuid, self.SNAPSHOT_DOUBLE, cloneOp=True)
 
     def compose(self, sr_uuid, vdi1, vdi2):
         util.SMlog("LVHDSR.compose for %s -> %s" % (vdi2, vdi1))
@@ -1515,6 +1530,23 @@ class LVHDVDI(VDI.VDI):
         self._chainSetActive(False, True)
         self.attached = False
 
+    def _do_snapshot(self, sr_uuid, vdi_uuid, snapType, cloneOp=False, secondary=None):
+        if not blktap2.VDI.tap_pause(self.session, sr_uuid, vdi_uuid):
+             raise util.SMException("failed to pause VDI %s" % vdi_uuid)
+
+        snapResult = None
+        try:
+            snapResult = self._snapshot(snapType, cloneOp)
+        except Exception, e1:
+            try:
+                blktap2.VDI.tap_unpause(self.session, sr_uuid, vdi_uuid, None)
+            except Exception, e2:
+                util.SMlog('WARNING: failed to clean up failed snapshot: '
+                        '%s (error ignored)' % e2)
+                raise e1
+        blktap2.VDI.tap_unpause(self.session, sr_uuid, vdi_uuid, secondary)
+        return snapResult
+    
     def _snapshot(self, snapType, cloneOp = False):
         util.SMlog("LVHDVDI._snapshot for %s (type %s)" % (self.uuid, snapType))
 
@@ -1899,8 +1931,9 @@ class LVHDVDI(VDI.VDI):
             return
         try:
             lvs = lvhdutil.getLVInfo(self.sr.lvmCache, self.lvname)
-        except util.CommandException:
-            raise xs_errors.XenError('VDIUnavailable', opterr='LV scan error')
+        except util.CommandException, e:
+            raise xs_errors.XenError('VDIUnavailable',
+                    opterr= '%s (LV scan error)' % os.strerror(abs(e.code)))
         if not lvs.get(self.uuid):
             raise xs_errors.XenError('VDIUnavailable', opterr='LV not found')
         self._initFromLVInfo(lvs[self.uuid])
@@ -1938,8 +1971,12 @@ class LVHDVDI(VDI.VDI):
                 self.sr.lvActivator.add(uuid, lvName, binaryParam)
 
     def _failClone(self, uuid, jval, msg):
-        self.sr._handleInterruptedCloneOp(uuid, jval, True)
-        self.sr.journaler.remove(self.JRN_CLONE, uuid)
+        try:
+            self.sr._handleInterruptedCloneOp(uuid, jval, True)
+            self.sr.journaler.remove(self.JRN_CLONE, uuid)
+        except Exception, e:
+            util.SMlog('WARNING: failed to clean up failed snapshot: ' \
+                    ' %s (error ignored)' % e)
         raise xs_errors.XenError('VDIClone', opterr=msg)
 
     def _markHidden(self):

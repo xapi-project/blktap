@@ -109,11 +109,6 @@ class ISOSR(SR.SR):
 
         for name in filter(is_image_utf8_compatible,
                 util.listdir(self.path, quiet = True)):
-	    fileName = self.path + "/" + name
-            if os.path.isdir(fileName):
-                util.SMlog("_loadvdis : %s is a directory. Ignore" % fileName)
-                continue
-
             # CA-80254: Check for iso/img files whose name consists of extended
             # characters.
             try:

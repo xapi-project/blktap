@@ -15,11 +15,6 @@
 # along with this program; if not, write to the Free Software Foundation, Inc.,
 # 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
 #
-# Persistent reference counter. This refcounter can maintain two separate 
-# refcounts: one binary (which can have a value of 0 or 1) and one normal. The 
-# parameter "binary" specifies which of the two counters to update, while the 
-# return value is zero IFF both counters are zero
-#
 # Synchronization must be done at a higher level, by the users of this module
 #
 
@@ -227,9 +222,9 @@ class RefCounter:
             f = open(fn, 'w')
             f.write("%d %d\n" % (count, binaryCount))
             f.close()
-        except IOError, e:
-            raise RefCounterException("failed to write '(%d %d)' to '%s': %s" \
-                    % (count, binaryCount, fn, e))
+        except IOError:
+            raise RefCounterException("failed to write '(%d %d)' to '%s'" % \
+                    (count, binaryCount, fn))
     _writeCount = staticmethod(_writeCount)
 
 

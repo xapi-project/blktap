@@ -61,8 +61,6 @@ $(SM_STAMP): $(RPM_SRPMSDIR)/$(SM_SRPM)
 	cp $(RPM_RPMSDIR)/$(DOMAIN0_ARCH_OPTIMIZED)/sm-*.rpm $(MY_MAIN_PACKAGES)
 	# Deliberately omit the debuginfo RPM (sm-debuginfo-...)
 	rm -f $(MY_MAIN_PACKAGES)/sm-debuginfo-*.rpm
-	# sm-xencert is packaged as supp-pack. Skip it.
-	rm -f $(MY_MAIN_PACKAGES)/sm-xencert-*.rpm
 	# sm-rawhba is packaged as supp-pack. Skip it.
 	rm -f $(MY_MAIN_PACKAGES)/sm-rawhba-*.rpm
 	touch $@
@@ -80,5 +78,4 @@ $(MY_OUTPUT_DIR)/$(ERRORCODES_XML):
 	cp $(REPO)/drivers/$(ERRORCODES_XML) $@
 
 $(SUPPORT_PACK): $(SM_STAMP)
-	python setup.py --out $(dir $@) --pdn $(PRODUCT_BRAND) --pdv $(PRODUCT_VERSION) --bld $(BUILD) --spn "xencert-supp-pack" --spd "XenCert" --rxv "6.2.0" $(RPM_RPMSDIR)/$(DOMAIN0_ARCH_OPTIMIZED)/sm-xencert-*.i686.rpm
-	python setup.py --out $(dir $@) --pdn $(PRODUCT_BRAND) --pdv $(PRODUCT_VERSION) --bld $(BUILD) --spn "borehamwood-supp-pack" --spd "XenServer RawHBA implementation" --rxv "6.1.0" $(RPM_RPMSDIR)/$(DOMAIN0_ARCH_OPTIMIZED)/sm-rawhba-*.i686.rpm
+	python setup.py --out $(dir $@) --pdn $(PRODUCT_BRAND) --pdv $(PRODUCT_VERSION) --bld $(BUILD) --spn "borehamwood-supp-pack" --spd "XenServer RawHBA implementation" --rxv "6.1.0" $(RPM_RPMSDIR)/$(DOMAIN0_ARCH_OPTIMIZED)/sm-rawhba-*.$(DOMAIN0_ARCH_OPTIMIZED).rpm

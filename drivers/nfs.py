@@ -38,7 +38,7 @@ import util, errno, os, xml.dom.minidom
 # because the first doubling (timeo*2) is the same as the first increment
 # (timeo+timeo).
 
-SOFTMOUNT_TIMEOUT  = 60 # seconds
+SOFTMOUNT_TIMEOUT  = int((40.0/3.0) * 10.0) # 1/10 s
 SOFTMOUNT_RETRANS  = 0x7fffffff
 RPCINFO_BIN = "/usr/sbin/rpcinfo"
 SHOWMOUNT_BIN = "/usr/sbin/showmount"
@@ -61,9 +61,8 @@ def check_server_tcp(server):
                            inst.code)
 
 
-def soft_mount(mountpoint, remoteserver, remotepath, transport, timeout = 0):
-    """Mount the remote NFS export at 'mountpoint'.
-    The 'timeout' param here is in seconds"""
+def soft_mount(mountpoint, remoteserver, remotepath, transport):
+    """Mount the remote NFS export at 'mountpoint'"""
     try:
         if not util.ioretry(lambda: util.isdir(mountpoint)):
             util.ioretry(lambda: util.makedirs(mountpoint))
@@ -71,10 +70,7 @@ def soft_mount(mountpoint, remoteserver, remotepath, transport, timeout = 0):
         raise NfsException("Failed to make directory: code is %d" % 
                             inst.code)
 
-    if timeout < 1:
-        timeout = SOFTMOUNT_TIMEOUT
-
-    options = "soft,timeo=%d,retrans=%d,%s" % (timeout * 10,
+    options = "soft,timeo=%d,retrans=%d,%s" % (SOFTMOUNT_TIMEOUT,
                                                SOFTMOUNT_RETRANS,
                                                transport)
     options += ',actimeo=0'

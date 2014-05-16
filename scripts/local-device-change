@@ -15,9 +15,8 @@
 # along with this program; if not, write to the Free Software Foundation, Inc.,
 # 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
 #
-# Called from udev scripts to introduce/forget VDIs corresponding to local
-# hotplug devices.  Assumes the existence of two udev SRs: one with
-# sm_config:type=cd and one with block.
+# Called from udev scripts to introduce/forget VDIs corresponding to local hotplug devices.
+# Assumes the existence of two udev SRs: one with sm_config:type=cd and one with block.
 
 DEVICE=$1 # foo
 # ACTION comes from the environment

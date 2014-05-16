@@ -70,9 +70,7 @@ SM_STAMP := $(MY_OBJ_DIR)/.staging_stamp
 
 .PHONY: build
 	make -C dcopy 
-	make -C snapwatchd
 	make -C mpathroot
-	make -C diskdatatest
 
 .PHONY: install
 install: 
@@ -87,8 +85,6 @@ install:
 	for i in $(SM_LIBS); do \
 	  install -m 755 drivers/$$i.py \
 	    $(SM_STAGING)$(SM_DEST); done
-	install -m 755 drivers/mpathHBA \
-	  $(SM_STAGING)$(SM_DEST)
 	for i in $(SM_DRIVERS); do \
 	  install -m 755 drivers/$${i}SR.py \
 	    $(SM_STAGING)$(SM_DEST); done
@@ -120,13 +116,10 @@ install:
 	$(MAKE) -C dcopy install DESTDIR=$(SM_STAGING)
 	$(MAKE) -C snapwatchd install DESTDIR=$(SM_STAGING)
 	$(MAKE) -C mpathroot install DESTDIR=$(SM_STAGING)
-	$(MAKE) -C diskdatatest
 	ln -sf $(SM_DEST)blktap2.py $(SM_STAGING)$(BIN_DEST)/blktap2
 	install -m 755 -d $(SM_STAGING)$(CRON_DEST)
 	install -m 644 $(CRON_JOBS:%=etc/cron.d/%) -t $(SM_STAGING)$(CRON_DEST)
 	ln -sf $(SM_DEST)lcache.py $(SM_STAGING)$(BIN_DEST)tapdisk-cache-stats
-	cp -rf XenCert $(SM_STAGING)$(DEBUG_DEST)
-	cp -rf diskdatatest/diskdatatest $(SM_STAGING)$(DEBUG_DEST)/XenCert/diskdatatest
 
 .PHONY: clean
 clean:

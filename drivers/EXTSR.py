@@ -71,9 +71,7 @@ class EXTSR(FileSR.FileSR):
         self.attached = self._checkmount()
 
     def delete(self, sr_uuid):
-        self.attach(sr_uuid)
         super(EXTSR, self).delete(sr_uuid)
-        self.detach(sr_uuid)
 
         # Check PVs match VG
         try:
@@ -127,13 +125,12 @@ class EXTSR(FileSR.FileSR):
 
             try:
                 util.pread(["mount", self.remotepath, self.path])
-
-                FileSR.FileSR.attach(self, sr_uuid)
-
-                self.attached = True
             except util.CommandException, inst:
                 raise xs_errors.XenError('LVMMount', \
                       opterr='Failed to mount FS. Errno is %d' % inst.code)
+
+        self.attached = True
+
         #Update SCSIid string
         scsiutil.add_serial_record(self.session, self.sr_ref, \
                 scsiutil.devlist_to_serialstring(self.root.split(',')))
@@ -142,34 +139,14 @@ class EXTSR(FileSR.FileSR):
         for dev in self.root.split(','): self.block_setscheduler(dev)
 
     def detach(self, sr_uuid):
-        if not self._checkmount():
-            return
-        cleanup.abort(self.uuid)
+        super(EXTSR, self).detach(sr_uuid)
         try:
-            # Change directory to avoid unmount conflicts
-            os.chdir(SR.MOUNT_BASE)
-            
-            # unmount the device
-            util.pread(["umount", self.path])
-
-            # remove the mountpoint
-            os.rmdir(self.path)
-            self.path = None
-
             # deactivate SR
-            try:
-                cmd = ["lvchange", "-an", self.remotepath]
-                util.pread2(cmd)
-            except util.CommandException, inst:
-                raise xs_errors.XenError('LVMUnMount', \
-                      opterr='lvm -an failed errno is %d' % inst.code)
-
-            self.attached = False
+            cmd = ["lvchange", "-an", self.remotepath]
+            util.pread2(cmd)
         except util.CommandException, inst:
             raise xs_errors.XenError('LVMUnMount', \
-                  opterr='errno is %d' % inst.code)
-        except:
-            raise xs_errors.XenError('LVMUnMount')
+                  opterr='lvm -an failed errno is %d' % inst.code)
 
     def probe(self):
         return lvutil.srlist_toxml(lvutil.scan_srlist(EXT_PREFIX, self.root),
@@ -238,8 +215,6 @@ class EXTSR(FileSR.FileSR):
             return EXTFileVDI(self, uuid)
         return EXTFileVDI(self, uuid)
 
-    def _checkmount(self):
-        return self.path and os.path.ismount(self.path)
 
 class EXTFileVDI(FileSR.FileVDI):
     def attach(self, sr_uuid, vdi_uuid):

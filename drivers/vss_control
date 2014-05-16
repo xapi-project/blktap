@@ -15,9 +15,7 @@
 # along with this program; if not, write to the Free Software Foundation, Inc.,
 # 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
 #
-# A plugin which is called to enable/disable VSS based quiesced VSS snapshots
-# for a particular VM.
-
+# A plugin which is called to enable/disable VSS based quiesced VSS snapshots for a particular VM.  
 import os
 import sys
 import XenAPIPlugin
@@ -40,7 +38,7 @@ def enable(session, args):
 	# set the vm-data/allowvssprovider for the VM to true in XenCenter
 	domid = session.xenapi.VM.get_domid(vm_ref)
         Print("Got the domain id as: %s" % domid)
-        xsh = xslib.xs_daemon_open()
+        xsh = xslib.get_xs_handle()
         xslib.setval(xsh, "/local/domain/%s/vm-data/allowvssprovider" % domid, "true")	
 	
 	# also set the xenstore-data parameter in the VM record, so the next time the VM reboots
@@ -64,7 +62,7 @@ def disable(session, args):
 	# set the vm-data/allowvssprovider for the VM to false in XenCenter
 	domid = session.xenapi.VM.get_domid(vm_ref)
         Print("Got the domain id as: %s" % domid)
-        xsh = xslib.xs_daemon_open()
+        xsh = xslib.get_xs_handle()
         xslib.setval(xsh, "/local/domain/%s/vm-data/allowvssprovider" % domid, "false")
 	
 	# set the xenstore-data parameter in the VM record.

@@ -18,11 +18,11 @@
 # Miscellaneous utility functions
 #
 
-import os, re, sys, subprocess, shutil, tempfile, commands, signal
+import os, re, sys, popen2, subprocess, shutil, tempfile, commands, signal
 import time, datetime
 import errno, socket
 import xml.dom.minidom
-import scsiutil
+import SR, scsiutil
 import statvfs
 import stat
 import xs_errors
@@ -67,7 +67,7 @@ class CommandException(SMException):
         self.code = code
         self.cmd = cmd
         self.reason = reason
-        Exception.__init__(self, code)
+        Exception.__init__(self, os.strerror(abs(code)))
 
 class SRBusyException(SMException):
     """The SR could not be locked"""
@@ -633,38 +633,11 @@ def get_all_slaves(session):
     master_ref = get_this_host_ref(session)
     return filter(lambda x: x != master_ref, host_refs)
 
-def get_nfs_timeout(session, sr_uuid):
-    try:
-        sr_ref = session.xenapi.SR.get_by_uuid(sr_uuid)
-        other_config = session.xenapi.SR.get_other_config(sr_ref)
-        str_val = other_config.get("nfs-timeout")
-    except XenAPI.Failure:
-        util.SMlog("Failed to get SR.other-config:nfs-timeout, ignoring")
-        return 0
-
-    if not str_val:
-        return 0
-
-    try:
-        nfs_timeout = int(str_val)
-        if nfs_timeout < 1:
-            raise ValueError
-    except ValueError:
-        util.SMlog("Invalid nfs-timeout value: %s" % str_val)
-        return 0
-
-    return nfs_timeout
-
 def is_attached_rw(sm_config):
     for key, val in sm_config.iteritems():
         if key.startswith("host_") and val == "RW":
             return True
     return False
-
-def attached_as(sm_config):
-    for key, val in sm_config.iteritems():
-        if key.startswith("host_") and (val == "RW" or val == "RO"):
-            return val
 
 def find_my_pbd_record(session, host_ref, sr_ref):
     try:
@@ -1598,3 +1571,28 @@ def splitXmlText( xmlData, segmentLen = DEFAULT_SEGMENT_LEN, showContd = False )
 
     return returnData
 
+def open_atomic(path, mode=None):
+    """Atomically creates a file if, and only if it does not already exist.
+    Leaves the file open and returns the file object.
+
+    path: the path to atomically open
+    mode: "r" (read), "w" (write), or "rw" (read/write)
+    returns: an open file object"""
+
+    assert path
+
+    flags = os.O_CREAT | os.O_EXCL
+    modes = {'r': os.O_RDONLY, 'w': os.O_WRONLY, 'rw': os.O_RDWR}
+    if mode:
+        if mode not in modes:
+            raise Exception('invalid access mode ' + mode)
+        flags |= modes[mode]
+    fd = os.open(path, flags)
+    try:
+        if mode:
+            return os.fdopen(fd, mode)
+        else:
+            return os.fdopen(fd)
+    except:
+        os.close(fd)
+        raise

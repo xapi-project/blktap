@@ -18,7 +18,7 @@
 # Miscellaneous scsi utility functions
 #
 
-import util
+import util, SR
 import os
 import re
 import xs_errors
