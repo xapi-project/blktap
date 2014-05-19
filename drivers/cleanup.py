@@ -2037,7 +2037,7 @@ class FileSR(SR):
 
             lockId = uuid
             parentUuid = None
-            if rec["managed"]:
+            if rec and rec["managed"]:
                 parentUuid = rec["sm_config"].get("vhd-parent")
             if parentUuid:
                 lockId = parentUuid
