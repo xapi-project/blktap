@@ -10,7 +10,7 @@ include $(B_BASE)/rpmbuild.mk
 .PHONY: $(MY_OBJ_DIR)/version.inc
 $(MY_OBJ_DIR)/version.inc:
 	$(version-makefile) > $@
-	$(call hg_cset_number,$(REPONAME)) >> $@
+	$(call git_cset_number,$(REPONAME)) >> $@
 	echo SM_VERSION := \$$\(PLATFORM_VERSION\) >> $@
 	echo SM_RELEASE := xs\$$\(CSET_NUMBER\) >> $@
 
@@ -21,7 +21,7 @@ SM_STAMP := $(MY_OBJ_DIR)/.rpmbuild.stamp
 ERRORCODES_XML := XE_SR_ERRORCODES.xml
 SM_TESTS := $(MY_OUTPUT_DIR)/storage-manager-tests.tar
 SM_UNIT_TESTS := $(MY_OUTPUT_DIR)/smunittests.tar
-REPO := $(call hg_loc,sm)
+REPO := $(call git_loc,sm)
 SUPPORT_PACK := $(MY_OUTPUT_DIR)/borehamwood-supp-pack.iso
 BUILD := $(BUILD_NUMBER)
 
@@ -43,7 +43,8 @@ clean:
 .SECONDARY: $(SM_SRC)
 $(SM_SRC): $(SM_SOURCES)
 	echo SM_VERSION $(SM_VERSION) PLATFORM_VERSION $(PLATFORM_VERSION)
-	hg archive -p sm-$(SM_VERSION) -t tbz2 $(RPM_SOURCESDIR)/sm-$(SM_VERSION).tar.bz2
+	git --git-dir $(REPO)/.git archive --prefix=sm-$(SM_VERSION)/ \
+		--format=tar HEAD | bzip2 > $(RPM_SOURCESDIR)/sm-$(SM_VERSION).tar.bz2
 
 .SECONDARY: $(RPM_SPECSDIR)/%.spec
 $(RPM_SPECSDIR)/%.spec: *.spec.in
