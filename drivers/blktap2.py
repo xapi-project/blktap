@@ -36,6 +36,7 @@ from syslog import openlog, syslog
 from stat import * # S_ISBLK(), ...
 from SR import SROSError
 
+import resetvdis
 import vhdutil
 
 # For RRDD Plugin Registration
@@ -1341,14 +1342,21 @@ class VDI(object):
         vdi_ref = self._session.xenapi.VDI.get_by_uuid(vdi_uuid)
         host_ref = self._session.xenapi.host.get_by_uuid(util.get_this_host())
         sm_config = self._session.xenapi.VDI.get_sm_config(vdi_ref)
-        if NO_MULTIPLE_ATTACH and util.is_attached_rw(sm_config):
-            raise util.SMException("VDI %s already attached RW" % vdi_uuid)
+        attached_as = util.attached_as(sm_config)
+        if NO_MULTIPLE_ATTACH and (attached_as == "RW" or \
+                (attached_as == "RO" and attach_mode == "RW")):
+            util.SMlog("need to reset VDI %s" % vdi_uuid)
+            if not resetvdis.reset_vdi(self._session, vdi_uuid, force=False,
+                    term_output=False, writable=writable):
+                raise util.SMException("VDI %s not detached cleanly" % vdi_uuid)
+            sm_config = self._session.xenapi.VDI.get_sm_config(vdi_ref)
         if sm_config.has_key('paused'):
             util.SMlog("Paused or host_ref key found [%s]" % sm_config)
             return False
         host_key = "host_%s" % host_ref
         if sm_config.has_key(host_key):
-            util.SMlog("WARNING: host key %s already there!" % host_key)
+            util.SMlog("WARNING: host key %s (%s) already there!" % (host_key,
+                    sm_config[host_key]))
         else:
             self._session.xenapi.VDI.add_to_sm_config(vdi_ref, host_key,
                     attach_mode)

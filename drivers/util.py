@@ -639,6 +639,11 @@ def is_attached_rw(sm_config):
             return True
     return False
 
+def attached_as(sm_config):
+    for key, val in sm_config.iteritems():
+        if key.startswith("host_") and (val == "RW" or val == "RO"):
+            return val
+
 def find_my_pbd_record(session, host_ref, sr_ref):
     try:
         pbds = session.xenapi.PBD.get_all_records()
