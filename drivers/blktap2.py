@@ -395,6 +395,8 @@ class TapCtl(object):
         if options.get("timeout"):
             args.append("-t")
             args.append(str(options["timeout"]))
+        if not options.get("o_direct", True):
+            args.append("-D")
         cls._pread(args)
 
     @classmethod
