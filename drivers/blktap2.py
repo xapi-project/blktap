@@ -958,6 +958,7 @@ class VDI(object):
     CONF_KEY_ALLOW_CACHING = "vdi_allow_caching"
     CONF_KEY_MODE_ON_BOOT = "vdi_on_boot"
     CONF_KEY_CACHE_SR = "local_cache_sr"
+    CONF_KEY_O_DIRECT = "o_direct"
     LOCK_CACHE_SETUP = "cachesetup"
 
     ATTACH_DETACH_RETRY_SECS = 120
@@ -1555,6 +1556,9 @@ class VDI(object):
             # Maybe launch a tapdisk on the physical link
             if self.tap_wanted():
                 vdi_type = self.target.get_vdi_type()
+                o_direct = caching_params.get(self.CONF_KEY_O_DIRECT)
+                if o_direct is None:
+                    o_direct = True
                 dev_path = self._tap_activate(phy_path, vdi_type, sr_uuid,
                         options,
                         self._get_pool_config(sr_uuid).get("mem-pool-size"))

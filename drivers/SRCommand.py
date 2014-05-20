@@ -185,7 +185,8 @@ class SRCommand:
         caching_params = dict((k, self.params.get(k)) for k in \
                 [blktap2.VDI.CONF_KEY_ALLOW_CACHING,
                  blktap2.VDI.CONF_KEY_MODE_ON_BOOT,
-                 blktap2.VDI.CONF_KEY_CACHE_SR])
+                 blktap2.VDI.CONF_KEY_CACHE_SR,
+                 blktap2.VDI.CONF_KEY_O_DIRECT])
 
         if self.cmd == 'vdi_create':
             # These are the fields owned by the backend, passed on the
