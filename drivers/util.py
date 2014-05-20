@@ -723,6 +723,23 @@ def test_SCSIid(session, sr_uuid, SCSIid):
                     return True;
     return False
 
+
+class TimeoutException(SMException):
+    pass
+
+
+def timeout_call(timeoutseconds, function, *arguments):
+    def handler(signum, frame):
+        raise TimeoutException()
+    signal.signal(signal.SIGALRM, handler)
+    signal.alarm(timeoutseconds)
+    try:
+        function(*arguments)
+    except:
+        signal.alarm(0)
+        raise
+
+
 def _incr_iscsiSR_refcount(targetIQN, uuid):
     if not os.path.exists(ISCSI_REFDIR):
         os.mkdir(ISCSI_REFDIR)
