@@ -373,7 +373,8 @@ class TapCtl(object):
 
     @classmethod
     def open(cls, pid, minor, _type, _file, rdonly,
-             lcache = False, existing_prt = -1, secondary = None, standby = False):
+             lcache = False, existing_prt = -1, secondary = None, standby = False,
+             o_direct = True):
         params = Tapdisk.Arg(_type, _file)
         args = [ "open", "-p", pid, "-m", minor, '-a', str(params) ]
         if rdonly:
@@ -388,6 +389,8 @@ class TapCtl(object):
             args.append(secondary)
         if standby:
             args.append("-s")
+        if not o_direct:
+            args.append("-D")
         cls._pread(args)
 
     @classmethod
@@ -758,7 +761,8 @@ class Tapdisk(object):
     @classmethod
     def launch_on_tap(cls, blktap, path, _type, rdonly,
                       lcache = False, existing_prt = -1,
-                      secondary = None, standby = False):
+                      secondary = None, standby = False,
+                      o_direct = True):
 
         tapdisk = cls.find_by_path(path)
         if tapdisk:
@@ -774,7 +778,8 @@ class Tapdisk(object):
 
                 try:
                     TapCtl.open(pid, minor, _type, path, rdonly,
-                                lcache, existing_prt, secondary, standby)
+                                lcache, existing_prt, secondary, standby,
+                                o_direct)
 
                     try:
                         return cls.__from_blktap(blktap)
@@ -949,6 +954,7 @@ class VDI(object):
     CONF_KEY_ALLOW_CACHING = "vdi_allow_caching"
     CONF_KEY_MODE_ON_BOOT = "vdi_on_boot"
     CONF_KEY_CACHE_SR = "local_cache_sr"
+    CONF_KEY_O_DIRECT = "o_direct"
     LOCK_CACHE_SETUP = "cachesetup"
 
     ATTACH_DETACH_RETRY_SECS = 120
@@ -1214,7 +1220,8 @@ class VDI(object):
     # soon as ISOs are tapdisks.
 
     @staticmethod
-    def _tap_activate(phy_path, vdi_type, sr_uuid, writable, pool_size = None):
+    def _tap_activate(phy_path, vdi_type, sr_uuid, writable, pool_size = None,
+                      o_direct = True):
 
         tapdisk = Tapdisk.find_by_path(phy_path)
         if not tapdisk:
@@ -1228,7 +1235,8 @@ class VDI(object):
                     Tapdisk.launch_on_tap(blktap,
                                           phy_path,
                                           VDI._tap_type(vdi_type),
-                                          not writable)
+                                          not writable,
+                                          o_direct = o_direct)
             except:
                 blktap.free()
                 raise
@@ -1526,9 +1534,13 @@ class VDI(object):
             # Maybe launch a tapdisk on the physical link
             if self.tap_wanted():
                 vdi_type = self.target.get_vdi_type()
+                o_direct = caching_params.get(self.CONF_KEY_O_DIRECT)
+                if o_direct is None:
+                    o_direct = True
                 dev_path = self._tap_activate(phy_path, vdi_type, sr_uuid,
                         writable,
-                        self._get_pool_config(sr_uuid).get("mem-pool-size"))
+                        self._get_pool_config(sr_uuid).get("mem-pool-size"),
+                        o_direct)
             else:
                 dev_path = phy_path # Just reuse phy
 

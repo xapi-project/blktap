@@ -90,6 +90,8 @@ class NFSSR(FileSR.FileSR):
         if self.dconf.has_key('useUDP') and self.dconf['useUDP'] == 'true':
             self.transport = "udp"
 
+        self._check_o_direct()
+
 
     def validate_remotepath(self, scan):
         if not self.dconf.has_key('serverpath'):
