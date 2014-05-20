@@ -77,7 +77,7 @@ def soft_mount(mountpoint, remoteserver, remotepath, transport, timeout = 0):
     options = "soft,timeo=%d,retrans=%d,%s" % (timeout * 10,
                                                SOFTMOUNT_RETRANS,
                                                transport)
-    options += ',actimeo=0'
+    options += ',acdirmin=0,acdirmax=0'
 
     try:
         util.ioretry(lambda: 
