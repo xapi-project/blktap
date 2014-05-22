@@ -505,7 +505,7 @@ def remove_stale_luns(hostids, lunid, expectedPath, mpath):
                 if os.path.exists(expectedPath):
                     # do not remove device, this might be dangerous
                     util.SMlog("Path %s appeared before checking for "\
-                        "stale LUNs, ignore this LUN %s." (expectedPath, lun))
+                        "stale LUNs, ignore this LUN %s." % (expectedPath, lun))
                     continue                        
                     
                 # remove the scsi device
