@@ -214,9 +214,9 @@ except:
 # Check root disk if multipathed
 try:
     if get_root_dev_major() == get_dm_major():
-        def remove(key):
+        def _remove(key):
             session.xenapi.host.remove_from_other_config(localhost,key)
-        def add(key, val):
+        def _add(key, val):
             session.xenapi.host.add_to_other_config(localhost,key,val)
         config = session.xenapi.host.get_other_config(localhost)
         maps = mpath_cli.list_maps()
@@ -231,9 +231,9 @@ try:
                        " Host.other-config:mpath-boot " % i)
             key="mpath-boot"
             if not config.has_key(key):
-                update_config(key, i, "", remove, add)
+                update_config(key, i, "", _remove, _add)
             else:
-                update_config(key, i, config[key], remove, add)
+                update_config(key, i, config[key], _remove, _add)
 except:
     util.SMlog("MPATH: Failure updating Host.other-config:mpath-boot db")
     mpc_exit(session, -1)
