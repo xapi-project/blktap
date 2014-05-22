@@ -554,7 +554,14 @@ class ScanRecord:
         for location in self.gone:
             vdi = self.get_xenapi_vdi(location)
             util.SMlog("Forgetting VDI with location=%s uuid=%s" % (util.to_plain_string(vdi['location']), vdi['uuid']))
-            self.sr.forget_vdi(vdi['uuid'])
+            try:
+                self.sr.forget_vdi(vdi['uuid'])
+            except XenAPI.Failure, e:
+                if util.isInvalidVDI(e):
+                   util.SMlog("VDI %s not found, ignoring exception" \
+                           % vdi['uuid'])
+                else:
+                   raise
 
     def synchronise_existing(self):
         """Update existing XenAPI records"""
