@@ -1165,7 +1165,7 @@ class VDI(object):
 
             st = self._real_stat(target)
             if not S_ISBLK(st.st_mode):
-                raise cls.NotABlockDevice(target, st)
+                raise self.NotABlockDevice(target, st)
 
             os.mknod(self.path(), st.st_mode, st.st_rdev)
 
