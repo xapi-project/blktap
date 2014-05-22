@@ -23,6 +23,8 @@ import os, sys
 import scsiutil
 import xs_errors
 
+MAX_TIMEOUT = 15
+
 class RAWVDI(VDI.VDI):
     def load(self, vdi_uuid):
         if not self.sr.attached:
