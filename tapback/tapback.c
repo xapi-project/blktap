@@ -339,7 +339,7 @@ tapback_backend_create(const char *name, const char *pidfile,
         err = asprintf(&backend->frontend_token, "%s-master-front",
                 tapback_name);
         if (err == -1) {
-            backend->backend_token = NULL;
+            backend->frontend_token = NULL;
             err = errno;
             goto out;
         }
