@@ -382,7 +382,7 @@ def removeVG(root, vgname):
         raise xs_errors.XenError('LVMDelete', \
               opterr='errno is %d' % inst.code)
 
-def refreshPV(dev):
+def resizePV(dev):
     try:
         cmd = [CMD_PVRESIZE, dev]
         util.pread2(cmd)
