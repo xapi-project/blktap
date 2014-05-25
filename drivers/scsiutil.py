@@ -171,6 +171,9 @@ def getdev(path):
         newpath = path
     return os.path.realpath(newpath).split('/')[-1]
 
+def get_devices_by_SCSIid(SCSIid):
+    return os.listdir(os.path.join('/dev/disk/by-scsid', SCSIid))
+
 def rawdev(dev):
     return re.sub("[0-9]*$","",getdev(dev))
 
@@ -487,6 +490,89 @@ def refreshdev(pathlist):
                 pass
 
 
+def refresh_lun_size_by_SCSIid(SCSIid):
+    """
+    Refresh all devices for the SCSIid.
+    Returns True if all known devices and the mapper device are up to date.
+    """
+    def get_primary_device(SCSIid):
+        mapperdevice = os.path.join('/dev/mapper', SCSIid)
+        if os.path.exists(mapperdevice):
+            return mapperdevice
+        else:
+            devices = get_devices_by_SCSIid(SCSIid)
+            if devices:
+                return devices[0]
+            else:
+                return None
+
+    def get_outdated_size_devices(currentcapacity, devices):
+        devicesthatneedrefresh = []
+        for device in devices:
+            if getsize(device) != currentcapacity:
+                devicesthatneedrefresh.append(device)
+        return devicesthatneedrefresh
+
+    def refresh_devices_if_needed(primarydevice, SCSIid, currentcapacity):
+        devices = get_devices_by_SCSIid(SCSIid)
+        if "/dev/mapper/" in primarydevice:
+            devices = set(devices + mpath_cli.list_paths(SCSIid))
+        devicesthatneedrefresh = get_outdated_size_devices(currentcapacity,
+                                                           devices)
+        if devicesthatneedrefresh:
+            # timing out avoids waiting for min(dev_loss_tmo, fast_io_fail_tmo)
+            # if one or multiple devices don't answer
+            util.timeout_call(10, refreshdev, devicesthatneedrefresh)
+            if get_outdated_size_devices(currentcapacity,
+                                         devicesthatneedrefresh):
+                # in this state we shouldn't force resizing the mapper dev
+                raise util.SMException("Failed to get %s to agree on the "
+                                       "current capacity."
+                                       % devicesthatneedrefresh)
+
+    def refresh_mapper_if_needed(primarydevice, SCSIid, currentcapacity):
+        if "/dev/mapper/" in primarydevice \
+           and get_outdated_size_devices(currentcapacity, [primarydevice]):
+            mpath_cli.resize_map(SCSIid)
+            if get_outdated_size_devices(currentcapacity, [primarydevice]):
+                raise util.SMException("Failed to get the mapper dev to agree "
+                                       "on the current capacity.")
+
+    try:
+        primarydevice = get_primary_device(SCSIid)
+        if primarydevice:
+            currentcapacity = sg_readcap(primarydevice)
+            refresh_devices_if_needed(primarydevice, SCSIid, currentcapacity)
+            refresh_mapper_if_needed(primarydevice, SCSIid, currentcapacity)
+        else:
+            util.SMlog("scsiutil.refresh_lun_size_by_SCSIid(%s) could not "
+                       "find any devices for the SCSIid." % SCSIid)
+        return True
+    except:
+        util.logException("Error in scsiutil.refresh_lun_size_by_SCSIid(%s)"
+                          % SCSIid)
+        return False
+
+
+def refresh_lun_size_by_SCSIid_on_slaves(session, SCSIid):
+    for slave in util.get_all_slaves(session):
+        util.SMlog("Calling on-slave.refresh_lun_size_by_SCSIid(%s) on %s."
+                   % (SCSIid, slave))
+        resulttext = session.xenapi.host.call_plugin(
+                                                  slave,
+                                                  "on-slave",
+                                                  "refresh_lun_size_by_SCSIid",
+                                                  {'SCSIid': SCSIid })
+        if "True" == resulttext:
+            util.SMlog("Calling on-slave.refresh_lun_size_by_SCSIid(%s) on"
+                       " %s succeeded." % (SCSIid, slave))
+        else:
+            message = ("Failed in on-slave.refresh_lun_size_by_SCSIid(%s) "
+                       "on %s." % (SCSIid, slave))
+            raise util.SMException("Slave %s failed in on-slave.refresh_lun_"
+                                   "size_by_SCSIid(%s) " % (slave, SCSIid))
+
+
 def remove_stale_luns(hostids, lunid, expectedPath, mpath):
     try:
         for hostid in hostids:            
@@ -541,4 +627,15 @@ def remove_stale_luns(hostids, lunid, expectedPath, mpath):
     except Exception, e:
         util.SMlog("Exception removing stale LUNs, new devices may not come"\
                    " up properly! Error: %s" % str(e))
-        
+
+def sg_readcap(device):
+    device = os.path.join('/dev', getdev(device))
+    readcapcommand = ['/usr/bin/sg_readcap', '-b', device]
+    (rc,stdout,stderr) = util.doexec(readcapcommand)
+    if rc == 6:
+        # retry one time for "Capacity data has changed"
+        (rc,stdout,stderr) = util.doexec(readcapcommand)
+    if rc != 0:
+        raise util.SMException("util.sg_readcap(%s) failed" % (device))
+    (blockcount,blocksize) = stdout.split()
+    return (int(blockcount, 0) * int(blocksize, 0))
