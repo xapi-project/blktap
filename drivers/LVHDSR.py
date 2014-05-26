@@ -542,10 +542,47 @@ class LVHDSR(SR.SR):
             raise xs_errors.XenError('LVMMaster')
         cleanup.gc_force(self.session, self.uuid)
 
+        success = True
+        for fileName in \
+            filter(lambda x: util.extractSRFromDevMapper(x) == self.uuid, \
+                glob.glob(DEV_MAPPER_ROOT + '*')):
+            if util.doesFileHaveOpenHandles(fileName):
+                util.SMlog("LVHDSR.delete: The dev mapper entry %s has open " \
+                           "handles" % fileName)
+                success = False
+                continue
+
+            # Now attempt to remove the dev mapper entry
+            if not lvutil.removeDevMapperEntry(fileName):
+                success = False
+                continue
+
+            try:
+                lvname = os.path.basename(fileName.replace('-','/').\
+                                          replace('//', '-'))
+                os.unlink(os.path.join(self.path, lvname))
+            except Exception, e:
+                util.SMlog("LVHDSR.delete: failed to remove the symlink for " \
+                           "file %s. Error: %s" % (fileName, str(e)))
+                success = False
+
+        if success:
+            try:
+                if util.pathexists(self.path):
+                    os.rmdir(self.path)
+            except Exception, e:
+                util.SMlog("LVHDSR.delete: failed to remove the symlink " \
+                           "directory %s. Error: %s" % (self.path, str(e)))
+                success = False
+
         self._removeMetadataVolume()
         self.lvmCache.refresh()
         if len(lvhdutil.getLVInfo(self.lvmCache)) > 0:
             raise xs_errors.XenError('SRNotEmpty')
+
+        if not success:
+            raise Exception("LVHDSR delete failed, please refer to the log " \
+                            "for details.")
 
         lvutil.removeVG(self.root, self.vgname)
         self._cleanup()
