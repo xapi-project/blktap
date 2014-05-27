@@ -10,5 +10,10 @@ set -u
 
 (
     cd "$SMROOT"
-    PYTHONPATH="$SMROOT/snapwatchd:$SMROOT/drivers/" nosetests tests/test_ISCSISR.py
+    PYTHONPATH="$SMROOT/snapwatchd:$SMROOT/drivers/" \
+        coverage run $(which nosetests) \
+            --with-xunit \
+            --xunit-file=nosetests.xml \
+            tests/test_ISCSISR.py
+    coverage xml --include "$SMROOT/drivers/*"
 )
