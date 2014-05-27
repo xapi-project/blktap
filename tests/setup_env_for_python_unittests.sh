@@ -18,7 +18,9 @@ pip install nose
 pip install xenapi
 pip install mock
 
+TEMPDIR=$(mktemp -d)
 # build xslib.py
 # I need -fPIC otherwise I get "relocation R_X86_64_32 against" type errors
 PYTHONLIBS=$(dirname $(find /usr/include/ -maxdepth 2 -path \*/python\*/Python.h -type f | head -1))
-make -C "$SMROOT/snapwatchd" CFLAGS="-O2 -I${PYTHONLIBS}/ -I/usr/include -shared -fPIC"
+make -C "$SMROOT/snapwatchd" DESTDIR=$TEMPDIR CFLAGS="-O2 -I${PYTHONLIBS}/ -I/usr/include -shared -fPIC"
+rm -rf "$TEMPDIR"
