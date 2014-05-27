@@ -20,6 +20,7 @@ else
     pip install nose
 fi
 
+pip install coverage
 pip install xenapi
 pip install mock
 
