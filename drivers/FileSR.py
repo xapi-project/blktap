@@ -76,9 +76,12 @@ class FileSR(SR.SR):
     handles = staticmethod(handles)
 
     def _check_o_direct(self):
-        other_config = self.session.xenapi.SR.get_other_config(self.sr_ref)
-        o_direct = other_config.get("o_direct")
-        self.o_direct = o_direct is not None and o_direct == "true"
+        if self.sr_ref and self.session is not None:
+            other_config = self.session.xenapi.SR.get_other_config(self.sr_ref)
+            o_direct = other_config.get("o_direct")
+            self.o_direct = o_direct is not None and o_direct == "true"
+        else:
+            self.o_direct = True
 
     def load(self, sr_uuid):
         self.ops_exclusive = OPS_EXCLUSIVE
