@@ -15,6 +15,7 @@ set +u
 set -u
 
 pip install nose
+pip install coverage
 pip install xenapi
 pip install mock
 
