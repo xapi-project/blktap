@@ -14,6 +14,6 @@ set -u
         coverage run $(which nosetests) \
             --with-xunit \
             --xunit-file=nosetests.xml \
-            tests/test_ISCSISR.py
+            tests
     coverage xml --include "$SMROOT/drivers/*"
 )
