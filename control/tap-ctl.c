@@ -252,7 +252,7 @@ tap_cli_create_usage(FILE *stream)
 		"[-r turn on read caching into leaf node] [-2 <path> "
 		"use secondary image (in mirror mode if no -s)] [-s "
 		"fail over to the secondary image on ENOSPC] "
-			"[-t request timeout in seconds]\n");
+		"[-t request timeout in seconds]\n");
 }
 
 static int
