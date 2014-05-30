@@ -166,7 +166,9 @@ def scsi_dev_ctrl(ids, cmd):
 def getdev(path):
     realpath = os.path.realpath(path)
     if match_dm(realpath):
-        newpath = realpath.replace("/dev/mapper/","/dev/disk/by-id/scsi-")
+        # We ended up with the mapper path, but we need the dm-x device
+        newpath = realpath.replace("/dev/mapper/","/dev/disk/by-scsid/") \
+                  + "/mapper"
     else:
         newpath = path
     return os.path.realpath(newpath).split('/')[-1]
