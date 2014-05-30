@@ -52,8 +52,8 @@ test_stress_fs.sh: sfx and postmark on concurent VMs
 
 XE_api_library.sh: Sources globals.sh. TODO add rest
 
-install_prerequisites_for_python_unittests.sh: Install the prerequisites for python unittests on Ubuntu 12.04 64bit. Run as superuser. Specify environment variable USE_PYTHON24 to anything other than "yes" to disable python 2.4
+install_prerequisites_for_python_unittests.sh: Install the prerequisites for python unittests on Ubuntu 12.04 64bit. Run as superuser. Specify environment variable USE_PYTHON26 to anything other than "yes" to disable python 2.6
 
-setup_env_for_python_unittests.sh: Setup a virtual environment for python unittests. Run as a regular user. Install prerequisites with install_prerequisites_for_python_unittests.sh first. Specify environment variable USE_PYTHON24 to anything other than "yes" to disable python 2.4
+setup_env_for_python_unittests.sh: Setup a virtual environment for python unittests. Run as a regular user. Install prerequisites with install_prerequisites_for_python_unittests.sh first. Specify environment variable USE_PYTHON26 to anything other than "yes" to disable python 2.6
 
 run_python_unittests.sh: Run python unittests. Create the environment with setup_env_for_python_unittests.sh first.

@@ -4,8 +4,8 @@ set -eux
 SMROOT=$(cd $(dirname $0) && cd .. && pwd)
 ENVDIR="$SMROOT/.env"
 
-if [ "${USE_PYTHON24:-yes}" == "yes" ]; then
-    virtualenv-2.4 --no-site-packages "$ENVDIR"
+if [ "${USE_PYTHON26:-yes}" == "yes" ]; then
+    virtualenv-2.6 --no-site-packages "$ENVDIR"
 else
     virtualenv "$ENVDIR"
 fi
@@ -14,12 +14,7 @@ set +u
 . "$ENVDIR/bin/activate"
 set -u
 
-if [ "${USE_PYTHON24:-yes}" == "yes" ]; then
-    pip install nose==1.2.1
-else
-    pip install nose
-fi
-
+pip install nose
 pip install xenapi
 pip install mock
 

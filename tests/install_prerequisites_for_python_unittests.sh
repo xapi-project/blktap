@@ -1,7 +1,7 @@
 #!/bin/bash
 set -eux
 
-if [ "${USE_PYTHON24:-yes}" == "yes" ]; then
+if [ "${USE_PYTHON26:-yes}" == "yes" ]; then
 
     cat > /etc/apt/sources.list.d/deadsnakes.list << EOF
 deb http://ppa.launchpad.net/fkrull/deadsnakes/ubuntu precise main
@@ -26,9 +26,9 @@ EOF
 
     apt-get update
 
-    apt-get -qy install python2.4-dev python-distribute-deadsnakes
+    apt-get -qy install python2.6-dev python-distribute-deadsnakes
 
-    easy_install-2.4 virtualenv==1.7.2
+    easy_install-2.6 virtualenv
 else
     apt-get update
     apt-get -qy install python-dev python-virtualenv
