@@ -32,11 +32,15 @@ class SCSIAdapter(object):
         self.disks = []
         self.long_id = ''.join(
             random.choice(string.digits) for _ in range(33))
+        self.parameters = []
 
     def add_disk(self):
         disk = SCSIDisk()
         self.disks.append(disk)
         return disk
+
+    def add_parameter(self, host_class, values):
+        self.parameters.append((host_class, values))
 
 
 class Executable(object):
@@ -127,19 +131,26 @@ class TestContext(object):
             'x86_64'
         )
 
-    def fake_open(self, fname, mode):
+    def fake_open(self, fname, mode='r'):
         if fname == '/etc/xensource-inventory':
             return StringIO.StringIO(self.generate_inventory_contents())
 
         elif fname == '/opt/xensource/sm/XE_SR_ERRORCODES.xml':
             return StringIO.StringIO(self.error_codes)
 
-        raise AssertionError(fname)
+        for fpath, contents in self.generate_path_content():
+            if fpath == fname:
+                return StringIO.StringIO(contents)
+
+        self.log('tried to open file', fname)
+        raise IOError(fname)
 
     def fake_exists(self, fname):
         for existing_fname in self.get_filesystem():
             if fname == existing_fname:
                 return True
+
+        self.log('not exists', fname)
         return False
 
     def fake_listdir(self, path):
@@ -160,6 +171,14 @@ class TestContext(object):
 
         return sorted(result)
 
+    def generate_path_content(self):
+        for host_id, adapter in enumerate(self.scsi_adapters):
+            for host_class, values in adapter.parameters:
+                for key, value in values.iteritems():
+                    path = '/sys/class/%s/host%s/%s' % (
+                        host_class, host_id, key)
+                    yield (path, value)
+
     def generate_device_paths(self):
         actual_disk_letter = 'a'
         for host_id, adapter in enumerate(self.scsi_adapters):
@@ -177,6 +196,9 @@ class TestContext(object):
                     adapter.long_id, host_id, disk_id)
 
                 yield '/dev/disk/by-id/%s' % (disk.long_id)
+
+        for path, _content in self.generate_path_content():
+            yield path
 
     def fake_glob(self, pattern):
         result = []

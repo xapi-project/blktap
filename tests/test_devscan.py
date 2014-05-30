@@ -63,6 +63,31 @@ class TestScan(unittest.TestCase, testlib.XmlMixIn):
             </Devlist>
             """, result)
 
+    @testlib.with_context
+    def test_scanning_sr_includes_parameters(self, context):
+        sr = create_hba_sr()
+        adapter = context.adapter()
+        adapter.add_disk()
+        sr._init_hbadict()
+        adapter.add_parameter('fc_host', dict(port_name='VALUE'))
+
+        result = devscan.scan(sr)
+
+        self.assertXML("""
+            <?xml version="1.0" ?>
+            <Devlist>
+                <Adapter>
+                    <host>host0</host>
+                    <name>Unknown</name>
+                    <manufacturer>Unknown-description</manufacturer>
+                    <id>0</id>
+                    <fc_host>
+                        <port_name>VALUE</port_name>
+                    </fc_host>
+                </Adapter>
+            </Devlist>
+            """, result)
+
 
 class TestAdapters(unittest.TestCase):
     @testlib.with_context

@@ -71,6 +71,26 @@ class TestTestContext(unittest.TestCase):
         self.assertTrue(os.path.exists('/dev/disk/by-id'))
 
     @testlib.with_context
+    def test_add_parameter_parameter_file_exists(self, context):
+        adapter = context.adapter()
+        disk = adapter.add_disk()
+        adapter.add_parameter('fc_host', {'node_name': 'ignored'})
+
+        self.assertTrue(os.path.exists('/sys/class/fc_host/host0/node_name'))
+
+    @testlib.with_context
+    def test_add_parameter_parameter_file_contents(self, context):
+        adapter = context.adapter()
+        disk = adapter.add_disk()
+        adapter.add_parameter('fc_host', {'node_name': 'value'})
+
+        param_file = open('/sys/class/fc_host/host0/node_name')
+        param_value = param_file.read()
+        param_file.close()
+
+        self.assertEquals('value', param_value)
+
+    @testlib.with_context
     def test_uname_explicitly_defined(self, context):
         context.kernel_version = 'HELLO'
         import os
