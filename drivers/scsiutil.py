@@ -172,7 +172,10 @@ def getdev(path):
     return os.path.realpath(newpath).split('/')[-1]
 
 def get_devices_by_SCSIid(SCSIid):
-    return os.listdir(os.path.join('/dev/disk/by-scsid', SCSIid))
+    devices = os.listdir(os.path.join('/dev/disk/by-scsid', SCSIid))
+    if 'mapper' in devices:
+        devices.remove('mapper')
+    return devices
 
 def rawdev(dev):
     return re.sub("[0-9]*$","",getdev(dev))
