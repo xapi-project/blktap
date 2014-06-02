@@ -22,6 +22,7 @@
 import os
 import re
 import time
+import copy
 from lock import Lock
 import util
 import xmlrpclib
@@ -372,25 +373,26 @@ class TapCtl(object):
         cls._pread(args)
 
     @classmethod
-    def open(cls, pid, minor, _type, _file, rdonly,
-             lcache = False, existing_prt = -1, secondary = None, standby = False,
-             o_direct = True):
+    def open(cls, pid, minor, _type, _file, options):
         params = Tapdisk.Arg(_type, _file)
         args = [ "open", "-p", pid, "-m", minor, '-a', str(params) ]
-        if rdonly:
+        if options.get("rdonly"):
             args.append('-R')
-        if lcache:
+        if options.get("lcache"):
             args.append("-r")
-        if existing_prt >= 0:
+        if options.get("existing_prt") != None:
             args.append("-e")
-            args.append(str(existing_prt))
-        if secondary:
+            args.append(str(options["existing_prt"]))
+        if options.get("secondary"):
             args.append("-2")
-            args.append(secondary)
-        if standby:
+            args.append(options["secondary"])
+        if options.get("standby"):
             args.append("-s")
-        if not o_direct:
+        if not options.get("o_direct", True):
             args.append("-D")
+        if options.get("timeout"):
+            args.append("-t")
+            args.append(str(options["timeout"]))
         cls._pread(args)
 
     @classmethod
@@ -759,10 +761,7 @@ class Tapdisk(object):
         return cls.launch(arg.path, arg.type, False)
 
     @classmethod
-    def launch_on_tap(cls, blktap, path, _type, rdonly,
-                      lcache = False, existing_prt = -1,
-                      secondary = None, standby = False,
-                      o_direct = True):
+    def launch_on_tap(cls, blktap, path, _type, options):
 
         tapdisk = cls.find_by_path(path)
         if tapdisk:
@@ -777,10 +776,7 @@ class Tapdisk(object):
                 TapCtl.attach(pid, minor)
 
                 try:
-                    TapCtl.open(pid, minor, _type, path, rdonly,
-                                lcache, existing_prt, secondary, standby,
-                                o_direct)
-
+                    TapCtl.open(pid, minor, _type, path, options)
                     try:
                         return cls.__from_blktap(blktap)
 
@@ -809,7 +805,7 @@ class Tapdisk(object):
     def launch(cls, path, _type, rdonly):
         blktap = Blktap.allocate()
         try:
-            return cls.launch_on_tap(blktap, path, _type, rdonly)
+            return cls.launch_on_tap(blktap, path, _type, {"rdonly": rdonly})
         except:
             blktap.free()
             raise
@@ -958,6 +954,13 @@ class VDI(object):
     LOCK_CACHE_SETUP = "cachesetup"
 
     ATTACH_DETACH_RETRY_SECS = 120
+
+    # number of seconds on top of NFS timeo mount option the tapdisk should 
+    # wait before reporting errors. This is to allow a retry to succeed in case 
+    # packets were lost the first time around, which prevented the NFS client 
+    # from returning before the timeo is reached even if the NFS server did 
+    # come back earlier
+    TAPDISK_TIMEOUT_MARGIN = 30
 
     def __init__(self, uuid, target, driver_info):
         self.target      = self.TargetDriver(target, driver_info)
@@ -1220,8 +1223,7 @@ class VDI(object):
     # soon as ISOs are tapdisks.
 
     @staticmethod
-    def _tap_activate(phy_path, vdi_type, sr_uuid, writable, pool_size = None,
-                      o_direct = True):
+    def _tap_activate(phy_path, vdi_type, sr_uuid, options, pool_size = None):
 
         tapdisk = Tapdisk.find_by_path(phy_path)
         if not tapdisk:
@@ -1235,8 +1237,7 @@ class VDI(object):
                     Tapdisk.launch_on_tap(blktap,
                                           phy_path,
                                           VDI._tap_type(vdi_type),
-                                          not writable,
-                                          o_direct = o_direct)
+                                          options)
             except:
                 blktap.free()
                 raise
@@ -1439,7 +1440,8 @@ class VDI(object):
         if not self.target.has_cap("ATOMIC_PAUSE") or activate:
             util.SMlog("Attach & activate")
             self._attach(sr_uuid, vdi_uuid)
-            dev_path = self._activate(sr_uuid, vdi_uuid, writable, {})
+            dev_path = self._activate(sr_uuid, vdi_uuid,
+                    {"rdonly": not writable})
             self.BackendLink.from_uuid(sr_uuid, vdi_uuid).mklink(dev_path)
 
         # Return backend/ link
@@ -1459,10 +1461,14 @@ class VDI(object):
 
     def activate(self, sr_uuid, vdi_uuid, writable, caching_params):
         util.SMlog("blktap2.activate")
+        options = {"rdonly": not writable}
+        options.update(caching_params)
+        timeout = util.get_nfs_timeout(self.target.vdi.session, sr_uuid)
+        if timeout:
+            options["timeout"] = timeout + self.TAPDISK_TIMEOUT_MARGIN
         for i in range(self.ATTACH_DETACH_RETRY_SECS):
             try:
-                if self._activate_locked(sr_uuid, vdi_uuid,
-                                         writable, caching_params):
+                if self._activate_locked(sr_uuid, vdi_uuid, options):
                     return
             except util.SRBusyException:
                 util.SMlog("SR locked, retrying")
@@ -1470,13 +1476,13 @@ class VDI(object):
         raise util.SMException("VDI %s locked" % vdi_uuid)
 
     @locking("VDIUnavailable")
-    def _activate_locked(self, sr_uuid, vdi_uuid, writable, caching_params):
+    def _activate_locked(self, sr_uuid, vdi_uuid, options):
         """Wraps target.activate and adds a tapdisk"""
         import VDI as sm
 
         #util.SMlog("VDI.activate %s" % vdi_uuid)
         if self.tap_wanted():
-            if not self._add_tag(vdi_uuid, writable):
+            if not self._add_tag(vdi_uuid, not options["rdonly"]):
                 return False
             # it is possible that while the VDI was paused some of its 
             # attributes have changed (e.g. its size if it was inflated; or its 
@@ -1498,7 +1504,7 @@ class VDI(object):
                 self._attach(sr_uuid, vdi_uuid)
 
             # Activate the physical node
-            dev_path = self._activate(sr_uuid, vdi_uuid, writable, caching_params)
+            dev_path = self._activate(sr_uuid, vdi_uuid, options)
         except:
             util.SMlog("Exception in activate/attach")
             if self.tap_wanted():
@@ -1525,22 +1531,21 @@ class VDI(object):
         self.BackendLink.from_uuid(sr_uuid, vdi_uuid).mklink(dev_path)
         return True
     
-    def _activate(self, sr_uuid, vdi_uuid, writable, caching_params):
+    def _activate(self, sr_uuid, vdi_uuid, options):
         self.target.activate(sr_uuid, vdi_uuid)
 
-        dev_path = self.setup_cache(sr_uuid, vdi_uuid, caching_params)
+        dev_path = self.setup_cache(sr_uuid, vdi_uuid, options)
         if not dev_path:
             phy_path = self.PhyLink.from_uuid(sr_uuid, vdi_uuid).readlink()
             # Maybe launch a tapdisk on the physical link
             if self.tap_wanted():
                 vdi_type = self.target.get_vdi_type()
-                o_direct = caching_params.get(self.CONF_KEY_O_DIRECT)
-                if o_direct is None:
-                    o_direct = True
+                options["o_direct"] = options.get(self.CONF_KEY_O_DIRECT)
+                if options["o_direct"] is None: 
+                    options["o_direct"] = True
                 dev_path = self._tap_activate(phy_path, vdi_type, sr_uuid,
-                        writable,
-                        self._get_pool_config(sr_uuid).get("mem-pool-size"),
-                        o_direct)
+                        options,
+                        self._get_pool_config(sr_uuid).get("mem-pool-size"))
             else:
                 dev_path = phy_path # Just reuse phy
 
@@ -1674,7 +1679,7 @@ class VDI(object):
             util.SMlog("ERROR: Local cache SR not specified, not enabling")
             return
         dev_path = self._setup_cache(session, sr_uuid, vdi_uuid,
-                local_sr_uuid, scratch_mode)
+                local_sr_uuid, scratch_mode, params)
 
         if dev_path:
             self._updateCacheRecord(session, self.target.vdi.uuid,
@@ -1725,7 +1730,7 @@ class VDI(object):
                 alert_obj, alert_uuid, alert_str)
 
     def _setup_cache(self, session, sr_uuid, vdi_uuid, local_sr_uuid,
-            scratch_mode):
+            scratch_mode, options):
         import SR
         import EXTSR
         import NFSSR
@@ -1789,16 +1794,18 @@ class VDI(object):
 
         prt_tapdisk = Tapdisk.find_by_path(read_cache_path)
         if not prt_tapdisk:
+            parent_options = copy.deepcopy(options)
+            parent_options["rdonly"] = False
+            parent_options["lcache"] = True
+
             blktap = Blktap.allocate()
             try:
                 blktap.set_pool_name("lcache-parent-pool-%s" % blktap.minor)
                 # no need to change pool_size since each parent tapdisk is in 
                 # its own pool
                 prt_tapdisk = \
-                    Tapdisk.launch_on_tap(blktap,
-                                          read_cache_path, 'vhd',
-                                          rdonly=False,
-                                          lcache=True)
+                    Tapdisk.launch_on_tap(blktap, read_cache_path,
+                            'vhd', parent_options)
             except:
                 blktap.free()
                 raise
@@ -1810,15 +1817,16 @@ class VDI(object):
         leaf_tapdisk = Tapdisk.find_by_path(local_leaf_path)
         if not leaf_tapdisk:
             blktap = Blktap.allocate()
+            child_options = copy.deepcopy(options)
+            child_options["rdonly"] = False
+            child_options["lcache"] = False
+            child_options["existing_prt"] = prt_tapdisk.minor
+            child_options["secondary"] = secondary
+            child_options["standby"] = scratch_mode
             try:
                 leaf_tapdisk = \
-                    Tapdisk.launch_on_tap(blktap,
-                                          local_leaf_path, 'vhd',
-                                          rdonly=False,
-                                          lcache=False,
-                                          existing_prt=prt_tapdisk.minor,
-                                          secondary=secondary,
-                                          standby=scratch_mode)
+                    Tapdisk.launch_on_tap(blktap, local_leaf_path,
+                            'vhd', child_options)
             except:
                 blktap.free()
                 raise

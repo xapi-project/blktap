@@ -633,6 +633,28 @@ def get_all_slaves(session):
     master_ref = get_this_host_ref(session)
     return filter(lambda x: x != master_ref, host_refs)
 
+def get_nfs_timeout(session, sr_uuid):
+    try:
+        sr_ref = session.xenapi.SR.get_by_uuid(sr_uuid)
+        other_config = session.xenapi.SR.get_other_config(sr_ref)
+        str_val = other_config.get("nfs-timeout")
+    except XenAPI.Failure:
+        SMlog("Failed to get SR.other-config:nfs-timeout, ignoring")
+        return 0
+
+    if not str_val:
+        return 0
+
+    try:
+        nfs_timeout = int(str_val)
+        if nfs_timeout < 1:
+            raise ValueError
+    except ValueError:
+        SMlog("Invalid nfs-timeout value: %s" % str_val)
+        return 0
+
+    return nfs_timeout
+
 def is_attached_rw(sm_config):
     for key, val in sm_config.iteritems():
         if key.startswith("host_") and val == "RW":
