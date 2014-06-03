@@ -323,9 +323,9 @@ class RawHBAVDI(LUNperVDI.RAWVDI):
                 # We want all the devices with this scsi_id
                 dev = scsiutil._genReverseSCSIidmap(scsi_id)
             if self.sr.srcmd.cmd == "vdi_attach":
-                B_util.refreshdev(dev)
+                scsiutil.refreshdev(dev)
             elif not B_util.is_vdi_attached(self.sr.session, vdi_ref):
-                B_util.refreshdev(dev)
+                scsiutil.refreshdev(dev)
         except:
             pass
 
