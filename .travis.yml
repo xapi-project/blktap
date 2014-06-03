@@ -11,3 +11,6 @@ script:
         - "cd drivers; nosetests --with-coverage -c ../.noserc ../tests/test_*.py"
 after_success:
         coveralls
+branches:
+    except:
+        - xs64bit
