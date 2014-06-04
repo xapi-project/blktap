@@ -52,6 +52,7 @@ SM_LIBS += updatempppathd
 SM_LIBS += lcache
 SM_LIBS += resetvdis
 SM_LIBS += B_util
+MPATH_CONF = multipath.conf
 
 CRON_JOBS += ringwatch
 
@@ -64,6 +65,7 @@ MASTER_SCRIPT_DEST := /etc/xensource/master.d/
 PLUGIN_SCRIPT_DEST := /etc/xapi.d/plugins/
 LIBEXEC := /opt/xensource/libexec/
 CRON_DEST := /etc/cron.d/
+MPATH_CONF_DIR := /etc/multipath.xenserver/
 
 SM_STAGING := $(DESTDIR)
 SM_STAMP := $(MY_OBJ_DIR)/.staging_stamp
@@ -77,6 +79,7 @@ install:
 	mkdir -p $(SM_STAGING)
 	$(call mkdir_clean,$(SM_STAGING))
 	mkdir -p $(SM_STAGING)$(SM_DEST)
+	mkdir -p $(SM_STAGING)$(MPATH_CONF_DIR)
 	mkdir -p $(SM_STAGING)$(DEBUG_DEST)
 	mkdir -p $(SM_STAGING)$(BIN_DEST)
 	mkdir -p $(SM_STAGING)$(MASTER_SCRIPT_DEST)
@@ -88,6 +91,8 @@ install:
 	for i in $(SM_DRIVERS); do \
 	  install -m 755 drivers/$${i}SR.py \
 	    $(SM_STAGING)$(SM_DEST); done
+	install -m 644 multipath/$(MPATH_CONF) \
+	  $(SM_STAGING)/$(MPATH_CONF_DIR)
 	for i in $(SM_XML); do \
 	  install -m 755 drivers/$$i.xml \
 	    $(SM_STAGING)$(SM_DEST); done
