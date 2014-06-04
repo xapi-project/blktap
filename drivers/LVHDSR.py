@@ -464,6 +464,50 @@ class LVHDSR(SR.SR):
                 raise xs_errors.XenError('MetadataError', \
                              opterr='Failed to delete MGT Volume')
 
+
+    def _refresh_size(self):
+        """
+        Refreshs the size of the backing device.
+        Return true if all paths/devices agree on the same size.
+        """
+        if hasattr(self, 'SCSIid'):
+            # LVHDoHBASR, LVHDoISCSISR
+            return scsiutil.refresh_lun_size_by_SCSIid(getattr(self, 'SCSIid'))
+        else:
+            # LVHDSR
+            devices = self.root.split(',')
+            scsiutil.refreshdev(devices)
+            return True
+
+
+    def _expand_size(self):
+        """
+        Expands the size of the SR by growing into additional availiable
+        space, if extra space is availiable on the backing device.
+        Needs to be called after a successful call of _refresh_size.
+        """
+        currentvgsize = lvutil._getVGstats(self.vgname)['physical_size']
+        # We are comparing PV- with VG-sizes that are aligned. Need a threshold
+        resizethreshold = 100*1024*1024 # 100MB
+        devices = self.root.split(',')
+        totaldevicesize = 0
+        for device in devices:
+            totaldevicesize = totaldevicesize + scsiutil.getsize(device)
+        if totaldevicesize >= (currentvgsize + resizethreshold):
+            try:
+                if hasattr(self, 'SCSIid'):
+                    # LVHDoHBASR, LVHDoISCSISR might have slaves
+                    scsiutil.refresh_lun_size_by_SCSIid_on_slaves(self.session,
+                                                       getattr(self, 'SCSIid'))
+                util.SMlog("LVHDSR._expand_size for %s will resize the pv."
+                           % self.uuid)
+                for device in devices:
+                    lvutil.resizePV(device)
+            except:
+                util.logException("LVHDSR._expand_size for %s failed to resize"
+                                  " the PV" % self.uuid)
+
+
     def create(self, uuid, size):
         util.SMlog("LVHDSR.create for %s" % self.uuid)
         if not self.isMaster:
@@ -517,11 +561,10 @@ class LVHDSR(SR.SR):
         # Refresh the metadata status
         self._checkMetadataVolume()
 
+        refreshsizeok = self._refresh_size()
         if self.isMaster:
-            # Probe for LUN resize
-            for dev in self.root.split(','):
-                lvutil.refreshPV(dev)
-
+            if refreshsizeok:
+                self._expand_size()
             #Update SCSIid string
             util.SMlog("Calling devlist_to_serial")
             scsiutil.add_serial_record(self.session, self.sr_ref, \
@@ -608,6 +651,8 @@ class LVHDSR(SR.SR):
                 util.SMlog('sr_scan blocked for non-master')
                 raise xs_errors.XenError('LVMMaster')
 
+            if self._refresh_size():
+                self._expand_size()
             self.lvmCache.refresh()
             self._loadvdis()
             stats = lvutil._getVGstats(self.vgname)

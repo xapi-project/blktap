@@ -23,6 +23,7 @@ sys.path.append("/opt/xensource/sm/")
 import util
 import lock
 from lvmcache import LVMCache
+import scsiutil
 
 def multi(session, args):
     """Perform several actions in one call (to save on round trips)"""
@@ -95,7 +96,21 @@ def is_open(session, args):
         util.logException("is_open")
         raise
 
+
+def refresh_lun_size_by_SCSIid(session, args):
+    """Refresh the size of LUNs backing the SCSIid on the local node."""
+    util.SMlog("on-slave.refresh_lun_size_by_SCSIid(,%s)" % args)
+    if scsiutil.refresh_lun_size_by_SCSIid(args['SCSIid']):
+        util.SMlog("on-slave.refresh_lun_size_by_SCSIid with %s succeeded"
+                   % args)
+        return "True"
+    else:
+        util.SMlog("on-slave.refresh_lun_size_by_SCSIid with %s failed" % args)
+        return "False"
+
+
 if __name__ == "__main__":
     XenAPIPlugin.dispatch({
         "multi": multi,
-        "is_open": is_open})
+        "is_open": is_open,
+        "refresh_lun_size_by_SCSIid": refresh_lun_size_by_SCSIid})
