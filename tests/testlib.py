@@ -11,6 +11,10 @@ import textwrap
 PATHSEP = '/'
 
 
+class ContextSetupError(Exception):
+    pass
+
+
 def get_error_codes():
     this_dir = os.path.dirname(__file__)
     drivers_dir = os.path.join(this_dir, '..', 'drivers')
@@ -72,6 +76,14 @@ class TestContext(object):
         self.scsi_adapters = []
         self.kernel_version = '3.1'
         self.executables = {}
+        self._created_directories = []
+        self._path_content = {}
+        self._next_fileno = 0
+
+    def _get_inc_fileno(self):
+        result = self._next_fileno
+        self._next_fileno += 1
+        return result
 
     def add_executable(self, fpath, funct):
         self.executables[fpath] = Executable(funct)
@@ -87,7 +99,9 @@ class TestContext(object):
     def start(self):
         self.patchers = [
             mock.patch('__builtin__.open', new=self.fake_open),
+            mock.patch('__builtin__.file', new=self.fake_open),
             mock.patch('os.path.exists', new=self.fake_exists),
+            mock.patch('os.makedirs', new=self.fake_makedirs),
             mock.patch('os.listdir', new=self.fake_listdir),
             mock.patch('glob.glob', new=self.fake_glob),
             mock.patch('os.uname', new=self.fake_uname),
@@ -96,8 +110,19 @@ class TestContext(object):
         map(lambda patcher: patcher.start(), self.patchers)
         self.setup_modinfo()
 
+    def fake_makedirs(self, path):
+        if path in self.get_filesystem():
+            raise OSError(path + " Already exists")
+        self._created_directories.append(path)
+        self.log("Recursively created directory", path)
+
     def setup_modinfo(self):
         self.add_executable('/sbin/modinfo', self.fake_modinfo)
+
+    def setup_error_codes(self):
+        self._path_content['/opt/xensource/sm/XE_SR_ERRORCODES.xml'] = (
+            self.error_codes
+        )
 
     def fake_modinfo(self, args, stdin_data):
         assert len(args) == 3
@@ -114,7 +139,7 @@ class TestContext(object):
         path_to_executable = args[0]
 
         if path_to_executable not in self.executables:
-            raise AssertionError(
+            raise ContextSetupError(
                 path_to_executable
                 + ' was not found. Set it up using add_executable.'
                 + ' was called with: ' + str(args))
@@ -135,12 +160,14 @@ class TestContext(object):
         if fname == '/etc/xensource-inventory':
             return StringIO.StringIO(self.generate_inventory_contents())
 
-        elif fname == '/opt/xensource/sm/XE_SR_ERRORCODES.xml':
-            return StringIO.StringIO(self.error_codes)
-
         for fpath, contents in self.generate_path_content():
             if fpath == fname:
                 return StringIO.StringIO(contents)
+
+        if mode == 'w+':
+            if os.path.dirname(fname) in self.get_created_directories():
+                self._path_content[fname] = ''
+                return WriteableFile(self, fname, self._get_inc_fileno())
 
         self.log('tried to open file', fname)
         raise IOError(fname)
@@ -169,6 +196,16 @@ class TestContext(object):
             for path in filesystem_for(executable_path):
                 result.add(path)
 
+        for directory in self.get_created_directories():
+            result.add(directory)
+
+        return sorted(result)
+
+    def get_created_directories(self):
+        result = set(['/'])
+        for created_directory in self._created_directories:
+            for path in filesystem_for(created_directory):
+                result.add(path)
         return sorted(result)
 
     def generate_path_content(self):
@@ -178,6 +215,9 @@ class TestContext(object):
                     path = '/sys/class/%s/host%s/%s' % (
                         host_class, host_id, key)
                     yield (path, value)
+
+        for path, value in self._path_content.iteritems():
+            yield (path, value)
 
     def generate_device_paths(self):
         actual_disk_letter = 'a'
@@ -292,3 +332,21 @@ class XmlMixIn(object):
             marshalled(expected_dom),
             marshalled(actual_dom)
         )
+
+
+class WriteableFile(object):
+    def __init__(self, context, fname, fileno, data=None):
+        self._context = context
+        self._fname = fname
+        self._file = StringIO.StringIO(data)
+        self._fileno = fileno
+
+    def fileno(self):
+        return self._fileno
+
+    def write(self, data):
+        return self._file.write(data)
+
+    def close(self):
+        self._context._path_content[self._fname] = self._file.getvalue()
+        self._file.close()

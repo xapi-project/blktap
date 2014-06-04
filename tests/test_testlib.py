@@ -1,5 +1,6 @@
 import unittest
 import os
+import mock
 
 import testlib
 
@@ -135,6 +136,7 @@ class TestTestContext(unittest.TestCase):
 
     @testlib.with_context
     def test_error_codes_read(self, context):
+        context.setup_error_codes()
         errorcodes_file = open('/opt/xensource/sm/XE_SR_ERRORCODES.xml', 'rb')
         errorcodes = errorcodes_file.read()
         errorcodes_file.close()
@@ -186,6 +188,132 @@ class TestTestContext(unittest.TestCase):
         self.assertEquals('somemodule-description', out)
         self.assertEquals('', err)
 
+    @testlib.with_context
+    def test_makedirs_mocked_out(self, context):
+        import os
+
+        os.makedirs('/blah/subdir')
+
+        self.assertTrue(os.path.exists('/blah/subdir'))
+
+    @testlib.with_context
+    def test_makedirs_raises_if_exists(self, context):
+        import os
+
+        os.makedirs('/blah/subdir')
+
+        self.assertRaises(OSError, os.makedirs, '/blah/subdir')
+
+    @testlib.with_context
+    def test_setup_error_codes(self, context):
+        context.setup_error_codes()
+
+        self.assertTrue(
+            os.path.exists('/opt/xensource/sm/XE_SR_ERRORCODES.xml'))
+
+    @testlib.with_context
+    def test_write_a_file(self, context):
+        import os
+
+        os.makedirs('/blah/subdir')
+
+        f = open('/blah/subdir/somefile', 'w+')
+        f.write('hello')
+        f.close()
+
+        self.assertTrue(
+            ('/blah/subdir/somefile', 'hello')
+            in list(context.generate_path_content()))
+
+    @testlib.with_context
+    def test_file_returns_an_object_with_fileno_callable(self, context):
+        f = file('/file', 'w+')
+
+        self.assertTrue(hasattr(f, 'fileno'))
+        self.assertTrue(callable(f.fileno))
+
+    @testlib.with_context
+    def test_filenos_are_unique(self, context):
+        import os
+
+        os.makedirs('/blah/subdir')
+
+        file_1 = file('/blah/subdir/somefile', 'w+')
+        fileno_1 = file_1.fileno()
+
+        file_2 = file('/blah/subdir/somefile2', 'w+')
+        fileno_2 = file_2.fileno()
+
+        self.assertTrue(fileno_1 != fileno_2)
+
+    def test_get_created_directories(self):
+        context = testlib.TestContext()
+
+        context.fake_makedirs('/some/path')
+
+        self.assertEquals([
+            '/',
+            '/some',
+            '/some/path'],
+            context.get_created_directories())
+
+    def test_popen_raises_error(self):
+        import subprocess
+        context = testlib.TestContext()
+
+        self.assertRaises(
+            testlib.ContextSetupError,
+            context.fake_popen,
+            ['something'],
+            subprocess.PIPE,
+            subprocess.PIPE,
+            subprocess.PIPE,
+            True
+        )
+
+    def test_glob_requests_logged(self):
+        context = testlib.TestContext()
+        context.log = mock.Mock()
+
+        context.fake_glob('/dir/*')
+
+        self.assertEquals(
+            [
+                mock.call('no glob', '/dir/*'),
+            ],
+            context.log.mock_calls
+        )
+
+    def test_fake_open_logged(self):
+        context = testlib.TestContext()
+        context.log = mock.Mock()
+
+        try:
+            context.fake_open('/nonexisting_file', 'r')
+        except:
+            pass
+
+        self.assertEquals(
+            [
+                mock.call('tried to open file', '/nonexisting_file'),
+            ],
+            context.log.mock_calls
+        )
+
+    def test_context_stops_mocking_on_failures(self):
+        original_open = os.open
+
+        @testlib.with_context
+        def somefunction(firstparam, context):
+            raise Exception()
+
+        try:
+            somefunction(None)
+        except:
+            pass
+
+        self.assertEquals(original_open, os.open)
+
 
 class TestFilesystemFor(unittest.TestCase):
     def test_returns_single_item_for_root(self):
@@ -197,3 +325,16 @@ class TestFilesystemFor(unittest.TestCase):
         fs = testlib.filesystem_for('/somedir')
 
         self.assertEquals(['/', '/somedir'], fs)
+
+
+class TestXmlMixIn(unittest.TestCase, testlib.XmlMixIn):
+
+    def test_assertXML_doesn_t_care_about_spaces(self):
+        self.assertXML(
+            """
+
+            <?xml version="1.0" ?>
+                <something/>
+
+            """,
+            '<?xml version="1.0" ?><something/>')
