@@ -10,7 +10,7 @@ set -u
 
 (
     cd "$SMROOT"
-    PYTHONPATH="$SMROOT/snapwatchd:$SMROOT/drivers/" \
+    PYTHONPATH="$SMROOT/drivers/" \
         coverage run $(which nosetests) \
             --with-xunit \
             --xunit-file=nosetests.xml \
