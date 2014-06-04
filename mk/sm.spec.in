@@ -71,6 +71,7 @@ cp -f /etc/lvm/lvm.conf.orig /etc/lvm/lvm.conf || exit $?
 /etc/xapi.d/plugins/testing-hooks
 /etc/xapi.d/plugins/vss_control
 /etc/xapi.d/plugins/intellicache-clean
+/etc/xapi.d/plugins/trim
 /etc/xensource/master.d/02-vhdcleanup
 /opt/xensource/bin/blktap2
 /opt/xensource/bin/tapdisk-cache-stats

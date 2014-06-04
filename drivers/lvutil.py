@@ -400,18 +400,22 @@ def setActiveVG(path, active):
     cmd = [CMD_VGCHANGE, "-a" + val, path]
     text = util.pread2(cmd)
 
-def create(name, size, vgname, tag = None):
-    size_mb = size / 1024 / 1024
-    cmd = [CMD_LVCREATE, "-n", name, "-L", str(size_mb), vgname]
+def create(name, size, vgname, tag=None, activate=True, 
+           size_in_percentage=None):
+    if size_in_percentage:
+        cmd = [CMD_LVCREATE, "-n", name, "-l", size_in_percentage, vgname]
+    else:
+        size_mb = size / 1024 / 1024
+        cmd = [CMD_LVCREATE, "-n", name, "-L", str(size_mb), vgname]
     if tag:
         cmd.extend(["--addtag", tag])
     util.pread2(cmd)
 
-def remove(path):
+def remove(path, config_param=None):
     # see deactivateNoRefcount()
     for i in range(LVM_FAIL_RETRIES):
         try:
-            _remove(path)
+            _remove(path, config_param)
             break
         except util.CommandException, e:
             if i >= LVM_FAIL_RETRIES - 1:
@@ -419,8 +423,11 @@ def remove(path):
             util.SMlog("*** lvremove failed on attempt #%d" % i)
     _lvmBugCleanup(path)
 
-def _remove(path):
+def _remove(path, config_param=None):
+    CONFIG_TAG = "--config"
     cmd = [CMD_LVREMOVE, "-f", path]
+    if config_param:
+        cmd.extend([CONFIG_TAG, "global{" + config_param + "}"])
     ret = util.pread2(cmd)
 
 def rename(path, newName):
@@ -433,6 +440,15 @@ def setReadonly(path, readonly):
         val += "w"
     cmd = [CMD_LVCHANGE, path, "-p", val]
     ret = util.pread(cmd)
+
+def exists(path):
+    cmd = [CMD_LVS, "--noheadings", path]
+    try:
+        ret = util.pread2(cmd)
+        return True
+    except util.CommandException, e:
+        util.SMlog("Ignoring exception for LV check: %s !" % path)
+        return False
 
 #def getSize(path):
 #    return _getLVsize(path)
