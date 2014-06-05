@@ -426,7 +426,7 @@ def _remove(path, config_param=None):
     CONFIG_TAG = "--config"
     cmd = [CMD_LVREMOVE, "-f", path]
     if config_param:
-        cmd.extend([CONFIG_TAG, "global{" + config_param + "}"])
+        cmd.extend([CONFIG_TAG, "devices{" + config_param + "}"])
     ret = util.pread2(cmd)
 
 def rename(path, newName):
