@@ -20,6 +20,9 @@ class VolumeGroup(object):
         self.volumes.append(
             LogicalVolume(self, name, size_mb, tag, active, zeroed))
 
+    def delete_volume(self, volume):
+        self.volumes = [vol for vol in self.volumes if vol != volume]
+
 
 class LVSubsystem(object):
     def __init__(self, logger, executable_injector):
@@ -27,6 +30,8 @@ class LVSubsystem(object):
         self.lv_calls = []
         self._volume_groups = []
         executable_injector('/usr/sbin/lvcreate', self.fake_lvcreate)
+        executable_injector('/usr/sbin/lvremove', self.fake_lvremove)
+        executable_injector('/sbin/dmsetup', self.fake_dmsetup)
 
     def add_volume_group(self, name):
         self._volume_groups.append(VolumeGroup(name))
@@ -75,4 +80,28 @@ class LVSubsystem(object):
             active,
             zeroed)
 
+        return 0, '', ''
+
+    def fake_lvremove(self, args, stdin):
+        self.logger('lvremove', repr(args), stdin)
+        parser = optparse.OptionParser()
+        parser.add_option(
+            "-f", "--force", dest='force', action='store_true', default=False)
+        self.logger(args, stdin)
+        try:
+            options, args = parser.parse_args(args[1:])
+        except SystemExit, e:
+            self.logger("LVREMOVE OPTION PARSING FAILED")
+            return (1, '', str(e))
+
+        lvpath, = args
+
+        for vg in self._volume_groups:
+            for lv in vg.volumes:
+                if '/'.join([vg.name, lv.name]) == lvpath:
+                    vg.delete_volume(lv)
+
+        return 0, '', ''
+
+    def fake_dmsetup(self, args, stdin):
         return 0, '', ''
