@@ -128,6 +128,7 @@ class TestContext(object):
             mock.patch('os.uname', new=self.fake_uname),
             mock.patch('subprocess.Popen', new=self.fake_popen),
             mock.patch('os.rmdir', new=self.fake_rmdir),
+            mock.patch('os.stat', new=self.fake_stat),
         ]
         map(lambda patcher: patcher.start(), self.patchers)
         self.setup_modinfo()
@@ -142,6 +143,10 @@ class TestContext(object):
         assert path in self._created_directories
         self._created_directories = [
             d for d in self._created_directories if d != path]
+
+    def fake_stat(self, path):
+        if not self.fake_exists(path):
+            raise OSError()
 
     def fake_makedirs(self, path):
         if path in self.get_filesystem():
