@@ -94,3 +94,14 @@ class TestCreate(unittest.TestCase):
 
         created_lv, = lvsystem.get_logical_volumes_with_name('volume')
         self.assertFalse(created_lv.zeroed)
+
+
+class TestRemove(unittest.TestCase):
+    @with_lvm_subsystem
+    def test_remove_removes_volume(self, lvsystem):
+        lvsystem.add_volume_group('vgroup')
+        lvsystem.get_volume_group('vgroup').add_volume('volume', 100)
+
+        lvutil.remove('vgroup/volume')
+
+        self.assertEquals([], lvsystem.get_logical_volumes_with_name('volume'))
