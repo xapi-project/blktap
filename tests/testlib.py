@@ -6,6 +6,7 @@ import fnmatch
 import string
 import random
 import textwrap
+import errno
 
 
 PATHSEP = '/'
@@ -106,9 +107,21 @@ class TestContext(object):
             mock.patch('glob.glob', new=self.fake_glob),
             mock.patch('os.uname', new=self.fake_uname),
             mock.patch('subprocess.Popen', new=self.fake_popen),
+            mock.patch('os.rmdir', new=self.fake_rmdir),
         ]
         map(lambda patcher: patcher.start(), self.patchers)
         self.setup_modinfo()
+
+    def fake_rmdir(self, path):
+        if path not in self.get_filesystem():
+            raise OSError(errno.ENOENT, 'No such file %s' % path)
+
+        if self.fake_glob(os.path.join(path, '*')):
+            raise OSError(errno.ENOTEMPTY, 'Directory is not empty %s' % path)
+
+        assert path in self._created_directories
+        self._created_directories = [
+            d for d in self._created_directories if d != path]
 
     def fake_makedirs(self, path):
         if path in self.get_filesystem():
@@ -164,10 +177,13 @@ class TestContext(object):
             if fpath == fname:
                 return StringIO.StringIO(contents)
 
-        if mode == 'w+':
+        if 'w' in mode:
             if os.path.dirname(fname) in self.get_created_directories():
                 self._path_content[fname] = ''
                 return WriteableFile(self, fname, self._get_inc_fileno())
+            error = IOError('No such file %s' % fname)
+            error.errno = errno.ENOENT
+            raise error
 
         self.log('tried to open file', fname)
         raise IOError(fname)

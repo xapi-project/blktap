@@ -1,6 +1,7 @@
 import unittest
 import os
 import mock
+import errno
 
 import testlib
 
@@ -226,6 +227,16 @@ class TestTestContext(unittest.TestCase):
             in list(context.generate_path_content()))
 
     @testlib.with_context
+    def test_write_a_file_in_non_existing_dir(self, context):
+        import os
+
+        try:
+            open('/blah/subdir/somefile', 'w')
+            raise AssertionError('No exception raised')
+        except IOError, e:
+            self.assertEquals(errno.ENOENT, e.errno)
+
+    @testlib.with_context
     def test_file_returns_an_object_with_fileno_callable(self, context):
         f = file('/file', 'w+')
 
@@ -313,6 +324,39 @@ class TestTestContext(unittest.TestCase):
             pass
 
         self.assertEquals(original_open, os.open)
+
+    @testlib.with_context
+    def test_rmdir_is_replaced_with_a_fake(self, context):
+        self.assertEquals(context.fake_rmdir, os.rmdir)
+
+    def test_rmdir_raises_error_if_dir_not_found(self):
+        context = testlib.TestContext()
+
+        try:
+            context.fake_rmdir('nonexisting')
+            raise AssertionError('No Exception raised')
+        except OSError, e:
+            self.assertEquals(errno.ENOENT, e.errno)
+
+    def test_rmdir_removes_dir_if_found(self):
+        context = testlib.TestContext()
+
+        context.fake_makedirs('/existing_dir')
+
+        context.fake_rmdir('/existing_dir')
+
+        self.assertFalse(context.fake_exists('/existing_dir'))
+
+    def test_rmdir_raises_exception_if_dir_is_not_empty(self):
+        context = testlib.TestContext()
+
+        context.fake_makedirs('/existing_dir/somefile')
+
+        try:
+            context.fake_rmdir('/existing_dir')
+            raise AssertionError('No Exception raised')
+        except OSError, e:
+            self.assertEquals(errno.ENOTEMPTY, e.errno)
 
 
 class TestFilesystemFor(unittest.TestCase):
