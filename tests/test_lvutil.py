@@ -1,6 +1,7 @@
 import unittest
 import testlib
 import lvmlib
+import mock
 
 import lvutil
 
@@ -95,6 +96,14 @@ class TestCreate(unittest.TestCase):
         created_lv, = lvsystem.get_logical_volumes_with_name('volume')
         self.assertFalse(created_lv.zeroed)
 
+    @mock.patch('util.pread2')
+    def test_create_percentage_has_precedence_over_size(self, mock_pread2):
+        lvutil.create('volume', ONE_MEGABYTE, 'vgroup',
+                      size_in_percentage="10%F")
+
+        mock_pread2.assert_called_once_with(
+            [lvutil.CMD_LVCREATE] + "-n volume -l 10%F vgroup".split())
+
 
 class TestRemove(unittest.TestCase):
     @with_lvm_subsystem
@@ -105,3 +114,12 @@ class TestRemove(unittest.TestCase):
         lvutil.remove('vgroup/volume')
 
         self.assertEquals([], lvsystem.get_logical_volumes_with_name('volume'))
+
+    @mock.patch('lvutil._lvmBugCleanup')
+    @mock.patch('util.pread2')
+    def test_remove_additional_config_param(self, mock_pread2, _bugCleanup):
+        lvutil.remove('vgroup/volume', config_param="blah")
+        mock_pread2.assert_called_once_with(
+            [lvutil.CMD_LVREMOVE]
+            + "-f vgroup/volume --config devices{blah}".split()
+        )
