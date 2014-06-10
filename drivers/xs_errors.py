@@ -28,8 +28,7 @@ class XenError(Exception):
     def __init__(self, key, opterr=None):
         # Check the XML definition file exists
         if not os.path.exists(XML_DEFS):
-            print "No XML def file found"
-            raise Exception.__init__(self, '')
+            raise Exception("No XML def file found")
 
         # Read the definition list
         self._fromxml('SM-errorcodes')

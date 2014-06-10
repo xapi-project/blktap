@@ -33,6 +33,3 @@ else
     apt-get update
     apt-get -qy install python-dev python-virtualenv
 fi
-
-# Install other dependences
-apt-get -qy install libxen-dev make
