@@ -1000,19 +1000,18 @@ tapback_backend_handle_backend_watch(backend_t *backend,
                  * FIXME Shall we watch the child process?
                  */
             } else { /* child */
-                char *args[6];
+                char *args[5];
 
                 args[0] = (char*)tapback_name;
-                args[1] = "-v";
-                args[2] = "-d";
-                args[3] = "-x";
-                err = asprintf(&args[4], "%d", domid);
+                args[1] = "-d";
+                args[2] = "-x";
+                err = asprintf(&args[3], "%d", domid);
                 if (err == -1) {
                     err = -errno;
                     WARN(NULL, "failed to asprintf: %s\n", strerror(-err));
                     abort();
                 }
-                args[5] = NULL;
+                args[4] = NULL;
                 /*
                  * TODO we're hard-coding the name of the binary, better let
                  * the build system supply it.
@@ -1078,4 +1077,10 @@ tapback_backend_handle_backend_watch(backend_t *backend,
 out:
     free(_path);
     return err;
+}
+
+bool
+verbose(void)
+{
+    return log_level >= LOG_DEBUG;
 }

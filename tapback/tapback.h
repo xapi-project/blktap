@@ -507,4 +507,6 @@ tapback_xs_exists(struct xs_handle * const xs, xs_transaction_t xst,
 void
 tapback_backend_destroy(backend_t *backend);
 
+bool verbose(void);
+
 #endif /* __TAPBACK_H__ */
