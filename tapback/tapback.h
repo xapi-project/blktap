@@ -46,10 +46,8 @@
 #define __printf(_f, _a)        __attribute__((format (printf, _f, _a)))
 #define __scanf(_f, _a)         __attribute__((format (scanf, _f, _a)))
 
-extern const char *tapback_name;
+extern const char tapback_name[];
 
-extern bool in_signal_handler;
-extern int tapback_log_fd;
 extern unsigned log_level;
 
 /**
@@ -61,51 +59,37 @@ int pretty_time(char *buf, unsigned char buf_len);
 
 #define DBG(device, _fmt, _args...)  \
     do {                                                                    \
-        if (log_level < LOG_DEBUG || tapback_log_fd == -1)                  \
-            break;                                                          \
         vbd_t *_device = (vbd_t*)(device);                                  \
-        char buf[32];                                                       \
-        pretty_time(buf, ARRAY_SIZE(buf));                                  \
         if (_device) {                                                      \
-            dprintf(tapback_log_fd, "[DBG] %s %s:%d %d "_fmt, buf, __FILE__,\
-                    __LINE__, _device->devid, ##_args);                     \
+            syslog(LOG_DEBUG, "%s:%d %d "_fmt, __FILE__, __LINE__,          \
+                    _device->devid, ##_args);                               \
          } else {                                                           \
-            dprintf(tapback_log_fd, "[DBG] %s %s:%d "_fmt, buf, __FILE__,   \
-                    __LINE__, ##_args);                                     \
+            syslog(LOG_DEBUG, "%s:%d "_fmt, __FILE__, __LINE__, ##_args);   \
         }                                                                   \
     } while (0)
 
-#define INFO(device, _fmt, _args...) \
+#define INFO(device, _fmt, _args...)  \
     do {                                                                    \
-        if (log_level < LOG_INFO || tapback_log_fd == -1)                   \
-            break;                                                          \
         vbd_t *_device = (vbd_t*)(device);                                  \
-        char buf[32];                                                       \
-        pretty_time(buf, ARRAY_SIZE(buf));                                  \
         if (_device) {                                                      \
-            dprintf(tapback_log_fd, "[INF] %s %s:%d %d "_fmt, buf,          \
-                    __FILE__, __LINE__, _device->devid, ##_args);           \
+            syslog(LOG_INFO, "%s:%d %d "_fmt, __FILE__, __LINE__,           \
+                    _device->devid, ##_args);                               \
          } else {                                                           \
-            dprintf(tapback_log_fd, "[INF] %s %s:%d "_fmt, buf, __FILE__,   \
-                    __LINE__, ##_args);                                     \
+            syslog(LOG_INFO, "%s:%d "_fmt, __FILE__, __LINE__, ##_args);    \
         }                                                                   \
     } while (0)
 
-#define WARN(device, _fmt, _args...) \
+#define WARN(device, _fmt, _args...)  \
     do {                                                                    \
-        if (log_level < LOG_ERR  || tapback_log_fd == -1)                   \
-            break;                                                          \
         vbd_t *_device = (vbd_t*)(device);                                  \
-        char buf[32];                                                       \
-        pretty_time(buf, ARRAY_SIZE(buf));                                  \
         if (_device) {                                                      \
-            dprintf(tapback_log_fd, "[WRN] %s %s:%d %d "_fmt, buf, __FILE__,\
-                    __LINE__, _device->devid, ##_args);                     \
+            syslog(LOG_WARNING, "%s:%d %d "_fmt, __FILE__, __LINE__,        \
+                    _device->devid, ##_args);                               \
          } else {                                                           \
-            dprintf(tapback_log_fd, "[WRN] %s %s:%d "_fmt, buf, __FILE__,   \
-                    __LINE__, ##_args);                                     \
+            syslog(LOG_WARNING, "%s:%d "_fmt, __FILE__, __LINE__, ##_args); \
         }                                                                   \
     } while (0)
+
 
 /*
  * Pre-defined XenStore path components used for running the XenBus protocol.
