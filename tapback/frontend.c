@@ -329,6 +329,9 @@ out:
 
 /*
  * Returns 0 on success, a positive error code otherwise.
+ *
+ * If tapdisk is not yet available (the physical-device key has not yet been
+ * written), ESRCH is returned.
  */
 static inline int
 xenbus_connect(vbd_t *device) {
@@ -424,8 +427,7 @@ frontend_changed(vbd_t * const device, const XenbusState state)
         case XenbusStateInitialised:
     	case XenbusStateConnected:
             if (!device->hotplug_status_connected)
-                DBG(device, "physical device not available "
-                        "(udev scripts haven't yet run)\n");
+                DBG(device, "udev scripts haven't yet run\n");
             else {
                 if (device->state != XenbusStateConnected) {
                     DBG(device, "connecting to front-end\n");
@@ -439,6 +441,9 @@ frontend_changed(vbd_t * const device, const XenbusState state)
             break;
         case XenbusStateClosed:
             err = backend_close(device);
+            break;
+        case XenbusStateUnknown:
+            err = 0;
             break;
         default:
             err = EINVAL;
