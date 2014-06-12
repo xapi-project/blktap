@@ -5,35 +5,36 @@
 # chkconfig: 2345 22 76
 # description: tapback daemon for blktap3
 # processname: tapback
+# pidfile: /var/run/tapback.pid
 
 # Source function library.
 . /etc/init.d/functions
 
 # name
-NAME="tapback"
+declare -r NAME="tapback"
 
 # location of the executable:
-TAPBACK="/usr/bin/tapback"
-
-# sock file
-SOCK_FILE="/var/run/tapback.sock"
+declare -r TAPBACK="/usr/bin/${NAME}"
 
 # lock file
-LOCK_FILE="/var/lock/subsys/tapback"
+declare -r LOCK_FILE="/var/lock/subsys/${NAME}"
+
+# PID file
+declare -r PID_FILE="/var/run/${NAME}.pid"
 
 # Do two things: make LOCK_FILE and SOCK_FILE consistent with current running
 # status (cleanup if necessary, e.g. abnormal exit leftover), and return
 # current running status (0: stop, 1: running; >1: running with issues)
 check_running() {
-	if [ -e ${SOCK_FILE} ]; then
-		PID=$(lsof -t ${SOCK_FILE} 2>/dev/null | head -n 1)
+	if [ -e ${PID_FILE} ]; then
+		PID=$(cat ${PID_FILE})
 		if [ -n "${PID}" ]; then
 			[ -e ${LOCK_FILE} ] || touch ${LOCK_FILE}
 			kill -0 ${PID} 2>/dev/null
 			if [ $? -eq 0 ]; then
 				return 1
 			else
-				return 2
+				return 0
 			fi
 		fi
 		rm -f ${SOCK_FILE}
@@ -51,8 +52,11 @@ start() {
 	echo -n "Starting the ${NAME} deamon: "
 	check_running
 	RUNNING=$?
-	if [ ${RUNNING} -eq 0 ]; then
-		${TAPBACK} -v >/dev/null 2>&1 </dev/null
+	if [ ${RUNNING} -eq 1 ]; then
+        echo $"${NAME}[${PID}] already started"
+        return 0
+	elif [ ${RUNNING} -eq 0 ]; then
+		${TAPBACK} -p ${PID_FILE} >/dev/null 2>&1 </dev/null
 		for gap in 0.1 0.2 0.5 1 2 5; do
 			check_running
 			RUNNING=$?
@@ -80,6 +84,10 @@ stop() {
 	echo -n $"Stopping the ${NAME} daemon: "
 	check_running
 	RUNNING=$?
+    if [ ${RUNNING} -eq 0 ]; then
+        echo $"tapback not running"
+        return 0
+    fi
 	if [ ${RUNNING} -ne 0 ]; then
 		killproc ${TAPBACK}
 		# RETVAL=$?

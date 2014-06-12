@@ -714,7 +714,7 @@ tap_cli_open_usage(FILE *stream)
 		"[-r turn on read caching into leaf node] [-2 <path> "
 		"use secondary image (in mirror mode if no -s)] [-s "
 		"fail over to the secondary image on ENOSPC] "
-		"[-t request timeout in seconds]\n");
+		"[-t request timeout in seconds] [-D no O_DIRECT]\n");
 }
 
 static int
@@ -732,7 +732,7 @@ tap_cli_open(int argc, char **argv)
 	secondary  = NULL;
 
 	optind = 0;
-	while ((c = getopt(argc, argv, "a:Rm:p:e:r2:st:h")) != -1) {
+	while ((c = getopt(argc, argv, "a:RDm:p:e:r2:st:h")) != -1) {
 		switch (c) {
 		case 'p':
 			pid = atoi(optarg);
@@ -745,6 +745,9 @@ tap_cli_open(int argc, char **argv)
 			break;
 		case 'R':
 			flags |= TAPDISK_MESSAGE_FLAG_RDONLY;
+			break;
+		case 'D':
+			flags |= TAPDISK_MESSAGE_FLAG_NO_O_DIRECT;
 			break;
 		case 'r':
 			flags |= TAPDISK_MESSAGE_FLAG_ADD_LCACHE;

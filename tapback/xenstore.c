@@ -68,8 +68,7 @@ tapback_xs_vread(struct xs_handle * const xs, xs_transaction_t xst,
     if ((unsigned int)(strchr(data, '\0') - data) != len) {
 		err = EINVAL;
         /* TODO print extraneous '\0' characters */
-        WARN(NULL, "XenStore value '%s' contains extraneous NULLs\n", len,
-                data);
+        WARN(NULL, "XenStore value '%s' contains extraneous NULLs\n", data);
         goto fail;
 	}
 
@@ -104,8 +103,8 @@ tapback_device_read(const vbd_t * const device, xs_transaction_t xst,
     ASSERT(device);
     ASSERT(path);
 
-    return tapback_xs_read(device->backend->xs, xst, "%s/%d/%s/%s",
-            device->backend->path, device->domid, device->name, path);
+    return tapback_xs_read(device->backend->xs, xst, "%s/%s/%s",
+            device->backend->path, device->name, path);
 }
 
 char *
@@ -114,6 +113,7 @@ tapback_device_read_otherend(vbd_t * const device, xs_transaction_t xst,
 {
     ASSERT(device);
     ASSERT(path);
+    ASSERT(device->frontend_path);
 
     return tapback_xs_read(device->backend->xs, xst, "%s/%s",
             device->frontend_path, path);
@@ -152,8 +152,8 @@ tapback_device_printf(vbd_t * const device, xs_transaction_t xst,
     ASSERT(device);
     ASSERT(key);
 
-    if (-1 == asprintf(&path, "%s/%d/%s/%s", device->backend->path,
-                device->domid, device->name, key)) {
+    if (-1 == asprintf(&path, "%s/%s/%s", device->backend->path,
+                device->name, key)) {
         err = -errno;
         goto fail;
     }
@@ -191,4 +191,49 @@ fail:
     free(val);
 
     return err;
+}
+
+int
+tapback_xs_exists(struct xs_handle * const xs, xs_transaction_t xst,
+        char *path, const int *len)
+{
+    int err = 0;
+    char *s = NULL;
+    bool exists = false;
+    char c = '\0';
+
+    ASSERT(xs);
+    ASSERT(path);
+
+    if (len) {
+        c = path[*len];
+        path[*len] = '\0';
+    }
+
+    s = tapback_xs_read(xs, xst, "%s", path);
+    if (s)
+        exists = true;
+    else {
+        err = errno;
+        ASSERT(err != 0);
+        if (err == ENOENT) {
+            err = 0;
+            exists = false;
+        }
+    }
+
+    free(s);
+
+    if (len)
+        path[*len] = c;
+
+    if (!err) {
+        if (exists) {
+            return 1;
+        } else {
+            return 0;
+        }
+    } else {
+        return -err;
+    }
 }

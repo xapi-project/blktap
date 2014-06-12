@@ -44,6 +44,10 @@
  * the start of the VHD epoch. */
 #define VHD_EPOCH_START 946684800
 
+/* VHD uses an epoch of 12:00AM, Jan 1, 2000. This is the Unix timestamp for 
+ * the start of the VHD epoch. */
+#define VHD_EPOCH_START 946684800
+
 #define VHD_HEADER_MAX_RETRIES 10
 
 static int libvhd_dbg = 0;
@@ -2529,6 +2533,24 @@ vhd_open(vhd_context_t *ctx, const char *file, int flags)
 		err = -errno;
 		VHDLOG("failed to open %s: %d\n", ctx->file, err);
 		goto fail;
+	}
+	if (flags & VHD_OPEN_CACHED) {
+		struct stat st;
+
+		/* Ensure that we only open regular files without O_DIRECT */
+		if (fstat(ctx->fd, &st) < 0) {
+			err = -errno;
+			VHDLOG("failed to stat %s: %d\n", ctx->file, err);
+			goto fail;
+		}
+		if (!S_ISREG(st.st_mode)) {
+			err = -EINVAL;
+			VHDLOG("cannot open non-regular file (%s) "
+			       "with read caching enabled\n", ctx->file);
+			goto fail;
+		}
+
+		posix_fadvise(ctx->fd, 0, 0, POSIX_FADV_RANDOM);
 	}
 
 	err = vhd_test_file_fixed(ctx->file, &ctx->is_block);
