@@ -88,9 +88,9 @@ tapback_read_watch(backend_t *backend)
      * TODO include token
      */
     if (verbose()) {
-        char *s = tapback_xs_read(backend->xs, XBT_NULL, "%s", path);
-        if (s) {
-            if (0 == strlen(s))
+        char *val = tapback_xs_read(backend->xs, XBT_NULL, "%s", path);
+        if (val) {
+            if (0 == strlen(val))
                 /*
                  * XXX "(created)" might be printed when the a XenStore
                  * directory gets removed, the XenStore watch fires, and a
@@ -101,8 +101,8 @@ tapback_read_watch(backend_t *backend)
                  */
                 DBG(NULL, "%s -> (created)\n", path);
             else
-                DBG(NULL, "%s -> \'%s\'\n", path, s);
-            free(s);
+                DBG(NULL, "%s -> \'%s\'\n", path, val);
+            free(val);
         } else {
             err = errno;
             if (err == ENOENT)
