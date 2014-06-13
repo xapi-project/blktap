@@ -122,6 +122,7 @@ unsigned int SPB;
 #define VHD_FLAG_OPEN_QUERY          16
 #define VHD_FLAG_OPEN_PREALLOCATE    32
 #define VHD_FLAG_OPEN_NO_O_DIRECT    64
+#define VHD_FLAG_OPEN_LOCAL_CACHE    128
 
 #define VHD_FLAG_BAT_LOCKED          1
 #define VHD_FLAG_BAT_WRITE_STARTED   2
@@ -636,7 +637,8 @@ __vhd_open(td_driver_t *driver, const char *name, vhd_flag_t flags)
 
 	o_flags = ((test_vhd_flag(flags, VHD_FLAG_OPEN_RDONLY)) ? 
 		   VHD_OPEN_RDONLY : VHD_OPEN_RDWR);
-	if (test_vhd_flag(flags, VHD_FLAG_OPEN_RDONLY) &&
+	if ((test_vhd_flag(flags, VHD_FLAG_OPEN_RDONLY) ||
+                test_vhd_flag(flags, VHD_FLAG_OPEN_LOCAL_CACHE)) &&
 	    test_vhd_flag(flags, VHD_FLAG_OPEN_NO_O_DIRECT))
 		set_vhd_flag(o_flags, VHD_OPEN_CACHED);
 
@@ -718,6 +720,8 @@ _vhd_open(td_driver_t *driver, const char *name, td_flag_t flags)
 			      VHD_FLAG_OPEN_QUIET  |
 			      VHD_FLAG_OPEN_RDONLY |
 			      VHD_FLAG_OPEN_NO_CACHE);
+    if (flags & TD_OPEN_LOCAL_CACHE)
+        vhd_flags |= VHD_FLAG_OPEN_LOCAL_CACHE;
 
 	/* pre-allocate for all but NFS and LVM storage */
 	driver->storage = tapdisk_storage_type(name);
