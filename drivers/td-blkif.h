@@ -124,6 +124,9 @@ struct td_xenblkif {
 
     struct shm shm;
     time_t last;
+
+    void **reqs_buf;
+    unsigned n_reqs_buf_free;
 };
 
 /* TODO rename from xenio */
