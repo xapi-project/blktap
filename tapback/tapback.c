@@ -43,8 +43,11 @@
 #include "tapback.h"
 #include <signal.h>
 
-const char tapback_name[] = "tapback";
+static const char *log_dir = "/var/log/tapback";
+const char *tapback_name = "tapback";
+char *log_file = NULL;
 unsigned log_level;
+int tapback_log_fd = -1;
 
 LIST_HEAD(backends);
 
@@ -74,6 +77,7 @@ tapback_read_watch(backend_t *backend)
     char **watch = NULL, *path = NULL, *token = NULL;
     unsigned int n = 0;
     int err = 0;
+    char *s;
 
 	ASSERT(backend);
 
@@ -86,31 +90,29 @@ tapback_read_watch(backend_t *backend)
      * print the path the watch triggered on for debug purposes
      *
      * TODO include token
+	 * TODO put in an #if DEBUG block
      */
-    if (verbose()) {
-        char *val = tapback_xs_read(backend->xs, XBT_NULL, "%s", path);
-        if (val) {
-            if (0 == strlen(val))
-                /*
-                 * XXX "(created)" might be printed when the a XenStore
-                 * directory gets removed, the XenStore watch fires, and a
-                 * XenStore node is created under the directory that just got
-                 * removed. This usually happens when the toolstack removes the
-                 * VBD from XenStore and then immediately writes the
-                 * tools/xenops/cancel key in it.
-                 */
-                DBG(NULL, "%s -> (created)\n", path);
-            else
-                DBG(NULL, "%s -> \'%s\'\n", path, val);
-            free(val);
-        } else {
-            err = errno;
-            if (err == ENOENT)
-                DBG(NULL, "%s -> (removed)\n", path);
-            else
-                WARN(NULL, "failed to read %s: %s\n", path, strerror(err));
-        }
-    }
+	s = tapback_xs_read(backend->xs, XBT_NULL, "%s", path);
+    if (s) {
+        if (0 == strlen(s))
+            /*
+             * XXX "(created)" might be printed when the a XenStore directory
+             * gets removed, the XenStore watch fires, and a XenStore node is
+             * created under the directory that just got removed. This usually
+             * happens when the toolstack removes the VBD from XenStore and
+             * then immediately writes the tools/xenops/cancel key in it.
+             */
+            DBG(NULL, "%s -> (created)\n", path);
+        else
+            DBG(NULL, "%s -> \'%s\'\n", path, s);
+        free(s);
+    } else {
+		err = errno;
+		if (err == ENOENT)
+	        DBG(NULL, "%s -> (removed)\n", path);
+		else
+			WARN(NULL, "failed to read %s: %s\n", path, strerror(err));
+	}
 
     /*
      * The token indicates which XenStore watch triggered, the front-end one or
@@ -164,25 +166,75 @@ tapback_backend_destroy(backend_t *backend)
 	free(backend);
 }
 
-static void
-signal_cb(int signum)
+/**
+ * strlen is not async-signal-safe.
+ */
+static unsigned mystrlen(const char *s)
 {
-    if (signum == SIGINT || signum == SIGTERM) {
+    unsigned i = 0;
+    while (s[i] != '\0')
+        i++;
+    return i;
+}
+
+static void
+_signal_cb(int signum)
+{
+    int dummy;
+
+    if (signum == SIGHUP) {
+        if (likely(tapback_log_fd != -1)) {
+            static const char msg[] = "re-opening log on SIGHUP\n";
+            dummy = write(tapback_log_fd, msg, mystrlen(msg));
+            close(tapback_log_fd);
+            tapback_log_fd = open(log_file, O_APPEND | O_CREAT | O_WRONLY,
+                    S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP, S_IROTH);
+        }
+    } else if (signum == SIGINT || signum == SIGTERM) {
 		backend_t *backend, *tmp;
+
+        if (likely(tapback_log_fd != -1)) {
+            static const char msg[] = "terminating on SIGINT or SIGTERM\n";
+            dummy = write(tapback_log_fd, msg, mystrlen(msg));
+        }
 
 		list_for_each_entry(backend, &backends, entry) {
             if (tapback_is_master(backend))
                 break;
-            else
-                if (!list_empty(&backend->slave.slave.devices))
+            else {
+                if (!list_empty(&backend->slave.slave.devices)) {
+                    if (likely(tapback_log_fd != -1)) {
+                        static const char msg[] = "refusing to shut down "
+                            "slave while back-end has active VBDs\n";
+                        dummy = write(tapback_log_fd, msg, mystrlen(msg));
+                    }
                     return;
+                }
+            }
 		}
 
 		list_for_each_entry_safe(backend, tmp, &backends, entry)
 			tapback_backend_destroy(backend);
 
         _exit(EXIT_SUCCESS);
+    } else {
+        if (likely(tapback_log_fd != -1)) {
+            static const char msg[] = "invalid signal\n";
+            dummy = write(tapback_log_fd, msg, mystrlen(msg));
+        }
     }
+}
+
+bool in_signal_handler = false;
+
+static void
+signal_cb(int signum)
+{
+    in_signal_handler = true;
+
+    _signal_cb(signum);
+
+    in_signal_handler = false;
 }
 
 static int
@@ -341,7 +393,8 @@ tapback_backend_create(const char *name, const char *pidfile,
     }
 
     if (SIG_ERR == signal(SIGINT, signal_cb) ||
-            SIG_ERR == signal(SIGTERM, signal_cb)) {
+            SIG_ERR == signal(SIGTERM, signal_cb) ||
+            SIG_ERR == signal(SIGHUP, signal_cb)) {
         WARN(NULL, "failed to register signal handlers\n");
         err = EINVAL;
         goto out;
@@ -425,14 +478,17 @@ tapback_backend_run(backend_t *backend)
 	fd = xs_fileno(backend->xs);
 
     if (tapback_is_master(backend))
-        INFO(NULL, "master tapback daemon started\n");
+        INFO(NULL, "master tapback[%d] (user-space blkback for tapdisk3) "
+                " daemon started\n", getpid());
     else
-        INFO(NULL, "slave tapback daemon started, only serving domain %d\n",
-                backend->slave_domid);
+        INFO(NULL, "slave tapback[%d] (user-space blkback for tapdisk3) "
+                "daemon started, only serving domain %d\n",
+                getpid(), backend->slave_domid);
 
     do {
         fd_set rfds;
         int nfds = 0;
+        struct timeval ttl = {.tv_sec = 3, .tv_usec = 0};
 
         FD_ZERO(&rfds);
         FD_SET(fd, &rfds);
@@ -440,7 +496,11 @@ tapback_backend_run(backend_t *backend)
         /*
          * poll the fd for changes in the XenStore path we're interested in
          */
-        nfds = select(fd + 1, &rfds, NULL, NULL, NULL);
+        nfds = select(fd + 1, &rfds, NULL, NULL, &ttl);
+        if (nfds == 0) {
+            fdatasync(tapback_log_fd);
+            continue;
+        }
         if (nfds == -1) {
             if (errno == EINTR)
                 continue;
@@ -556,12 +616,46 @@ int main(int argc, char **argv)
         }
     }
 
-    openlog(tapback_name, LOG_PID, LOG_DAEMON);
+    err = mkdir(log_dir, S_IRUSR | S_IWUSR | S_IXUSR
+            | S_IRGRP | S_IXGRP
+            | S_IROTH | S_IXOTH);
+    if (err == -1) {
+        err = errno;
+        if (err != EEXIST) {
+            fprintf(stderr, "cannot create log directory: %s\n",
+                    strerror(err));
+            exit(EXIT_FAILURE);
+        }
+    }
+    if (opt_domid)
+        /*
+         * XXX per-domain tapback log file name format:
+         * tapback.<domain ID>.log
+         * This is fairly tentative, change it to whatever looks best. Just
+         * make sure to update the bugtool accordingly.
+         */
+        err = asprintf(&log_file, "%s/%s.%d.log", log_dir, tapback_name,
+                opt_domid);
+    else
+        err = asprintf(&log_file, "%s/%s.log", log_dir, tapback_name);
+    if (err == -1) {
+        err = errno;
+        WARN(NULL, "failed to sprintf: %s\n", strerror(err));
+        goto fail;
+    }
+    tapback_log_fd = open(log_file, O_APPEND | O_CREAT | O_WRONLY,
+            S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP, S_IROTH);
+    if (tapback_log_fd == -1) {
+        err = errno;
+        fprintf(stderr, "failed to open log %s: %s\n", log_file,
+                strerror(err));
+        return err;
+    }
+
     if (opt_verbose)
         log_level = LOG_DEBUG;
     else
         log_level = LOG_INFO;
-    setlogmask(LOG_UPTO(log_level));
 
     if (!opt_debug) {
         if ((err = daemon(0, 0))) {
@@ -592,11 +686,36 @@ fail:
             }
         }
     }
+    if (tapback_log_fd != -1) {
+        INFO(NULL, "tapback shut down\n");
+        close(tapback_log_fd);
+    }
     return err ? -err : 0;
 
 usage:
     usage(stderr, prog);
     return 1;
+}
+
+int pretty_time(char *buf, unsigned char buf_len) {
+
+    int err;
+    time_t timer;
+    struct tm* tm_info;
+
+    assert(buf);
+    assert(buf_len > 0);
+
+    err = time(&timer);
+    if (err == (time_t)-1)
+        return errno;
+    tm_info = localtime(&timer);
+    if (!tm_info)
+        return EINVAL;
+    err = strftime(buf, buf_len, "%b %d %H:%M:%S", tm_info);
+    if (err == 0)
+        return EINVAL;
+    return 0;
 }
 
 /**

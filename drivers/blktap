@@ -9,3 +9,16 @@
     endscript
     compress
 }
+
+/var/log/tapback/tapback*.log {
+    sharedscripts
+    missingok
+    rotate 5
+    size 16M
+    weekly
+    postrotate
+        killall -HUP tapback
+    endscript
+    compress
+    maxage 7
+}
