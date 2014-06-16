@@ -52,6 +52,7 @@ SM_LIBS += updatempppathd
 SM_LIBS += lcache
 SM_LIBS += resetvdis
 SM_LIBS += B_util
+SM_LIBS += trim_util
 MPATH_CONF = multipath.conf
 
 CRON_JOBS += ringwatch

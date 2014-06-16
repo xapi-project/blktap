@@ -229,6 +229,9 @@ exit 0
 /opt/xensource/sm/vhdutil.py
 /opt/xensource/sm/vhdutil.pyc
 /opt/xensource/sm/vhdutil.pyo
+/opt/xensource/sm/trim_util.py
+/opt/xensource/sm/trim_util.pyc
+/opt/xensource/sm/trim_util.pyo
 /opt/xensource/sm/vss_control
 /opt/xensource/sm/xs_errors.py
 /opt/xensource/sm/xs_errors.pyc
