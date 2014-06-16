@@ -56,6 +56,7 @@ SM_LIBS += lcache
 SM_LIBS += resetvdis
 SM_LIBS += B_util
 SM_LIBS += wwid_conf
+SM_LIBS += trim_util
 
 UDEV_RULES = 40-multipath
 MPATH_DAEMON = sm-multipath
