@@ -3626,7 +3626,8 @@ vhd_cache_init(vhd_context_t *ctx)
 static int
 vhd_cache_enabled(vhd_context_t *ctx)
 {
-	return vhd_flag_test(ctx->oflags, VHD_OPEN_CACHED);
+	return vhd_flag_test(ctx->oflags, VHD_OPEN_CACHED) &&
+        !vhd_flag_test(ctx->oflags, VHD_OPEN_RDWR);
 }
 
 static int
