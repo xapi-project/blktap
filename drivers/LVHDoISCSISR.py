@@ -316,12 +316,8 @@ class LVHDoISCSISR(LVHDSR.LVHDSR):
         dom = xml.dom.minidom.Document()
         element = dom.createElement("iscsi-target")
         dom.appendChild(element)
-        # Omit the scsi-id used by iSL
-        isl_scsiids = util.get_isl_scsiids(self.session)
         for uuid in self.LUNs:
             val = self.LUNs[uuid]
-            if getattr(val,'SCSIid') in isl_scsiids:
-                continue
             entry = dom.createElement('LUN')
             element.appendChild(entry)
 

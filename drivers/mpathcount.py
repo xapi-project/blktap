@@ -24,7 +24,7 @@ import mpp_luncheck
 import mpp_mpathutil
 import glob
 
-supported = ['iscsi','lvmoiscsi','rawhba','lvmohba','netapp','cslg']
+supported = ['iscsi','lvmoiscsi','rawhba','lvmohba','netapp']
 
 LOCK_TYPE_HOST = "host"
 LOCK_NS1 = "mpathcount1"

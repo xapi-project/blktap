@@ -1319,50 +1319,6 @@ def retry(f, maxretry=20, period=3):
 
     return f()
 
-def getCslDevPath(svid):
-    basepath = "/dev/disk/by-csldev/"
-    if svid.startswith("NETAPP_"):
-        # special attention for NETAPP SVIDs
-        svid_parts = svid.split("__")
-        globstr = basepath + "NETAPP__LUN__" + "*" + svid_parts[2] + "*" + svid_parts[-1] + "*"
-    else:
-        globstr = basepath + svid + "*"
-
-    return globstr
-
-# Use device in /dev pointed to by cslg path which consists of svid
-def get_scsiid_from_svid(md_svid):
-    cslg_path = getCslDevPath(md_svid)
-    abs_path = glob.glob(cslg_path)
-    if abs_path:
-        real_path = os.path.realpath(abs_path[0])
-        return scsiutil.getSCSIid(real_path)
-    else:
-        return None 
-
-def get_isl_scsiids(session):
-    # Get cslg type SRs
-    SRs = session.xenapi.SR.get_all_records_where('field "type" = "cslg"')
-
-    # Iterate through the SR to get the scsi ids
-    scsi_id_ret = []
-    for SR in SRs:
-        sr_rec = SRs[SR]
-        # Use the md_svid to get the scsi id
-        scsi_id = get_scsiid_from_svid(sr_rec['sm_config']['md_svid'])
-        if scsi_id:
-            scsi_id_ret.append(scsi_id)
-
-        # Get the vdis in the SR and do the same procedure
-        vdi_recs = session.xenapi.VDI.get_all_records_where('field "SR" = "%s"' % SR)
-        for vdi_rec in vdi_recs:
-            vdi_rec = vdi_recs[vdi_rec]
-            scsi_id = get_scsiid_from_svid(vdi_rec['sm_config']['SVID'])
-            if scsi_id:
-                scsi_id_ret.append(scsi_id)
-
-    return scsi_id_ret
-
 class extractXVA:
     # streams files as a set of file and checksum, caller should remove 
     # the files, if not needed. The entire directory (Where the files 
