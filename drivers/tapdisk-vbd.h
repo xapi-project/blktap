@@ -48,20 +48,8 @@
 struct td_nbdserver;
 
 struct td_vbd_rrd {
-    /*
-     * file descriptor for the file in /dev/shm
-     */
-    int fd;
 
-    /*
-     * memory address returned by mmap
-     */
-    char *mem;
-
-    /*
-     * /path/to/file in /dev/shm
-     */
-    char *path;
+    struct shm shm;
 
     /*
      * Previous value of td_vbd_handle.errors. We maintain this in order to
