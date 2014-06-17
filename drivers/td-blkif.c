@@ -21,6 +21,8 @@
 #include <errno.h>
 #include <sys/mman.h>
 #include <xenctrl.h>
+#include <unistd.h>
+#include <libgen.h>
 
 #include "debug.h"
 #include "blktap3.h"
@@ -51,9 +53,96 @@ tapdisk_xenblkif_find(const domid_t domid, const int devid)
     return NULL;
 }
 
-void
+
+/**
+ * Returns 0 on success, -errno on failure.
+ */
+static int
+tapdisk_xenblkif_show_io_ring_destroy(struct td_xenblkif *blkif)
+{
+    int err = shm_destroy(&blkif->shm);
+    if (err)
+        goto out;
+
+    if (blkif->shm.path) {
+        char *p = strrchr(blkif->shm.path, '/');
+        *p = '\0';
+        err = rmdir(blkif->shm.path);
+        *p = '/';
+        if (err && errno != ENOENT) {
+            err = errno;
+            EPRINTF("failed to remove %s: %s\n",
+                    blkif->shm.path, strerror(err));
+            goto out;
+        }
+        err = 0;
+        free(blkif->shm.path);
+        blkif->shm.path = NULL;
+    }
+out:
+    return -err;
+}
+
+
+/*
+ * TODO Ideally we should provide this information throught the RRD. We would
+ * have to modify xen-ringwatch accordingly.
+ */
+static int
+tapdisk_xenblkif_show_io_ring_create(struct td_xenblkif *blkif)
+{
+    int err;
+    char *dir = NULL, *_dir = NULL;
+
+    err = asprintf(&blkif->shm.path, "/dev/shm/vbd3-%d-%d/io_ring",
+            blkif->domid, blkif->devid);
+    if (err == -1) {
+        err = errno;
+        blkif->shm.path = NULL;
+        goto out;
+    }
+    err = 0;
+
+    _dir = strdup(blkif->shm.path);
+    if (!_dir) {
+        err = errno;
+        goto out;
+    }
+    dir = dirname(_dir);
+	err = mkdir(dir, S_IRUSR | S_IWUSR);
+	if (err) {
+        err = errno;
+        if (err != EEXIST) {
+            EPRINTF("failed to create %s: %s\n", dir, strerror(err));
+    		goto out;
+        }
+        err = 0;
+    }
+
+    blkif->shm.size = PAGE_SIZE;
+    blkif->last = time(NULL);
+
+    err = shm_create(&blkif->shm);
+    if (err)
+        EPRINTF("failed to create shm ring stats file: %s\n", strerror(err));
+
+out:
+    free(_dir);
+    if (err) {
+        int err2 = tapdisk_xenblkif_show_io_ring_destroy(blkif);
+        if (err2)
+            EPRINTF("failed to clean up failed ring stats file: "
+                    "%s (error ignored)\n", strerror(-err2));
+    }
+    return -err;
+}
+
+
+int
 tapdisk_xenblkif_destroy(struct td_xenblkif * blkif)
 {
+    int err;
+
     ASSERT(blkif);
 
     tapdisk_xenblkif_reqs_free(blkif);
@@ -70,13 +159,22 @@ tapdisk_xenblkif_destroy(struct td_xenblkif * blkif)
         tapdisk_xenio_ctx_put(blkif->ctx);
     }
 
+    err = tapdisk_xenblkif_show_io_ring_destroy(blkif);
+    if (err)
+        EPRINTF("failed to clean up ring stats file: %s (error ignored)\n",
+                strerror(-err));
+
     free(blkif);
+
+    return err;
 }
+
 
 int
 tapdisk_xenblkif_disconnect(const domid_t domid, const int devid)
 {
     struct td_xenblkif *blkif;
+    int err;
 
     blkif = tapdisk_xenblkif_find(domid, devid);
     if (!blkif)
@@ -93,7 +191,9 @@ tapdisk_xenblkif_disconnect(const domid_t domid, const int devid)
 
     blkif->vbd->sring = NULL;
 
-    tapdisk_xenblkif_destroy(blkif);
+    err = tapdisk_xenblkif_destroy(blkif);
+    if (err)
+        EPRINTF("failed to destroy the block interface: %s\n", strerror(-err));
 
     return 0;
 }
@@ -134,11 +234,15 @@ tapdisk_xenblkif_connect(domid_t domid, int devid, const grant_ref_t * grefs,
         goto fail;
     }
 
+    INIT_LIST_HEAD(&td_blkif->entry);
+
     td_blkif->domid = domid;
     td_blkif->devid = devid;
     td_blkif->vbd = vbd;
     td_blkif->ctx = td_ctx;
     td_blkif->proto = proto;
+
+    shm_init(&td_blkif->shm);
 
     /*
      * Create the shared ring.
@@ -226,6 +330,10 @@ tapdisk_xenblkif_connect(domid_t domid, int devid, const grant_ref_t * grefs,
         goto fail;
     }
 
+    err = tapdisk_xenblkif_show_io_ring_create(td_blkif);
+    if (err)
+        goto fail;
+
     vbd->sring = td_blkif;
 
 	list_add_tail(&td_blkif->entry, &td_ctx->blkifs);
@@ -233,8 +341,12 @@ tapdisk_xenblkif_connect(domid_t domid, int devid, const grant_ref_t * grefs,
     return 0;
 
 fail:
-    if (td_blkif)
-        tapdisk_xenblkif_destroy(td_blkif);
+    if (td_blkif) {
+        int err2 = tapdisk_xenblkif_destroy(td_blkif);
+        if (err2)
+            EPRINTF("failed to destroy the block interface: %s "
+                    "(error ignored)\n", strerror(-err2));
+    }
 
     return err;
 }
@@ -243,4 +355,44 @@ event_id_t
 tapdisk_xenblkif_event_id(const struct td_xenblkif *blkif)
 {
 	return blkif->ctx->ring_event;
+}
+
+int
+tapdisk_xenblkif_show_io_ring(struct td_xenblkif *blkif)
+{
+    time_t t;
+    int err = 0;
+	struct blkif_common_back_ring *ring = NULL;
+
+    if (!blkif)
+        return 0;
+
+    ring = &blkif->rings.common;
+	if (!ring->sring)
+        return 0;
+
+    ASSERT(blkif->shm.mem);
+
+    /*
+     * Update the ring stats once every thirty seconds.
+     */
+    t = time(NULL);
+	if (t - blkif->last < 30)
+		return 0;
+	blkif->last = t;
+
+    err = snprintf(blkif->shm.mem, blkif->shm.size,
+            "nr_ents %u\n"
+            "req prod %u cons %d event %u\n"
+            "rsp prod %u pvt %d event %u\n",
+            ring->nr_ents,
+            ring->sring->req_prod, ring->req_cons, ring->sring->req_event,
+            ring->sring->rsp_prod, ring->rsp_prod_pvt, ring->sring->rsp_event);
+    if (err < 0)
+        err = errno;
+    else if (err >= blkif->shm.size)
+        err = ENOBUFS;
+    else
+        err = 0;
+    return -err;
 }
