@@ -47,12 +47,6 @@
 #include "td-stats.h"
 #include "tapdisk-utils.h"
 
-/*
- * FIXME blktap3 stores the page size in a global variable, use that once
- * blktap3 gets merged
- */
-#define RRD_SHM_SIZE 4096
-
 #define DBG(_level, _f, _a...) tlog_write(_level, _f, ##_a)
 #define ERR(_err, _f, _a...) tlog_error(_err, _f, ##_a)
 
@@ -87,6 +81,8 @@ tapdisk_vbd_create(uint16_t uuid)
 		EPRINTF("failed to allocate tapdisk state\n");
 		return NULL;
 	}
+
+    shm_init(&vbd->rrd.shm);
 
 	vbd->uuid        = uuid;
 	vbd->req_timeout = TD_VBD_REQUEST_TIMEOUT;
@@ -133,41 +129,14 @@ vbd_stats_destroy(td_vbd_t *vbd) {
 
     ASSERT(vbd);
 
-    if (vbd->rrd.mem) {
-        err = munmap(vbd->rrd.mem, RRD_SHM_SIZE);
-        if (err == -1) {
-            err = errno;
-            EPRINTF("failed to munmap %s: %s\n", vbd->rrd.path,
-                    strerror(err));
-            goto out;
-        }
-        vbd->rrd.mem = NULL;
+    err = shm_destroy(&vbd->rrd.shm);
+    if (unlikely(err)) {
+        EPRINTF("failed to destroy RRD file: %s\n", strerror(err));
+        goto out;
     }
 
-    if (vbd->rrd.fd > 0) {
-        do {
-            err = close(vbd->rrd.fd);
-            if (err)
-                err = errno;
-        } while (err == EINTR);
-        if (err) {
-            EPRINTF("failed to close %s: %s\n", vbd->rrd.path, strerror(err));
-            goto out;
-        }
-        vbd->rrd.fd = 0;
-    }
-
-    if (vbd->rrd.path) {
-
-        err = unlink(vbd->rrd.path);
-        if (err == -1) {
-            err = errno;
-            if (err != ENOENT)
-                goto out;
-        }
-        free(vbd->rrd.path);
-        vbd->rrd.path = NULL;
-    }
+    free(vbd->rrd.shm.path);
+    vbd->rrd.shm.path = NULL;
 
 out:
     return -err;
@@ -181,45 +150,34 @@ vbd_stats_create(td_vbd_t *vbd) {
     ASSERT(vbd);
 
 	err = mkdir("/dev/shm/metrics", S_IRUSR | S_IWUSR);
-	if (err && errno != EEXIST)
-		goto out;
+	if (likely(err)) {
+        err = errno;
+        if (unlikely(err != EEXIST))
+    		goto out;
+        else
+            err = 0;
+    }
 
     /*
-     * FIXME we use tap-<tapdisk PID>-<minor number> for now, might want to
-     * reconsider
+     * FIXME Rename this to something like "vbd3-domid-devid". Consider
+     * consolidating this with the io_ring shared memory file. Check if blkback
+     * exports the same information in some sysfs file and if so move this to
+     * the ring location.
      */
-    err = asprintf(&vbd->rrd.path, "/dev/shm/metrics/tap-%d-%d", getpid(),
+    err = asprintf(&vbd->rrd.shm.path, "/dev/shm/metrics/tap-%d-%d", getpid(),
             vbd->uuid);
     if (err == -1) {
         err = errno;
-        vbd->rrd.path = NULL;
+        vbd->rrd.shm.path = NULL;
         EPRINTF("failed to create metric file: %s\n", strerror(err));
         goto out;
     }
     err = 0;
 
-    vbd->rrd.fd = open(vbd->rrd.path, O_CREAT | O_TRUNC | O_RDWR | O_EXCL,
-            S_IRUSR | S_IWUSR);
-    if (vbd->rrd.fd == -1) {
-        err = errno;
-        EPRINTF("failed to open %s: %s\n", vbd->rrd.path, strerror(err));
-        goto out;
-    }
-
-    err = ftruncate(vbd->rrd.fd, RRD_SHM_SIZE);
-    if (err == -1) {
-        err = errno;
-        EPRINTF("failed to truncate %s: %s\n", vbd->rrd.path, strerror(err));
-        goto out;
-    }
-
-    vbd->rrd.mem = mmap(NULL, RRD_SHM_SIZE, PROT_READ | PROT_WRITE, MAP_SHARED,
-            vbd->rrd.fd, 0);
-    if (vbd->rrd.mem == MAP_FAILED) {
-        err = errno;
-        EPRINTF("failed to mmap %s: %s\n", vbd->rrd.path, strerror(err));
-        goto out;
-    }
+    vbd->rrd.shm.size = PAGE_SIZE;
+    err = shm_create(&vbd->rrd.shm);
+    if (err)
+        EPRINTF("failed to create RRD: %s\n", strerror(err));
 
 out:
     if (err) {
@@ -1043,7 +1001,7 @@ tapdisk_vbd_produce_rrds(td_vbd_t *vbd) {
 
 	ASSERT(vbd);
 
-	buf = vbd->rrd.mem;
+	buf = vbd->rrd.shm.mem;
 
 	/*
 	 * If no VDI has been opened yet there's nothing to report.
@@ -1059,7 +1017,7 @@ tapdisk_vbd_produce_rrds(td_vbd_t *vbd) {
 		return 0;
 	vbd->rrd.last = t;
 
-	size = RRD_SHM_SIZE - off;
+	size = vbd->rrd.shm.size - off;
 	err = tapdisk_snprintf(buf, &off, &size, 0, "DATASOURCES\n");
 	if (err)
 		return err;
@@ -1132,7 +1090,7 @@ tapdisk_vbd_produce_rrds(td_vbd_t *vbd) {
 	buf[(md5sum_str_len_off + j)] = '\n';
 
 	memset(buf + off, '\0', size - off);
-	return msync(buf, RRD_SHM_SIZE, MS_ASYNC);
+	return msync(buf, vbd->rrd.shm.size, MS_ASYNC);
 }
 
 void
@@ -1140,6 +1098,11 @@ tapdisk_vbd_check_state(td_vbd_t *vbd)
 {
 
 	tapdisk_vbd_produce_rrds(vbd);
+
+    /*
+     * FIXME don't ignore return value
+     */
+    tapdisk_xenblkif_show_io_ring(vbd->sring);
 
 	tapdisk_vbd_check_queue_state(vbd);
 
