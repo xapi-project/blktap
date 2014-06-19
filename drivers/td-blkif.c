@@ -34,8 +34,6 @@
 #include "td-ctx.h"
 #include "td-req.h"
 
-#define ERROR(_f, _a...)        tlog_syslog(TLOG_WARN, "td-blkif: " _f, ##_a)
-
 struct td_xenblkif *
 tapdisk_xenblkif_find(const domid_t domid, const int devid)
 {
@@ -180,7 +178,8 @@ tapdisk_xenblkif_destroy(struct td_xenblkif * blkif)
             xc_gnttab_munmap(blkif->ctx->xcg_handle, blkif->rings.common.sring,
                     blkif->ring_n_pages);
 
-		list_del(&blkif->entry);
+		list_del(&blkif->entry_ctx);
+        list_del(&blkif->entry);
         tapdisk_xenio_ctx_put(blkif->ctx);
     }
 
@@ -199,28 +198,32 @@ int
 tapdisk_xenblkif_disconnect(const domid_t domid, const int devid)
 {
     struct td_xenblkif *blkif;
-    int err;
 
     blkif = tapdisk_xenblkif_find(domid, devid);
     if (!blkif)
         return -ENODEV;
 
     if (blkif->n_reqs_free != blkif->ring_size) {
-		if (td_flag_test(blkif->vbd->state, TD_VBD_PAUSED)) {
-			EPRINTF("cannot disconnect from the ring because there are "
-					"pending requests and the VBD is paused\n");
-			return -ESHUTDOWN;
-		}
-        return -EBUSY;
-	}
-
-    blkif->vbd->sring = NULL;
-
-    err = tapdisk_xenblkif_destroy(blkif);
-    if (err)
-        EPRINTF("failed to destroy the block interface: %s\n", strerror(-err));
-
-    return 0;
+        RING_DEBUG(blkif, "disconnect from ring with %d pending requests\n",
+                blkif->ring_size - blkif->n_reqs_free);
+		if (td_flag_test(blkif->vbd->state, TD_VBD_PAUSED))
+			RING_ERR(blkif, "disconnect from ring with %d pending requests "
+                    "and the VBD paused\n",
+                    blkif->ring_size - blkif->n_reqs_free);
+        list_move(&blkif->entry, &blkif->vbd->dead_rings);
+        blkif->dead = true;
+        if (blkif->ctx && blkif->port >= 0) {
+            xc_evtchn_unbind(blkif->ctx->xce_handle, blkif->port);
+            blkif->port = -1;
+        }
+        /*
+         * FIXME shall we unmap the ring or will that lead to some fatal error
+         * in tapdisk? IIUC if we don't unmap it we'll get errors during grant
+         * copy.
+         */
+        return 0;
+	} else
+        return tapdisk_xenblkif_destroy(blkif);
 }
 
 int
@@ -259,22 +262,24 @@ tapdisk_xenblkif_connect(domid_t domid, int devid, const grant_ref_t * grefs,
         goto fail;
     }
 
-    INIT_LIST_HEAD(&td_blkif->entry);
-
     td_blkif->domid = domid;
     td_blkif->devid = devid;
     td_blkif->vbd = vbd;
     td_blkif->ctx = td_ctx;
     td_blkif->proto = proto;
+    td_blkif->dead = false;
 
     shm_init(&td_blkif->shm);
+
+    INIT_LIST_HEAD(&td_blkif->entry_ctx);
+    INIT_LIST_HEAD(&td_blkif->entry);
 
     /*
      * Create the shared ring.
      */
     td_blkif->ring_n_pages = 1 << order;
     if (td_blkif->ring_n_pages > ARRAY_SIZE(td_blkif->ring_ref)) {
-        ERROR("too many pages (%u), max %zu\n",
+        RING_ERR(td_blkif, "too many pages (%u), max %zu\n",
                 td_blkif->ring_n_pages, ARRAY_SIZE(td_blkif->ring_ref));
         err = -EINVAL;
         goto fail;
@@ -296,8 +301,8 @@ tapdisk_xenblkif_connect(domid_t domid, int devid, const grant_ref_t * grefs,
             PROT_READ | PROT_WRITE);
     if (!sring) {
         err = -errno;
-        ERROR("failed to map domain's %d grant references: %s\n",
-                domid, strerror(-err));
+        RING_ERR(td_blkif, "failed to map domain's grant references: %s\n",
+                strerror(-err));
         goto fail;
     }
 
@@ -331,7 +336,7 @@ tapdisk_xenblkif_connect(domid_t domid, int devid, const grant_ref_t * grefs,
                 break;
             }
         default:
-            ERROR("unsupported protocol 0x%x\n", td_blkif->proto);
+            RING_ERR(td_blkif, "unsupported protocol 0x%x\n", td_blkif->proto);
             err = -EPROTONOSUPPORT;
             goto fail;
     }
@@ -344,8 +349,8 @@ tapdisk_xenblkif_connect(domid_t domid, int devid, const grant_ref_t * grefs,
             td_blkif->domid, port);
     if (td_blkif->port == -1) {
         err = -errno;
-        ERROR("failed to bind to event channel port %d of domain "
-                "%d: %s\n", port, td_blkif->domid, strerror(-err));
+        RING_ERR(td_blkif, "failed to bind to event channel port %d: %s\n",
+                port, strerror(-err));
         goto fail;
     }
 
@@ -359,9 +364,10 @@ tapdisk_xenblkif_connect(domid_t domid, int devid, const grant_ref_t * grefs,
     if (err)
         goto fail;
 
-    vbd->sring = td_blkif;
+    list_add_tail(&td_blkif->entry, &vbd->rings);
+	list_add_tail(&td_blkif->entry_ctx, &td_ctx->blkifs);
 
-	list_add_tail(&td_blkif->entry, &td_ctx->blkifs);
+    DPRINTF("ring %p connected\n", td_blkif);
 
     return 0;
 

@@ -257,7 +257,6 @@ xenio_blkif_put_response(struct td_xenblkif * const blkif,
 
         msg->id = req->msg.id;
 
-        /* TODO Why do we have to set this? */
         msg->operation = req->msg.operation;
 
         msg->status = status;
@@ -272,8 +271,13 @@ xenio_blkif_put_response(struct td_xenblkif * const blkif,
             int err = xc_evtchn_notify(blkif->ctx->xce_handle, blkif->port);
             if (err < 0) {
                 err = -errno;
-                ERR(blkif, "failed to notify event channel: %s\n",
-                        strerror(-err));
+                if (req) {
+                    RING_ERR(blkif, "req %lu: failed to notify event channel: "
+                            "%s\n", req->msg.id, strerror(-err));
+                } else {
+                    RING_ERR(blkif, "failed to notify event channel: %s\n",
+                            strerror(-err));
+                }
                 return err;
             }
         }
@@ -321,7 +325,8 @@ guest_copy2(struct td_xenblkif * const blkif,
 
     err = -ioctl(blkif->ctx->gntdev_fd, IOCTL_GNTDEV_GRANT_COPY, &gcopy);
     if (err) {
-        ERR(blkif, "failed to grant-copy: %s\n", strerror(err));
+        RING_ERR(blkif, "req %lu: failed to grant-copy: %s\n",
+                tapreq->msg.id, strerror(err));
 		goto out;
 	}
 
@@ -333,8 +338,8 @@ guest_copy2(struct td_xenblkif * const blkif,
 			 * xen/extras/mini-os/include/gnttab.h (header not available to
 			 * user space)
 			 */
-			ERR(blkif, "failed to grant-copy segment %d: %d\n", i,
-					gcopy_seg->status);
+			RING_ERR(blkif, "req %lu: failed to grant-copy segment %d: %d\n",
+                    tapreq->msg.id, i, gcopy_seg->status);
 			err = -EIO;
 			goto out;
 		}
@@ -345,7 +350,9 @@ out:
 }
 
 /**
- * Completes a request.
+ * Completes a request. If this is the last pending request of a dead block
+ * interface, the block interface is destroyed, the caller must not access it
+ * any more.
  *
  * @blkif the VBD the request belongs belongs to
  * @tapreq the request to complete
@@ -361,23 +368,25 @@ tapdisk_xenblkif_complete_request(struct td_xenblkif * const blkif,
     ASSERT(blkif);
     ASSERT(tapreq);
 
-	if (BLKIF_OP_READ == tapreq->msg.operation && !err) {
-		_err = guest_copy2(blkif, tapreq);
-		if (_err) {
-			err = _err;
-			ERR(blkif, "failed to copy from/to guest: %s\n",
-					strerror(-err));
-		}
-	}
+    if (likely(!blkif->dead)) {
+        if (BLKIF_OP_READ == tapreq->msg.operation && !err) {
+            _err = guest_copy2(blkif, tapreq);
+            if (_err) {
+                err = _err;
+                RING_ERR(blkif, "req %lu: failed to copy from/to guest: %s\n",
+                        tapreq->msg.id, strerror(-err));
+            }
+        }
 
-    if (tapreq->msg.operation == BLKIF_OP_WRITE_BARRIER)
-        _err = BLKIF_RSP_EOPNOTSUPP;
-    else if (err)
-        _err = BLKIF_RSP_ERROR;
-    else
-        _err = BLKIF_RSP_OKAY;
+        if (tapreq->msg.operation == BLKIF_OP_WRITE_BARRIER)
+            _err = BLKIF_RSP_EOPNOTSUPP;
+        else if (err)
+            _err = BLKIF_RSP_ERROR;
+        else
+            _err = BLKIF_RSP_OKAY;
 
-    xenio_blkif_put_response(blkif, tapreq, _err, final);
+        xenio_blkif_put_response(blkif, tapreq, _err, final);
+    }
 
     tapdisk_xenblkif_free_request(blkif, tapreq);
 
@@ -387,6 +396,15 @@ tapdisk_xenblkif_complete_request(struct td_xenblkif * const blkif,
 
     /* Poll the ring in case we left requests in it due to lack of memory. */
     tapdisk_xenio_ctx_process_ring(blkif, blkif->ctx);
+
+    /*
+     * Last request of a dead ring completes, destroy the ring.
+     */
+    if (unlikely(blkif->dead) &&
+            blkif->ring_size  == blkif->n_reqs_free) {
+        RING_DEBUG(blkif, "destroying dead ring\n");
+        tapdisk_xenblkif_destroy(blkif);
+    }
 }
 
 /**
@@ -410,9 +428,9 @@ __tapdisk_xenblkif_request_cb(struct td_vbd_request * const vreq,
 
     tapreq = containerof(vreq, struct td_xenblkif_req, vreq);
 
-    tapdisk_xenblkif_complete_request(blkif, tapreq, error, final);
     if (error)
         blkif->stats.errors.img++;
+    tapdisk_xenblkif_complete_request(blkif, tapreq, error, final);
 }
 
 /**
@@ -452,7 +470,8 @@ tapdisk_xenblkif_make_vbd_request(struct td_xenblkif * const blkif,
         vreq->op = TD_OP_WRITE;
         break;
     default:
-        ERR(blkif, "invalid request type %d\n", tapreq->msg.operation);
+        RING_ERR(blkif, "req %lu: invalid request type %d\n",
+                tapreq->msg.id, tapreq->msg.operation);
         err = EOPNOTSUPP;
         goto out;
     }
@@ -460,7 +479,8 @@ tapdisk_xenblkif_make_vbd_request(struct td_xenblkif * const blkif,
     /* TODO there should be at least one segment, right? */
     if (tapreq->msg.nr_segments < 1
             || tapreq->msg.nr_segments > BLKIF_MAX_SEGMENTS_PER_REQUEST) {
-        ERR(blkif, "invalid segment count %d\n", tapreq->msg.nr_segments);
+        RING_ERR(blkif, "req %lu: invalid segment count %d\n",
+                tapreq->msg.id, tapreq->msg.nr_segments);
         err = EINVAL;
         goto out;
     }
@@ -480,8 +500,8 @@ tapdisk_xenblkif_make_vbd_request(struct td_xenblkif * const blkif,
          * must be transferred.
          */
         if (seg->last_sect < seg->first_sect) {
-            ERR(blkif, "invalid sectors %d-%d\n", seg->first_sect,
-                    seg->last_sect);
+            RING_ERR(blkif, "req %lu: invalid sectors %d-%d\n",
+                    tapreq->msg.id, seg->first_sect, seg->last_sect);
             err = EINVAL;
             goto out;
         }
@@ -527,7 +547,8 @@ tapdisk_xenblkif_make_vbd_request(struct td_xenblkif * const blkif,
     if (tapreq->msg.operation == BLKIF_OP_WRITE) {
         err = guest_copy2(blkif, tapreq);
         if (err) {
-            ERR(blkif, "failed to copy from guest: %s\n", strerror(-err));
+            RING_ERR(blkif, "req %lu: failed to copy from guest: %s\n",
+                    tapreq->msg.id, strerror(-err));
             goto out;
         }
     }

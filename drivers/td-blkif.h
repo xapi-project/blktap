@@ -26,6 +26,7 @@
 #include <xen/io/xenbus.h>
 #include <xen/event_channel.h>
 #include <xen/grant_table.h>
+#include <stdbool.h>
 
 #include "xen_blkif.h"
 #include "td-req.h"
@@ -59,6 +60,8 @@ struct td_xenblkif {
 	 * allows struct td_blkif's to be linked into lists, for whomever needs to
 	 * maintain multiple struct td_blkif's
 	 */
+    struct list_head entry_ctx;
+
     struct list_head entry;
 
     /**
@@ -131,7 +134,17 @@ struct td_xenblkif {
     void **reqs_bufcache;
     unsigned n_reqs_bufcache_free;
     event_id_t reqs_bufcache_evtid;
+
+	bool dead;
 };
+
+#define RING_DEBUG(blkif, fmt, args...)                                     \
+    DPRINTF("%d/%d, ring=%p: "fmt, (blkif)->domid, (blkif)->devid, (blkif), \
+        ##args);
+
+#define RING_ERR(blkif, fmt, args...)                                       \
+    EPRINTF("%d/%d, ring=%p: "fmt, (blkif)->domid, (blkif)->devid, (blkif), \
+        ##args);
 
 /* TODO rename from xenio */
 #define tapdisk_xenio_for_each_ctx(_ctx) \
@@ -180,7 +193,8 @@ tapdisk_xenblkif_destroy(struct td_xenblkif * blkif);
 
 /**
  * Searches all block interfaces in all contexts for a block interface
- * having the specified domain and device ID.
+ * having the specified domain and device ID. Dead block interfaces are
+ * ignored.
  *
  * @param domid the domain ID
  * @param devid the device ID
@@ -194,5 +208,4 @@ tapdisk_xenblkif_event_id(const struct td_xenblkif *blkif);
 
 int
 tapdisk_xenblkif_show_io_ring(struct td_xenblkif *blkif);
-
 #endif /* __TD_BLKIF_H__ */

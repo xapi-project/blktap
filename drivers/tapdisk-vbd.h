@@ -71,9 +71,17 @@ struct td_vbd_handle {
 	td_uuid_t                   uuid;
 
     /**
-     * shared ring
+     * shared rings
      */
-    struct td_xenblkif         *sring;
+    struct list_head           rings;
+
+    /**
+     * List of rings that contain pending requests but a disconnection was
+     * issued. We need to maintain these rings until all their pending requests
+     * complete. When the last request completes, the ring is destroyed and
+     * removed from this list.
+     */
+    struct list_head            dead_rings;
 
 	td_flag_t                   flags;
 	td_flag_t                   state;
@@ -227,4 +235,8 @@ void tapdisk_vbd_debug(td_vbd_t *);
 int tapdisk_vbd_start_nbdserver(td_vbd_t *);
 void tapdisk_vbd_stats(td_vbd_t *, td_stats_t *);
 
+/**
+ * Tells whether the VBD contains at least one dead ring.
+ */
+bool inline tapdisk_vbd_contains_dead_rings(td_vbd_t * vbd);
 #endif
