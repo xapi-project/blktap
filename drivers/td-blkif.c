@@ -45,7 +45,8 @@ tapdisk_xenblkif_find(const domid_t domid, const int devid)
     tapdisk_xenio_for_each_ctx(ctx) {
         tapdisk_xenio_ctx_find_blkif(ctx, blkif,
                                      blkif->domid == domid &&
-                                     blkif->devid == devid);
+                                     blkif->devid == devid &&
+                                     blkif->vbd->sring == blkif);
         if (blkif)
             return blkif;
     }
@@ -180,7 +181,8 @@ tapdisk_xenblkif_destroy(struct td_xenblkif * blkif)
             xc_gnttab_munmap(blkif->ctx->xcg_handle, blkif->rings.common.sring,
                     blkif->ring_n_pages);
 
-		list_del(&blkif->entry);
+		list_del(&blkif->entry_ctx);
+        list_del(&blkif->entry_dead);
         tapdisk_xenio_ctx_put(blkif->ctx);
     }
 
@@ -199,27 +201,33 @@ int
 tapdisk_xenblkif_disconnect(const domid_t domid, const int devid)
 {
     struct td_xenblkif *blkif;
-    int err;
 
     blkif = tapdisk_xenblkif_find(domid, devid);
     if (!blkif)
         return -ENODEV;
 
     if (blkif->n_reqs_free != blkif->ring_size) {
-		if (td_flag_test(blkif->vbd->state, TD_VBD_PAUSED)) {
-			EPRINTF("cannot disconnect from the ring because there are "
-					"pending requests and the VBD is paused\n");
-			return -ESHUTDOWN;
-		}
-        return -EBUSY;
-	}
-
-    blkif->vbd->sring = NULL;
-
-    err = tapdisk_xenblkif_destroy(blkif);
-    if (err)
-        EPRINTF("failed to destroy the block interface: %s\n", strerror(-err));
-
+        DPRINTF("disconnecting from the ring with %d pending requests\n",
+                blkif->ring_size - blkif->n_reqs_free);
+		if (td_flag_test(blkif->vbd->state, TD_VBD_PAUSED))
+			EPRINTF("disconnecting from the ring with %d pending requests "
+                    "and the VBD is paused\n",
+                    blkif->ring_size - blkif->n_reqs_free);
+        list_add_tail(&blkif->entry_dead, &blkif->vbd->dead_rings);
+        blkif->vbd->sring = NULL;
+        if (blkif->ctx && blkif->port >= 0) {
+            xc_evtchn_unbind(blkif->ctx->xce_handle, blkif->port);
+            blkif->port = -1;
+        }
+        /*
+         * FIXME shall we unmap the ring or will that lead to some fatal error
+         * in tapdisk? IIUC if we don't unmap it we'll get errors during grant
+         * copy.
+         */
+	} else {
+        blkif->vbd->sring = NULL;
+        tapdisk_xenblkif_destroy(blkif);
+    }
     return 0;
 }
 
@@ -259,8 +267,6 @@ tapdisk_xenblkif_connect(domid_t domid, int devid, const grant_ref_t * grefs,
         goto fail;
     }
 
-    INIT_LIST_HEAD(&td_blkif->entry);
-
     td_blkif->domid = domid;
     td_blkif->devid = devid;
     td_blkif->vbd = vbd;
@@ -268,6 +274,9 @@ tapdisk_xenblkif_connect(domid_t domid, int devid, const grant_ref_t * grefs,
     td_blkif->proto = proto;
 
     shm_init(&td_blkif->shm);
+
+    INIT_LIST_HEAD(&td_blkif->entry_ctx);
+    INIT_LIST_HEAD(&td_blkif->entry_dead);
 
     /*
      * Create the shared ring.
@@ -361,7 +370,7 @@ tapdisk_xenblkif_connect(domid_t domid, int devid, const grant_ref_t * grefs,
 
     vbd->sring = td_blkif;
 
-	list_add_tail(&td_blkif->entry, &td_ctx->blkifs);
+	list_add_tail(&td_blkif->entry_ctx, &td_ctx->blkifs);
 
     return 0;
 
@@ -420,4 +429,13 @@ tapdisk_xenblkif_show_io_ring(struct td_xenblkif *blkif)
     else
         err = 0;
     return -err;
+}
+
+bool
+tapdisk_xenblkif_is_dead(const struct td_xenblkif * const blkif)
+{
+    ASSERT(blkif);
+    ASSERT(blkif->vbd);
+
+    return blkif != blkif->vbd->sring ? true : false;
 }

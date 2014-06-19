@@ -1135,14 +1135,7 @@ tapdisk_control_xenblkif_disconnect(
     DPRINTF("disconnecting domid=%d, devid=%d\n", blkif_msg->domid,
             blkif_msg->devid);
 
-	while (true) {
-	    err = tapdisk_xenblkif_disconnect(blkif_msg->domid, blkif_msg->devid);
-		if (err == -EBUSY)
-			tapdisk_server_iterate();
-		else
-			break;
-	}
-
+    err = tapdisk_xenblkif_disconnect(blkif_msg->domid, blkif_msg->devid);
     if (!err)
         response->type = TAPDISK_MESSAGE_XENBLKIF_DISCONNECT_RSP;
 	else

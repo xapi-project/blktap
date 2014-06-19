@@ -75,6 +75,14 @@ struct td_vbd_handle {
      */
     struct td_xenblkif         *sring;
 
+    /**
+     * List of rings that contain pending requests but a disconnection was
+     * issued. We need to maintain these rings until all their pending requests
+     * complete. When the last request completes, the ring is destroyed and
+     * removed from this list.
+     */
+    struct list_head            dead_rings;
+
 	td_flag_t                   flags;
 	td_flag_t                   state;
 

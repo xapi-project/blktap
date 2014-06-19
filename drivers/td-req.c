@@ -345,7 +345,9 @@ out:
 }
 
 /**
- * Completes a request.
+ * Completes a request. If this is the last pending request of a dead block
+ * interface, the block interface is destroyed, the caller must not access it
+ * any more.
  *
  * @blkif the VBD the request belongs belongs to
  * @tapreq the request to complete
@@ -361,23 +363,29 @@ tapdisk_xenblkif_complete_request(struct td_xenblkif * const blkif,
     ASSERT(blkif);
     ASSERT(tapreq);
 
-	if (BLKIF_OP_READ == tapreq->msg.operation && !err) {
-		_err = guest_copy2(blkif, tapreq);
-		if (_err) {
-			err = _err;
-			ERR(blkif, "failed to copy from/to guest: %s\n",
-					strerror(-err));
-		}
-	}
+    if (likely(!tapdisk_xenblkif_is_dead(blkif))) {
+        if (BLKIF_OP_READ == tapreq->msg.operation && !err) {
+            _err = guest_copy2(blkif, tapreq);
+            if (_err) {
+                err = _err;
+                ERR(blkif, "failed to copy from/to guest: %s\n",
+                        strerror(-err));
+            }
+        }
 
-    if (tapreq->msg.operation == BLKIF_OP_WRITE_BARRIER)
-        _err = BLKIF_RSP_EOPNOTSUPP;
-    else if (err)
-        _err = BLKIF_RSP_ERROR;
-    else
-        _err = BLKIF_RSP_OKAY;
+        if (tapreq->msg.operation == BLKIF_OP_WRITE_BARRIER)
+            _err = BLKIF_RSP_EOPNOTSUPP;
+        else if (err)
+            _err = BLKIF_RSP_ERROR;
+        else
+            _err = BLKIF_RSP_OKAY;
 
-    xenio_blkif_put_response(blkif, tapreq, _err, final);
+        xenio_blkif_put_response(blkif, tapreq, _err, final);
+
+        blkif->stats.reqs.out++;
+        if (final)
+            blkif->stats.kicks.out++;
+    }
 
     tapdisk_xenblkif_free_request(blkif, tapreq);
 
@@ -387,6 +395,15 @@ tapdisk_xenblkif_complete_request(struct td_xenblkif * const blkif,
 
     /* Poll the ring in case we left requests in it due to lack of memory. */
     tapdisk_xenio_ctx_process_ring(blkif, blkif->ctx);
+
+    /*
+     * Last request of a dead ring completes, destroy the ring.
+     */
+    if (unlikely(tapdisk_xenblkif_is_dead(blkif)) &&
+            blkif->ring_size  == blkif->n_reqs_free) {
+        DPRINTF("destroying dead ring\n");
+        tapdisk_xenblkif_destroy(blkif);
+    }
 }
 
 /**
@@ -410,9 +427,9 @@ __tapdisk_xenblkif_request_cb(struct td_vbd_request * const vreq,
 
     tapreq = containerof(vreq, struct td_xenblkif_req, vreq);
 
-    tapdisk_xenblkif_complete_request(blkif, tapreq, error, final);
     if (error)
         blkif->stats.errors.img++;
+    tapdisk_xenblkif_complete_request(blkif, tapreq, error, final);
 }
 
 /**

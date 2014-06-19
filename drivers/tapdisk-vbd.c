@@ -93,6 +93,7 @@ tapdisk_vbd_create(uint16_t uuid)
 	INIT_LIST_HEAD(&vbd->failed_requests);
 	INIT_LIST_HEAD(&vbd->completed_requests);
 	INIT_LIST_HEAD(&vbd->next);
+    INIT_LIST_HEAD(&vbd->dead_rings);
 	tapdisk_vbd_mark_progress(vbd);
 
 	return vbd;

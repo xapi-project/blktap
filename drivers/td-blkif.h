@@ -26,6 +26,7 @@
 #include <xen/io/xenbus.h>
 #include <xen/event_channel.h>
 #include <xen/grant_table.h>
+#include <stdbool.h>
 
 #include "xen_blkif.h"
 #include "td-req.h"
@@ -59,7 +60,9 @@ struct td_xenblkif {
 	 * allows struct td_blkif's to be linked into lists, for whomever needs to
 	 * maintain multiple struct td_blkif's
 	 */
-    struct list_head entry;
+    struct list_head entry_ctx;
+
+    struct list_head entry_dead;
 
     /**
      * The local port corresponding to the remote port of the domain where the
@@ -180,7 +183,8 @@ tapdisk_xenblkif_destroy(struct td_xenblkif * blkif);
 
 /**
  * Searches all block interfaces in all contexts for a block interface
- * having the specified domain and device ID.
+ * having the specified domain and device ID. Dead block interfaces are
+ * ignored.
  *
  * @param domid the domain ID
  * @param devid the device ID
@@ -194,5 +198,8 @@ tapdisk_xenblkif_event_id(const struct td_xenblkif *blkif);
 
 int
 tapdisk_xenblkif_show_io_ring(struct td_xenblkif *blkif);
+
+bool
+tapdisk_xenblkif_is_dead(const struct td_xenblkif * const blkif);
 
 #endif /* __TD_BLKIF_H__ */
