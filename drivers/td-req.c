@@ -257,8 +257,14 @@ tapdisk_xenblkif_complete_request(struct td_xenblkif * const blkif,
 		}
 	}
 
-    xenio_blkif_put_response(blkif, tapreq,
-            (err ? BLKIF_RSP_ERROR : BLKIF_RSP_OKAY), final);
+    if (tapreq->msg.operation == BLKIF_OP_WRITE_BARRIER)
+        _err = BLKIF_RSP_EOPNOTSUPP;
+    else if (err)
+        _err = BLKIF_RSP_ERROR;
+    else
+        _err = BLKIF_RSP_OKAY;
+
+    xenio_blkif_put_response(blkif, tapreq, _err, final);
 
     tapdisk_xenblkif_free_request(blkif, tapreq);
 
