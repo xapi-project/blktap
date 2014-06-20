@@ -56,7 +56,7 @@ start() {
         echo $"${NAME}[${PID}] already started"
         return 0
 	elif [ ${RUNNING} -eq 0 ]; then
-		${TAPBACK} -v -p ${PID_FILE} >/dev/null 2>&1 </dev/null
+		${TAPBACK} -p ${PID_FILE} >/dev/null 2>&1 </dev/null
 		for gap in 0.1 0.2 0.5 1 2 5; do
 			check_running
 			RUNNING=$?
