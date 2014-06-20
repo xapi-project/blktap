@@ -134,13 +134,19 @@ tapback_read_watch(backend_t *backend)
     return;
 }
 
+/**
+ * NB must be async-signal-safe.
+ */
 void
 tapback_backend_destroy(backend_t *backend)
 {
-    int err;
-
 	if (!backend)
 		return;
+
+    if (backend->pidfile) {
+        unlink(backend->pidfile);
+        free(backend->pidfile);
+    }
 
     free(backend->name);
     free(backend->path);
@@ -152,12 +158,7 @@ tapback_backend_destroy(backend_t *backend)
         backend->xs = NULL;
     }
 
-    err = unlink(backend->local.sun_path);
-    if (err == -1 && errno != ENOENT) {
-        err = errno;
-        WARN(NULL, "failed to remove %s: %s\n", TAPBACK_CTL_SOCK_PATH,
-				strerror(err));
-    }
+    unlink(backend->local.sun_path);
 
 	list_del(&backend->entry);
 
@@ -165,17 +166,20 @@ tapback_backend_destroy(backend_t *backend)
 }
 
 static void
-signal_cb(int signum)
+tapback_signal_handler(int signum, siginfo_t *siginfo __attribute__((unused)),
+        void *context __attribute__((unused)))
 {
-    if (signum == SIGINT || signum == SIGTERM) {
+    if (likely(signum == SIGINT || signum == SIGTERM)) {
 		backend_t *backend, *tmp;
 
 		list_for_each_entry(backend, &backends, entry) {
-            if (tapback_is_master(backend))
-                break;
-            else
+            if (tapback_is_master(backend)) {
+                if (backend->master.slaves)
+                    return;
+            } else {
                 if (!list_empty(&backend->slave.slave.devices))
                     return;
+            }
 		}
 
 		list_for_each_entry_safe(backend, tmp, &backends, entry)
@@ -185,7 +189,7 @@ signal_cb(int signum)
     }
 }
 
-static int
+static inline int
 tapback_write_pid(const char *pidfile)
 {
     FILE *fp;
@@ -211,7 +215,7 @@ tapback_write_pid(const char *pidfile)
  *
  * @returns a new back-end, NULL on failure, sets errno
  */
-static backend_t *
+static inline backend_t *
 tapback_backend_create(const char *name, const char *pidfile,
         const domid_t domid)
 {
@@ -221,20 +225,26 @@ tapback_backend_create(const char *name, const char *pidfile,
 
     ASSERT(name);
 
-    if (pidfile) {
-        err = tapback_write_pid(pidfile);
-        if (err) {
-            WARN(NULL, "failed to write PID to %s: %s\n",
-                    pidfile, strerror(err));
-            goto out;
-        }
-    }
-
 	backend = calloc(1, sizeof(*backend));
 	if (!backend) {
 		err = errno;
 		goto out;
 	}
+
+    if (pidfile) {
+        backend->pidfile = strdup(pidfile);
+        if (unlikely(!backend->pidfile)) {
+            err = errno;
+            WARN(NULL, "failed to strdup: %s\n", strerror(err));
+            goto out;
+        }
+        err = tapback_write_pid(backend->pidfile);
+        if (unlikely(err)) {
+            WARN(NULL, "failed to write PID to %s: %s\n",
+                    pidfile, strerror(err));
+            goto out;
+        }
+    }
 
     backend->name = strdup(name);
     if (!backend->name) {
@@ -340,16 +350,6 @@ tapback_backend_create(const char *name, const char *pidfile,
         goto out;
     }
 
-    if (SIG_ERR == signal(SIGINT, signal_cb) ||
-            SIG_ERR == signal(SIGTERM, signal_cb)) {
-        WARN(NULL, "failed to register signal handlers\n");
-        err = EINVAL;
-        goto out;
-    }
-
-    if (!domid)
-        signal(SIGCHLD, SIG_IGN);
-
     /*
      * Create the control socket.
      * XXX We don't listen for connections as we don't yet support any control
@@ -442,10 +442,10 @@ tapback_backend_run(backend_t *backend)
          */
         nfds = select(fd + 1, &rfds, NULL, NULL, NULL);
         if (nfds == -1) {
-            if (errno == EINTR)
+            if (likely(errno == EINTR))
                 continue;
-            WARN(NULL, "error monitoring XenStore\n");
             err = -errno;
+            WARN(NULL, "error monitoring XenStore: %s\n", strerror(-err));
             break;
         }
 
@@ -475,6 +475,58 @@ usage(FILE * const stream, const char * const prog)
 }
 
 extern char *optarg;
+
+/**
+ * Returns 0 in success, -errno on failure.
+ */
+static inline int
+tapback_install_sighdl(void)
+{
+    int err;
+    struct sigaction sigact;
+	sigset_t set;
+    static const int signals[] = {SIGTERM, SIGINT};
+    unsigned i;
+
+    err = sigfillset(&set);
+    if (unlikely(err == -1)) {
+        err = errno;
+        WARN(NULL, "failed to fill signal set: %s\n", strerror(err));
+        goto out;
+    }
+
+    for (i = 0; i < ARRAY_SIZE(signals); i++) {
+        err = sigdelset(&set, signals[i]);
+        if (unlikely(err == -1)) {
+            err = errno;
+            WARN(NULL, "failed to add signal %d to signal set: %s\n",
+                    signals[i], strerror(err));
+            goto out;
+        }
+    }
+
+    err = sigprocmask(SIG_BLOCK, &set, NULL);
+	if (unlikely(err == -1)) {
+        err = errno;
+        WARN(NULL, "failed to set signal mask: %s\n", strerror(err));
+        goto out;
+	}
+
+    sigact.sa_sigaction = &tapback_signal_handler;
+    sigact.sa_flags = SA_SIGINFO;
+
+    for (i = 0; i < ARRAY_SIZE(signals); i++) {
+        err = sigaction(signals[i], &sigact, NULL);
+        if (unlikely(err == -1)) {
+            err = errno;
+            WARN(NULL, "failed to register signal %d: %s\n",
+                    signals[i], strerror(err));
+            goto out;
+        }
+    }
+out:
+    return -err;
+}
 
 int main(int argc, char **argv)
 {
@@ -570,6 +622,13 @@ int main(int argc, char **argv)
         }
     }
 
+    err = tapback_install_sighdl();
+    if (unlikely(err))
+    {
+        WARN(NULL, "failed to set up signal handling: %s\n", strerror(-err));
+        goto fail;
+    }
+
 	backend = tapback_backend_create(opt_name, opt_pidfile, opt_domid);
 	if (!backend) {
 		err = errno;
@@ -582,16 +641,6 @@ int main(int argc, char **argv)
     tapback_backend_destroy(backend);
 
 fail:
-    if (opt_pidfile) {
-        int err2 = unlink(opt_pidfile);
-        if (err2 == -1) {
-            err2 = errno;
-            if (err2 != ENOENT) {
-                WARN(NULL, "failed to remove PID file %s: %s\n",
-                        opt_pidfile, strerror(err2));
-            }
-        }
-    }
     return err ? -err : 0;
 
 usage:
