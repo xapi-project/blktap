@@ -188,6 +188,8 @@ typedef struct backend {
 	 * for linked lists
 	 */
 	struct list_head entry;
+
+    char *pidfile;
 } backend_t;
 
 /**
