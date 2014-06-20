@@ -22,12 +22,11 @@ ERRORCODES_XML := XE_SR_ERRORCODES.xml
 SM_TESTS := $(MY_OUTPUT_DIR)/storage-manager-tests.tar
 SM_UNIT_TESTS := $(MY_OUTPUT_DIR)/smunittests.tar
 REPO := $(call git_loc,sm)
-SUPPORT_PACK := $(MY_OUTPUT_DIR)/borehamwood-supp-pack.iso
-BUILD := $(BUILD_NUMBER)
+
 
 .PHONY: build
 build: sources $(SM_STAMP) $(SM_TESTS) $(SM_UNIT_TESTS) \
-	$(MY_OUTPUT_DIR)/$(ERRORCODES_XML) $(SUPPORT_PACK)
+	$(MY_OUTPUT_DIR)/$(ERRORCODES_XML)
 
 $(MY_SOURCES)/MANIFEST: $(RPM_SRPMSDIR)/$(SM_SRPM) $(MY_SOURCES_DIRSTAMP) $(RPM_BUILD_COOKIE)
 	rm -f $@
@@ -62,8 +61,6 @@ $(SM_STAMP): $(RPM_SRPMSDIR)/$(SM_SRPM)
 	cp $(RPM_RPMSDIR)/$(DOMAIN0_ARCH_OPTIMIZED)/sm-*.rpm $(MY_MAIN_PACKAGES)
 	# Deliberately omit the debuginfo RPM (sm-debuginfo-...)
 	rm -f $(MY_MAIN_PACKAGES)/sm-debuginfo-*.rpm
-	# sm-rawhba is packaged as supp-pack. Skip it.
-	rm -f $(MY_MAIN_PACKAGES)/sm-rawhba-*.rpm
 	touch $@
 
 $(SM_TESTS): 
@@ -77,6 +74,3 @@ $(SM_UNIT_TESTS):
 $(MY_OUTPUT_DIR)/$(ERRORCODES_XML):
 	rm -f $@
 	cp $(REPO)/drivers/$(ERRORCODES_XML) $@
-
-$(SUPPORT_PACK): $(SM_STAMP)
-	python setup.py --out $(dir $@) --pdn $(PRODUCT_BRAND) --pdv $(PRODUCT_VERSION) --bld $(BUILD) --spn "borehamwood-supp-pack" --spd "XenServer RawHBA implementation" --rxv "6.1.0" $(RPM_RPMSDIR)/$(DOMAIN0_ARCH_OPTIMIZED)/sm-rawhba-*.$(DOMAIN0_ARCH_OPTIMIZED).rpm
