@@ -93,10 +93,11 @@ def soft_mount(mountpoint, remoteserver, remotepath, transport, timeout=0,
     if timeout < 1:
         timeout = SOFTMOUNT_TIMEOUT
 
-    options = "soft,timeo=%d,retrans=%d,proto=%s" % (
-                                               timeout * 10,
-                                               SOFTMOUNT_RETRANS,
-                                               transport)
+    options = "soft,timeo=%d,retrans=%d,proto=%s,vers=%s" % (
+                                                             timeout * 10,
+                                                             SOFTMOUNT_RETRANS,
+                                                             transport,
+                                                             nfsversion)
     options += ',acdirmin=0,acdirmax=0'
 
     try:
