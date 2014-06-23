@@ -641,16 +641,6 @@ int main(int argc, char **argv)
     tapback_backend_destroy(backend);
 
 fail:
-    if (opt_pidfile) {
-        int err2 = unlink(opt_pidfile);
-        if (err2 == -1) {
-            err2 = errno;
-            if (err2 != ENOENT) {
-                WARN(NULL, "failed to remove PID file %s: %s\n",
-                        opt_pidfile, strerror(err2));
-            }
-        }
-    }
     return err ? -err : 0;
 
 usage:
