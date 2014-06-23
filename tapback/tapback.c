@@ -43,11 +43,8 @@
 #include "tapback.h"
 #include <signal.h>
 
-static const char *log_dir = "/var/log/tapback";
-const char *tapback_name = "tapback";
-char *log_file = NULL;
+const char tapback_name[] = "tapback";
 unsigned log_level;
-int tapback_log_fd = -1;
 
 LIST_HEAD(backends);
 
@@ -77,7 +74,6 @@ tapback_read_watch(backend_t *backend)
     char **watch = NULL, *path = NULL, *token = NULL;
     unsigned int n = 0;
     int err = 0;
-    char *s;
 
 	ASSERT(backend);
 
@@ -90,29 +86,31 @@ tapback_read_watch(backend_t *backend)
      * print the path the watch triggered on for debug purposes
      *
      * TODO include token
-	 * TODO put in an #if DEBUG block
      */
-	s = tapback_xs_read(backend->xs, XBT_NULL, "%s", path);
-    if (s) {
-        if (0 == strlen(s))
-            /*
-             * XXX "(created)" might be printed when the a XenStore directory
-             * gets removed, the XenStore watch fires, and a XenStore node is
-             * created under the directory that just got removed. This usually
-             * happens when the toolstack removes the VBD from XenStore and
-             * then immediately writes the tools/xenops/cancel key in it.
-             */
-            DBG(NULL, "%s -> (created)\n", path);
-        else
-            DBG(NULL, "%s -> \'%s\'\n", path, s);
-        free(s);
-    } else {
-		err = errno;
-		if (err == ENOENT)
-	        DBG(NULL, "%s -> (removed)\n", path);
-		else
-			WARN(NULL, "failed to read %s: %s\n", path, strerror(err));
-	}
+    if (verbose()) {
+        char *val = tapback_xs_read(backend->xs, XBT_NULL, "%s", path);
+        if (val) {
+            if (0 == strlen(val))
+                /*
+                 * XXX "(created)" might be printed when the a XenStore
+                 * directory gets removed, the XenStore watch fires, and a
+                 * XenStore node is created under the directory that just got
+                 * removed. This usually happens when the toolstack removes the
+                 * VBD from XenStore and then immediately writes the
+                 * tools/xenops/cancel key in it.
+                 */
+                DBG(NULL, "%s -> (created)\n", path);
+            else
+                DBG(NULL, "%s -> \'%s\'\n", path, val);
+            free(val);
+        } else {
+            err = errno;
+            if (err == ENOENT)
+                DBG(NULL, "%s -> (removed)\n", path);
+            else
+                WARN(NULL, "failed to read %s: %s\n", path, strerror(err));
+        }
+    }
 
     /*
      * The token indicates which XenStore watch triggered, the front-end one or
@@ -136,13 +134,19 @@ tapback_read_watch(backend_t *backend)
     return;
 }
 
+/**
+ * NB must be async-signal-safe.
+ */
 void
 tapback_backend_destroy(backend_t *backend)
 {
-    int err;
-
 	if (!backend)
 		return;
+
+    if (backend->pidfile) {
+        unlink(backend->pidfile);
+        free(backend->pidfile);
+    }
 
     free(backend->name);
     free(backend->path);
@@ -154,62 +158,27 @@ tapback_backend_destroy(backend_t *backend)
         backend->xs = NULL;
     }
 
-    err = unlink(backend->local.sun_path);
-    if (err == -1 && errno != ENOENT) {
-        err = errno;
-        WARN(NULL, "failed to remove %s: %s\n", TAPBACK_CTL_SOCK_PATH,
-				strerror(err));
-    }
+    unlink(backend->local.sun_path);
 
 	list_del(&backend->entry);
 
 	free(backend);
 }
 
-/**
- * strlen is not async-signal-safe.
- */
-static unsigned mystrlen(const char *s)
-{
-    unsigned i = 0;
-    while (s[i] != '\0')
-        i++;
-    return i;
-}
-
 static void
-_signal_cb(int signum)
+tapback_signal_handler(int signum, siginfo_t *siginfo __attribute__((unused)),
+        void *context __attribute__((unused)))
 {
-    int dummy;
-
-    if (signum == SIGHUP) {
-        if (likely(tapback_log_fd != -1)) {
-            static const char msg[] = "re-opening log on SIGHUP\n";
-            dummy = write(tapback_log_fd, msg, mystrlen(msg));
-            close(tapback_log_fd);
-            tapback_log_fd = open(log_file, O_APPEND | O_CREAT | O_WRONLY,
-                    S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP, S_IROTH);
-        }
-    } else if (signum == SIGINT || signum == SIGTERM) {
+    if (likely(signum == SIGINT || signum == SIGTERM)) {
 		backend_t *backend, *tmp;
 
-        if (likely(tapback_log_fd != -1)) {
-            static const char msg[] = "terminating on SIGINT or SIGTERM\n";
-            dummy = write(tapback_log_fd, msg, mystrlen(msg));
-        }
-
 		list_for_each_entry(backend, &backends, entry) {
-            if (tapback_is_master(backend))
-                break;
-            else {
-                if (!list_empty(&backend->slave.slave.devices)) {
-                    if (likely(tapback_log_fd != -1)) {
-                        static const char msg[] = "refusing to shut down "
-                            "slave while back-end has active VBDs\n";
-                        dummy = write(tapback_log_fd, msg, mystrlen(msg));
-                    }
+            if (tapback_is_master(backend)) {
+                if (backend->master.slaves)
                     return;
-                }
+            } else {
+                if (!list_empty(&backend->slave.slave.devices))
+                    return;
             }
 		}
 
@@ -217,27 +186,10 @@ _signal_cb(int signum)
 			tapback_backend_destroy(backend);
 
         _exit(EXIT_SUCCESS);
-    } else {
-        if (likely(tapback_log_fd != -1)) {
-            static const char msg[] = "invalid signal\n";
-            dummy = write(tapback_log_fd, msg, mystrlen(msg));
-        }
     }
 }
 
-bool in_signal_handler = false;
-
-static void
-signal_cb(int signum)
-{
-    in_signal_handler = true;
-
-    _signal_cb(signum);
-
-    in_signal_handler = false;
-}
-
-static int
+static inline int
 tapback_write_pid(const char *pidfile)
 {
     FILE *fp;
@@ -263,7 +215,7 @@ tapback_write_pid(const char *pidfile)
  *
  * @returns a new back-end, NULL on failure, sets errno
  */
-static backend_t *
+static inline backend_t *
 tapback_backend_create(const char *name, const char *pidfile,
         const domid_t domid)
 {
@@ -273,20 +225,26 @@ tapback_backend_create(const char *name, const char *pidfile,
 
     ASSERT(name);
 
-    if (pidfile) {
-        err = tapback_write_pid(pidfile);
-        if (err) {
-            WARN(NULL, "failed to write PID to %s: %s\n",
-                    pidfile, strerror(err));
-            goto out;
-        }
-    }
-
 	backend = calloc(1, sizeof(*backend));
 	if (!backend) {
 		err = errno;
 		goto out;
 	}
+
+    if (pidfile) {
+        backend->pidfile = strdup(pidfile);
+        if (unlikely(!backend->pidfile)) {
+            err = errno;
+            WARN(NULL, "failed to strdup: %s\n", strerror(err));
+            goto out;
+        }
+        err = tapback_write_pid(backend->pidfile);
+        if (unlikely(err)) {
+            WARN(NULL, "failed to write PID to %s: %s\n",
+                    pidfile, strerror(err));
+            goto out;
+        }
+    }
 
     backend->name = strdup(name);
     if (!backend->name) {
@@ -392,17 +350,6 @@ tapback_backend_create(const char *name, const char *pidfile,
         goto out;
     }
 
-    if (SIG_ERR == signal(SIGINT, signal_cb) ||
-            SIG_ERR == signal(SIGTERM, signal_cb) ||
-            SIG_ERR == signal(SIGHUP, signal_cb)) {
-        WARN(NULL, "failed to register signal handlers\n");
-        err = EINVAL;
-        goto out;
-    }
-
-    if (!domid)
-        signal(SIGCHLD, SIG_IGN);
-
     /*
      * Create the control socket.
      * XXX We don't listen for connections as we don't yet support any control
@@ -478,17 +425,14 @@ tapback_backend_run(backend_t *backend)
 	fd = xs_fileno(backend->xs);
 
     if (tapback_is_master(backend))
-        INFO(NULL, "master tapback[%d] (user-space blkback for tapdisk3) "
-                " daemon started\n", getpid());
+        INFO(NULL, "master tapback daemon started\n");
     else
-        INFO(NULL, "slave tapback[%d] (user-space blkback for tapdisk3) "
-                "daemon started, only serving domain %d\n",
-                getpid(), backend->slave_domid);
+        INFO(NULL, "slave tapback daemon started, only serving domain %d\n",
+                backend->slave_domid);
 
     do {
         fd_set rfds;
         int nfds = 0;
-        struct timeval ttl = {.tv_sec = 3, .tv_usec = 0};
 
         FD_ZERO(&rfds);
         FD_SET(fd, &rfds);
@@ -496,16 +440,12 @@ tapback_backend_run(backend_t *backend)
         /*
          * poll the fd for changes in the XenStore path we're interested in
          */
-        nfds = select(fd + 1, &rfds, NULL, NULL, &ttl);
-        if (nfds == 0) {
-            fdatasync(tapback_log_fd);
-            continue;
-        }
+        nfds = select(fd + 1, &rfds, NULL, NULL, NULL);
         if (nfds == -1) {
-            if (errno == EINTR)
+            if (likely(errno == EINTR))
                 continue;
-            WARN(NULL, "error monitoring XenStore\n");
             err = -errno;
+            WARN(NULL, "error monitoring XenStore: %s\n", strerror(-err));
             break;
         }
 
@@ -535,6 +475,58 @@ usage(FILE * const stream, const char * const prog)
 }
 
 extern char *optarg;
+
+/**
+ * Returns 0 in success, -errno on failure.
+ */
+static inline int
+tapback_install_sighdl(void)
+{
+    int err;
+    struct sigaction sigact;
+	sigset_t set;
+    static const int signals[] = {SIGTERM, SIGINT};
+    unsigned i;
+
+    err = sigfillset(&set);
+    if (unlikely(err == -1)) {
+        err = errno;
+        WARN(NULL, "failed to fill signal set: %s\n", strerror(err));
+        goto out;
+    }
+
+    for (i = 0; i < ARRAY_SIZE(signals); i++) {
+        err = sigdelset(&set, signals[i]);
+        if (unlikely(err == -1)) {
+            err = errno;
+            WARN(NULL, "failed to add signal %d to signal set: %s\n",
+                    signals[i], strerror(err));
+            goto out;
+        }
+    }
+
+    err = sigprocmask(SIG_BLOCK, &set, NULL);
+	if (unlikely(err == -1)) {
+        err = errno;
+        WARN(NULL, "failed to set signal mask: %s\n", strerror(err));
+        goto out;
+	}
+
+    sigact.sa_sigaction = &tapback_signal_handler;
+    sigact.sa_flags = SA_SIGINFO;
+
+    for (i = 0; i < ARRAY_SIZE(signals); i++) {
+        err = sigaction(signals[i], &sigact, NULL);
+        if (unlikely(err == -1)) {
+            err = errno;
+            WARN(NULL, "failed to register signal %d: %s\n",
+                    signals[i], strerror(err));
+            goto out;
+        }
+    }
+out:
+    return -err;
+}
 
 int main(int argc, char **argv)
 {
@@ -616,52 +608,25 @@ int main(int argc, char **argv)
         }
     }
 
-    err = mkdir(log_dir, S_IRUSR | S_IWUSR | S_IXUSR
-            | S_IRGRP | S_IXGRP
-            | S_IROTH | S_IXOTH);
-    if (err == -1) {
-        err = errno;
-        if (err != EEXIST) {
-            fprintf(stderr, "cannot create log directory: %s\n",
-                    strerror(err));
-            exit(EXIT_FAILURE);
-        }
-    }
-    if (opt_domid)
-        /*
-         * XXX per-domain tapback log file name format:
-         * tapback.<domain ID>.log
-         * This is fairly tentative, change it to whatever looks best. Just
-         * make sure to update the bugtool accordingly.
-         */
-        err = asprintf(&log_file, "%s/%s.%d.log", log_dir, tapback_name,
-                opt_domid);
-    else
-        err = asprintf(&log_file, "%s/%s.log", log_dir, tapback_name);
-    if (err == -1) {
-        err = errno;
-        WARN(NULL, "failed to sprintf: %s\n", strerror(err));
-        goto fail;
-    }
-    tapback_log_fd = open(log_file, O_APPEND | O_CREAT | O_WRONLY,
-            S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP, S_IROTH);
-    if (tapback_log_fd == -1) {
-        err = errno;
-        fprintf(stderr, "failed to open log %s: %s\n", log_file,
-                strerror(err));
-        return err;
-    }
-
+    openlog(tapback_name, LOG_PID, LOG_DAEMON);
     if (opt_verbose)
         log_level = LOG_DEBUG;
     else
         log_level = LOG_INFO;
+    setlogmask(LOG_UPTO(log_level));
 
     if (!opt_debug) {
         if ((err = daemon(0, 0))) {
             err = -errno;
             goto fail;
         }
+    }
+
+    err = tapback_install_sighdl();
+    if (unlikely(err))
+    {
+        WARN(NULL, "failed to set up signal handling: %s\n", strerror(-err));
+        goto fail;
     }
 
 	backend = tapback_backend_create(opt_name, opt_pidfile, opt_domid);
@@ -676,46 +641,11 @@ int main(int argc, char **argv)
     tapback_backend_destroy(backend);
 
 fail:
-    if (opt_pidfile) {
-        int err2 = unlink(opt_pidfile);
-        if (err2 == -1) {
-            err2 = errno;
-            if (err2 != ENOENT) {
-                WARN(NULL, "failed to remove PID file %s: %s\n",
-                        opt_pidfile, strerror(err2));
-            }
-        }
-    }
-    if (tapback_log_fd != -1) {
-        INFO(NULL, "tapback shut down\n");
-        close(tapback_log_fd);
-    }
     return err ? -err : 0;
 
 usage:
     usage(stderr, prog);
     return 1;
-}
-
-int pretty_time(char *buf, unsigned char buf_len) {
-
-    int err;
-    time_t timer;
-    struct tm* tm_info;
-
-    assert(buf);
-    assert(buf_len > 0);
-
-    err = time(&timer);
-    if (err == (time_t)-1)
-        return errno;
-    tm_info = localtime(&timer);
-    if (!tm_info)
-        return EINVAL;
-    err = strftime(buf, buf_len, "%b %d %H:%M:%S", tm_info);
-    if (err == 0)
-        return EINVAL;
-    return 0;
 }
 
 /**

@@ -64,7 +64,6 @@ chmod 755 %{buildroot}/%{_sysconfdir}/cron.daily/blktap-log-cleanup
 %{_libexecdir}/tapdisk
 %{_sysconfdir}/udev/rules.d/blktap.rules
 %{_sysconfdir}/rc.d/init.d/tapback
-%{_sysconfdir}/logrotate.d/tapback-logrotate
 %{_sysconfdir}/logrotate.d/blktap
 %{_sysconfdir}/cron.daily/blktap-log-cleanup
 
