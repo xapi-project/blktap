@@ -17,13 +17,18 @@
 
 import sys, os
 import glob
+import util
 
 DEVBYMPPPATH = "/dev/disk/by-mpp"
 def is_RdacLun(scsi_id):
     path = os.path.join(DEVBYMPPPATH,"%s" % scsi_id)
     mpppath = glob.glob(path)
     if len(mpppath):
-        return True
+        # Support for RDAC LUNs discontinued
+        # Always return False
+        util.SMlog("Found unsupported RDAC LUN at %s" % mpppath,
+                   priority=util.LOG_WARNING)
+        return False
     else:
         return False
 
