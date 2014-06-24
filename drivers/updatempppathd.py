@@ -26,6 +26,7 @@ import XenAPI
 import mpath_dmp
 import mpp_mpathutil
 import gc
+import mpp_luncheck
 
 DEBUG_OUT = False
 DAEMONISE = True
@@ -67,8 +68,7 @@ def UpdatePaths():
 	    for filename in fileList:
                 # extract the SCSI ID from the file name. 
                 scsiid = filename.rsplit("/")[len(filename.rsplit("/")) - 1].split('-')[0]
-                links=glob.glob('/dev/disk/by-mpp/%s' % scsiid)
-                if not (len(links)):
+                if not (mpp_luncheck.is_RdacLun(scsiid)):
                     continue
 	        
 		# Get the cached value for the total and active paths for this SCSI ID
