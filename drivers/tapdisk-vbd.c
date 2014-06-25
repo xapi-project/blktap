@@ -1106,10 +1106,10 @@ tapdisk_vbd_check_state(td_vbd_t *vbd)
 	tapdisk_vbd_produce_rrds(vbd);
 
     /*
-     * FIXME don't ignore return value
+     * TODO don't ignore return value
      */
     list_for_each_entry(blkif, &vbd->rings, entry)
-        tapdisk_xenblkif_show_io_ring(blkif);
+		tapdisk_xenblkif_ring_stats_update(blkif);
 
 	tapdisk_vbd_check_queue_state(vbd);
 

@@ -20,6 +20,8 @@
  * modified.
  */
 
+#include "config.h"
+
 #include "tapback.h"
 #include "xenstore.h"
 #include <xen/io/blkif.h>

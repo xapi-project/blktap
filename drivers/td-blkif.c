@@ -56,26 +56,34 @@ tapdisk_xenblkif_find(const domid_t domid, const int devid)
  * Returns 0 on success, -errno on failure.
  */
 static int
-tapdisk_xenblkif_show_io_ring_destroy(struct td_xenblkif *blkif)
+tapdisk_xenblkif_stats_destroy(struct td_xenblkif *blkif)
 {
-    int err = shm_destroy(&blkif->shm);
-    if (err)
-        goto out;
+    int err;
 
-    if (blkif->shm.path) {
-        char *p = strrchr(blkif->shm.path, '/');
-        *p = '\0';
-        err = rmdir(blkif->shm.path);
-        *p = '/';
-        if (err && errno != ENOENT) {
+    err = shm_destroy(&blkif->xenvbd_stats.io_ring);
+    if (unlikely(err))
+        goto out;
+    free(blkif->xenvbd_stats.io_ring.path);
+    blkif->xenvbd_stats.io_ring.path = NULL;
+
+    err = shm_destroy(&blkif->xenvbd_stats.stats);
+    if (unlikely(err))
+        goto out;
+    free(blkif->xenvbd_stats.stats.path);
+    blkif->xenvbd_stats.stats.path = NULL;
+
+    if (likely(blkif->xenvbd_stats.root)) {
+        err = rmdir(blkif->xenvbd_stats.root);
+        if (unlikely(err && errno != ENOENT)) {
             err = errno;
             EPRINTF("failed to remove %s: %s\n",
-                    blkif->shm.path, strerror(err));
+                    blkif->xenvbd_stats.root, strerror(err));
             goto out;
         }
         err = 0;
-        free(blkif->shm.path);
-        blkif->shm.path = NULL;
+
+        free(blkif->xenvbd_stats.root);
+        blkif->xenvbd_stats.root = NULL;
     }
 out:
     return -err;
@@ -83,78 +91,93 @@ out:
 
 
 /*
- * TODO Ideally we should provide this information throught the RRD. We would
- * have to modify xen-ringwatch accordingly.
+ * TODO provide ring stats in raw format (the same way I/O stats are provided).
+ * xen-ringwatch will have to be modified accordingly.
  */
 static int
-tapdisk_xenblkif_show_io_ring_create(struct td_xenblkif *blkif)
+tapdisk_xenblkif_stats_create(struct td_xenblkif *blkif)
 {
-    int err, len;
-    char *dir = NULL, *_dir = NULL, *_path = NULL;
+    int err = 0, len;
+    char *_path = NULL;
 
-    len = asprintf(&blkif->shm.path, "/dev/shm/vbd3-%d-%d/io_ring~",
+    len = asprintf(&blkif->xenvbd_stats.root, "/dev/shm/vbd3-%d-%d",
             blkif->domid, blkif->devid);
     if (unlikely(len == -1)) {
         err = errno;
-        blkif->shm.path = NULL;
+        blkif->xenvbd_stats.root = NULL;
         goto out;
     }
 
-    _dir = strdup(blkif->shm.path);
-    if (!_dir) {
-        err = errno;
-        goto out;
-    }
-    dir = dirname(_dir);
-	err = mkdir(dir, S_IRUSR | S_IWUSR);
-	if (err) {
+	err = mkdir(blkif->xenvbd_stats.root, S_IRUSR | S_IWUSR);
+	if (unlikely(err)) {
         err = errno;
         if (err != EEXIST) {
-            EPRINTF("failed to create %s: %s\n", dir, strerror(err));
+            EPRINTF("failed to create %s: %s\n",
+                    blkif->xenvbd_stats.root, strerror(err));
     		goto out;
         }
         err = 0;
     }
 
-    blkif->shm.size = PAGE_SIZE;
-    blkif->last = 0;
-
-    err = shm_create(&blkif->shm);
-    if (err) {
-        EPRINTF("failed to create shm ring stats file: %s\n", strerror(err));
+    len = asprintf(&blkif->xenvbd_stats.io_ring.path, "%s/io_ring~",
+            blkif->xenvbd_stats.root);
+    if (unlikely(len == -1)) {
+        err = errno;
+        blkif->xenvbd_stats.io_ring.path = NULL;
         goto out;
     }
+    blkif->xenvbd_stats.io_ring.size = PAGE_SIZE;
+    err = shm_create(&blkif->xenvbd_stats.io_ring);
+    if (unlikely(err)) {
+        err = errno;
+        EPRINTF("failed to create shm ring stats file: %s\n", strerror(err));
+        goto out;
+   }
 
-    err = tapdisk_xenblkif_show_io_ring(blkif);
+    err = asprintf(&blkif->xenvbd_stats.stats.path, "%s/statistics",
+            blkif->xenvbd_stats.root);
+    if (unlikely(err == -1)) {
+        err = errno;
+        blkif->xenvbd_stats.stats.path = NULL;
+        goto out;
+    }
+    blkif->xenvbd_stats.stats.size = PAGE_SIZE;
+    err = shm_create(&blkif->xenvbd_stats.stats);
+    if (unlikely(err))
+        goto out;
+
+    blkif->xenvbd_stats.last = time(NULL);
+
+	blkif->stats.xenvbd = blkif->xenvbd_stats.stats.mem;
+
+    err = tapdisk_xenblkif_ring_stats_update(blkif);
     if (unlikely(err)) {
         EPRINTF("failed to generate shared I/O ring stats: %s\n",
                 strerror(-err));
         goto out;
     }
 
-    _path = strndup(blkif->shm.path, len - 1);
+    _path = strndup(blkif->xenvbd_stats.io_ring.path, len - 1);
     if (unlikely(!_path)) {
         err = errno;
         goto out;
     }
 
-    err = rename(blkif->shm.path, _path);
+    err = rename(blkif->xenvbd_stats.io_ring.path, _path);
     if (unlikely(err)) {
         err = errno;
         goto out;
     }
 
-    free(blkif->shm.path);
-    blkif->shm.path = _path;
+    free(blkif->xenvbd_stats.io_ring.path);
+    blkif->xenvbd_stats.io_ring.path = _path;
     _path = NULL;
-
 out:
-    free(_dir);
     free(_path);
     if (err) {
-        int err2 = tapdisk_xenblkif_show_io_ring_destroy(blkif);
+        int err2 = tapdisk_xenblkif_stats_destroy(blkif);
         if (err2)
-            EPRINTF("failed to clean up failed ring stats file: "
+            EPRINTF("failed to clean up failed stats file: "
                     "%s (error ignored)\n", strerror(-err2));
     }
     return -err;
@@ -183,8 +206,8 @@ tapdisk_xenblkif_destroy(struct td_xenblkif * blkif)
         tapdisk_xenio_ctx_put(blkif->ctx);
     }
 
-    err = tapdisk_xenblkif_show_io_ring_destroy(blkif);
-    if (err) {
+    err = tapdisk_xenblkif_stats_destroy(blkif);
+    if (unlikely(err)) {
         EPRINTF("failed to clean up ring stats file: %s (error ignored)\n",
                 strerror(-err));
         err = 0;
@@ -271,7 +294,11 @@ tapdisk_xenblkif_connect(domid_t domid, int devid, const grant_ref_t * grefs,
     td_blkif->proto = proto;
     td_blkif->dead = false;
 
-    shm_init(&td_blkif->shm);
+    td_blkif->xenvbd_stats.root = NULL;
+    shm_init(&td_blkif->xenvbd_stats.io_ring);
+    shm_init(&td_blkif->xenvbd_stats.stats);
+
+    memset(&td_blkif->stats, 0, sizeof(td_blkif->stats));
 
     INIT_LIST_HEAD(&td_blkif->entry_ctx);
     INIT_LIST_HEAD(&td_blkif->entry);
@@ -362,7 +389,7 @@ tapdisk_xenblkif_connect(domid_t domid, int devid, const grant_ref_t * grefs,
         goto fail;
     }
 
-    err = tapdisk_xenblkif_show_io_ring_create(td_blkif);
+    err = tapdisk_xenblkif_stats_create(td_blkif);
     if (err)
         goto fail;
 
@@ -391,10 +418,10 @@ tapdisk_xenblkif_event_id(const struct td_xenblkif *blkif)
 }
 
 int
-tapdisk_xenblkif_show_io_ring(struct td_xenblkif *blkif)
+tapdisk_xenblkif_ring_stats_update(struct td_xenblkif *blkif)
 {
     time_t t;
-    int err = 0;
+    int err = 0, len;
 	struct blkif_common_back_ring *ring = NULL;
 
     if (!blkif)
@@ -404,28 +431,36 @@ tapdisk_xenblkif_show_io_ring(struct td_xenblkif *blkif)
 	if (!ring->sring)
         return 0;
 
-    ASSERT(blkif->shm.mem);
+    ASSERT(blkif->xenvbd_stats.io_ring.mem);
 
     /*
-     * Update the ring stats once every thirty seconds.
+     * Update the ring stats once every five seconds.
      */
     t = time(NULL);
-	if (t - blkif->last < 30)
+	if (t - blkif->xenvbd_stats.last < 5)
 		return 0;
-	blkif->last = t;
+	blkif->xenvbd_stats.last = t;
 
-    err = snprintf(blkif->shm.mem, blkif->shm.size,
+    len = snprintf(blkif->xenvbd_stats.io_ring.mem,
+            blkif->xenvbd_stats.io_ring.size,
             "nr_ents %u\n"
             "req prod %u cons %d event %u\n"
             "rsp prod %u pvt %d event %u\n",
             ring->nr_ents,
             ring->sring->req_prod, ring->req_cons, ring->sring->req_event,
             ring->sring->rsp_prod, ring->rsp_prod_pvt, ring->sring->rsp_event);
-    if (err < 0)
+    if (unlikely(len < 0))
         err = errno;
-    else if (err >= blkif->shm.size)
+    else if (unlikely(len >= blkif->xenvbd_stats.io_ring.size))
         err = ENOBUFS;
-    else
-        err = 0;
+    else {
+        err = ftruncate(blkif->xenvbd_stats.io_ring.fd, len);
+        if (unlikely(err)) {
+            err = errno;
+            EPRINTF("failed to truncate %s to %d: %s\n",
+                    blkif->xenvbd_stats.io_ring.path, len, strerror(err));
+        }
+    }
+
     return -err;
 }

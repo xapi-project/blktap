@@ -37,6 +37,7 @@
 #include <syslog.h>
 #include <time.h>
 
+#include "config.h"
 #include "blktap3.h"
 #include "stdio.h" /* TODO tap-ctl.h needs to include stdio.h */
 #include "tap-ctl.h"

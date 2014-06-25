@@ -349,6 +349,7 @@ out:
     return err;
 }
 
+
 /**
  * Completes a request. If this is the last pending request of a dead block
  * interface, the block interface is destroyed, the caller must not access it
@@ -364,19 +365,33 @@ tapdisk_xenblkif_complete_request(struct td_xenblkif * const blkif,
         struct td_xenblkif_req* tapreq, int err, const int final)
 {
 	int _err;
+    long long *max, *sum, *cnt = NULL;
 
     ASSERT(blkif);
     ASSERT(tapreq);
 
-    if (likely(!blkif->dead)) {
-        if (BLKIF_OP_READ == tapreq->msg.operation && !err) {
-            _err = guest_copy2(blkif, tapreq);
-            if (_err) {
-                err = _err;
-                RING_ERR(blkif, "req %lu: failed to copy from/to guest: %s\n",
-                        tapreq->msg.id, strerror(-err));
-            }
-        }
+	if (likely(!blkif->dead)) {
+		if (BLKIF_OP_READ == tapreq->msg.operation) {
+			/*
+			 * FIXME stats should be collected after grant-copy for better
+			 * accuracy
+			 */
+			cnt = &blkif->stats.xenvbd->st_rd_cnt;
+			sum = &blkif->stats.xenvbd->st_rd_sum_usecs;
+			max = &blkif->stats.xenvbd->st_rd_max_usecs;
+			if (!err) {
+				_err = guest_copy2(blkif, tapreq);
+				if (_err) {
+					err = _err;
+					RING_ERR(blkif, "req %lu: failed to copy from/to guest: "
+							"%s\n", tapreq->msg.id, strerror(-err));
+				}
+			}
+		} else {
+			cnt = &blkif->stats.xenvbd->st_wr_cnt;
+			sum = &blkif->stats.xenvbd->st_wr_sum_usecs;
+			max = &blkif->stats.xenvbd->st_wr_max_usecs;
+		}
 
         if (tapreq->msg.operation == BLKIF_OP_WRITE_BARRIER)
             _err = BLKIF_RSP_EOPNOTSUPP;
@@ -385,8 +400,21 @@ tapdisk_xenblkif_complete_request(struct td_xenblkif * const blkif,
         else
             _err = BLKIF_RSP_OKAY;
 
-        xenio_blkif_put_response(blkif, tapreq, _err, final);
-    }
+		if (likely(cnt)) {
+			struct timeval now;
+			long long interval;
+			gettimeofday(&now, NULL);
+			interval = timeval_to_us(&now) - timeval_to_us(&tapreq->vreq.ts);
+
+			if (interval > *max)
+				*max = interval;
+
+			*sum += interval;
+			*cnt += 1;
+		}
+
+		xenio_blkif_put_response(blkif, tapreq, _err, final);
+	}
 
     tapdisk_xenblkif_free_request(blkif, tapreq);
 
@@ -453,6 +481,7 @@ tapdisk_xenblkif_make_vbd_request(struct td_xenblkif * const blkif,
     struct td_iovec *iov;
     void *page, *next, *last;
     int err = 0;
+    unsigned nr_sect = 0;
 
     ASSERT(tapreq);
 
@@ -462,10 +491,12 @@ tapdisk_xenblkif_make_vbd_request(struct td_xenblkif * const blkif,
 
     switch (tapreq->msg.operation) {
     case BLKIF_OP_READ:
+        blkif->stats.xenvbd->st_rd_req++;
         tapreq->prot = PROT_WRITE;
         vreq->op = TD_OP_READ;
         break;
     case BLKIF_OP_WRITE:
+        blkif->stats.xenvbd->st_wr_req++;
         tapreq->prot = PROT_READ;
         vreq->op = TD_OP_WRITE;
         break;
@@ -538,6 +569,7 @@ tapdisk_xenblkif_make_vbd_request(struct td_xenblkif * const blkif,
 
         last = iov->base + (iov->secs << SECTOR_SHIFT);
         page += XC_PAGE_SIZE;
+        nr_sect += size;
     }
 
     vreq->iov = tapreq->iov;
@@ -551,7 +583,9 @@ tapdisk_xenblkif_make_vbd_request(struct td_xenblkif * const blkif,
                     tapreq->msg.id, strerror(-err));
             goto out;
         }
-    }
+        blkif->stats.xenvbd->st_wr_sect += nr_sect;
+    } else
+        blkif->stats.xenvbd->st_rd_sect += nr_sect;
 
     /*
      * TODO Isn't this kind of expensive to do for each requests? Why does

@@ -67,6 +67,8 @@ AC_CHECK_FUNCS([eventfd])
 
 # AC_CONFIG_MACRO_DIR([m4])
 AC_CONFIG_HEADERS([config.h])
+AC_DEFINE(_BLKTAP, 1,
+		  Indicates whether this is an internal or external compilation.)
 AC_CONFIG_FILES([
 Makefile
 lvm/Makefile

@@ -125,8 +125,27 @@ struct td_xenblkif {
      */
     struct td_xenblkif_stats stats;
 
-    struct shm shm;
-    time_t last;
+    struct {
+        /**
+         * Root directory of the stats.
+         */
+        char *root;
+
+        /**
+         * Xenbus ring
+         */
+        struct shm io_ring;
+
+        /**
+         * blkback-style stats. We keep all seven of them in a single file
+         * because keeping each one in a separate file requires an entire
+         * page because of mmap(2). The order is: ds_req, f_req, oo_req,
+         * rd_req, rd_sect, wr_req, and wr_sect.
+         */
+        struct shm stats;
+
+        time_t last;
+    } xenvbd_stats;
 
     /**
      * Request buffer cache.
@@ -206,6 +225,10 @@ tapdisk_xenblkif_find(const domid_t domid, const int devid);
 event_id_t
 tapdisk_xenblkif_event_id(const struct td_xenblkif *blkif);
 
+/**
+ * Updates ring stats.
+ */
 int
-tapdisk_xenblkif_show_io_ring(struct td_xenblkif *blkif);
+tapdisk_xenblkif_ring_stats_update(struct td_xenblkif *blkif);
+
 #endif /* __TD_BLKIF_H__ */

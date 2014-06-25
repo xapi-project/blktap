@@ -70,6 +70,8 @@ shm_init(struct shm *shm);
  * completion of this function, the caller can use the shm->mem to write up to
  * shm.size bytes.
  *
+ * Returns 0 in success, +errno on failure.
+ *
  * XXX NB if the file is externally written to, the file size will change so
  * the caller must cope with it (e.g. manually call ftruncate(2)).
  */
@@ -79,8 +81,12 @@ shm_create(struct shm *shm);
 /**
  * Destroys the file in /dev/shm. The caller is responsible for deallocating
  * the path member in struct shm.
+ *
+ * Returns 0 in success, +errno on failure.
  */
 int
 shm_destroy(struct shm *shm);
+
+inline long long timeval_to_us(struct timeval *tv);
 
 #endif
