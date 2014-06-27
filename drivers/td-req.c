@@ -94,7 +94,8 @@ td_xenblkif_bufcache_free(struct td_xenblkif * const blkif)
     ASSERT(blkif);
 
     while (blkif->n_reqs_bufcache_free > 0){
-        free(blkif->reqs_bufcache[--blkif->n_reqs_bufcache_free]);
+        munmap(blkif->reqs_bufcache[--blkif->n_reqs_bufcache_free],
+               BLKIF_MAX_SEGMENTS_PER_REQUEST << XC_PAGE_SHIFT);
     }
 
     td_xenblkif_bufcache_evt_unreg(blkif);
@@ -108,15 +109,14 @@ td_xenblkif_bufcache_free(struct td_xenblkif * const blkif)
 static void *
 td_xenblkif_bufcache_get(struct td_xenblkif * const blkif)
 {
-    int err;
     void *buf;
 
     ASSERT(blkif);
 
     if (!blkif->n_reqs_bufcache_free) {
-        err = posix_memalign(&buf, XC_PAGE_SIZE,
-                BLKIF_MAX_SEGMENTS_PER_REQUEST << XC_PAGE_SHIFT);
-        if (unlikely(err))
+        buf = mmap(NULL, BLKIF_MAX_SEGMENTS_PER_REQUEST << XC_PAGE_SHIFT,
+                   PROT_READ | PROT_WRITE, MAP_SHARED | MAP_ANONYMOUS, -1, 0);
+        if (unlikely(buf == MAP_FAILED))
             buf = NULL;
     } else
         buf = blkif->reqs_bufcache[--blkif->n_reqs_bufcache_free];
