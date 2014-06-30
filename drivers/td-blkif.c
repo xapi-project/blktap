@@ -303,8 +303,8 @@ tapdisk_xenblkif_connect(domid_t domid, int devid, const grant_ref_t * grefs,
             PROT_READ | PROT_WRITE);
     if (!sring) {
         err = -errno;
-        RING_ERR(td_blkif, "failed to map domain's %d grant references: %s\n",
-                domid, strerror(-err));
+        RING_ERR(td_blkif, "failed to map domain's grant references: %s\n",
+                strerror(-err));
         goto fail;
     }
 

@@ -136,15 +136,13 @@ struct td_xenblkif {
     event_id_t reqs_bufcache_evtid;
 };
 
-
-#define RING_DEBUG(blkif, fmt, args...) \
-    DPRINTF("%d/%d ring=%p: "fmt, (blkif)->domid, (blkif)->devid, (blkif), \
+#define RING_DEBUG(blkif, fmt, args...)                                     \
+    DPRINTF("%d/%d, ring=%p: "fmt, (blkif)->domid, (blkif)->devid, (blkif), \
         ##args);
 
-#define RING_ERR(blkif, fmt, args...) \
-    EPRINTF("%d/%d ring=%p: "fmt, (blkif)->domid, (blkif)->devid, (blkif), \
+#define RING_ERR(blkif, fmt, args...)                                       \
+    EPRINTF("%d/%d, ring=%p: "fmt, (blkif)->domid, (blkif)->devid, (blkif), \
         ##args);
-
 
 /* TODO rename from xenio */
 #define tapdisk_xenio_for_each_ctx(_ctx) \
