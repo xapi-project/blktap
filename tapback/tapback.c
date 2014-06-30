@@ -485,7 +485,7 @@ tapback_install_sighdl(void)
     int err;
     struct sigaction sigact;
 	sigset_t set;
-    static const int signals[] = {SIGTERM, SIGINT};
+    static const int signals[] = {SIGTERM, SIGINT, SIGCHLD};
     unsigned i;
 
     err = sigfillset(&set);
@@ -513,7 +513,7 @@ tapback_install_sighdl(void)
 	}
 
     sigact.sa_sigaction = &tapback_signal_handler;
-    sigact.sa_flags = SA_SIGINFO;
+    sigact.sa_flags = SA_SIGINFO | SA_NOCLDSTOP | SA_NOCLDWAIT;
 
     for (i = 0; i < ARRAY_SIZE(signals); i++) {
         err = sigaction(signals[i], &sigact, NULL);
