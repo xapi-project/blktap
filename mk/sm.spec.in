@@ -252,10 +252,11 @@ This package adds a new rawhba SR type. This SR type allows utilization of
 Fiber Channel raw LUNs as separate VDIs (LUN per VDI)
 
 %files rawhba
-/opt/xensource/sm/RawHBASR
 /opt/xensource/sm/RawHBASR.py
+%exclude /opt/xensource/sm/RawHBASR
 /opt/xensource/sm/RawHBASR.pyc
 /opt/xensource/sm/RawHBASR.pyo
 /opt/xensource/sm/B_util.py
 /opt/xensource/sm/B_util.pyc
 /opt/xensource/sm/B_util.pyo
+/opt/xensource/sm/enable-borehamwood
