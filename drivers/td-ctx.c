@@ -261,49 +261,41 @@ xenio_blkif_get_requests(struct td_xenblkif * const blkif,
     return n;
 }
 
-/**
- * Callback executed when there is a request descriptor in the ring. Copies as
- * many request descriptors as possible (limited by local buffer space) to the
- * td_blkif's local request buffer and queues them to the tapdisk queue.
- */
-static inline void
-tapdisk_xenio_ctx_ring_event(event_id_t id __attribute__((unused)),
-        char mode __attribute__((unused)), void *private)
+void
+tapdisk_xenio_ctx_process_ring(struct td_xenblkif *blkif,
+		               struct td_xenio_ctx *ctx)
 {
-    struct td_xenio_ctx *ctx = private;
-    struct td_xenblkif *blkif = NULL;
     int n_reqs;
     int final = 0;
     int start;
     blkif_request_t **reqs;
-
-    ASSERT(ctx);
-
-    blkif = xenio_pending_blkif(ctx);
-    if (!blkif) {
-        /* TODO log error */
-        return;
-    }
+    int limit;
 
     start = blkif->n_reqs_free;
-    blkif->stats.kicks.in++;
 
     /*
      * In each iteration, copy as many request descriptors from the shared ring
-     * that can fit in the td_blkif's buffer.
+     * that can fit within the constraints.
+     * If there's memory available, use as many requests as available.
+     * If in low memory mode, don't copy any if there's some in flight.
+     * Otherwise, only copy one.
      */
+    if (tapdisk_server_mem_mode() == LOW_MEMORY_MODE)
+	    limit = blkif->ring_size != blkif->n_reqs_free ? 0 : 1;
+    else
+	    limit = blkif->n_reqs_free;
     do {
         reqs = &blkif->reqs_free[blkif->ring_size - blkif->n_reqs_free];
 
         ASSERT(reqs);
 
-        n_reqs = xenio_blkif_get_requests(blkif, reqs, blkif->n_reqs_free,
-                final);
+        n_reqs = xenio_blkif_get_requests(blkif, reqs, limit, final);
         ASSERT(n_reqs >= 0);
         if (!n_reqs)
             break;
 
         blkif->n_reqs_free -= n_reqs;
+	limit -= n_reqs;
         final = 1;
 
     } while (1);
@@ -317,6 +309,31 @@ tapdisk_xenio_ctx_ring_event(event_id_t id __attribute__((unused)),
     blkif->stats.reqs.in += n_reqs;
     reqs = &blkif->reqs_free[blkif->ring_size - start];
     tapdisk_xenblkif_queue_requests(blkif, reqs, n_reqs);
+}
+
+/**
+ * Callback executed when there is a request descriptor in the ring. Copies as
+ * many request descriptors as possible (limited by local buffer space) to the
+ * td_blkif's local request buffer and queues them to the tapdisk queue.
+ */
+static inline void
+tapdisk_xenio_ctx_ring_event(event_id_t id __attribute__((unused)),
+        char mode __attribute__((unused)), void *private)
+{
+    struct td_xenio_ctx *ctx = private;
+    struct td_xenblkif *blkif = NULL;
+
+    ASSERT(ctx);
+
+    blkif = xenio_pending_blkif(ctx);
+    if (!blkif) {
+        /* TODO log error */
+        return;
+    }
+
+    blkif->stats.kicks.in++;
+
+    tapdisk_xenio_ctx_process_ring(blkif, ctx);
 }
 
 /* NB. may be NULL, but then the image must be bouncing I/O */
