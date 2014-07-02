@@ -207,11 +207,8 @@ __xenio_blkif_get_requests(struct td_xenblkif * const blkif,
     rp = ring->sring->req_prod;
     xen_rmb(); /* TODO why? */
 
-    for (rc = ring->req_cons, n = 0; rc != rp; rc++) {
+    for (rc = ring->req_cons, n = 0; rc != rp && n < count; rc++, n++) {
         blkif_request_t *dst = reqs[n];
-
-        if (n++ >= count)
-            break;
 
         xenio_blkif_get_request(blkif, dst, rc);
     }
