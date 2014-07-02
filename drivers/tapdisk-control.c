@@ -827,8 +827,8 @@ tapdisk_control_close_image(struct tapdisk_ctl_conn *conn,
 	}
 
     if (vbd->sring)
-        DPRINTF("implicitly disconnecting domid=%d, devid=%d\n",
-                vbd->sring->domid, vbd->sring->devid);
+        DPRINTF("implicitly disconnecting ring %p domid=%d, devid=%d\n",
+                vbd->sring, vbd->sring->domid, vbd->sring->devid);
 
 	do {
 		if (vbd->sring) {
@@ -1106,6 +1106,9 @@ tapdisk_control_xenblkif_connect(
 
     err = tapdisk_xenblkif_connect(blkif->domid, blkif->devid, blkif->gref,
             blkif->order, blkif->port, blkif->proto, pool, vbd);
+
+    DPRINTF("ring %p connected\n", vbd->sring);
+
 out:
 	response->cookie = request->cookie;
     if (!err)

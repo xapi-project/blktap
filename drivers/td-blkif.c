@@ -34,8 +34,6 @@
 #include "td-ctx.h"
 #include "td-req.h"
 
-#define ERROR(_f, _a...)        tlog_syslog(TLOG_WARN, "td-blkif: " _f, ##_a)
-
 struct td_xenblkif *
 tapdisk_xenblkif_find(const domid_t domid, const int devid)
 {
@@ -207,11 +205,11 @@ tapdisk_xenblkif_disconnect(const domid_t domid, const int devid)
         return -ENODEV;
 
     if (blkif->n_reqs_free != blkif->ring_size) {
-        DPRINTF("disconnecting from the ring with %d pending requests\n",
+        RING_DEBUG(blkif, "disconnect from ring with %d pending requests\n",
                 blkif->ring_size - blkif->n_reqs_free);
 		if (td_flag_test(blkif->vbd->state, TD_VBD_PAUSED))
-			EPRINTF("disconnecting from the ring with %d pending requests "
-                    "and the VBD is paused\n",
+			RING_ERR(blkif, "disconnect from ring with %d pending requests "
+                    "and the VBD paused\n",
                     blkif->ring_size - blkif->n_reqs_free);
         list_add_tail(&blkif->entry_dead, &blkif->vbd->dead_rings);
         blkif->vbd->sring = NULL;
@@ -283,7 +281,7 @@ tapdisk_xenblkif_connect(domid_t domid, int devid, const grant_ref_t * grefs,
      */
     td_blkif->ring_n_pages = 1 << order;
     if (td_blkif->ring_n_pages > ARRAY_SIZE(td_blkif->ring_ref)) {
-        ERROR("too many pages (%u), max %zu\n",
+        RING_ERR(td_blkif, "too many pages (%u), max %zu\n",
                 td_blkif->ring_n_pages, ARRAY_SIZE(td_blkif->ring_ref));
         err = -EINVAL;
         goto fail;
@@ -305,7 +303,7 @@ tapdisk_xenblkif_connect(domid_t domid, int devid, const grant_ref_t * grefs,
             PROT_READ | PROT_WRITE);
     if (!sring) {
         err = -errno;
-        ERROR("failed to map domain's %d grant references: %s\n",
+        RING_ERR(td_blkif, "failed to map domain's %d grant references: %s\n",
                 domid, strerror(-err));
         goto fail;
     }
@@ -340,7 +338,7 @@ tapdisk_xenblkif_connect(domid_t domid, int devid, const grant_ref_t * grefs,
                 break;
             }
         default:
-            ERROR("unsupported protocol 0x%x\n", td_blkif->proto);
+            RING_ERR(td_blkif, "unsupported protocol 0x%x\n", td_blkif->proto);
             err = -EPROTONOSUPPORT;
             goto fail;
     }
@@ -353,8 +351,8 @@ tapdisk_xenblkif_connect(domid_t domid, int devid, const grant_ref_t * grefs,
             td_blkif->domid, port);
     if (td_blkif->port == -1) {
         err = -errno;
-        ERROR("failed to bind to event channel port %d of domain "
-                "%d: %s\n", port, td_blkif->domid, strerror(-err));
+        RING_ERR(td_blkif, "failed to bind to event channel port %d: %s\n",
+                port, strerror(-err));
         goto fail;
     }
 
