@@ -40,10 +40,13 @@
 #define ERR(blkif, fmt, args...) \
     EPRINTF("%d/%d: "fmt, (blkif)->domid, (blkif)->devid, ##args);
 
-#define TD_REQS_BUFCACHE_EXPIRE 3
+#define TD_REQS_BUFCACHE_EXPIRE 3 // time in seconds
+#define TD_REQS_BUFCACHE_MIN    1 // buffers to always keep in the cache
 
 static void
 td_xenblkif_bufcache_free(struct td_xenblkif * const blkif);
+static inline void
+td_xenblkif_bufcache_evt_unreg(struct td_xenblkif * const blkif);
 
 static void
 td_xenblkif_bufcache_event(event_id_t id, char mode, void *private)
@@ -51,6 +54,8 @@ td_xenblkif_bufcache_event(event_id_t id, char mode, void *private)
     struct td_xenblkif *blkif = private;
 
     td_xenblkif_bufcache_free(blkif);
+
+    td_xenblkif_bufcache_evt_unreg(blkif);
 }
 
 /**
@@ -93,12 +98,10 @@ td_xenblkif_bufcache_free(struct td_xenblkif * const blkif)
 {
     ASSERT(blkif);
 
-    while (blkif->n_reqs_bufcache_free > 0){
+    while (blkif->n_reqs_bufcache_free > TD_REQS_BUFCACHE_MIN){
         munmap(blkif->reqs_bufcache[--blkif->n_reqs_bufcache_free],
                BLKIF_MAX_SEGMENTS_PER_REQUEST << XC_PAGE_SHIFT);
     }
-
-    td_xenblkif_bufcache_evt_unreg(blkif);
 }
 
 /**
@@ -137,9 +140,14 @@ td_xenblkif_bufcache_put(struct td_xenblkif * const blkif, void *buf)
 
     blkif->reqs_bufcache[blkif->n_reqs_bufcache_free++] = buf;
 
-    // We only set the expire event when no requests are inflight
-    if (blkif->n_reqs_free == blkif->ring_size-1)
-        td_xenblkif_bufcache_evt_reg(blkif);
+    /* If we're in low memory mode, prune the bufcache immediately. */
+    if (tapdisk_server_mem_mode() == LOW_MEMORY_MODE) {
+        td_xenblkif_bufcache_free(blkif);
+    } else {
+        // We only set the expire event when no requests are inflight
+        if (blkif->n_reqs_free == blkif->ring_size)
+            td_xenblkif_bufcache_evt_reg(blkif);
+    }
 }
 
 /**
@@ -156,9 +164,9 @@ tapdisk_xenblkif_free_request(struct td_xenblkif * const blkif,
     ASSERT(tapreq);
     ASSERT(blkif->n_reqs_free <= blkif->ring_size);
 
-    td_xenblkif_bufcache_put(blkif, tapreq->vma);
-
     blkif->reqs_free[blkif->ring_size - (++blkif->n_reqs_free)] = &tapreq->msg;
+
+    td_xenblkif_bufcache_put(blkif, tapreq->vma);
 }
 
 /**
@@ -376,6 +384,9 @@ tapdisk_xenblkif_complete_request(struct td_xenblkif * const blkif,
     blkif->stats.reqs.out++;
     if (final)
         blkif->stats.kicks.out++;
+
+    /* Poll the ring in case we left requests in it due to lack of memory. */
+    tapdisk_xenio_ctx_process_ring(blkif, blkif->ctx);
 }
 
 /**
@@ -631,6 +642,7 @@ tapdisk_xenblkif_reqs_free(struct td_xenblkif * const blkif)
 int
 tapdisk_xenblkif_reqs_init(struct td_xenblkif *td_blkif)
 {
+    void *buf;
     int i = 0;
     int err = 0;
 
@@ -653,6 +665,11 @@ tapdisk_xenblkif_reqs_init(struct td_xenblkif *td_blkif)
         goto fail;
     }
 
+    td_blkif->n_reqs_free = 0;
+    for (i = 0; i < td_blkif->ring_size; i++)
+        tapdisk_xenblkif_free_request(td_blkif, &td_blkif->reqs[i]);
+
+    // Allocate the buffer cache
     td_blkif->reqs_bufcache = malloc(sizeof(void*) * td_blkif->ring_size);
     if (!td_blkif->reqs_bufcache) {
         err = -errno;
@@ -661,9 +678,10 @@ tapdisk_xenblkif_reqs_init(struct td_xenblkif *td_blkif)
     td_blkif->n_reqs_bufcache_free = 0;
     td_blkif->reqs_bufcache_evtid = 0;
 
-    td_blkif->n_reqs_free = 0;
-    for (i = 0; i < td_blkif->ring_size; i++)
-        tapdisk_xenblkif_free_request(td_blkif, &td_blkif->reqs[i]);
+    // Populate cache with one buffer
+    buf = td_xenblkif_bufcache_get(td_blkif);
+    td_xenblkif_bufcache_put(td_blkif, buf);
+    td_xenblkif_bufcache_evt_unreg(td_blkif);
 
     return 0;
 

@@ -86,6 +86,13 @@ void
 tapdisk_xenio_ctx_put(struct td_xenio_ctx * ctx);
 
 /**
+ * Process requests on the ring, if any.
+ */
+void
+tapdisk_xenio_ctx_process_ring(struct td_xenblkif *blkif,
+		               struct td_xenio_ctx *ctx);
+
+/**
  * List of contexts.
  */
 extern struct list_head _td_xenio_ctxs;
