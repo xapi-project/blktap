@@ -761,4 +761,11 @@
                 <description>OCFS filesystem creation error</description>
                 <value>452</value>
         </code>
+
+        <code>
+            <name>TapdiskFailed</name>
+            <description>tapdisk experienced an error</description>
+            <value>453</value>
+        </code>
+
 </SM-errorcodes>
