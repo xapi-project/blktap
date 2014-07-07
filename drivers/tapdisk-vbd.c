@@ -1724,3 +1724,10 @@ tapdisk_vbd_stats(td_vbd_t *vbd, td_stats_t *st)
 
 	tapdisk_stats_leave(st, '}');
 }
+
+
+bool inline
+tapdisk_vbd_contains_dead_rings(td_vbd_t * vbd)
+{
+    return !list_empty(&vbd->dead_rings);
+}

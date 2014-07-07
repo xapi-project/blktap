@@ -235,4 +235,8 @@ void tapdisk_vbd_debug(td_vbd_t *);
 int tapdisk_vbd_start_nbdserver(td_vbd_t *);
 void tapdisk_vbd_stats(td_vbd_t *, td_stats_t *);
 
+/**
+ * Tells whether the VBD contains at least one dead ring.
+ */
+bool inline tapdisk_vbd_contains_dead_rings(td_vbd_t * vbd);
 #endif

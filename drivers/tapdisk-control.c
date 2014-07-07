@@ -844,6 +844,14 @@ tapdisk_control_close_image(struct tapdisk_ctl_conn *conn,
 		}
 	} while (conn->fd >= 0);
 
+    /*
+     * Wait for requests against dead rings to complete, otherwise, if we
+     * proceed with tearing down the VBD, we will free memory that will later
+     * be accessed by these requests, and this will lead to a crash.
+     */
+    while (unlikely(tapdisk_vbd_contains_dead_rings(vbd)))
+            tapdisk_server_iterate();
+
 	if (!err) {
 		do {
 			err = tapdisk_blktap_remove_device(vbd->tap);
