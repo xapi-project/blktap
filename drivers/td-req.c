@@ -368,7 +368,7 @@ tapdisk_xenblkif_complete_request(struct td_xenblkif * const blkif,
     ASSERT(blkif);
     ASSERT(tapreq);
 
-    if (likely(!tapdisk_xenblkif_is_dead(blkif))) {
+    if (likely(!blkif->dead)) {
         if (BLKIF_OP_READ == tapreq->msg.operation && !err) {
             _err = guest_copy2(blkif, tapreq);
             if (_err) {
@@ -404,7 +404,7 @@ tapdisk_xenblkif_complete_request(struct td_xenblkif * const blkif,
     /*
      * Last request of a dead ring completes, destroy the ring.
      */
-    if (unlikely(tapdisk_xenblkif_is_dead(blkif)) &&
+    if (unlikely(blkif->dead) &&
             blkif->ring_size  == blkif->n_reqs_free) {
         RING_DEBUG(blkif, "destroying dead ring\n");
         tapdisk_xenblkif_destroy(blkif);

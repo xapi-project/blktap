@@ -71,9 +71,9 @@ struct td_vbd_handle {
 	td_uuid_t                   uuid;
 
     /**
-     * shared ring
+     * shared rings
      */
-    struct td_xenblkif         *sring;
+    struct list_head           rings;
 
     /**
      * List of rings that contain pending requests but a disconnection was

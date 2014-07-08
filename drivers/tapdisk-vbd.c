@@ -93,6 +93,7 @@ tapdisk_vbd_create(uint16_t uuid)
 	INIT_LIST_HEAD(&vbd->failed_requests);
 	INIT_LIST_HEAD(&vbd->completed_requests);
 	INIT_LIST_HEAD(&vbd->next);
+    INIT_LIST_HEAD(&vbd->rings);
     INIT_LIST_HEAD(&vbd->dead_rings);
 	tapdisk_vbd_mark_progress(vbd);
 
@@ -846,6 +847,7 @@ int
 tapdisk_vbd_pause(td_vbd_t *vbd)
 {
 	int err;
+    struct td_xenblkif *blkif;
 
 	INFO("pause requested\n");
 
@@ -854,8 +856,8 @@ tapdisk_vbd_pause(td_vbd_t *vbd)
 	if (vbd->nbdserver)
 		tapdisk_nbdserver_pause(vbd->nbdserver);
 
-	if (vbd->sring)
-		tapdisk_server_mask_event(tapdisk_xenblkif_event_id(vbd->sring), 1);
+    list_for_each_entry(blkif, &vbd->rings, entry)
+		tapdisk_server_mask_event(tapdisk_xenblkif_event_id(blkif), 1);
 
 	err = tapdisk_vbd_quiesce_queue(vbd);
 	if (err)
@@ -878,6 +880,7 @@ int
 tapdisk_vbd_resume(td_vbd_t *vbd, const char *name)
 {
 	int i, err;
+    struct td_xenblkif *blkif;
 
 	DBG(TLOG_DBG, "resume requested\n");
 
@@ -928,8 +931,9 @@ resume_failed:
 	if (vbd->nbdserver)
 		tapdisk_nbdserver_unpause(vbd->nbdserver);
 
-	if (vbd->sring)
-		tapdisk_server_mask_event(tapdisk_xenblkif_event_id(vbd->sring), 0);
+    list_for_each_entry(blkif, &vbd->rings, entry)
+		tapdisk_server_mask_event(tapdisk_xenblkif_event_id(blkif), 0);
+
 
 	DBG(TLOG_DBG, "state checked\n");
 
@@ -1097,13 +1101,15 @@ tapdisk_vbd_produce_rrds(td_vbd_t *vbd) {
 void
 tapdisk_vbd_check_state(td_vbd_t *vbd)
 {
+    struct td_xenblkif *blkif;
 
 	tapdisk_vbd_produce_rrds(vbd);
 
     /*
      * FIXME don't ignore return value
      */
-    tapdisk_xenblkif_show_io_ring(vbd->sring);
+    list_for_each_entry(blkif, &vbd->rings, entry)
+        tapdisk_xenblkif_show_io_ring(blkif);
 
 	tapdisk_vbd_check_queue_state(vbd);
 
@@ -1688,6 +1694,7 @@ void
 tapdisk_vbd_stats(td_vbd_t *vbd, td_stats_t *st)
 {
 	td_image_t *image, *next;
+    struct td_xenblkif *blkif;
 
 	tapdisk_stats_enter(st, '{');
 	tapdisk_stats_field(st, "name", "s", vbd->name);
@@ -1708,11 +1715,15 @@ tapdisk_vbd_stats(td_vbd_t *vbd, td_stats_t *st)
 		tapdisk_stats_leave(st, '}');
 	}
 
-	if (vbd->sring) {
-		tapdisk_stats_field(st, "xenbus", "{");
-		tapdisk_xenblkif_stats(vbd->sring, st);
-		tapdisk_stats_leave(st, '}');
-	}
+    /*
+     * FIXME check the format of this
+     */
+    if (!list_empty(&vbd->rings)) {
+	    tapdisk_stats_field(st, "xenbus", "{");
+        list_for_each_entry(blkif, &vbd->rings, entry)
+		    tapdisk_xenblkif_stats(blkif, st);
+    	tapdisk_stats_leave(st, '}');
+    }
 
 	tapdisk_stats_field(st,
 			"FIXME_enospc_redirect_count",

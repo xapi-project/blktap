@@ -44,7 +44,7 @@ tapdisk_xenblkif_find(const domid_t domid, const int devid)
         tapdisk_xenio_ctx_find_blkif(ctx, blkif,
                                      blkif->domid == domid &&
                                      blkif->devid == devid &&
-                                     blkif->vbd->sring == blkif);
+                                     !blkif->dead);
         if (blkif)
             return blkif;
     }
@@ -180,7 +180,7 @@ tapdisk_xenblkif_destroy(struct td_xenblkif * blkif)
                     blkif->ring_n_pages);
 
 		list_del(&blkif->entry_ctx);
-        list_del(&blkif->entry_dead);
+        list_del(&blkif->entry);
         tapdisk_xenio_ctx_put(blkif->ctx);
     }
 
@@ -211,8 +211,8 @@ tapdisk_xenblkif_disconnect(const domid_t domid, const int devid)
 			RING_ERR(blkif, "disconnect from ring with %d pending requests "
                     "and the VBD paused\n",
                     blkif->ring_size - blkif->n_reqs_free);
-        list_add_tail(&blkif->entry_dead, &blkif->vbd->dead_rings);
-        blkif->vbd->sring = NULL;
+        list_move(&blkif->entry, &blkif->vbd->dead_rings);
+        blkif->dead = true;
         if (blkif->ctx && blkif->port >= 0) {
             xc_evtchn_unbind(blkif->ctx->xce_handle, blkif->port);
             blkif->port = -1;
@@ -222,11 +222,9 @@ tapdisk_xenblkif_disconnect(const domid_t domid, const int devid)
          * in tapdisk? IIUC if we don't unmap it we'll get errors during grant
          * copy.
          */
-	} else {
-        blkif->vbd->sring = NULL;
-        tapdisk_xenblkif_destroy(blkif);
-    }
-    return 0;
+        return 0;
+	} else
+        return tapdisk_xenblkif_destroy(blkif);
 }
 
 int
@@ -270,11 +268,12 @@ tapdisk_xenblkif_connect(domid_t domid, int devid, const grant_ref_t * grefs,
     td_blkif->vbd = vbd;
     td_blkif->ctx = td_ctx;
     td_blkif->proto = proto;
+    td_blkif->dead = false;
 
     shm_init(&td_blkif->shm);
 
     INIT_LIST_HEAD(&td_blkif->entry_ctx);
-    INIT_LIST_HEAD(&td_blkif->entry_dead);
+    INIT_LIST_HEAD(&td_blkif->entry);
 
     /*
      * Create the shared ring.
@@ -366,9 +365,10 @@ tapdisk_xenblkif_connect(domid_t domid, int devid, const grant_ref_t * grefs,
     if (err)
         goto fail;
 
-    vbd->sring = td_blkif;
-
+    list_add_tail(&td_blkif->entry, &vbd->rings);
 	list_add_tail(&td_blkif->entry_ctx, &td_ctx->blkifs);
+
+    DPRINTF("ring %p connected\n", td_blkif);
 
     return 0;
 
@@ -427,13 +427,4 @@ tapdisk_xenblkif_show_io_ring(struct td_xenblkif *blkif)
     else
         err = 0;
     return -err;
-}
-
-bool
-tapdisk_xenblkif_is_dead(const struct td_xenblkif * const blkif)
-{
-    ASSERT(blkif);
-    ASSERT(blkif->vbd);
-
-    return blkif != blkif->vbd->sring ? true : false;
 }
