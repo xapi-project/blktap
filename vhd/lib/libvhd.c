@@ -2517,8 +2517,6 @@ vhd_open(vhd_context_t *ctx, const char *file, int flags)
 		return err;
 
 	oflags = O_LARGEFILE;
-	if (!(flags & VHD_OPEN_CACHED))
-		oflags |= O_DIRECT;
 	if (flags & VHD_OPEN_RDONLY)
 		oflags |= O_RDONLY;
 	if (flags & VHD_OPEN_RDWR)
@@ -3073,7 +3071,7 @@ __vhd_create(const char *name, const char *parent, uint64_t bytes, int type,
 	size = blks << VHD_BLOCK_SHIFT;
 
 	ctx.fd = open(name, O_WRONLY | O_CREAT |
-		      O_TRUNC | O_LARGEFILE | O_DIRECT, 0644);
+		      O_TRUNC | O_LARGEFILE, 0644);
 	if (ctx.fd == -1)
 		return -errno;
 
@@ -3289,7 +3287,7 @@ __raw_read_link(char *filename,
 
 	err = 0;
 	errno = 0;
-	fd = open(filename, O_RDONLY | O_DIRECT | O_LARGEFILE);
+	fd = open(filename, O_RDONLY | O_LARGEFILE);
 	if (fd == -1) {
 		VHDLOG("%s: failed to open: %d\n", filename, -errno);
 		return -errno;

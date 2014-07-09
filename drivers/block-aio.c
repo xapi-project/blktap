@@ -131,7 +131,7 @@ int tdaio_open(td_driver_t *driver, const char *name, td_flag_t flags)
 		prv->aio_free_list[i] = &prv->aio_requests[i];
 
 	/* Open the file */
-	o_flags = O_DIRECT | O_LARGEFILE | 
+	o_flags = O_LARGEFILE | 
 		((flags & TD_OPEN_RDONLY) ? O_RDONLY : O_RDWR);
         fd = open(name, o_flags);
 

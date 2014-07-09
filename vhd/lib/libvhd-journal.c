@@ -1203,7 +1203,7 @@ vhd_journal_open(vhd_journal_t *j, const char *file, const char *jfile)
 	if (err)
 		goto fail;
 
-	vhd->fd = open(file, O_LARGEFILE | O_RDWR | O_DIRECT);
+	vhd->fd = open(file, O_LARGEFILE | O_RDWR);
 	if (vhd->fd == -1) {
 		err = -errno;
 		goto fail;
@@ -1445,7 +1445,7 @@ vhd_journal_revert(vhd_journal_t *j)
 		return -ENOMEM;
 
 	vhd_close(&j->vhd);
-	j->vhd.fd = open(file, O_RDWR | O_DIRECT | O_LARGEFILE);
+	j->vhd.fd = open(file, O_RDWR | O_LARGEFILE);
 	if (j->vhd.fd == -1) {
 		free(file);
 		return -errno;

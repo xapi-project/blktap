@@ -303,7 +303,7 @@ vhd_dump_headers(const char *name, int hex)
 
 	printf("\n%s appears invalid; dumping headers\n\n", name);
 
-	vhd.fd = open(name, O_DIRECT | O_LARGEFILE | O_RDONLY);
+	vhd.fd = open(name, O_LARGEFILE | O_RDONLY);
 	if (vhd.fd == -1)
 		return -errno;
 
