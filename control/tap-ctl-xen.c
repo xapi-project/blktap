@@ -35,6 +35,7 @@
 #include <unistd.h>
 
 #include "tap-ctl.h"
+#include "compiler.h"
 
 int
 tap_ctl_connect_xenblkif(const pid_t pid, const domid_t domid, const int devid,
@@ -97,9 +98,13 @@ tap_ctl_disconnect_xenblkif(const pid_t pid, const domid_t domid,
 	}
 
 out:
-	if (err)
-		EPRINTF("failed to disconnect tapdisk[%d] from the ring: %s\n", pid,
-				strerror(-err));
-
-    return err;
+	if (err) {
+		if (likely(err == -ENOENT))
+			DPRINTF("failed to disconnect tapdisk[%d] from the ring: %s\n",
+					pid, strerror(-err));
+		else
+			EPRINTF("failed to disconnect tapdisk[%d] from the ring: %s\n",
+					pid, strerror(-err));
+	}
+	return err;
 }
