@@ -209,7 +209,7 @@ vhd_index_load(vhd_index_t *index)
 
 	err = vhdi_open(&index->vhdi,
 			index->bat.index_path,
-			O_RDONLY | O_DIRECT | O_LARGEFILE);
+			O_RDONLY | O_LARGEFILE);
 	if (err)
 		goto fail;
 
@@ -344,7 +344,7 @@ vhd_index_open_file(vhd_index_t *index,
 	if (!path)
 		return -ENOENT;
 
-	ref->fd = open(path, O_RDONLY | O_DIRECT | O_LARGEFILE);
+	ref->fd = open(path, O_RDONLY | O_LARGEFILE);
 	if (ref->fd == -1)
 		return -errno;
 

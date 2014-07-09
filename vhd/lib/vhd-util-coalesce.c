@@ -199,7 +199,7 @@ vhd_util_coalesce_parent(const char *name, int sparse, int progress,
 	}
 
 	if (vhd_parent_raw(&vhd)) {
-		parent_fd = open(pname, O_RDWR | O_DIRECT | O_LARGEFILE, 0644);
+		parent_fd = open(pname, O_RDWR | O_LARGEFILE, 0644);
 		if (parent_fd == -1) {
 			err = -errno;
 			printf("failed to open parent %s: %d\n", pname, err);
@@ -350,7 +350,7 @@ vhd_util_coalesce_load_chain(struct list_head *head,
 		if (raw) {
 			entry->raw = raw;
 			entry->raw_fd = open(next,
-					     O_RDWR | O_DIRECT | O_LARGEFILE);
+					     O_RDWR | O_LARGEFILE);
 			if (entry->raw_fd == -1) {
 				err = -errno;
 				goto out;

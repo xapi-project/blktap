@@ -242,7 +242,7 @@ td_create(int type, int argc, char *argv[])
 	if (!buf)
 		return ENOMEM;
 
-	fd = open(name, O_WRONLY | O_DIRECT | O_CREAT | O_TRUNC, 0644);
+	fd = open(name, O_WRONLY | O_CREAT | O_TRUNC, 0644);
 	if (fd == -1) {
 		free(buf);
 		return errno;
