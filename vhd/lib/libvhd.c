@@ -39,6 +39,7 @@
 #include "libvhd.h"
 #include "relative-path.h"
 #include "canonpath.h"
+#include "compiler.h"
 
 /* VHD uses an epoch of 12:00AM, Jan 1, 2000. This is the Unix timestamp for 
  * the start of the VHD epoch. */
@@ -2715,6 +2716,7 @@ vhd_initialize_header(vhd_context_t *ctx, const char *parent_path,
 	int err;
 	struct stat stats;
 	vhd_context_t parent;
+    uint64_t _max_bat_size;
 
 	if (!vhd_type_dynamic(ctx))
 		return -EINVAL;
@@ -2727,8 +2729,12 @@ vhd_initialize_header(vhd_context_t *ctx, const char *parent_path,
 	ctx->header.block_size   = VHD_BLOCK_SIZE;
 	ctx->header.prt_ts       = 0;
 	ctx->header.res1         = 0;
-	ctx->header.max_bat_size = (ctx->footer.curr_size +
-			VHD_BLOCK_SIZE - 1) >> VHD_BLOCK_SHIFT;
+
+    _max_bat_size = (ctx->footer.curr_size +
+            VHD_BLOCK_SIZE - 1) >> VHD_BLOCK_SHIFT;
+    if (unlikely(_max_bat_size > UINT_MAX))
+        return -EINVAL;
+	ctx->header.max_bat_size = _max_bat_size;
 
 	ctx->footer.data_offset  = VHD_SECTOR_SIZE;
 
