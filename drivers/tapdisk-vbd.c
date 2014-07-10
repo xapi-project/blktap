@@ -28,7 +28,6 @@
 #include <libgen.h>
 #include <sys/mman.h>
 #include <sys/ioctl.h>
-#include <openssl/md5.h>
 #include <sys/stat.h>
 #include <sys/types.h>
 
@@ -46,6 +45,7 @@
 #include "tapdisk-nbdserver.h"
 #include "td-stats.h"
 #include "tapdisk-utils.h"
+#include "md5.h"
 
 #define DBG(_level, _f, _a...) tlog_write(_level, _f, ##_a)
 #define ERR(_err, _f, _a...) tlog_error(_err, _f, ##_a)

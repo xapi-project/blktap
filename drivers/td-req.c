@@ -31,6 +31,7 @@
 #include "td-req.h"
 #include "td-blkif.h"
 #include "td-ctx.h"
+#include "tapdisk-server.h"
 #include "tapdisk-vbd.h"
 #include "tapdisk-log.h"
 #include "tapdisk.h"
@@ -38,6 +39,116 @@
 
 #define ERR(blkif, fmt, args...) \
     EPRINTF("%d/%d: "fmt, (blkif)->domid, (blkif)->devid, ##args);
+
+#define TD_REQS_BUFCACHE_EXPIRE 3 // time in seconds
+#define TD_REQS_BUFCACHE_MIN    1 // buffers to always keep in the cache
+
+static void
+td_xenblkif_bufcache_free(struct td_xenblkif * const blkif);
+static inline void
+td_xenblkif_bufcache_evt_unreg(struct td_xenblkif * const blkif);
+
+static void
+td_xenblkif_bufcache_event(event_id_t id, char mode, void *private)
+{
+    struct td_xenblkif *blkif = private;
+
+    td_xenblkif_bufcache_free(blkif);
+
+    td_xenblkif_bufcache_evt_unreg(blkif);
+}
+
+/**
+ * Unregister the event to expire the request buffer cache.
+ *
+ * @param blkif the block interface
+ */
+static inline void
+td_xenblkif_bufcache_evt_unreg(struct td_xenblkif * const blkif)
+{
+    if (blkif->reqs_bufcache_evtid > 0){
+        tapdisk_server_unregister_event(blkif->reqs_bufcache_evtid);
+    }
+    blkif->reqs_bufcache_evtid = 0;
+}
+
+/**
+ * Register the event to expire the request buffer cache.
+ *
+ * @param blkif the block interface
+ */
+static inline void
+td_xenblkif_bufcache_evt_reg(struct td_xenblkif * const blkif)
+{
+    blkif->reqs_bufcache_evtid =
+        tapdisk_server_register_event(SCHEDULER_POLL_TIMEOUT,
+                                      -1, /* dummy fd */
+                                      TD_REQS_BUFCACHE_EXPIRE,
+                                      td_xenblkif_bufcache_event,
+                                      blkif);
+}
+
+/**
+ * Free request buffer cache.
+ *
+ * @param blkif the block interface
+ */
+static void
+td_xenblkif_bufcache_free(struct td_xenblkif * const blkif)
+{
+    ASSERT(blkif);
+
+    while (blkif->n_reqs_bufcache_free > TD_REQS_BUFCACHE_MIN){
+        munmap(blkif->reqs_bufcache[--blkif->n_reqs_bufcache_free],
+               BLKIF_MAX_SEGMENTS_PER_REQUEST << XC_PAGE_SHIFT);
+    }
+}
+
+/**
+ * Get buffer for a request. From cache if available or newly allocated.
+ *
+ * @param blkif the block interface
+ */
+static void *
+td_xenblkif_bufcache_get(struct td_xenblkif * const blkif)
+{
+    void *buf;
+
+    ASSERT(blkif);
+
+    if (!blkif->n_reqs_bufcache_free) {
+        buf = mmap(NULL, BLKIF_MAX_SEGMENTS_PER_REQUEST << XC_PAGE_SHIFT,
+                   PROT_READ | PROT_WRITE, MAP_SHARED | MAP_ANONYMOUS, -1, 0);
+        if (unlikely(buf == MAP_FAILED))
+            buf = NULL;
+    } else
+        buf = blkif->reqs_bufcache[--blkif->n_reqs_bufcache_free];
+
+    // If we just got a request, we cancel the cache expire timer
+    td_xenblkif_bufcache_evt_unreg(blkif);
+
+    return buf;
+}
+
+static void
+td_xenblkif_bufcache_put(struct td_xenblkif * const blkif, void *buf)
+{
+    ASSERT(blkif);
+
+    if (unlikely(!buf))
+        return;
+
+    blkif->reqs_bufcache[blkif->n_reqs_bufcache_free++] = buf;
+
+    /* If we're in low memory mode, prune the bufcache immediately. */
+    if (tapdisk_server_mem_mode() == LOW_MEMORY_MODE) {
+        td_xenblkif_bufcache_free(blkif);
+    } else {
+        // We only set the expire event when no requests are inflight
+        if (blkif->n_reqs_free == blkif->ring_size)
+            td_xenblkif_bufcache_evt_reg(blkif);
+    }
+}
 
 /**
  * Puts the request back to the free list of this block interface.
@@ -54,6 +165,8 @@ tapdisk_xenblkif_free_request(struct td_xenblkif * const blkif,
     ASSERT(blkif->n_reqs_free <= blkif->ring_size);
 
     blkif->reqs_free[blkif->ring_size - (++blkif->n_reqs_free)] = &tapreq->msg;
+
+    td_xenblkif_bufcache_put(blkif, tapreq->vma);
 }
 
 /**
@@ -271,6 +384,9 @@ tapdisk_xenblkif_complete_request(struct td_xenblkif * const blkif,
     blkif->stats.reqs.out++;
     if (final)
         blkif->stats.kicks.out++;
+
+    /* Poll the ring in case we left requests in it due to lack of memory. */
+    tapdisk_xenio_ctx_process_ring(blkif, blkif->ctx);
 }
 
 /**
@@ -346,6 +462,12 @@ tapdisk_xenblkif_make_vbd_request(struct td_xenblkif * const blkif,
             || tapreq->msg.nr_segments > BLKIF_MAX_SEGMENTS_PER_REQUEST) {
         ERR(blkif, "invalid segment count %d\n", tapreq->msg.nr_segments);
         err = EINVAL;
+        goto out;
+    }
+
+    tapreq->vma = td_xenblkif_bufcache_get(blkif);
+    if (unlikely(!tapreq->vma)) {
+        err = errno;
         goto out;
     }
 
@@ -505,23 +627,22 @@ tapdisk_xenblkif_queue_requests(struct td_xenblkif * const blkif,
 void
 tapdisk_xenblkif_reqs_free(struct td_xenblkif * const blkif)
 {
-	int i;
-
     ASSERT(blkif);
 
-	for (i = 0; i < blkif->ring_size; i++)
-		free(blkif->reqs[i].vma);
+    td_xenblkif_bufcache_free(blkif);
 
     free(blkif->reqs);
     blkif->reqs = NULL;
 
     free(blkif->reqs_free);
     blkif->reqs_free = NULL;
+
 }
 
 int
 tapdisk_xenblkif_reqs_init(struct td_xenblkif *td_blkif)
 {
+    void *buf;
     int i = 0;
     int err = 0;
 
@@ -545,15 +666,22 @@ tapdisk_xenblkif_reqs_init(struct td_xenblkif *td_blkif)
     }
 
     td_blkif->n_reqs_free = 0;
-    for (i = 0; i < td_blkif->ring_size; i++) {
-		err = posix_memalign(&td_blkif->reqs[i].vma, XC_PAGE_SIZE,
-				BLKIF_MAX_SEGMENTS_PER_REQUEST << XC_PAGE_SHIFT);
-		if (err) {
-			err = -errno;
-			goto fail;
-		}
+    for (i = 0; i < td_blkif->ring_size; i++)
         tapdisk_xenblkif_free_request(td_blkif, &td_blkif->reqs[i]);
-	}
+
+    // Allocate the buffer cache
+    td_blkif->reqs_bufcache = malloc(sizeof(void*) * td_blkif->ring_size);
+    if (!td_blkif->reqs_bufcache) {
+        err = -errno;
+        goto fail;
+    }
+    td_blkif->n_reqs_bufcache_free = 0;
+    td_blkif->reqs_bufcache_evtid = 0;
+
+    // Populate cache with one buffer
+    buf = td_xenblkif_bufcache_get(td_blkif);
+    td_xenblkif_bufcache_put(td_blkif, buf);
+    td_xenblkif_bufcache_evt_unreg(td_blkif);
 
     return 0;
 

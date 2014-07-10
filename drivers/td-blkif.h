@@ -124,6 +124,13 @@ struct td_xenblkif {
 
     struct shm shm;
     time_t last;
+
+    /**
+     * Request buffer cache.
+     */
+    void **reqs_bufcache;
+    unsigned n_reqs_bufcache_free;
+    event_id_t reqs_bufcache_evtid;
 };
 
 /* TODO rename from xenio */
