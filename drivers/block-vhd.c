@@ -583,7 +583,7 @@ vhd_check_version(struct vhd_state *s)
 	if (strncmp(s->vhd.footer.crtr_app, "tap", 3))
 		return 0;
 
-	if (s->vhd.footer.crtr_ver > VHD_CURRENT_VERSION) {
+	if (s->vhd.footer.crtr_ver > MAX(VHD_CURRENT_VERSION, VHD_16TB_VERSION)) {
 		if (!test_vhd_flag(s->flags, VHD_FLAG_OPEN_QUIET))
 			EPRINTF("WARNING: %s vhd creator version 0x%08x, "
 				"but only versions up to 0x%08x are "
