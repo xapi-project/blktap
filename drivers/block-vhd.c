@@ -1360,7 +1360,7 @@ schedule_bat_write(struct vhd_state *s)
 	init_vhd_request(s, req);
 	memcpy(buf, &bat_entry(s, blk - (blk % 128)), 512);
 
-    if (s->vhd.large)
+    if (s->vhd.footer.crtr_ver == VHD_16TB_VERSION)
 	    ((uint32_t *)buf)[blk % 128] =
             vhd_sectors_to_pages(s->bat.pbw_offset + 1);
     else

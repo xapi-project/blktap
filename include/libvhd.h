@@ -136,12 +136,6 @@ struct vhd_context {
 	struct list_head           next;
 
 	char                      *custom_parent;
-
-    /**
-     * If set to true, the offsets in BAT are stored in VHD block size units,
-     * rather than byte offsets.
-     */
-    bool                       large;
 };
 
 static inline int

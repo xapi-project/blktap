@@ -2625,14 +2625,15 @@ vhd_close(vhd_context_t *ctx)
 }
 
 static inline void
-vhd_initialize_footer(vhd_context_t *ctx, int type, uint64_t size)
+vhd_initialize_footer(vhd_context_t *ctx, int type, uint64_t size,
+        const bool large)
 {
 	memset(&ctx->footer, 0, sizeof(vhd_footer_t));
 	memcpy(ctx->footer.cookie, HD_COOKIE, sizeof(ctx->footer.cookie));
 	ctx->footer.features     = HD_RESERVED;
 	ctx->footer.ff_version   = HD_FF_VERSION;
 	ctx->footer.timestamp    = vhd_time(time(NULL));
-    if (ctx->large)
+    if (large)
     	ctx->footer.crtr_ver     = VHD_16TB_VERSION;
     else
     	ctx->footer.crtr_ver     = VHD_CURRENT_VERSION;
@@ -3120,13 +3121,11 @@ __vhd_create(const char *name, const char *parent, uint64_t bytes, int type,
 		goto out;
 	}
 
-    ctx.large = large;
-
 	err = vhd_test_file_fixed(ctx.file, &ctx.is_block);
 	if (err)
 		goto out;
 
-	vhd_initialize_footer(&ctx, type, size);
+	vhd_initialize_footer(&ctx, type, size, large);
 
 	if (type == HD_TYPE_FIXED) {
 		err = vhd_initialize_fixed_disk(&ctx);
