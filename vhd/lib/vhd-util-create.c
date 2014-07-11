@@ -33,6 +33,7 @@ vhd_util_create(int argc, char **argv)
 	uint64_t size, msize;
 	int c, sparse, err;
 	vhd_flag_creat_t flags;
+    bool large;
 
 	err       = -EINVAL;
 	size      = 0;
@@ -40,12 +41,13 @@ vhd_util_create(int argc, char **argv)
 	sparse    = 1;
 	name      = NULL;
 	flags     = 0;
+    large     = false;
 
 	if (!argc || !argv)
 		goto usage;
 
 	optind = 0;
-	while ((c = getopt(argc, argv, "n:s:S:rh")) != -1) {
+	while ((c = getopt(argc, argv, "n:s:S:rhl")) != -1) {
 		switch (c) {
 		case 'n':
 			name = optarg;
@@ -61,6 +63,9 @@ vhd_util_create(int argc, char **argv)
 		case 'r':
 			sparse = 0;
 			break;
+        case 'l':
+            large = true;
+            break;
 		case 'h':
 		default:
 			goto usage;
@@ -77,11 +82,12 @@ vhd_util_create(int argc, char **argv)
 
 	return vhd_create(name, size << 20,
 				  (sparse ? HD_TYPE_DYNAMIC : HD_TYPE_FIXED),
-				  msize << 20, flags);
+				  msize << 20, flags, large);
 
 usage:
 	printf("options: <-n name> <-s size (MB)> [-r reserve] [-h help] "
 			"[<-S size (MB) for metadata preallocation "
-			"(see vhd-util resize)>]\n");
+			"(see vhd-util resize)>]"
+            "[-b (virtual size > 2043 GB)]\n");
 	return -EINVAL;
 }

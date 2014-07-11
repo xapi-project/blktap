@@ -2632,7 +2632,10 @@ vhd_initialize_footer(vhd_context_t *ctx, int type, uint64_t size)
 	ctx->footer.features     = HD_RESERVED;
 	ctx->footer.ff_version   = HD_FF_VERSION;
 	ctx->footer.timestamp    = vhd_time(time(NULL));
-	ctx->footer.crtr_ver     = VHD_CURRENT_VERSION;
+    if (ctx->large)
+    	ctx->footer.crtr_ver     = VHD_16TB_VERSION;
+    else
+    	ctx->footer.crtr_ver     = VHD_CURRENT_VERSION;
 	ctx->footer.crtr_os      = 0x00000000;
 	ctx->footer.orig_size    = size;
 	ctx->footer.curr_size    = size;
@@ -3070,7 +3073,7 @@ vhd_set_virt_size(vhd_context_t *ctx, uint64_t size)
 
 static int
 __vhd_create(const char *name, const char *parent, uint64_t bytes, int type,
-		uint64_t mbytes, vhd_flag_creat_t flags)
+		uint64_t mbytes, vhd_flag_creat_t flags, const bool large)
 {
 	int err;
 	off64_t off;
@@ -3116,6 +3119,8 @@ __vhd_create(const char *name, const char *parent, uint64_t bytes, int type,
 		err = -ENOMEM;
 		goto out;
 	}
+
+    ctx.large = large;
 
 	err = vhd_test_file_fixed(ctx.file, &ctx.is_block);
 	if (err)
@@ -3202,16 +3207,20 @@ out:
 
 int
 vhd_create(const char *name, uint64_t bytes, int type, uint64_t mbytes,
-		vhd_flag_creat_t flags)
+		vhd_flag_creat_t flags, const bool large)
 {
-	return __vhd_create(name, NULL, bytes, type, mbytes, flags);
+	return __vhd_create(name, NULL, bytes, type, mbytes, flags, large);
 }
 
 int
 vhd_snapshot(const char *name, uint64_t bytes, const char *parent,
 		uint64_t mbytes, vhd_flag_creat_t flags)
 {
-	return __vhd_create(name, parent, bytes, HD_TYPE_DIFF, mbytes, flags);
+    /*
+     * FIXME
+     */
+	return __vhd_create(name, parent, bytes, HD_TYPE_DIFF, mbytes, flags,
+            false);
 }
 
 static int

@@ -109,8 +109,20 @@ unsigned int SPB;
 #define VHD_OP_REDUNDANT_BM_WRITE    6
 
 #define VHD_BM_BAT_LOCKED            0
+
+/**
+ * BAT entry not allocated
+ */
 #define VHD_BM_BAT_CLEAR             1
+
+/**
+ * Bit in bit map not set (sector has not been previously written to)
+ */
 #define VHD_BM_BIT_CLEAR             2
+
+/**
+ * Bit in bit map set (sector has been previously written to)
+ */
 #define VHD_BM_BIT_SET               3
 #define VHD_BM_NOT_CACHED            4
 #define VHD_BM_READ_PENDING          5
@@ -1348,7 +1360,11 @@ schedule_bat_write(struct vhd_state *s)
 	init_vhd_request(s, req);
 	memcpy(buf, &bat_entry(s, blk - (blk % 128)), 512);
 
-	((uint32_t *)buf)[blk % 128] = s->bat.pbw_offset;
+    if (s->vhd.large)
+	    ((uint32_t *)buf)[blk % 128] =
+            vhd_sectors_to_pages(s->bat.pbw_offset + 1);
+    else
+	    ((uint32_t *)buf)[blk % 128] = s->bat.pbw_offset;
 
 	for (i = 0; i < 128; i++)
 		BE32_OUT(&((uint32_t *)buf)[i]);
@@ -1601,7 +1617,7 @@ schedule_data_write(struct vhd_state *s, td_request_t treq, vhd_flag_t flags)
 {
 	int err;
 	uint64_t offset;
-	uint32_t blk = 0, sec = 0;
+	uint32_t blk = 0, sec = 0; /* virtual block and virtual sector */
 	struct vhd_bitmap  *bm = NULL;
 	struct vhd_request *req;
 

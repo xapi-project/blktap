@@ -136,6 +136,12 @@ struct vhd_context {
 	struct list_head           next;
 
 	char                      *custom_parent;
+
+    /**
+     * If set to true, the offsets in BAT are stored in VHD block size units,
+     * rather than byte offsets.
+     */
+    bool                       large;
 };
 
 static inline int
@@ -172,6 +178,12 @@ static inline uint64_t
 vhd_sectors_to_bytes(uint64_t sectors)
 {
 	return sectors << VHD_SECTOR_SHIFT;
+}
+
+static inline uint64_t
+vhd_sectors_to_pages(uint64_t sectors)
+{
+	return sectors << VHD_SECTOR_TO_PAGE_SHIFT;
 }
 
 static inline uint64_t
@@ -255,7 +267,7 @@ void vhd_close(vhd_context_t *);
  * vhd-util-resize.c
  */
 int vhd_create(const char *name, uint64_t bytes, int type, uint64_t mbytes,
-		vhd_flag_creat_t);
+		vhd_flag_creat_t, const bool large);
 /* vhd_snapshot: the bytes parameter is optional and can be 0 if the snapshot 
  * is to have the same size as the (first non-empty) parent */
 int vhd_snapshot(const char *snapshot, uint64_t bytes, const char *parent,

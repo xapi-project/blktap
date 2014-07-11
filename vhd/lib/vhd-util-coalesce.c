@@ -550,7 +550,10 @@ vhd_util_coalesce_open_output(vhd_context_t *dst,
 		return -errno;
 	}
 
-	err = vhd_create(name, src->footer.curr_size, HD_TYPE_DYNAMIC, 0, 0);
+    /*
+     * FIXME
+     */
+	err = vhd_create(name, src->footer.curr_size, HD_TYPE_DYNAMIC, 0, 0, false);
 	if (err) {
 		printf("error creating %s: %d\n", name, err);
 		return err;
