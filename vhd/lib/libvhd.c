@@ -2730,6 +2730,12 @@ vhd_initialize_header(vhd_context_t *ctx, const char *parent_path,
 	ctx->header.prt_ts       = 0;
 	ctx->header.res1         = 0;
 
+    if (unlikely(ctx->footer.curr_size > 16ULL * (1ULL << 40))) {
+        fprintf(stderr, "virtual size of %" PRIu64 " bytes not supported "
+                "(max 16 TiB)\n", ctx->footer.curr_size);
+        return -EINVAL;
+    }
+
     _max_bat_size = (ctx->footer.curr_size +
             VHD_BLOCK_SIZE - 1) >> VHD_BLOCK_SHIFT;
     if (unlikely(_max_bat_size > UINT_MAX))
