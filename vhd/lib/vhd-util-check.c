@@ -276,7 +276,7 @@ ok:
 	}
 
 	if (!strncmp(footer->crtr_app, "tap", 3) &&
-	    footer->crtr_ver > VHD_CURRENT_VERSION)
+	    footer->crtr_ver > MAX(VHD_CURRENT_VERSION, VHD_16TB_VERSION))
 		return "unsupported tap creator version";
 
 	if (vhd_chs(footer->curr_size) < footer->geometry)
