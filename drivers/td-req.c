@@ -630,6 +630,7 @@ tapdisk_xenblkif_reqs_free(struct td_xenblkif * const blkif)
     ASSERT(blkif);
 
     td_xenblkif_bufcache_free(blkif);
+    td_xenblkif_bufcache_evt_unreg(blkif);
 
     free(blkif->reqs);
     blkif->reqs = NULL;
