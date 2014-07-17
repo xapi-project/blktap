@@ -279,7 +279,7 @@ class TestContext(object):
         WARNING = '\033[93m'
         ENDC = '\033[0m'
         import sys
-        sys.stderr.write(
+        sys.stdout.write(
             WARNING
             + ' '.join(str(arg) for arg in args)
             + ENDC
