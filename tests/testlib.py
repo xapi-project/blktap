@@ -294,20 +294,27 @@ class TestContext(object):
         return adapter
 
 
-def with_context(func):
-    def decorated(self, *args, **kwargs):
-        context = TestContext()
-        context.start()
-        try:
-            result = func(self, context, *args, **kwargs)
-            context.stop()
-            return result
-        except:
-            context.stop()
-            raise
+def with_custom_context(context_class):
+    def _with_context(func):
+        def decorated(self, *args, **kwargs):
+            context = context_class()
+            context.start()
+            try:
+                result = func(self, context, *args, **kwargs)
+                context.stop()
+                return result
+            except:
+                context.stop()
+                raise
 
-    decorated.__name__ = func.__name__
-    return decorated
+        decorated.__name__ = func.__name__
+        return decorated
+    return _with_context
+
+
+def with_context(func):
+    decorator = with_custom_context(TestContext)
+    return decorator(func)
 
 
 def xml_string(text):
