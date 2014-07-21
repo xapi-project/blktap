@@ -261,10 +261,13 @@ static void finish_data_transaction(struct vhd_state *, struct vhd_bitmap *);
 static struct vhd_state  *_vhd_master;
 static unsigned long      _vhd_zsize;
 static char              *_vhd_zeros;
+int                       _dev_zero = -1;
 
 static int
 vhd_initialize(struct vhd_state *s)
 {
+    int err;
+
 	if (_vhd_zeros)
 		return 0;
 
@@ -272,13 +275,25 @@ vhd_initialize(struct vhd_state *s)
 	if (test_vhd_flag(s->flags, VHD_FLAG_OPEN_PREALLOCATE))
 		_vhd_zsize += VHD_BLOCK_SIZE;
 
-	_vhd_zeros = mmap(0, _vhd_zsize, PROT_READ,
-			  MAP_SHARED | MAP_ANONYMOUS, -1, 0);
+    _dev_zero = open("/dev/zero", O_RDONLY);
+    if (unlikely(_dev_zero == -1)) {
+        err = errno;
+        EPRINTF("failed to open /dev/zero: %s\n", strerror(err));
+        return -err;
+    }
+
+	_vhd_zeros = mmap(NULL, _vhd_zsize, PROT_READ,
+			  MAP_SHARED, _dev_zero, 0);
 	if (_vhd_zeros == MAP_FAILED) {
-		EPRINTF("vhd_initialize failed: %d\n", -errno);
+        err = errno;
+		EPRINTF("vhd_initialize failed: %s\n", strerror(err));
 		_vhd_zeros = NULL;
 		_vhd_zsize = 0;
-		return -errno;
+        if (unlikely(close(_dev_zero) == -1))
+            EPRINTF("failed to close /dev/zero: %s (error ignored)\n",
+                    strerror(errno));
+
+		return -err;
 	}
 
 	_vhd_master = s;
@@ -296,6 +311,10 @@ vhd_free(struct vhd_state *s)
 	_vhd_zsize  = 0;
 	_vhd_zeros  = NULL;
 	_vhd_master = NULL;
+    if (unlikely(close(_dev_zero) == -1))
+            EPRINTF("failed to close /dev/zero: %s (error ignored)\n",
+                strerror(errno));
+    _dev_zero = -1;
 }
 
 static char *
