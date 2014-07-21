@@ -91,17 +91,16 @@ out:
 static int
 tapdisk_xenblkif_show_io_ring_create(struct td_xenblkif *blkif)
 {
-    int err;
-    char *dir = NULL, *_dir = NULL;
+    int err, len;
+    char *dir = NULL, *_dir = NULL, *_path = NULL;
 
-    err = asprintf(&blkif->shm.path, "/dev/shm/vbd3-%d-%d/io_ring",
+    len = asprintf(&blkif->shm.path, "/dev/shm/vbd3-%d-%d/io_ring~",
             blkif->domid, blkif->devid);
-    if (err == -1) {
+    if (unlikely(len == -1)) {
         err = errno;
         blkif->shm.path = NULL;
         goto out;
     }
-    err = 0;
 
     _dir = strdup(blkif->shm.path);
     if (!_dir) {
@@ -120,14 +119,40 @@ tapdisk_xenblkif_show_io_ring_create(struct td_xenblkif *blkif)
     }
 
     blkif->shm.size = PAGE_SIZE;
-    blkif->last = time(NULL);
+    blkif->last = 0;
 
     err = shm_create(&blkif->shm);
-    if (err)
+    if (err) {
         EPRINTF("failed to create shm ring stats file: %s\n", strerror(err));
+        goto out;
+    }
+
+    err = tapdisk_xenblkif_show_io_ring(blkif);
+    if (unlikely(err)) {
+        EPRINTF("failed to generate shared I/O ring stats: %s\n",
+                strerror(-err));
+        goto out;
+    }
+
+    _path = strndup(blkif->shm.path, len - 1);
+    if (unlikely(!_path)) {
+        err = errno;
+        goto out;
+    }
+
+    err = rename(blkif->shm.path, _path);
+    if (unlikely(err)) {
+        err = errno;
+        goto out;
+    }
+
+    free(blkif->shm.path);
+    blkif->shm.path = _path;
+    _path = NULL;
 
 out:
     free(_dir);
+    free(_path);
     if (err) {
         int err2 = tapdisk_xenblkif_show_io_ring_destroy(blkif);
         if (err2)
