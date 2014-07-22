@@ -181,6 +181,12 @@ vhd_sectors_to_pages(uint64_t sectors)
 }
 
 static inline uint64_t
+vhd_pages_to_sectors(const uint64_t pages)
+{
+    return pages << VHD_SECTOR_TO_PAGE_SHIFT;
+}
+
+static inline uint64_t
 vhd_pages_to_bytes(const uint64_t pages)
 {
 	return pages << VHD_PAGE_SHIFT;
