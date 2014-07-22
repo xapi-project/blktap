@@ -30,6 +30,7 @@
 #define VHD_SECTOR_SIZE             512
 #define VHD_SECTOR_SHIFT            9
 #define VHD_SECTOR_TO_PAGE_SHIFT    3
+#define VHD_PAGE_SHIFT              12
 
 /* ---------------------------------------------------------------------- */
 /* This is the generic disk footer, used by all disks.                    */

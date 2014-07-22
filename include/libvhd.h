@@ -181,6 +181,12 @@ vhd_sectors_to_pages(uint64_t sectors)
 }
 
 static inline uint64_t
+vhd_pages_to_bytes(const uint64_t pages)
+{
+	return pages << VHD_PAGE_SHIFT;
+}
+
+static inline uint64_t
 vhd_bytes_padded(uint64_t bytes)
 {
 	return vhd_sectors_to_bytes(secs_round_up_no_zero(bytes));
