@@ -2718,6 +2718,16 @@ get_file_size(const char *name)
 	return end;
 }
 
+/**
+ * Initialises the VHD header.
+ *
+ * @ctx the VHD context whose header is to be initialised
+ * @parent_path the parent path
+ * @size the virtual size of the VHD file, cannot be smaller than the parent's
+ * If set to zero, then the parent's size is used (see @psize).
+ * @raw indicates whether the parent is a raw file and not a VHD one
+ * @psize output parameter that receives the virtual size of the parent
+ */
 static int
 vhd_initialize_header(vhd_context_t *ctx, const char *parent_path, 
 		uint64_t size, int raw, uint64_t *psize)
