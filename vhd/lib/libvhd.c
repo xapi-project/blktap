@@ -3088,6 +3088,31 @@ vhd_set_virt_size(vhd_context_t *ctx, uint64_t size)
 }
 
 /**
+ * Tells the parent version.
+ *
+ * Returns the parent version, or 0 on failure (and sets errno).
+ */
+static uint32_t
+vhd_get_parent_version(const char * const parent_path)
+{
+    vhd_context_t parent;
+    int err;
+    uint32_t version;
+
+    err = vhd_open(&parent, parent_path, VHD_OPEN_RDONLY);
+	if (unlikely(err)) {
+        errno = -err;
+        return 0;
+    }
+
+    version = parent.footer.crtr_ver;
+    ASSERT(version);
+    vhd_close(&parent);
+
+    return version;
+}
+
+/**
  * Creates a VHD file.
  *
  * @name the file name
@@ -3101,12 +3126,14 @@ vhd_set_virt_size(vhd_context_t *ctx, uint64_t size)
  */
 static int
 __vhd_create(const char *name, const char *parent, uint64_t bytes, int type,
-		uint64_t mbytes, vhd_flag_creat_t flags, const bool large)
+		uint64_t mbytes, vhd_flag_creat_t flags, bool large)
 {
 	int err;
 	off64_t off;
 	vhd_context_t ctx;
 	uint64_t size, psize, blks;
+    int raw;
+    uint32_t version;
 
 	switch (type) {
 	case HD_TYPE_DIFF:
@@ -3155,14 +3182,23 @@ __vhd_create(const char *name, const char *parent, uint64_t bytes, int type,
 	if (err)
 		goto out;
 
-	vhd_initialize_footer(&ctx, type, size, large);
+	raw = vhd_flag_test(flags, VHD_FLAG_CREAT_PARENT_RAW);
+    if (!raw && parent) {
+        version = vhd_get_parent_version(parent);
+        if (unlikely(!version)) {
+            err = errno;
+            goto out;
+        }
+        large = version == VHD_16TB_VERSION;
+    }
+
+    vhd_initialize_footer(&ctx, type, size, large);
 
 	if (type == HD_TYPE_FIXED) {
 		err = vhd_initialize_fixed_disk(&ctx);
 		if (err)
 			goto out;
 	} else {
-		int raw = vhd_flag_test(flags, VHD_FLAG_CREAT_PARENT_RAW);
 		err = vhd_initialize_header(&ctx, parent, size, raw, &psize);
 		if (err)
 			goto out;
@@ -3245,9 +3281,6 @@ int
 vhd_snapshot(const char *name, uint64_t bytes, const char *parent,
 		uint64_t mbytes, vhd_flag_creat_t flags)
 {
-    /*
-     * FIXME
-     */
 	return __vhd_create(name, parent, bytes, HD_TYPE_DIFF, mbytes, flags,
             false);
 }

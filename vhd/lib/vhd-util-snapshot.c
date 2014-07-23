@@ -108,7 +108,6 @@ vhd_util_snapshot(int argc, char **argv)
 	char *ppath, __ppath[PATH_MAX];
 	uint64_t size, msize;
 	vhd_context_t vhd;
-    uint32_t version;
 
 	name        = NULL;
 	pname       = NULL;
@@ -187,7 +186,6 @@ vhd_util_snapshot(int argc, char **argv)
 			if (err)
 				goto out;
 			size = vhd.footer.curr_size;
-            version = vhd.footer.crtr_ver;
 			vhd_close(&vhd);
 		}
 
