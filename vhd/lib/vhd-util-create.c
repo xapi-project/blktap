@@ -80,9 +80,12 @@ vhd_util_create(int argc, char **argv)
 		return -EINVAL;
 	}
 
-	return vhd_create(name, size << 20,
+	err = vhd_create(name, size << 20,
 				  (sparse ? HD_TYPE_DYNAMIC : HD_TYPE_FIXED),
 				  msize << 20, flags, large);
+    if (unlikely(err))
+        printf("%s\n", strerror(-err));
+    return err;
 
 usage:
 	printf("options: <-n name> <-s size (MB)> [-r reserve] [-h help] "
