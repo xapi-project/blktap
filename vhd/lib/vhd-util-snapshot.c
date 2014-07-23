@@ -214,6 +214,9 @@ vhd_util_snapshot(int argc, char **argv)
 out:
 	free(backing);
 
+    if (unlikely(err))
+        printf("%s\n", strerror(-err));
+
 	return err;
 
 usage:
