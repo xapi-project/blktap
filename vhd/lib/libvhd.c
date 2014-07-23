@@ -3077,6 +3077,18 @@ vhd_set_virt_size(vhd_context_t *ctx, uint64_t size)
 	return vhd_write_footer(ctx, &ctx->footer);
 }
 
+/**
+ * Creates a VHD file.
+ *
+ * @name the file name
+ * @parent the parent of the VHD file.
+ * @bytes virtual size. If zero, the parent's size is used.
+ * @type HD_TYPE_XXX
+ * @mbytes If non-zero, this value is used to pre-allocate a BAT for that size.
+ * Cannot be less than @bytes.
+ * @flags HD_FLAG_CREAT_XXX
+ * @large
+ */
 static int
 __vhd_create(const char *name, const char *parent, uint64_t bytes, int type,
 		uint64_t mbytes, vhd_flag_creat_t flags, const bool large)

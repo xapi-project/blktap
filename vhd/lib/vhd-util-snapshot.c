@@ -28,6 +28,7 @@
 
 #include "libvhd.h"
 #include "canonpath.h"
+#include "compiler.h"
 
 static int
 vhd_util_find_snapshot_target(const char *name, char **result, int *parent_raw)
@@ -102,7 +103,7 @@ int
 vhd_util_snapshot(int argc, char **argv)
 {
 	vhd_flag_creat_t flags;
-	int c, err, prt_raw, limit, empty_check;
+	int c, err, limit, empty_check;
 	char *name, *pname, *backing;
 	char *ppath, __ppath[PATH_MAX];
 	uint64_t size, msize;
@@ -170,6 +171,7 @@ vhd_util_snapshot(int argc, char **argv)
 			goto out;
 		}
 	} else {
+        int prt_raw;
 		err = vhd_util_find_snapshot_target(ppath, &backing, &prt_raw);
 		if (err) {
 			backing = NULL;
