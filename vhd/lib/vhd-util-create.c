@@ -25,6 +25,7 @@
 #include <unistd.h>
 
 #include "libvhd.h"
+#include "compiler.h"
 
 int
 vhd_util_create(int argc, char **argv)
@@ -91,6 +92,6 @@ usage:
 	printf("options: <-n name> <-s size (MB)> [-r reserve] [-h help] "
 			"[<-S size (MB) for metadata preallocation "
 			"(see vhd-util resize)>] "
-            "[-l (virtual size > 2043 GB)]\n");
+            "[-l (virtual size > 2044 GB)]\n");
 	return -EINVAL;
 }
