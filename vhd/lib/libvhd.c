@@ -683,6 +683,8 @@ vhd_end_of_data(vhd_context_t *ctx, off64_t *end)
 		blk = ctx->bat.bat[i];
 
 		if (blk != DD_BLK_UNUSED) {
+			if (ctx->footer.crtr_ver == VHD_16TB_VERSION)
+				blk = vhd_pages_to_sectors(blk);
 			blk += ctx->spb + ctx->bm_secs;
 			max  = MAX(blk, max);
 		}
