@@ -1133,8 +1133,12 @@ vhd_util_resize(int argc, char **argv)
 
 	libvhd_set_log_level(1);
 
-	if (fast)
-		return vhd_dynamic_grow_fast(name, size << 20);
+	if (fast) {
+		err = vhd_dynamic_grow_fast(name, size << 20);
+        if (err)
+            printf("failed to fast-resize: %s\n", strerror(-err));
+        return err;
+    }
 
 	err = vhd_journal_create(&journal, name, jname);
 	if (err) {
@@ -1170,7 +1174,11 @@ out:
 	} else
 		vhd_journal_remove(&journal);
 
-	return (err ? : jerr);
+    if (!err && jerr)
+        err = jerr;
+    if (err)
+        printf("failed to resize: %s\n", strerror(-err));
+	return err;
 
 usage:
 	printf("options: <-n name> <-s size (in MB)> (<-j journal>|<-f fast>) "
