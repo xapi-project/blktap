@@ -1075,9 +1075,10 @@ vhd_read_bat(vhd_context_t *ctx, vhd_bat_t *bat)
 
 	vhd_bat_in(bat);
 
-    if (ctx->footer.crtr_ver == VHD_16TB_VERSION)
-        for (i = 0; i < bat->entries; i++)
-	    	bat->bat[i] = vhd_pages_to_sectors(bat->bat[i]) - 1;
+	if (ctx->footer.crtr_ver == VHD_16TB_VERSION)
+		for (i = 0; i < bat->entries; i++)
+			if (bat->bat[i] != DD_BLK_UNUSED)
+				bat->bat[i] = vhd_pages_to_sectors(bat->bat[i]) - 1;
 
 	return 0;
 

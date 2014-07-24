@@ -1361,28 +1361,32 @@ schedule_bat_write(struct vhd_state *s)
 
 	init_vhd_request(s, req);
 
-    /*
-     * TODO We can avoid the conversion and memcpy and put it in the conversion
-     * to BE.
-     */
-
-    if (s->vhd.footer.crtr_ver == VHD_16TB_VERSION) {
-        for (i = blk - (blk % bat_entries_per_sector);
-                i < bat_entries_per_sector; i++)
-            ((uint32_t *)buf)[i] = vhd_sectors_to_pages(bat_entry(s, i) + 1);
+	/*
+	 * Copy the other BAT entries and then update the specific entry we're
+	 * interested in.
+	 *
+	 * TODO We can avoid the conversion and memcpy and put it in the conversion
+	 * to BE.
+	 */
+	if (s->vhd.footer.crtr_ver == VHD_16TB_VERSION) {
+		for (i = blk - (blk % bat_entries_per_sector);
+				i < bat_entries_per_sector; i++)
+			if (((uint32_t *)buf)[i] != DD_BLK_UNUSED)
+	            ((uint32_t *)buf)[i] =
+					vhd_sectors_to_pages(bat_entry(s, i) + 1);
 	    ((uint32_t *)buf)[blk % bat_entries_per_sector] =
-            vhd_sectors_to_pages(s->bat.pbw_offset + 1);
-    } else {
-	    memcpy(buf, &bat_entry(s, blk - (blk % bat_entries_per_sector)),
-                VHD_SECTOR_SIZE);
-	    ((uint32_t *)buf)[blk % bat_entries_per_sector] = s->bat.pbw_offset;
-    }
+			vhd_sectors_to_pages(s->bat.pbw_offset + 1);
+	} else {
+		memcpy(buf, &bat_entry(s, blk - (blk % bat_entries_per_sector)),
+				VHD_SECTOR_SIZE);
+		((uint32_t *)buf)[blk % bat_entries_per_sector] = s->bat.pbw_offset;
+	}
 
 	for (i = 0; i < bat_entries_per_sector; i++)
 		BE32_OUT(&((uint32_t *)buf)[i]);
 
 	offset         = s->vhd.header.table_offset +
-        (blk - (blk % bat_entries_per_sector)) * 4;
+		(blk - (blk % bat_entries_per_sector)) * 4;
 	req->treq.secs = 1;
 	req->treq.buf  = buf;
 	req->op        = VHD_OP_BAT_WRITE;
