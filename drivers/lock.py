@@ -43,12 +43,16 @@ class Lock:
 
         # the lockfile inside that namespace directory per namespace
         self.lockpath = os.path.join(self.nspath, self.name)
-        if not os.path.exists(self.lockpath):
-            util.SMlog("lock: creating lock file %s" % self.lockpath)
-        self.lockfile = file(self.lockpath, "w+")
+
+        self._open_lockfile()
 
         fd = self.lockfile.fileno()
         self.lock = flock.WriteLock(fd)
+
+    def _open_lockfile(self):
+        """Provide a seam, so extreme situations could be tested"""
+        util.SMlog("lock: opening lock file %s" % self.lockpath)
+        self.lockfile = file(self.lockpath, "w+")
 
     def _close(self):
         """Close the lock, which implies releasing the lock."""
