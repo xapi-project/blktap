@@ -70,6 +70,7 @@ class Lock:
     _mknamespace = staticmethod(_mknamespace)
 
     def __init__(self, name, ns=None):
+        self.lockfile = None
 
         self.ns = Lock._mknamespace(ns)
 
