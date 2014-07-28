@@ -141,8 +141,8 @@ vhd_util_modify(int argc, char **argv)
 		cpath = canonpath(newparent, __cpath);
 		err = vhd_change_parent(&vhd, cpath, parent_raw);
 		if (err) {
-			printf("failed to set parent to '%s': %d\n",
-					cpath, err);
+			printf("failed to set parent to '%s': %s\n",
+					cpath, strerror(-err));
 			goto done;
 		}
 		TEST_FAIL_AT(FAIL_REPARENT_END);
