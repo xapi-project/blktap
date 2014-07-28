@@ -76,8 +76,15 @@ static const char HD_COOKIE[9]  =  "conectix";
  * version 1.1:  big endian bitmaps; batmap
  * version 1.2:  libvhd
  * version 1.3:  batmap version bump to 1.2
+ * version 1.4:  support for virtual size larger than 2044 GB
  */
 #define VHD_VERSION(major, minor)  (((major) << 16) | ((minor) & 0x0000FFFF))
+#define VHD_UNVERSION(version, major, minor)	\
+	do {										\
+		major = (version & 0xFFFF0000) >> 16;	\
+		minor = version & 0x0000FFFF;			\
+	} while (0)
+
 #define VHD_CURRENT_VERSION        VHD_VERSION(1, 3)
 #define VHD_16TB_VERSION           VHD_VERSION(1, 4)
 

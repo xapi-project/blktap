@@ -2887,8 +2887,20 @@ vhd_change_parent(vhd_context_t *child, char *parent_path, int raw)
 			       ppath, child->file, err);
 			goto out;
 		}
+		if (parent.footer.crtr_ver != child->footer.crtr_ver)
+		{
+			int parent_major, parent_minor, child_major, child_minor;
+			VHD_UNVERSION(parent.footer.crtr_ver, parent_major, parent_minor);
+			VHD_UNVERSION(child->footer.crtr_ver, child_major, child_minor);
+			VHDLOG("child version (%d.%d) does not agree with "
+					"parent version (%d.%d)\n", child_major, child_minor,
+					parent_major, parent_minor);
+			err = -ENOSYS;
+		}
 		uuid_copy(child->header.prt_uuid, parent.footer.uuid);
 		vhd_close(&parent);
+		if (err)
+			goto out;
 	}
 
 	vhd_initialize_header_parent_name(child, ppath);
