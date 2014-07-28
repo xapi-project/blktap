@@ -2069,6 +2069,14 @@ vhd_write_bat(vhd_context_t *ctx, vhd_bat_t *bat)
 	memcpy(b.bat, bat->bat, size);
 	b.spb     = bat->spb;
 	b.entries = bat->entries;
+
+	if (ctx->footer.crtr_ver == VHD_16TB_VERSION) {
+		uint32_t i;
+		for (i = 0; i < b.entries; i++)
+			if (b.bat[i] != DD_BLK_UNUSED)
+				b.bat[i] = vhd_sectors_to_pages(b.bat[i] + 1);
+	}
+
 	vhd_bat_out(&b);
 
 	err = vhd_write(ctx, b.bat, size);
@@ -2510,6 +2518,10 @@ out:
 	free(buf);
 	return err;
 }
+
+/*
+ * FIXME they're all wrong, check schedule_bat_write in block-vhd.c
+ */
 
 uint64_t
 vhd_bentry_ld_1_3(vhd_context_t *vhd, uint32_t bentry)
