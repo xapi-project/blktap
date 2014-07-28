@@ -491,6 +491,10 @@ vhd_util_check_validate_parent(struct vhd_util_check_ctx *ctx,
 		goto out;
 	}
 
+	if (vhd->footer.crtr_ver != parent.footer.crtr_ver)
+		msg = "parent/child versions differ";
+		goto out;
+
 out:
 	vhd_close(&parent);
 	return msg;
