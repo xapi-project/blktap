@@ -2511,6 +2511,36 @@ out:
 	return err;
 }
 
+uint64_t
+vhd_bentry_ld_1_3(vhd_context_t *vhd, uint32_t bentry)
+{
+	return vhd->bat.bat[bentry];
+}
+
+void
+vhd_bentry_st_1_3(vhd_context_t *vhd, uint32_t bentry, uint64_t val)
+{
+	vhd->bat.bat[bentry] = val;
+}
+
+uint64_t
+vhd_bentry_ld_1_4(vhd_context_t *vhd, uint32_t bentry)
+{
+	if (DD_BLK_UNUSED == vhd->bat.bat[bentry])
+		return vhd->bat.bat[bentry];
+	else
+		return vhd_pages_to_sectors(vhd->bat.bat[bentry]);
+}
+
+void
+vhd_bentry_st_1_4(vhd_context_t *vhd, uint32_t bentry, uint64_t val)
+{
+	if (DD_BLK_UNUSED == val)
+		vhd->bat.bat[bentry] = val;
+	else
+		vhd->bat.bat[bentry] = vhd_sectors_to_pages(val);
+}
+
 int
 vhd_open(vhd_context_t *ctx, const char *file, int flags)
 {
@@ -2578,6 +2608,14 @@ vhd_open(vhd_context_t *ctx, const char *file, int flags)
 			(flags & VHD_OPEN_USE_BKP_FOOTER) == VHD_OPEN_USE_BKP_FOOTER);
 	if (err)
 		goto fail;
+
+	if (ctx->footer.crtr_ver == VHD_16TB_VERSION) {
+		ctx->bentry_ld_fn = &vhd_bentry_ld_1_3;
+		ctx->bentry_st_fn = &vhd_bentry_st_1_3;
+	} else {
+		ctx->bentry_ld_fn = &vhd_bentry_ld_1_4;
+		ctx->bentry_st_fn = &vhd_bentry_st_1_4;
+	}
 
 	if (!(flags & VHD_OPEN_IGNORE_DISABLED) && vhd_disabled(ctx)) {
 		err = -EINVAL;

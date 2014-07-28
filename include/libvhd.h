@@ -119,6 +119,27 @@ struct vhd_batmap {
 	char                      *map;
 };
 
+
+/**
+ * Loads the specified BAT entry from the BAT, taking care of properly
+ * converting it.
+ *
+ * @param bentry the BAT entry to read
+ *
+ * @returns the location within the file, in sectors
+ */
+typedef uint64_t (*vhd_bentry_ld_t)(vhd_context_t *vhd, uint32_t bentry);
+
+/**
+ * Stores the specified BAT entry to the BAT, taking care of properly
+ * converting it.
+ *
+ * @param bentry the BAT entry to store
+ * @param val the offset in sectors
+ */
+typedef void (*vhd_bentry_st_t)(vhd_context_t *vhd, uint32_t bentry,
+		uint64_t val);
+
 struct vhd_context {
 	int                        fd;
 	char                      *file;
@@ -136,6 +157,9 @@ struct vhd_context {
 	struct list_head           next;
 
 	char                      *custom_parent;
+
+	vhd_bentry_ld_t           bentry_ld_fn;
+	vhd_bentry_st_t           bentry_st_fn;
 };
 
 static inline int
