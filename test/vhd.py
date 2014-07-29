@@ -16,6 +16,13 @@ class TestCreateVHD(unittest.TestCase):
 	MAX_SIZE_NEW = 16744478
 
 	@classmethod
+	def setUpClass(cls):
+		cls.workspace = tempfile.mkdtemp()
+
+		# For discarding subprocess output
+		cls.devnull_fp = open(os.devnull, 'w')
+
+	@classmethod
 	def vhd_create(cls, name, size, reserve=None, mtdt_size=None, large=None):
 		cmd = ['fakeroot', vhd_util, 'create', '-n', name, '-s', str(size)]
 		if reserve:
@@ -27,11 +34,24 @@ class TestCreateVHD(unittest.TestCase):
 		return subprocess.call(cmd, stdout=cls.devnull_fp)
 
 	@classmethod
-	def setUpClass(cls):
-		cls.workspace = tempfile.mkdtemp()
+	def vhd_check(cls, name, parents=False):
+		cmd = ['fakeroot', vhd_util, 'check', '-n', name]
+		if parents:
+			cmd.append('-p')
+		return subprocess.call(cmd, stdout=cls.devnull_fp)
 
-		# For discarding subprocess output
-		cls.devnull_fp = open(os.devnull, 'w')
+	@classmethod
+	def vhd_snapshot(cls, name, parent, depth_limit=None, raw_parent=False,
+			mtdt_size=None, force_link=False):
+		cmd = ['fakeroot', vhd_util, 'snapshot', '-n', name, '-p', parent]
+		if depth_limit:
+			cmd += ['-l', depth_limit]
+		if raw_parent:
+			cmd.append('-m')
+		if mtdt_size:
+			cmd += ['-S', str(mtdt_size)]
+		if force_link:
+			cmd.append('-e')
 
 	@classmethod
 	def tearDownClass(cls):
@@ -46,10 +66,12 @@ class TestCreateVHD(unittest.TestCase):
 	def test_create_old_ver(self):
 		"""Create an old VHD file."""
 		self.assertEqual(0, self.vhd_create(self.name, 16))
+		self.assertEqual(0, self.vhd_check(self.name))
 
 	def test_create_old_ver_prealloc(self):
 		"""Create an old VHD file, preallocating metadata."""
 		self.assertEqual(0, self.vhd_create(self.name, 16, mtdt_size=20))
+		self.assertEqual(0, self.vhd_check(self.name))
 
 	def test_create_old_ver_prealloc_large(self):
 		"""Attemp to create an old VHD file, preallocating metadata for a
@@ -63,18 +85,29 @@ class TestCreateVHD(unittest.TestCase):
 			self.MAX_SIZE_OLD + 1))
 
 	def test_create_new_ver(self):
-		"""Create a new-version VHD file"""
+		"""Create a new-version VHD file."""
 		self.assertEqual(0, self.vhd_create(self.name, 16, large=True))
+		self.assertEqual(0, self.vhd_check(self.name))
 
 	def test_create_new_ver(self):
-		"""Create a new-version VHD file"""
+		"""Create a new-version VHD file."""
 		self.assertEqual(0, self.vhd_create(self.name, 16, large=True))
+		self.assertEqual(0, self.vhd_check(self.name))
 
 	def test_create_new_ver_large_prealloc(self):
-		"""Create a new-version VHD file, preallocating metadata"""
+		"""Create a new-version VHD file, preallocating metadata."""
 		size = self.MAX_SIZE_OLD + 1;
 		mtdt_size = size + 1;
 		self.assertEqual(0, self.vhd_create(self.name, size,
+			mtdt_size=mtdt_size, large=True))
+		self.assertEqual(0, self.vhd_check(self.name))
+
+	def test_create_new_ver_large_prealloc_large(self):
+		"""Attempt to create a new-version VHD file, preallocating very large
+		metadata."""
+		size = self.MAX_SIZE_OLD + 1;
+		mtdt_size = self.MAX_SIZE_NEW + 1;
+		self.assertNotEqual(0, self.vhd_create(self.name, size,
 			mtdt_size=mtdt_size, large=True))
 
 	def test_create_old_very_large(self):
@@ -86,6 +119,11 @@ class TestCreateVHD(unittest.TestCase):
 		"""Attempt to create a very large new-version VHD file."""
 		self.assertNotEqual(0, self.vhd_create(self.name,
 			self.MAX_SIZE_NEW + 1, large=True))
+
+	def test_snapshot_old(self):
+		self.assertEqual(0, self.vhd_create(self.name, 16))
+		self.assertEqual(0, self.vhd_snapshot(self.
+
 
 if __name__ == '__main__':
 	unittest.main()
