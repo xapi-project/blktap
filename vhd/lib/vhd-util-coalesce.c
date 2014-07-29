@@ -128,6 +128,11 @@ vhd_util_coalesce_onto(vhd_context_t *from,
 	int err;
 	uint64_t i;
 
+	if (from->footer.crtr_ver != to->footer.crtr_ver) {
+		printf("incompatible parent/child versions\n");
+		err = -EINVAL;
+	}
+
 	err = vhd_get_bat(from);
 	if (err)
 		goto out;
@@ -550,10 +555,8 @@ vhd_util_coalesce_open_output(vhd_context_t *dst,
 		return -errno;
 	}
 
-    /*
-     * FIXME
-     */
-	err = vhd_create(name, src->footer.curr_size, HD_TYPE_DYNAMIC, 0, 0, false);
+	err = vhd_create(name, src->footer.curr_size, HD_TYPE_DYNAMIC, 0, 0,
+			src->footer.crtr_ver == VHD_16TB_VERSION);
 	if (err) {
 		printf("error creating %s: %d\n", name, err);
 		return err;
