@@ -29,6 +29,7 @@
 #include <stdbool.h>
 
 #include "libvhd.h"
+#include "compiler.h"
 
 #ifndef ULLONG_MAX
 #define ULLONG_MAX (~0ULL)
@@ -114,8 +115,14 @@ vhd_io_allocate_blocks_fast(vhd_context_t *ctx, const uint32_t from_extent,
 	}
 
 	for (i = from_extent; i <= to_extent; i++) {
-		if (max > UINT_MAX && !ignore_2tb_limit) {
-			printf("sector offset for extent %u exceeds the 2 TB limit\n", i);
+		uint64_t _max;
+		if (ctx->footer.crtr_ver == VHD_16TB_VERSION)
+			_max = vhd_sectors_to_pages(max + 1);
+		else
+			_max = max;
+		if (unlikely(_max > UINT_MAX && !ignore_2tb_limit)) {
+			printf("sector offset %"PRIu64" for extent %u "
+					"exceeds the 2/16 TB limit\n", max, i);
 			err = -EOVERFLOW;
 			goto out;
 		}
@@ -265,6 +272,6 @@ usage:
 			"don't write to the data blocks (much faster)] [-f start "
 			"intialisation from this sector, only usable with -b] [-t "
 			"intialise up to this sector (inclusive), only usable with -b] "
-			"[-B ignore the 2 TB limit, only usable with -b]\n");
+			"[-B ignore the 2/16 TB limit, only usable with -b]\n");
 	return -EINVAL;
 }
