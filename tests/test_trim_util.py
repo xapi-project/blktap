@@ -246,3 +246,44 @@ class TestTrimUtil(unittest.TestCase, testlib.XmlMixIn):
         result = trim_util.do_trim(None, {'sr_uuid': 'some-uuid'})
 
         self.assertEquals('True', result)
+
+    @mock.patch('trim_util.time.time')
+    def test_log_last_triggered_no_key(self, mock_time):
+        session = mock.Mock()
+        mock_time.return_value = 0
+        session.xenapi.SR.get_by_uuid.return_value = 'sr_ref'
+        session.xenapi.SR.get_other_config.return_value = {}
+
+        trim_util._log_last_triggered(session, 'sr_uuid')
+
+        session.xenapi.SR.add_to_other_config.assert_called_with(
+            'sr_ref', trim_util.TRIM_LAST_TRIGGERED_KEY, '0')
+        self.assertEqual(0, session.xenapi.SR.remove_from_other_config.call_count)
+
+    @mock.patch('trim_util.time.time')
+    def test_log_last_triggered_has_key(self, mock_time):
+        session = mock.Mock()
+        mock_time.return_value = 0
+        session.xenapi.SR.get_by_uuid.return_value = 'sr_ref'
+        other_config = {trim_util.TRIM_LAST_TRIGGERED_KEY: '0'}
+        session.xenapi.SR.get_other_config.return_value = other_config
+
+        trim_util._log_last_triggered(session, 'sr_uuid')
+
+        session.xenapi.SR.remove_from_other_config.assert_called_with(
+            'sr_ref', trim_util.TRIM_LAST_TRIGGERED_KEY)
+        session.xenapi.SR.add_to_other_config.assert_called_with(
+            'sr_ref', trim_util.TRIM_LAST_TRIGGERED_KEY, '0')
+
+    @mock.patch('trim_util.time.time')
+    @mock.patch('trim_util.util.logException')
+    def test_log_last_triggered_exc_logged(self, mock_log_exc, mock_time):
+        session = mock.Mock()
+        mock_time.return_value = 0
+        session.xenapi.SR.get_by_uuid.side_effect = Exception()
+
+        # This combination ensures that an exception does not cause the log
+        # function to throw, but the exception is still logged
+        trim_util._log_last_triggered(session, 'sr_uuid')
+
+        self.assertEqual(1, mock_log_exc.call_count)
