@@ -41,8 +41,17 @@ typedef struct vhd_journal_header {
 } vhd_journal_header_t;
 
 typedef struct vhd_journal {
+
+	/**
+	 * The file name of the journal.
+	 */
 	char                      *jname;
+
+	/**
+	 * File descriptor to the journal.
+	 */
 	int                        jfd;
+
 	int                        is_block; /* is jfd a block device */
 	vhd_journal_header_t       header;
 	vhd_context_t              vhd;

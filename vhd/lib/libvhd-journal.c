@@ -808,6 +808,16 @@ vhd_journal_read_bat(vhd_journal_t *j, vhd_bat_t *bat)
 	bat->entries = vhd->header.max_bat_size;
 	vhd_bat_in(bat);
 
+	/*
+	 * FIXME code duplication
+	 */
+	if (vhd->footer.crtr_ver == VHD_16TB_VERSION) {
+		uint32_t i;
+		for (i = 0; i < bat->entries; i++)
+			if (bat->bat[i] != DD_BLK_UNUSED)
+				bat->bat[i] = vhd_pages_to_sectors(bat->bat[i]) - 1;
+	}
+
 	return 0;
 
 fail:

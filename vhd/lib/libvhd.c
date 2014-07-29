@@ -2066,16 +2066,18 @@ vhd_write_bat(vhd_context_t *ctx, vhd_bat_t *bat)
 		return -err;
 	b.bat = buf;
 
-	memcpy(b.bat, bat->bat, size);
-	b.spb     = bat->spb;
-	b.entries = bat->entries;
-
 	if (ctx->footer.crtr_ver == VHD_16TB_VERSION) {
 		uint32_t i;
-		for (i = 0; i < b.entries; i++)
-			if (b.bat[i] != DD_BLK_UNUSED)
-				b.bat[i] = vhd_sectors_to_pages(b.bat[i] + 1);
-	}
+		for (i = 0; i < bat->entries; i++)
+			if (bat->bat[i] == DD_BLK_UNUSED)
+				b.bat[i] = bat->bat[i];
+			else
+				b.bat[i] = vhd_sectors_to_pages(bat->bat[i] + 1);
+	} else
+		memcpy(b.bat, bat->bat, size);
+
+	b.spb     = bat->spb;
+	b.entries = bat->entries;
 
 	vhd_bat_out(&b);
 
