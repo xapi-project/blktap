@@ -899,7 +899,7 @@ vhd_dynamic_grow(vhd_journal_t *journal, uint64_t secs)
 	else
 		_max = 2093056UL;
 	_max *= 1 << 20;
-	if (vhd_sectors_to_bytes(_blocks) > _max)
+	if (vhd_sectors_to_bytes(_blocks * journal->vhd.spb) > _max)
 		return -EFBIG;
 
 	/* size in bytes needed for new bat entries */
