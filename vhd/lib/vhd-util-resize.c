@@ -881,6 +881,7 @@ vhd_dynamic_grow(vhd_journal_t *journal, uint64_t secs)
 	uint64_t blocks, size_needed;
 	uint64_t bat_needed, bat_size, bat_avail, bat_bytes, bat_secs;
 	uint64_t map_needed, map_size, map_avail, map_bytes, map_secs;
+	uint64_t _blocks, _max;
 
 	vhd         = &journal->vhd;
 
@@ -890,6 +891,16 @@ vhd_dynamic_grow(vhd_journal_t *journal, uint64_t secs)
 
 	/* number of vhd blocks to add */
 	blocks      = secs_to_blocks_up(vhd, secs);
+
+	_blocks = journal->vhd.bat.entries + blocks;
+	/* FIXME hardcoding, there values are used elsewhere */
+	if (journal->vhd.footer.crtr_ver == VHD_16TB_VERSION)
+		_max = 16744478UL;
+	else
+		_max = 2093056UL;
+	_max *= 1 << 20;
+	if (vhd_sectors_to_bytes(_blocks) > _max)
+		return -EFBIG;
 
 	/* size in bytes needed for new bat entries */
 	bat_needed  = blocks * sizeof(uint32_t);
