@@ -1180,7 +1180,7 @@ out:
 		jerr = vhd_journal_commit(&journal);
 
 	if (jerr) {
-		printf("closing journal failed: %d\n", jerr);
+		printf("closing journal failed: %s\n", strerror(-jerr));
 		vhd_journal_close(&journal);
 	} else
 		vhd_journal_remove(&journal);
