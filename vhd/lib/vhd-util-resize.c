@@ -1153,7 +1153,7 @@ vhd_util_resize(int argc, char **argv)
 
 	err = vhd_journal_create(&journal, name, jname);
 	if (err) {
-		printf("creating journal failed: %d\n", err);
+		printf("creating journal failed: %s\n", strerror(-err));
 		return err;
 	}
 
@@ -1174,7 +1174,7 @@ vhd_util_resize(int argc, char **argv)
 
 out:
 	if (err) {
-		printf("resize failed: %d\n", err);
+		printf("resize failed: %s\n", strerror(-err));
 		jerr = vhd_journal_revert(&journal);
 	} else
 		jerr = vhd_journal_commit(&journal);
