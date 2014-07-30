@@ -1146,7 +1146,8 @@ vhd_read_batmap_map(vhd_context_t *ctx, vhd_batmap_t *batmap)
 			ctx->footer.curr_size >> (VHD_BLOCK_SHIFT + 3)));
 	ASSERT(vhd_sectors_to_bytes(batmap->header.batmap_size) >= map_size);
 
-	err = posix_memalign(&buf, VHD_SECTOR_SIZE, map_size);
+	err = posix_memalign(&buf, VHD_SECTOR_SIZE,
+			vhd_sectors_to_bytes(batmap->header.batmap_size));
 	if (err) {
 		buf = NULL;
 		err = -err;
@@ -2995,6 +2996,10 @@ out:
 	return err;
 }
 
+/**
+ * Create and write the BATMAP. NB the maximum BAT size is used, not the
+ * current one.
+ */
 static int
 vhd_create_batmap(vhd_context_t *ctx)
 {
@@ -3006,6 +3011,12 @@ vhd_create_batmap(vhd_context_t *ctx)
 	if (!vhd_type_dynamic(ctx))
 		return -EINVAL;
 
+	/*
+	 * Right shifht by three in order to effectively divide by eight: one bit
+	 * per VHD block, per byte.
+	 *
+	 * TODO What's the 7 for?
+	 */
 	map_bytes = (ctx->header.max_bat_size + 7) >> 3;
 	header    = &ctx->batmap.header;
 

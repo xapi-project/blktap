@@ -180,12 +180,21 @@ clear_bit (volatile char *addr, int nr)
 	addr[nr >> 3] &= ~(BIT_MASK >> (nr & 7));
 }
 
+/**
+ * Tells the miminum number of sectors required for the specified amount of
+ * bytes. NB if the number of bytes is less than a sector zero is returned, so
+ * you'd better use secs_round_up_no_zero.
+ */
 static inline uint32_t
 secs_round_up(uint64_t bytes)
 {
 	return ((bytes + (VHD_SECTOR_SIZE - 1)) >> VHD_SECTOR_SHIFT);
 }
 
+/**
+* Tells the miminum number of sectors required for the specified amount of
+* bytes.
+*/
 static inline uint32_t
 secs_round_up_no_zero(uint64_t bytes)
 {
