@@ -781,8 +781,8 @@ vhd_add_bat_entries(vhd_journal_t *journal, int entries)
 	vhd          = &journal->vhd;
 	new_entries  = vhd->header.max_bat_size + entries;
 
-	bat_size     = vhd_bytes_padded(vhd->header.max_bat_size *
-					sizeof(uint32_t));
+	bat_size     = vhd_bytes_padded(
+			vhd->bat.entries * sizeof(vhd->bat.bat[0]));
 	new_bat_size = vhd_bytes_padded(new_entries * sizeof(uint32_t));
 
 	map_size     = vhd_bytes_padded((vhd->header.max_bat_size + 7) >> 3);
