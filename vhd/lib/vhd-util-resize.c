@@ -879,7 +879,8 @@ vhd_dynamic_grow(vhd_journal_t *journal, uint64_t secs)
 	vhd_context_t *vhd;
 	vhd_block_t first_block;
 	uint64_t blocks, size_needed;
-	uint64_t bat_needed, bat_size, bat_avail, bat_bytes, bat_secs;
+	uint64_t bat_needed, bat_avail, max_bat_size, max_bat_bytes, cur_bat_bytes,
+			 max_bat_secs, cur_bat_secs;
 	uint64_t map_needed, map_size, map_avail, map_bytes, map_secs;
 	uint64_t _blocks, _max;
 
@@ -906,15 +907,21 @@ vhd_dynamic_grow(vhd_journal_t *journal, uint64_t secs)
 	bat_needed  = blocks * sizeof(uint32_t);
 	map_needed  = (blocks >> 3) + 1;
 
+	/* max bytes in bat */
+	max_bat_bytes = vhd->header.max_bat_size * sizeof(uint32_t);
+	max_bat_secs = secs_round_up_no_zero(max_bat_bytes);
+	max_bat_size = vhd_sectors_to_bytes(max_bat_secs);
+
+	/* used bytes in bat */
+	cur_bat_bytes = vhd->bat.entries * sizeof(uint32_t);
+	cur_bat_secs = secs_round_up_no_zero(cur_bat_bytes);
+
 	/* available bytes in current bat */
-	bat_bytes   = vhd->header.max_bat_size * sizeof(uint32_t);
-	bat_secs    = secs_round_up_no_zero(bat_bytes);
-	bat_size    = vhd_sectors_to_bytes(bat_secs);
-	bat_avail   = bat_size - bat_bytes;
+	bat_avail   = max_bat_size - cur_bat_bytes;
 
 	if (vhd_has_batmap(vhd)) {
 		/* avaliable bytes in current batmap */
-		map_bytes   = (vhd->header.max_bat_size + 7) >> 3;
+		map_bytes   = (vhd->bat.entries + 7) >> 3;
 		map_secs    = vhd->batmap.header.batmap_size;
 		map_size    = vhd_sectors_to_bytes(map_secs);
 		map_avail   = map_size - map_bytes;
@@ -949,7 +956,7 @@ vhd_dynamic_grow(vhd_journal_t *journal, uint64_t secs)
 	if (err)
 		return err;
 
-	eob = vhd->header.table_offset + vhd_sectors_to_bytes(bat_secs);
+	eob = vhd->header.table_offset + vhd_sectors_to_bytes(cur_bat_secs);
 	vhd_first_data_block(vhd, &first_block);
 
 	/* no blocks allocated; just shift post-bat metadata */
