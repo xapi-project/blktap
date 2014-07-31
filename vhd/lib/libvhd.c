@@ -238,7 +238,7 @@ vhd_checksum_footer(vhd_footer_t *footer)
 }
 
 int
-vhd_validate_footer(vhd_footer_t *footer)
+vhd_validate_footer(vhd_footer_t *footer, bool suppress_invalid_footer_warning)
 {
 	int csize;
 	uint32_t checksum;
@@ -249,7 +249,8 @@ vhd_validate_footer(vhd_footer_t *footer)
 		char buf[9];
 		memcpy(buf, footer->cookie, 8);
 		buf[8]= '\0';
-		VHDLOG("invalid footer cookie: %s\n", buf);
+		if (!suppress_invalid_footer_warning)
+			VHDLOG("invalid footer cookie: %s\n", buf);
 		return -EINVAL;
 	}
 
@@ -272,9 +273,12 @@ vhd_validate_footer(vhd_footer_t *footer)
 				return 0;
 		}
 
-		VHDLOG("invalid footer checksum: "
-		       "footer = 0x%08x, calculated = 0x%08x\n",
-		       footer->checksum, checksum);
+		if (!suppress_invalid_footer_warning)
+		{
+			VHDLOG("invalid footer checksum: "
+			       "footer = 0x%08x, calculated = 0x%08x\n",
+			       footer->checksum, checksum);
+		}
 		return -EINVAL;
 	}
 
@@ -453,7 +457,7 @@ vhd_hidden(vhd_context_t *ctx, int *hidden)
 	     ctx->footer.crtr_ver == VHD_VERSION(1, 1))) {
 		vhd_footer_t copy;
 
-		err = vhd_read_footer_at(ctx, &copy, 0);
+		err = vhd_read_footer_at(ctx, &copy, 0, false);
 		if (err) {
 			VHDLOG("error reading backup footer of %s: %d\n",
 			       ctx->file, err);
@@ -764,7 +768,7 @@ vhd_chs(uint64_t size)
 int
 vhd_get_footer(vhd_context_t *ctx)
 {
-	if (!vhd_validate_footer(&ctx->footer))
+	if (!vhd_validate_footer(&ctx->footer, false))
 		return 0;
 
 	return vhd_read_footer(ctx, &ctx->footer, false);
@@ -847,7 +851,7 @@ vhd_put_batmap(vhd_context_t *ctx)
  * look for 511 byte footer at end of file
  */
 int
-vhd_read_short_footer(vhd_context_t *ctx, vhd_footer_t *footer)
+vhd_read_short_footer(vhd_context_t *ctx, vhd_footer_t *footer, bool suppress_invalid_footer_warning)
 {
 	off64_t eof;
 	void *buf;
@@ -862,6 +866,19 @@ vhd_read_short_footer(vhd_context_t *ctx, vhd_footer_t *footer)
 	eof = vhd_position(ctx);
 	if (eof == (off64_t)-1) {
 		err = -errno;
+		goto out;
+	}
+
+	if (((eof - 511) % VHD_SECTOR_SIZE) != 0) {
+		/*
+		 * The VHD file with short footer should have the size in the form 512 * n + 511,
+		 * also vhd_read on block VHDs won't succeed if trying to read from a position
+		 * that is not a multiple of 512.
+		 */
+		if (!suppress_invalid_footer_warning)
+			VHDLOG("%s: failed reading short footer: file size does not meet requirement",
+					ctx->file);
+		err = -EINVAL;
 		goto out;
 	}
 
@@ -886,10 +903,10 @@ vhd_read_short_footer(vhd_context_t *ctx, vhd_footer_t *footer)
 	memcpy(footer, buf, sizeof(vhd_footer_t));
 
 	vhd_footer_in(footer);
-	err = vhd_validate_footer(footer);
+	err = vhd_validate_footer(footer, suppress_invalid_footer_warning);
 
 out:
-	if (err)
+	if (err && !suppress_invalid_footer_warning)
 		VHDLOG("%s: failed reading short footer: %d\n",
 		       ctx->file, err);
 	free(buf);
@@ -897,7 +914,7 @@ out:
 }
 
 int
-vhd_read_footer_at(vhd_context_t *ctx, vhd_footer_t *footer, off64_t off)
+vhd_read_footer_at(vhd_context_t *ctx, vhd_footer_t *footer, off64_t off, bool suppress_invalid_footer_warning)
 {
 	void *buf;
 	int err;
@@ -922,10 +939,10 @@ vhd_read_footer_at(vhd_context_t *ctx, vhd_footer_t *footer, off64_t off)
 	memcpy(footer, buf, sizeof(vhd_footer_t));
 
 	vhd_footer_in(footer);
-	err = vhd_validate_footer(footer);
+	err = vhd_validate_footer(footer, suppress_invalid_footer_warning);
 
 out:
-	if (err)
+	if (err && !suppress_invalid_footer_warning)
 		VHDLOG("%s: reading footer at 0x%08"PRIx64" failed: %d\n",
 		       ctx->file, off, err);
 	free(buf);
@@ -947,11 +964,16 @@ vhd_read_footer(vhd_context_t *ctx, vhd_footer_t *footer, bool use_bkp_footer)
 		return -errno;
 
 	if (!use_bkp_footer) {
-		err = vhd_read_footer_at(ctx, footer, off - 512);
+		/*
+		 * As we will read the backup footer if the primary one is invalid,
+		 * stop complaining the primary one is invalid
+		 */
+
+		err = vhd_read_footer_at(ctx, footer, off - 512, true);
 		if (err != -EINVAL)
 			return err;
 
-		err = vhd_read_short_footer(ctx, footer);
+		err = vhd_read_short_footer(ctx, footer, true);
 		if (err != -EINVAL)
 			return err;
 	}
@@ -964,7 +986,7 @@ vhd_read_footer(vhd_context_t *ctx, vhd_footer_t *footer, bool use_bkp_footer)
 	/* if (ctx->oflags & VHD_OPEN_STRICT)
 		return -EINVAL; */
 
-	return vhd_read_footer_at(ctx, footer, 0);
+	return vhd_read_footer_at(ctx, footer, 0, false);
 }
 
 int
@@ -1919,7 +1941,7 @@ vhd_write_footer_at(vhd_context_t *ctx, vhd_footer_t *footer, off64_t off)
 	memcpy(f, footer, sizeof(vhd_footer_t));
 	f->checksum = vhd_checksum_footer(f);
 
-	err = vhd_validate_footer(f);
+	err = vhd_validate_footer(f, false);
 	if (err)
 		goto out;
 
@@ -2476,7 +2498,7 @@ vhd_open_fast(vhd_context_t *ctx)
 
 	memcpy(&ctx->footer, buf, sizeof(vhd_footer_t));
 	vhd_footer_in(&ctx->footer);
-	err = vhd_validate_footer(&ctx->footer);
+	err = vhd_validate_footer(&ctx->footer, false);
 	if (err)
 		goto out;
 
