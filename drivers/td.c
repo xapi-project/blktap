@@ -28,6 +28,7 @@
 #include <sys/resource.h>
 #include <unistd.h>
 #include <string.h>
+#include <stdbool.h>
 
 #include "libvhd.h"
 #include "vhd-util.h"
@@ -181,14 +182,18 @@ td_create(int type, int argc, char *argv[])
 	uint64_t size;
 	char *name, *buf;
 	int c, i, fd, sparse = 1, fixedsize = 0;
+	bool large;
 
-	while ((c = getopt(argc, argv, "hrb")) != -1) {
+	while ((c = getopt(argc, argv, "hrbl")) != -1) {
 		switch(c) {
 		case 'r':
 			sparse = 0;
 			break;
 		case 'b':
 			fixedsize = 1;
+			break;
+		case 'l':
+			large = true;
 			break;
 		default:
 			fprintf(stderr, "Unknown option %c\n", (char)c);
@@ -227,6 +232,8 @@ td_create(int type, int argc, char *argv[])
 			cargv[cargc++] = "-r";
 		if (fixedsize)
 			cargv[cargc++] = "-b";
+		if (large)
+			cargv[cargc++] = "-l";
 
 		return vhd_util_create(cargc, cargv);
 	}
@@ -263,7 +270,7 @@ td_create(int type, int argc, char *argv[])
 
  usage:
 	fprintf(stderr, "usage: td-util create %s [-h help] [-r reserve] "
-		"[-b file_is_fixed_size] <SIZE(MB)> <FILENAME>\n",
+		"[-b file_is_fixed_size] [-l very large VHD] <SIZE(MB)> <FILENAME>\n",
 		td_disk_types[type]);
 	return EINVAL;
 }
