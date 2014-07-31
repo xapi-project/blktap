@@ -779,7 +779,7 @@ vhd_add_bat_entries(vhd_journal_t *journal, int entries)
 	void *bat, *map;
 
 	vhd          = &journal->vhd;
-	new_entries  = vhd->header.max_bat_size + entries;
+	new_entries  = vhd->bat.entries + entries;
 
 	bat_size     = vhd_bytes_padded(
 			vhd->bat.entries * sizeof(vhd->bat.bat[0]));
@@ -807,10 +807,12 @@ vhd_add_bat_entries(vhd_journal_t *journal, int entries)
 	}
 
 	/* update header */
-	vhd->header.max_bat_size = new_entries;
-	err = vhd_write_header(vhd, &vhd->header);
-	if (err)
-		return err;
+	if (new_entries > vhd->header.max_bat_size) {
+		vhd->header.max_bat_size = new_entries;
+		err = vhd_write_header(vhd, &vhd->header);
+		if (err)
+			return err;
+	}
 
 	/* allocate new bat */
 	err = posix_memalign(&bat, VHD_SECTOR_SIZE, new_bat_size);
@@ -838,27 +840,29 @@ vhd_add_bat_entries(vhd_journal_t *journal, int entries)
 	if (!vhd_has_batmap(vhd))
 		return 0;
 
-	/* allocate new batmap */
-	err = posix_memalign(&map, VHD_SECTOR_SIZE, new_map_size);
-	if (err)
-		return err;
+	if (vhd->batmap.header.batmap_size < secs_round_up_no_zero(new_map_size)) {
+		/* allocate new batmap */
+		err = posix_memalign(&map, VHD_SECTOR_SIZE, new_map_size);
+		if (err)
+			return err;
 
-	new_batmap.map    = map;
-	new_batmap.header = vhd->batmap.header;
-	new_batmap.header.batmap_size = secs_round_up_no_zero(new_map_size);
-	memcpy(new_batmap.map, vhd->batmap.map, map_size);
-	memset(new_batmap.map + map_size, 0, new_map_size - map_size);
+		new_batmap.map    = map;
+		new_batmap.header = vhd->batmap.header;
+		new_batmap.header.batmap_size = secs_round_up_no_zero(new_map_size);
+		memcpy(new_batmap.map, vhd->batmap.map, map_size);
+		memset(new_batmap.map + map_size, 0, new_map_size - map_size);
 
-	/* write new batmap */
-	err = vhd_write_batmap(vhd, &new_batmap);
-	if (err) {
-		free(new_batmap.map);
-		return err;
+		/* write new batmap */
+		err = vhd_write_batmap(vhd, &new_batmap);
+		if (err) {
+			free(new_batmap.map);
+			return err;
+		}
+
+		/* update in-memory batmap */
+		free(vhd->batmap.map);
+		vhd->batmap = new_batmap;
 	}
-
-	/* update in-memory batmap */
-	free(vhd->batmap.map);
-	vhd->batmap = new_batmap;
 
 	/* update footer */
 	vhd->footer.curr_size = (uint64_t)new_entries * vhd->header.block_size;
