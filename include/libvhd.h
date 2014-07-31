@@ -243,7 +243,8 @@ void vhd_bat_out(vhd_bat_t *);
 void vhd_batmap_header_in(vhd_batmap_t *);
 void vhd_batmap_header_out(vhd_batmap_t *);
 
-int vhd_validate_footer(vhd_footer_t *footer);
+int vhd_validate_footer(vhd_footer_t *footer,
+                        bool suppress_invalid_footer_warning);
 int vhd_validate_header(vhd_header_t *header);
 int vhd_validate_batmap_header(vhd_batmap_t *batmap);
 int vhd_validate_batmap(vhd_context_t *, vhd_batmap_t *batmap);
@@ -319,7 +320,8 @@ int vhd_macx_encode_location(char *name, char **out, int *outlen);
 int vhd_w2u_encode_location(char *name, char **out, int *outlen);
 
 int vhd_read_footer(vhd_context_t *, vhd_footer_t *, bool use_bkp_footer);
-int vhd_read_footer_at(vhd_context_t *, vhd_footer_t *, off64_t);
+int vhd_read_footer_at(vhd_context_t *, vhd_footer_t *, off64_t,
+                bool suppress_invalid_footer_warning);
 int vhd_read_footer_strict(vhd_context_t *, vhd_footer_t *);
 int vhd_read_header(vhd_context_t *, vhd_header_t *);
 int vhd_read_header_at(vhd_context_t *, vhd_header_t *, off64_t);

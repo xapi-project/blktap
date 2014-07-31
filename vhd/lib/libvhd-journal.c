@@ -421,7 +421,7 @@ vhd_journal_add_footer(vhd_journal_t *j)
 	if (off == (off64_t)-1)
 		return -errno;
 
-	err = vhd_read_footer_at(vhd, &footer, off - sizeof(vhd_footer_t));
+	err = vhd_read_footer_at(vhd, &footer, off - sizeof(vhd_footer_t), false);
 	if (err)
 		return err;
 
@@ -436,7 +436,7 @@ vhd_journal_add_footer(vhd_journal_t *j)
 	if (!vhd_type_dynamic(vhd))
 		return 0;
 
-	err = vhd_read_footer_at(vhd, &footer, 0);
+	err = vhd_read_footer_at(vhd, &footer, 0, false);
 	if (err)
 		return err;
 
@@ -660,7 +660,7 @@ __vhd_journal_read_footer(vhd_journal_t *j,
 		return err;
 
 	vhd_footer_in(footer);
-	return vhd_validate_footer(footer);
+	return vhd_validate_footer(footer, false);
 }
 
 static int
