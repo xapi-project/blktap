@@ -182,7 +182,7 @@ td_create(int type, int argc, char *argv[])
 	uint64_t size;
 	char *name, *buf;
 	int c, i, fd, sparse = 1, fixedsize = 0;
-	bool large;
+	bool large = false;
 
 	while ((c = getopt(argc, argv, "hrbl")) != -1) {
 		switch(c) {
