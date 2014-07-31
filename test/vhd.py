@@ -39,7 +39,7 @@ class TestVHD(unittest.TestCase):
 	@classmethod
 	def vhd_create(cls, name, size=DEFAULT_SIZE, reserve=None, mtdt_size=None,
 			large=None):
-		cmd = ['fakeroot', vhd_util, 'create', '-n', name, '-s', str(size)]
+		cmd = [vhd_util, 'create', '-n', name, '-s', str(size)]
 		if reserve:
 			cmd.append('-r')
 		if mtdt_size:
@@ -50,7 +50,7 @@ class TestVHD(unittest.TestCase):
 
 	@classmethod
 	def vhd_check(cls, name, parents=False):
-		cmd = ['fakeroot', vhd_util, 'check', '-n', name]
+		cmd = [vhd_util, 'check', '-n', name]
 		if parents:
 			cmd.append('-p')
 		return cls._exec(cmd)
@@ -58,7 +58,7 @@ class TestVHD(unittest.TestCase):
 	@classmethod
 	def vhd_snapshot(cls, name, parent, depth_limit=None, raw_parent=False,
 			mtdt_size=None, force_link=False):
-		cmd = ['fakeroot', vhd_util, 'snapshot', '-n', name, '-p', parent]
+		cmd = [vhd_util, 'snapshot', '-n', name, '-p', parent]
 		if depth_limit:
 			cmd += ['-l', depth_limit]
 		if raw_parent:
@@ -71,7 +71,7 @@ class TestVHD(unittest.TestCase):
 
 	@classmethod
 	def vhd_resize(cls, name, new_size, fast=False, journal=None):
-		cmd = ['fakeroot', vhd_util, 'resize', '-n', name, '-s', str(new_size)]
+		cmd = [vhd_util, 'resize', '-n', name, '-s', str(new_size)]
 		if fast:
 			cmd.append('-f')
 		if journal:
