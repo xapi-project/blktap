@@ -129,6 +129,9 @@ tapdisk_image_check_request(td_image_t *image, td_vbd_request_t *vreq)
 	info   = &driver->info;
 	rdonly = td_flag_test(image->flags, TD_OPEN_RDONLY);
 
+	if (TD_OP_WRITE_BARRIER == vreq->op)
+		return 0;
+
 	secs = 0;
 
 	if (vreq->iovcnt < 0) {

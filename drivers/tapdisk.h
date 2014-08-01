@@ -74,6 +74,7 @@ extern unsigned int PAGE_SHIFT;
 
 #define TD_OP_READ                   0
 #define TD_OP_WRITE                  1
+#define TD_OP_WRITE_BARRIER          2
 
 #define TD_OPEN_QUIET                0x00001
 #define TD_OPEN_QUERY                0x00002

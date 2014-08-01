@@ -21,6 +21,7 @@
 #define __LIST_H__
 
 #include <stddef.h>
+#include <stdbool.h>
 
 #define containerof(_ptr, _type, _memb) \
 	((_type*)((void*)(_ptr) - offsetof(_type, _memb)))
@@ -159,5 +160,19 @@ static inline void list_splice_tail(struct list_head *list,
 
 #define list_first_entry(ptr, type, member) \
 	list_entry((ptr)->next, type, member)
+
+static inline int list_is_singular(const struct list_head *head)
+{
+	return !list_empty(head) && (head->next == head->prev);
+}
+
+/**
+ * Tells whether the list contains exactly this entry.
+ */
+static inline bool list_contains_this_single_entry(struct list_head *list,
+		struct list_head *entry)
+{
+	return list_is_singular(list) && list_is_last(entry, list);
+}
 
 #endif /* __LIST_H__ */

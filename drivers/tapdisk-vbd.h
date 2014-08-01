@@ -139,6 +139,11 @@ struct td_vbd_handle {
 	td_disk_info_t              disk_info;
 
     struct td_vbd_rrd           rrd;
+
+	/**
+	 * Points to a pending write I/O barrier request.
+	 */
+	td_vbd_request_t           *barrier;
 };
 
 #define tapdisk_vbd_for_each_request(vreq, tmp, list)	                \
@@ -229,7 +234,15 @@ int tapdisk_vbd_pause(td_vbd_t *);
 int tapdisk_vbd_resume(td_vbd_t *, const char *);
 void tapdisk_vbd_kick(td_vbd_t *);
 void tapdisk_vbd_check_state(td_vbd_t *);
+
+/**
+ * Checks whether there are new requests and if so it submits them, prodived
+ * that the queue has not been quiesced.
+ *
+ * Returns 1 if new requests have been issued, otherwise it returns 0.
+ */
 int tapdisk_vbd_recheck_state(td_vbd_t *);
+
 void tapdisk_vbd_check_progress(td_vbd_t *);
 void tapdisk_vbd_debug(td_vbd_t *);
 int tapdisk_vbd_start_nbdserver(td_vbd_t *);

@@ -86,6 +86,7 @@ tapdisk_vbd_create(uint16_t uuid)
 
 	vbd->uuid        = uuid;
 	vbd->req_timeout = TD_VBD_REQUEST_TIMEOUT;
+	vbd->barrier     = NULL;
 
 	INIT_LIST_HEAD(&vbd->images);
 	INIT_LIST_HEAD(&vbd->new_requests);
@@ -1385,6 +1386,26 @@ queue_mirror_req(td_vbd_t *vbd, td_request_t clone)
 	td_queue_write(vbd->secondary, clone);
 }
 
+
+/**
+ * Tells whether the conditions for a write I/O barrier request to be
+ * considered completed are met, which is not to have any outstanding requests
+ * (apart from the barrier request itself).
+ */
+static bool
+tapdisk_vbd_write_barrier_completed(td_vbd_t *vbd)
+{
+	ASSERT(vbd);
+
+	return list_empty(&vbd->failed_requests) &&
+		list_empty(&vbd->completed_requests) &&
+		(list_empty(&vbd->pending_requests) ||
+		 (vbd->barrier &&
+		  list_contains_this_single_entry(&vbd->pending_requests,
+			  &vbd->barrier->next)));
+}
+
+
 static int
 tapdisk_vbd_issue_request(td_vbd_t *vbd, td_vbd_request_t *vreq)
 {
@@ -1413,6 +1434,13 @@ tapdisk_vbd_issue_request(td_vbd_t *vbd, td_vbd_request_t *vreq)
 	if (err) {
 		vreq->error = err;
 		goto fail;
+	}
+
+	if (TD_OP_WRITE_BARRIER == vreq->op) {
+		err = 0;
+		ASSERT(!vbd->barrier);
+		vbd->barrier = vreq;
+		goto out;
 	}
 
 	for (i = 0; i < vreq->iovcnt; i++) {
@@ -1469,7 +1497,14 @@ tapdisk_vbd_issue_request(td_vbd_t *vbd, td_vbd_request_t *vreq)
 
 out:
 	vreq->submitting--;
-	if (!vreq->secs_pending) {
+	if (TD_OP_WRITE_BARRIER == vreq->op) {
+		/*
+		 * In the unlikely scenario there aren't any other requests, this
+		 * barrier request can be immediatelly completed.
+		 */
+		if (unlikely(tapdisk_vbd_write_barrier_completed(vbd)))
+			tapdisk_vbd_complete_vbd_request(vbd, vreq);
+	} else if (!vreq->secs_pending) {
 		err = (err ? : vreq->error);
 		tapdisk_vbd_complete_vbd_request(vbd, vreq);
 	}
@@ -1550,6 +1585,9 @@ tapdisk_vbd_issue_new_requests(td_vbd_t *vbd)
 	int err;
 	td_vbd_request_t *vreq, *tmp;
 
+	if (vbd->barrier)
+		return 0;
+
 	tapdisk_vbd_for_each_request(vreq, tmp, &vbd->new_requests) {
 		err = tapdisk_vbd_issue_request(vbd, vreq);
 		/*
@@ -1573,6 +1611,9 @@ tapdisk_vbd_recheck_state(td_vbd_t *vbd)
 
 	if (td_flag_test(vbd->state, TD_VBD_QUIESCED) ||
 	    td_flag_test(vbd->state, TD_VBD_QUIESCE_REQUESTED))
+		return 0;
+
+	if (vbd->barrier)
 		return 0;
 
 	tapdisk_vbd_issue_new_requests(vbd);
@@ -1643,8 +1684,20 @@ tapdisk_vbd_kick(td_vbd_t *vbd)
 	vbd->kicked++;
 
 	while (!list_empty(list)) {
+
+		/*
+		 * Take a request off the completed requests list, and then look for
+		 * other requests in the completed requests list that have the same
+		 * token and complete them. Once all such requests have been completed,
+		 * complete the original reguest. I suspect requests with the same
+		 * token belong to the same original reguest (e.g. a request had to
+		 * be split, for whatever reason).
+		 *
+		 * Repeat for each request left in the list, until the list is empty.
+		 */
 		prev = list_entry(list->next, td_vbd_request_t, next);
 		list_del(&prev->next);
+		INIT_LIST_HEAD(&prev->next);
 
 		tapdisk_vbd_for_each_request(vreq, next, list) {
 			if (vreq->token == prev->token) {
@@ -1653,12 +1706,24 @@ tapdisk_vbd_kick(td_vbd_t *vbd)
 				vbd->returned++;
 
 				list_del(&vreq->next);
+				INIT_LIST_HEAD(&vreq->next);
 				prev = vreq;
 			}
 		}
 
+		if (TD_OP_WRITE_BARRIER == prev->op)
+			vbd->barrier = NULL;
+
 		prev->cb(prev, prev->error, prev->token, 1);
 		vbd->returned++;
+	}
+
+	/*
+	 * If all requests have completed and there is a barrier request pending,
+	 * then the barrier request itself should be completed.
+	 */
+	if (vbd->barrier && tapdisk_vbd_write_barrier_completed(vbd)) {
+		tapdisk_vbd_complete_vbd_request(vbd, vbd->barrier);
 	}
 }
 
