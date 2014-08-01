@@ -3242,11 +3242,6 @@ __vhd_create(const char *name, const char *parent, uint64_t bytes, int type,
 		blks = (mbytes + VHD_BLOCK_SIZE - 1) >> VHD_BLOCK_SHIFT;
 	size = blks << VHD_BLOCK_SHIFT;
 
-    if (size > 2044ULL * (1ULL << 30) && !large)
-        return -EFBIG;
-	if (size > 16744478ULL * (1ULL << 20))
-		return -EFBIG;
-
 	ctx.fd = open(name, O_WRONLY | O_CREAT |
 		      O_TRUNC | O_LARGEFILE | O_DIRECT, 0644);
 	if (ctx.fd == -1)
@@ -3271,6 +3266,11 @@ __vhd_create(const char *name, const char *parent, uint64_t bytes, int type,
         }
         large = version == VHD_16TB_VERSION;
     }
+
+    if (size > 2044ULL * (1ULL << 30) && !large)
+        return -EFBIG;
+	if (size > 16744478ULL * (1ULL << 20))
+		return -EFBIG;
 
     vhd_initialize_footer(&ctx, type, size, large);
 
