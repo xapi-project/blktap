@@ -104,7 +104,7 @@ vhd_util_snapshot(int argc, char **argv)
 {
 	vhd_flag_creat_t flags;
 	int c, err, limit, empty_check;
-	char *name, *pname, *backing;
+	char *name, *pname, *backing = NULL;
 	char *ppath, __ppath[PATH_MAX];
 	uint64_t size, msize;
 	vhd_context_t vhd;
@@ -160,8 +160,10 @@ vhd_util_snapshot(int argc, char **argv)
 	}
 
 	ppath = canonpath(pname, __ppath);
-	if (!ppath)
-		return -errno;
+	if (!ppath) {
+		err = -errno;
+		goto out;
+	}
 
 	if (vhd_flag_test(flags, VHD_FLAG_CREAT_PARENT_RAW) || !empty_check) {
 		backing = strdup(ppath);
