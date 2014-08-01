@@ -225,8 +225,8 @@ struct vhd_state {
 	uint64_t                  first_db;    /* pointer to datablock 0 */
 
 	/**
-	 * Pointer to the next (unallocated) datablock. If greater than UINT_MAX,
-	 * there are no more blocks available.
+	 * Sectror pointer to the next (unallocated) datablock. If greater than
+	 * vhd_state.max, there are no more blocks available.
 	 */
 	uint64_t                  next_db;
 
@@ -259,13 +259,20 @@ struct vhd_state {
 	uint64_t                  read_size;
 	uint64_t                  writes;
 	uint64_t                  write_size;
+
+	/**
+	 * Maximum value for a sector offset.
+	 *
+	 * FIXME use a better membmer name
+	 */
+	uint64_t                  max;
 };
 
 #define test_vhd_flag(word, flag)  ((word) & (flag))
 #define set_vhd_flag(word, flag)   ((word) |= (flag))
 #define clear_vhd_flag(word, flag) ((word) &= ~(flag))
 
-#define bat_entry(s, blk)          ((s)->bat.bat.bat[(blk)])
+//#define bat_entry(s, blk)          ((s)->bat.bat.bat[(blk)])
 
 static void vhd_complete(void *, struct tiocb *, int);
 static void finish_data_transaction(struct vhd_state *, struct vhd_bitmap *);
@@ -393,11 +400,12 @@ find_next_free_block(struct vhd_state *s)
 		s->first_db += (s->spp - ((s->first_db + s->bm_secs) % s->spp));
 
 	for (i = 0; i < s->bat.bat.entries; i++) {
-		entry = bat_entry(s, i);
+		//entry = bat_entry(s, i);
+		entry = s->vhd.bentry_ld(&s->vhd, i);
 		if (entry != DD_BLK_UNUSED && entry >= s->next_db)
 			s->next_db = (uint64_t)entry + (uint64_t)s->spb
 				+ (uint64_t)s->bm_secs;
-			if (s->next_db > UINT_MAX)
+			if (unlikely(s->next_db > s->max))
 				break;
 	}
 
@@ -616,7 +624,7 @@ vhd_log_open(struct vhd_state *s)
 	full      = 0;
 
 	for (i = 0; i < s->bat.bat.entries; i++) {
-		if (bat_entry(s, i) != DD_BLK_UNUSED)
+		if (s->vhd.bentry_ld(&s->vhd, i) != DD_BLK_UNUSED)
 			allocated++;
 		if (test_batmap(s, i))
 			full++;
@@ -670,6 +678,10 @@ __vhd_open(td_driver_t *driver, const char *name, vhd_flag_t flags)
 	err = vhd_check_version(s);
 	if (err)
 		goto fail;
+
+	s->max = UINT_MAX;
+	if (s->vhd.footer.crtr == VHD_16TB_VERSION)
+		s->max *= 8;
 
 	s->spb = s->spp = 1;
 
@@ -757,7 +769,7 @@ vhd_log_close(struct vhd_state *s)
 	full      = 0;
 
 	for (i = 0; i < s->bat.bat.entries; i++) {
-		if (bat_entry(s, i) != DD_BLK_UNUSED)
+		if (s->vhd.bentry_ld(&s->vhd, i) != DD_BLK_UNUSED)
 			allocated++;
 		if (test_batmap(s, i))
 			full++;
@@ -1204,7 +1216,7 @@ read_bitmap_cache(struct vhd_state *s, uint64_t sector, uint8_t op)
 		return -EINVAL;
 	}
 
-	if (bat_entry(s, blk) == DD_BLK_UNUSED) {
+	if (s->vhd.bentry_ld(&s->vhd, blk) == DD_BLK_UNUSED) {
 		if (op == VHD_OP_DATA_WRITE &&
 		    s->bat.pbw_blk != blk && bat_locked(s))
 			return VHD_BM_BAT_LOCKED;
