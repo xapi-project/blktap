@@ -17,24 +17,57 @@ class TestVHD(unittest.TestCase):
 	MAX_SIZE_NEW = 16744478
 
 	@classmethod
+	def attach(cls, name):
+		cmd = ['tap-ctl', 'create', '-a', 'vhd:/%s' % name]
+		rc = cls._exec(cmd)
+		if rc != 0:
+			raise Exception('failed to create tapdisk: %s' % cls.output)
+		return cls.output
+
+	@classmethod
+	def detach(cls, name):
+		cmd = ['tap-ctl', 'list']
+		rc = cls._exec(cmd)
+		if rc != 0:
+			raise Exception('failed to list tapdisks: %s' % cls.output)
+		tapdisks = cls.output.splitlines()
+		for line in tapdisks:
+			fields = line.split()
+			assert len(fields) == 5
+			if os.basename(fields[4]) == name:
+				cmd = ['tap-ctl', 'destroy', '-p', fields[0], '-m', fields[1]]
+				rc = cls._exec(cmd)
+				if rc != 0:
+					raise Exception('failed to destroy tapdisk[%s]: %s' \
+							% (fields[0], cls.output))
+				return
+		raise Exception('tapdisk not found')
+
+	@classmethod
+	def setUpClass(cls):
+		cls.workspace = tempfile.mkdtemp()
+
+	@classmethod
+	def tearDownClass(cls):
+		shutil.rmtree(cls.workspace)
+
+	@classmethod
 	def mkname(cls):
 		return tempfile.mktemp(dir=cls.workspace) + '.vhd'
+
+	def setUp(self):
+		self.name = self.mkname()
 
 	# FIXME can we call the vhd_XXX methods using decorators?
 	@classmethod
 	def _exec(cls, cmd):
 		cls.output = None
 		try:
-			subprocess.check_output(cmd)
+			cls.output = subprocess.check_output(cmd)
 			return 0
 		except subprocess.CalledProcessError, e:
 			cls.output = e.output
 			return e.returncode
-
-	@classmethod
-	def setUpClass(cls):
-		# For discarding subprocess output
-		cls.devnull_fp = open(os.devnull, 'w')
 
 	@classmethod
 	def vhd_create(cls, name, size=DEFAULT_SIZE, reserve=None, mtdt_size=None,
@@ -78,27 +111,49 @@ class TestVHD(unittest.TestCase):
 			cmd += ['-j', journal]
 		return cls._exec(cmd)
 
+	@classmethod
+	def vhd_query(cls, name):
+		"""Queries the VHD file and sets the output as a dictionary."""
+		cmd = ['fakeroot', vhd_util, 'query', '-n', name, '-v', '-s', '-p',
+				'-f', '-m', '-d', '-S']
+		rc = cls._exec(cmd)
+		if not rc:
+			cls.output = cls.output.splitlines()
+			_output = {}
+			_output['virtual size'] = int(cls.output[0])
+			_output['utilisation'] = int(cls.output[1])
+			if cls.output[2] == name + ' has no parent':
+				_output['parent'] = None
+			else:
+				_output['parent'] = cls.output[2]
+			hidden = cls.output[3][len('hidden: ')]
+			assert hidden in ['0', '1']
+			if hidden == '0':
+				_output['hidden'] = False
+			else:
+				_output['hidden'] = True
+			_output['chain depth'] = \
+					int((cls.output[5][len('chain depth: '):]))
+			_output['max virtual size'] = int(cls.output[6])
+			cls.output = _output
+		return rc
+
 class TestCreate(TestVHD):
-
-	@classmethod
-	def setUpClass(cls):
-		super(TestCreate, cls).setUpClass()
-		cls.workspace = tempfile.mkdtemp()
-
-	@classmethod
-	def tearDownClass(cls):
-		shutil.rmtree(cls.workspace)
-
-	def setUp(self):
-		self.name = self.mkname()
-
-	def tearDown(self):
-		pass
 
 	def test_create_old_ver(self):
 		"""Create an old VHD file."""
 		self.assertEqual(0, self.vhd_create(self.name))
 		self.assertEqual(0, self.vhd_check(self.name))
+		self.vhd_query(self.name)
+
+		# FIXME post condition checks,  very tedious to write for each and
+		# every test
+		self.assertEqual(self.DEFAULT_SIZE, self.output['virtual size'])
+		self.assertNotEqual(0, self.output['utilisation'])
+		self.assertIsNone(self.output['parent'])
+		self.assertFalse(self.output['hidden'])
+		self.assertEqual(1, self.output['chain depth'])
+		self.assertEqual(self.DEFAULT_SIZE, self.output['max virtual size'])
 
 	def test_create_old_ver_prealloc(self):
 		"""Create an old VHD file, preallocating metadata."""
@@ -155,15 +210,6 @@ class TestCreate(TestVHD):
 
 class TestSnapshot(TestVHD):
 
-	@classmethod
-	def setUpClass(cls):
-		super(TestSnapshot, cls).setUpClass()
-		cls.workspace = tempfile.mkdtemp()
-
-	@classmethod
-	def tearDownClass(cls):
-		shutil.rmtree(cls.workspace)
-
 	def setUp(self):
 		self.name = self.mkname()
 		self.parent = self.mkname()
@@ -207,16 +253,14 @@ class TestSnapshot(TestVHD):
 				self.output)
 		self.assertEqual(0, self.vhd_check(self.name), self.output)
 
+	def test_snapshot_prealloc_mtdt(self):
+		"""Take a snapshot of a small VHD for which very large metadata have been pre-allocated."""
+		self.vhd_create(self.grandparent, large=True)
+		self.assertEqual(0, self.vhd_snapshot(self.name, self.parent,
+			mtdt_size=self.MAX_SIZE_NEW), self.output)
+
+
 class TestResizeOldVersion(TestVHD):
-
-	@classmethod
-	def setUpClass(cls):
-		super(TestResizeOldVersion, cls).setUpClass()
-		cls.workspace = tempfile.mkdtemp()
-
-	@classmethod
-	def tearDownClass(cls):
-		shutil.rmtree(cls.workspace)
 
 	def setUp(self):
 		self.name = self.mkname()
@@ -308,6 +352,18 @@ class TestResizeNewVersion(TestResizeOldVersion):
 	def setUpClass(cls):
 		cls.MAX_SIZE_OLD = cls.MAX_SIZE_NEW
 		super(TestResizeNewVersion, cls).setUpClass()
+
+class TestWrite(TestVHD):
+
+	def test_write_old(self):
+		"""Write to and old VHD file within limits."""
+		name = self.mkname()
+		self.vhd_create(name)
+		device = self.attach(name)
+		try:
+			pass
+		finally:
+			self.detach(name)
 
 if __name__ == '__main__':
 	unittest.main()
