@@ -26,15 +26,17 @@
 #include <string.h>
 #include <signal.h>
 #include <sys/wait.h>
+#include <stdbool.h>
 
 #include "tap-ctl.h"
 #include "blktap2.h"
 
 static pid_t
-__tap_ctl_spawn(int *readfd)
+__tap_ctl_spawn(int *readfd, const bool nodaemon)
 {
 	int child, channel[2];
 	char *tapdisk;
+	char *argv[3];
 
 	if (pipe(channel)) {
 		EPRINTF("pipe failed: %d\n", errno);
@@ -65,21 +67,27 @@ __tap_ctl_spawn(int *readfd)
 	close(channel[0]);
 	close(channel[1]);
 
+	if (nodaemon) {
+		argv[1] = "-D";
+		argv[2] = NULL;
+	} else
+		argv[1] = NULL;
+
 	tapdisk = getenv("TAPDISK");
 	if (!tapdisk)
 		tapdisk = getenv("TAPDISK2");
 
 	if (tapdisk) {
-		execlp(tapdisk, tapdisk, NULL);
+		argv[0] = tapdisk;
+		execvp(tapdisk, argv);
 		exit(errno);
 	}
 
-	execl(TAPDISK_EXECDIR "/" TAPDISK_EXEC, TAPDISK_EXEC,
-	      NULL);
+	argv[0] = TAPDISK_EXEC;
+	execv(TAPDISK_EXECDIR "/" TAPDISK_EXEC, argv);
 
 	if (errno == ENOENT)
-		execl(TAPDISK_BUILDDIR "/" TAPDISK_EXEC, TAPDISK_EXEC,
-		      NULL);
+		execv(TAPDISK_BUILDDIR "/" TAPDISK_EXEC, argv);
 
 	exit(errno);
 }
@@ -140,6 +148,7 @@ tap_ctl_get_child_id(int readfd)
 {
 	int id;
 	FILE *f;
+	int err;
 
 	f = fdopen(readfd, "r");
 	if (!f) {
@@ -148,11 +157,16 @@ tap_ctl_get_child_id(int readfd)
 	}
 
 	errno = 0;
-	if (fscanf(f, BLKTAP2_CONTROL_DIR"/"
-		   BLKTAP2_CONTROL_SOCKET"%d", &id) != 1) {
-		errno = (errno ? : EINVAL);
-		EPRINTF("parsing id failed: %d\n", errno);
-		id = -1;
+	err = fscanf(f, BLKTAP2_CONTROL_DIR"/"BLKTAP2_CONTROL_SOCKET"%d", &id);
+	if (err != 1) {
+		if (!errno) {
+			EPRINTF("parsing id failed: read %d items instead of one\n", err);
+			err = EINVAL;
+		} else {
+			err = errno;
+			EPRINTF("parsing id failed: %s\n", strerror(err));
+		}
+		id = -err;
 	}
 
 	fclose(f);
@@ -160,7 +174,7 @@ tap_ctl_get_child_id(int readfd)
 }
 
 int
-tap_ctl_spawn(void)
+tap_ctl_spawn(const bool nodaemon)
 {
 	pid_t child;
 	int err, id, readfd;
@@ -168,20 +182,24 @@ tap_ctl_spawn(void)
 	readfd = -1;
 
 again:
-	child = __tap_ctl_spawn(&readfd);
+	child = __tap_ctl_spawn(&readfd, nodaemon);
 	if (child < 0)
 		return child;
 
-	err = tap_ctl_wait(child);
-	if (err) {
-		if (err == -EAGAIN)
-			goto again;
-		return err;
-	}
+	if (!nodaemon) {
+		err = tap_ctl_wait(child);
+		if (err) {
+			if (err == -EAGAIN)
+				goto again;
+			return err;
+		}
 
-	id = tap_ctl_get_child_id(readfd);
-	if (id < 0)
-		EPRINTF("get_id failed, child %d err %d\n", child, errno);
+		id = tap_ctl_get_child_id(readfd);
+		if (id < 0)
+			EPRINTF("failed to get child ID for child %d: %s\n", child,
+					strerror(-id));
+	} else
+		id = child;
 
 	return id;
 }

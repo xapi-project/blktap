@@ -389,7 +389,7 @@ usage:
 static void
 tap_cli_spawn_usage(FILE *stream)
 {
-	fprintf(stream, "usage: spawn\n");
+	fprintf(stream, "usage: spawn <-D don't daemonise>\n");
 }
 
 static int
@@ -397,19 +397,23 @@ tap_cli_spawn(int argc, char **argv)
 {
 	int c, tty;
 	pid_t pid;
+	bool nodaemon = false;
 
 	optind = 0;
-	while ((c = getopt(argc, argv, "h")) != -1) {
+	while ((c = getopt(argc, argv, "hD")) != -1) {
 		switch (c) {
 		case '?':
 			goto usage;
+		case 'D':
+			nodaemon = true;
+			break;
 		case 'h':
 			tap_cli_spawn_usage(stdout);
 			return 0;
 		}
 	}
 
-	pid = tap_ctl_spawn();
+	pid = tap_ctl_spawn(nodaemon);
 	if (pid < 0)
 		return pid;
 

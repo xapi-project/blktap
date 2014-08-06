@@ -23,6 +23,7 @@
 #include <sys/time.h>
 #include <tapdisk-message.h>
 #include <list.h>
+#include <stdbool.h>
 
 #include <xen/xen.h>
 #include <xen/grant_table.h>
@@ -96,7 +97,7 @@ int tap_ctl_create(const char *params, char **devname, int flags,
 int tap_ctl_destroy(const int id, const int minor, int force,
 		    struct timeval *timeout);
 
-int tap_ctl_spawn(void);
+int tap_ctl_spawn(const bool nodaemon);
 pid_t tap_ctl_get_pid(const int id);
 
 int tap_ctl_attach(const int id, const int minor);

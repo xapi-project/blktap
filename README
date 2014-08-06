@@ -117,6 +117,24 @@ or vmdk images:
 xm block-attach 0 tap:qcow:<FILENAME> /dev/xvda1 w 0
 mount /dev/xvda1 /mnt/disk
 
+Debugging
+=========
 
+Valgrind
+--------
+Debugging tapdisk with Valgrind is not straightforward because of the way the
+tapdisk process is spawned, but it can still be achieved by slightly modifying
+a couple of files:
 
- 
+1. Stash `/usr/libexec/tapdisk`, e.g.
+
+~~~
+    mv -f /usr/libexec/tapdisk /usr/libexec/tapdisk~
+~~~
+
+2. Create a new script in its place with following contents:
+
+~~~
+    #!/bin/bash
+    exec valgrind --log-file=/tmp/tapdisk-%p --track-origins=yes /usr/libexec/tapdisk~
+~~~
