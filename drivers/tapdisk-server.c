@@ -618,8 +618,8 @@ tapdisk_server_init(void)
 	scheduler_initialize(&server.scheduler);
 
 	if ((ret = tapdisk_server_initialize_lowmem_mode()) < 0) {
-		ERR(-ret, "Failed to initialize low memory handler: %s\n",
-		    strerror(-ret));
+		EPRINTF("Failed to initialize low memory handler: %s\n",
+		        strerror(-ret));
 		lowmem_cleanup();
 	}
 
