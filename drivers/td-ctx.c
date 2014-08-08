@@ -24,6 +24,7 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <fcntl.h>
+#include <alloca.h>
 
 #include "debug.h"
 #include "tapdisk-server.h"
@@ -307,7 +308,11 @@ tapdisk_xenio_ctx_process_ring(struct td_xenblkif *blkif,
          */
         return;
     blkif->stats.reqs.in += n_reqs;
-    reqs = &blkif->reqs_free[blkif->ring_size - start];
+
+    reqs = alloca(sizeof(blkif_request_t*) * n_reqs);
+    memcpy(reqs, &blkif->reqs_free[blkif->ring_size - start],
+            sizeof(blkif_request_t*) * n_reqs);
+
     tapdisk_xenblkif_queue_requests(blkif, reqs, n_reqs);
 }
 
