@@ -73,7 +73,8 @@ def adapters(filterstr="any"):
                     else:
                         dir = os.path.join(sysfs,lun,"device")
                     (dev, entry) = _extract_dev(dir, proc, id, lun)
-                    devs[dev] = entry
+                    if dev != "":
+                        devs[dev] = entry
             # for new qlogic sysfs layout (rport under device, then target)
             for i in filter(match_rport,os.listdir(path)):
                 newpath = os.path.join(path, i)
@@ -223,9 +224,14 @@ def _extract_dev_name(device_dir):
         return dev.lstrip('block:')
     elif kernel_version.startswith('3.'):
         # directory for device name lives inside block directory e.g. block/sdx
-        dev = glob.glob(os.path.join(device_dir, 'block/*'))[0]
-        # prune path to extract the device name
-        return os.path.basename(dev)
+
+        #bug fixed: some device dir has no subdir "block/" , e.g. LUN 0 has no "block/" subdir, but other LUNs are OK
+        devs = glob.glob(os.path.join(device_dir, 'block/*'))
+        if len(devs):
+            # prune path to extract the device name
+            return os.path.basename(devs[0])
+        else:
+            return ""   
     else:
         msg = 'Kernel version detected: %s' % kernel_version
         raise xs_errors.XenError('UnsupportedKernel', msg)
