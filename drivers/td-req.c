@@ -322,10 +322,12 @@ guest_copy2(struct td_xenblkif * const blkif,
 
     err = -ioctl(blkif->ctx->gntdev_fd, IOCTL_GNTDEV_GRANT_COPY, &gcopy);
     if (err) {
-        RING_ERR(blkif, "req %lu: failed to grant-copy: %s\n",
-                tapreq->msg.id, strerror(err));
-		goto out;
-	}
+        err = -errno;
+        RING_ERR(blkif, "failed to grant-copy request %"PRIu64" "
+                "(%d segments): %s\n", tapreq->msg.id,
+                tapreq->msg.nr_segments, strerror(-err));
+        goto out;
+    }
 
 	for (i = 0; i < tapreq->msg.nr_segments; i++) {
 		struct gntdev_grant_copy_segment *gcopy_seg = &tapreq->gcopy_segs[i];
