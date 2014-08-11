@@ -45,7 +45,7 @@ class TestScan(unittest.TestCase, testlib.XmlMixIn):
     @testlib.with_context
     def test_scanning_sr_with_devices(self, context):
         sr = create_hba_sr()
-        adapter = context.adapter()
+        adapter = context.add_adapter(testlib.SCSIAdapter())
         adapter.add_disk()
         sr._init_hbadict()
 
@@ -66,7 +66,7 @@ class TestScan(unittest.TestCase, testlib.XmlMixIn):
     @testlib.with_context
     def test_scanning_sr_includes_parameters(self, context):
         sr = create_hba_sr()
-        adapter = context.adapter()
+        adapter = context.add_adapter(testlib.SCSIAdapter())
         adapter.add_disk()
         sr._init_hbadict()
         adapter.add_parameter('fc_host', dict(port_name='VALUE'))
@@ -98,7 +98,7 @@ class TestAdapters(unittest.TestCase):
 
     @testlib.with_context
     def test_adapter_and_disk_added(self, context):
-        adapter = context.adapter()
+        adapter = context.add_adapter(testlib.SCSIAdapter())
         adapter.add_disk()
 
         result = devscan.adapters()
@@ -117,3 +117,21 @@ class TestAdapters(unittest.TestCase):
                 }
             },
             result)
+
+
+class TestExtractDevName(unittest.TestCase):
+    @testlib.with_context
+    def test_26_kernel(self, context):
+        context.kernel_version = '2.6'
+        context.fake_makedirs('/somepath/block:sde')
+        result = devscan._extract_dev_name('/somepath')
+
+        self.assertEquals('sde', result)
+
+    @testlib.with_context
+    def test_3x_kernel(self, context):
+        context.kernel_version = '3.2'
+        context.fake_makedirs('/somepath/block/sde')
+        result = devscan._extract_dev_name('/somepath')
+
+        self.assertEquals('sde', result)
