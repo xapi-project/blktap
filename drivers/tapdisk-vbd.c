@@ -1174,6 +1174,7 @@ tapdisk_vbd_request_should_retry(td_vbd_t *vbd, td_vbd_request_t *vreq)
 	case ENOSYS:
 	case ESTALE:
 	case ENOSPC:
+	case EFAULT:
 		return 0;
 	}
 
