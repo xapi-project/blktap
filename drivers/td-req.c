@@ -37,6 +37,10 @@
 #include "tapdisk.h"
 #include "util.h"
 
+#ifdef DEBUG
+#define BLKIF_MSG_POISON 0xdeadbeef
+#endif
+
 #define ERR(blkif, fmt, args...) \
     EPRINTF("%d/%d: "fmt, (blkif)->domid, (blkif)->devid, ##args);
 
@@ -138,6 +142,15 @@ td_xenblkif_bufcache_put(struct td_xenblkif * const blkif, void *buf)
     if (unlikely(!buf))
         return;
 
+#ifdef DEBUG
+	{
+		int i;
+
+		for (i = 0; i < blkif->n_reqs_bufcache_free; i++)
+			ASSERT(blkif->reqs_bufcache[i] != buf);
+	}
+#endif
+
     blkif->reqs_bufcache[blkif->n_reqs_bufcache_free++] = buf;
 
     /* If we're in low memory mode, prune the bufcache immediately. */
@@ -163,6 +176,10 @@ tapdisk_xenblkif_free_request(struct td_xenblkif * const blkif,
     ASSERT(blkif);
     ASSERT(tapreq);
     ASSERT(blkif->n_reqs_free <= blkif->ring_size);
+
+#ifdef DEBUG
+	memset(&tapreq->msg, BLKIF_MSG_POISON, sizeof(tapreq->msg));
+#endif
 
     blkif->reqs_free[blkif->ring_size - (++blkif->n_reqs_free)] = &tapreq->msg;
 
@@ -487,6 +504,8 @@ tapdisk_xenblkif_make_vbd_request(struct td_xenblkif * const blkif,
     vreq = &tapreq->vreq;
     ASSERT(vreq);
     memset(vreq, 0, sizeof(*vreq));
+
+	tapreq->vma = NULL;
 
     switch (tapreq->msg.operation) {
     case BLKIF_OP_READ:
