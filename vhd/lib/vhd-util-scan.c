@@ -664,7 +664,7 @@ vhd_util_scan_read_volume_headers(vhd_context_t *vhd, struct vhd_image *image)
 
 	memcpy(&vhd->footer, buf, sizeof(vhd_footer_t));
 	vhd_footer_in(&vhd->footer);
-	err = vhd_validate_footer(&vhd->footer, false);
+	err = vhd_validate_footer(&vhd->footer);
 	if (err) {
 		image->message = "invalid footer";
 		image->error   = err;
