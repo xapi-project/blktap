@@ -386,10 +386,6 @@ tapdisk_xenblkif_complete_request(struct td_xenblkif * const blkif,
             _err = BLKIF_RSP_OKAY;
 
         xenio_blkif_put_response(blkif, tapreq, _err, final);
-
-        blkif->stats.reqs.out++;
-        if (final)
-            blkif->stats.kicks.out++;
     }
 
     tapdisk_xenblkif_free_request(blkif, tapreq);

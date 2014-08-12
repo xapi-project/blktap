@@ -43,8 +43,7 @@ tapdisk_xenblkif_find(const domid_t domid, const int devid)
     tapdisk_xenio_for_each_ctx(ctx) {
         tapdisk_xenio_ctx_find_blkif(ctx, blkif,
                                      blkif->domid == domid &&
-                                     blkif->devid == devid &&
-                                     !blkif->dead);
+                                     blkif->devid == devid);
         if (blkif)
             return blkif;
     }
