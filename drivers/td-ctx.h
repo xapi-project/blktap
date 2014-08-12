@@ -101,16 +101,17 @@ extern struct list_head _td_xenio_ctxs;
  * For each block interface of this context...
  */
 #define tapdisk_xenio_for_each_blkif(_blkif, _ctx)	\
-	list_for_each_entry(_blkif, &(_ctx)->blkifs, entry)
+	list_for_each_entry(_blkif, &(_ctx)->blkifs, entry_ctx)
 
 /**
  * Search this context for the block interface for which the condition is true.
+ * Dead block interfaces are ignored.
  */
 #define tapdisk_xenio_ctx_find_blkif(_ctx, _blkif, _cond)	\
 	do {													\
 		int found = 0;										\
 		tapdisk_xenio_for_each_blkif(_blkif, _ctx) {		\
-			if (_cond) {									\
+			if (!_blkif->dead && _cond) {                   \
 				found = 1;									\
 				break;										\
 			}												\
