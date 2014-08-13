@@ -220,7 +220,7 @@ connect_tap(vbd_t * const device)
             err = 0;
         } else {
             WARN(device, "tapdisk[%d] failed to connect to the shared "
-                    "ring: %s\n", device->tap->pid, strerror(-err));
+                    "ring: %s\n", device->tap->pid, strerror(err));
             goto out;
         }
     }
