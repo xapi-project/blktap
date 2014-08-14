@@ -228,15 +228,16 @@ class ISCSISR(SR.SR):
                     util.SMlog("PATHDICT: key %s: %s" % (key,rec))
                     addrlist.append(key)
 
-        # Try to detect an active path in order of priority
-        for key in self.pathdict:
-            if self.adapter.has_key(key):
-                self.tgtidx = key
-                self.path = self.pathdict[self.tgtidx]['path']
-                if os.path.exists(self.path):
-                    util.SMlog("Path found: %s" % self.path)
-                    break
-        self.address = self.tgtidx
+        if not os.path.exists(self.path):
+            # Try to detect an active path in order of priority
+            for key in self.pathdict:
+                if self.adapter.has_key(key):
+                    self.tgtidx = key
+                    self.path = self.pathdict[self.tgtidx]['path']
+                    if os.path.exists(self.path):
+                        util.SMlog("Path found: %s" % self.path)
+                        break
+            self.address = self.tgtidx
         self._synchroniseAddrList(addrlist)
 
     def _init_adapters(self):
