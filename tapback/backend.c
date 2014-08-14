@@ -341,6 +341,14 @@ physical_device_changed(vbd_t *device) {
         goto out;
     }
 
+	err = tapback_device_printf(device, XBT_NULL, "kthread-pid", false, "%d",
+		device->tap->pid);
+	if (unlikely(err)) {
+		WARN(device, "warning: failed to write kthread-pid: %s\n",
+				strerror(-err));
+		goto out;
+	}
+
     if (device->sector_size & 0x1ff || device->sectors <= 0) {
         WARN(device, "warning: unexpected device characteristics: sector "
                 "size=%d, sectors=%llu\n", device->sector_size,
