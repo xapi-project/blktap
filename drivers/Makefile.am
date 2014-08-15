@@ -102,3 +102,9 @@ libtapdisk_la_LIBADD += -lxenctrl
 
 logrotatedir = $(sysconfdir)/logrotate.d
 dist_logrotate_DATA = blktap
+
+bugtooldir = $(sysconfdir)/xensource/bugtool
+dist_bugtool_DATA = tapdisk-logs.xml
+
+bugtooltddir = $(sysconfdir)/xensource/bugtool/tapdisk-logs
+dist_bugtooltd_DATA = tapdisk-logs/description.xml
