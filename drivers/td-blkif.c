@@ -221,6 +221,15 @@ tapdisk_xenblkif_destroy(struct td_xenblkif * blkif)
 
 
 int
+tapdisk_xenblkif_reqs_pending(const struct td_xenblkif * const blkif)
+{
+	ASSERT(blkif);
+
+	return blkif->ring_size - blkif->n_reqs_free;
+}
+
+
+int
 tapdisk_xenblkif_disconnect(const domid_t domid, const int devid)
 {
     struct td_xenblkif *blkif;
@@ -229,7 +238,7 @@ tapdisk_xenblkif_disconnect(const domid_t domid, const int devid)
     if (!blkif)
         return -ENODEV;
 
-    if (blkif->n_reqs_free != blkif->ring_size) {
+    if (tapdisk_xenblkif_reqs_pending(blkif)) {
         RING_DEBUG(blkif, "disconnect from ring with %d pending requests\n",
                 blkif->ring_size - blkif->n_reqs_free);
 		if (td_flag_test(blkif->vbd->state, TD_VBD_PAUSED))

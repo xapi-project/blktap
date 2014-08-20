@@ -247,4 +247,10 @@ tapdisk_xenblkif_suspend(struct td_xenblkif * const blkif);
 void
 tapdisk_xenblkif_resume(struct td_xenblkif * const blkif);
 
+/**
+ * Tells how many requests are pending.
+ */
+int
+tapdisk_xenblkif_reqs_pending(const struct td_xenblkif * const blkif);
+
 #endif /* __TD_BLKIF_H__ */
