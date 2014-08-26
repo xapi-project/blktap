@@ -412,7 +412,7 @@ scheduler_event_set_timeout(scheduler_t *sched, event_id_t event_id, int timeo)
 
 	ASSERT(sched);
 
-	if (!event_id || timeo < 0)
+	if (!event_id)
 		return -EINVAL;
 
 	scheduler_for_each_event(sched, event) {
