@@ -1702,6 +1702,20 @@ tapdisk_vbd_start_nbdserver(td_vbd_t *vbd)
 	return 0;
 }
 
+
+static int
+tapdisk_vbd_reqs_outstanding(td_vbd_t *vbd)
+{
+	int new, pending, failed, completed;
+
+	ASSERT(vbd);
+
+	tapdisk_vbd_queue_count(vbd, &new, &pending, &failed, &completed);
+
+	return new + pending + failed + completed;
+}
+
+
 void
 tapdisk_vbd_stats(td_vbd_t *vbd, td_stats_t *st)
 {
@@ -1744,6 +1758,10 @@ tapdisk_vbd_stats(td_vbd_t *vbd, td_stats_t *st)
 	tapdisk_stats_field(st,
 			"nbd_mirror_failed",
 			"d", vbd->nbd_mirror_failed);
+
+	tapdisk_stats_field(st,
+			"reqs_oustanding",
+			"d", tapdisk_vbd_reqs_outstanding(vbd));
 
 	tapdisk_stats_leave(st, '}');
 }
