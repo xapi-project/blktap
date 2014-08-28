@@ -96,6 +96,24 @@ class TestAdapters(unittest.TestCase):
 
         self.assertEquals({'devs': {}, 'adt': {}}, result)
 
+    @mock.patch('devscan.match_hbadevs')
+    @testlib.with_context
+    def test_exotic_adapter_with_security_device(self, context, match_hbadevs):
+        adapter = context.add_adapter(testlib.AdapterWithNonBlockDevice())
+        adapter.add_disk()
+
+        match_hbadevs.return_value = 'lpfc'
+        result = devscan.adapters()
+
+        self.assertEquals(
+            {
+                'devs': {},
+                'adt': {
+                    'host0': 'lpfc'
+                }
+            },
+            result)
+
     @testlib.with_context
     def test_adapter_and_disk_added(self, context):
         adapter = context.add_adapter(testlib.SCSIAdapter())
@@ -135,3 +153,13 @@ class TestExtractDevName(unittest.TestCase):
         result = devscan._extract_dev_name('/somepath')
 
         self.assertEquals('sde', result)
+
+    @testlib.with_context
+    def test_extract_dev_name_from_directory_without_block_device(
+            self,
+            context):
+        context.kernel_version = '3.10'
+
+        result = devscan._extract_dev_name('/nonexisting')
+
+        self.assertEquals('', result)
