@@ -383,10 +383,14 @@ tapdisk_xenblkif_complete_request(struct td_xenblkif * const blkif,
 {
 	int _err;
     long long *max, *sum, *cnt = NULL;
+	static int depth = 0;
 	bool barrier;
 
     ASSERT(blkif);
     ASSERT(tapreq);
+	ASSERT(depth >= 0);
+
+	depth++;
 
 	barrier = tapreq->msg.operation == BLKIF_OP_WRITE_BARRIER;
 
@@ -444,8 +448,6 @@ tapdisk_xenblkif_complete_request(struct td_xenblkif * const blkif,
 		blkif->barrier = NULL;
 
     /*
-    if (unlikely(blkif->dead) &&
-            blkif->ring_size  == blkif->n_reqs_free) {
 	 * Schedule a ring check in case we left requests in it due to lack of
 	 * memory or in case we stopped processing it because of a barrier.
 	*/
@@ -464,11 +466,15 @@ tapdisk_xenblkif_complete_request(struct td_xenblkif * const blkif,
 	/*
 	 * Last request of a dead ring completes, destroy the ring.
 	 */
-    if (unlikely(blkif->dead) && !tapdisk_xenblkif_reqs_pending(blkif)) {
+	if (unlikely(1 == depth
+				&& blkif->dead
+				&& !tapdisk_xenblkif_reqs_pending(blkif))) {
+
 		RING_DEBUG(blkif, "destroying dead ring\n");
 		tapdisk_xenblkif_destroy(blkif);
 	}
 
+	depth--;
 	return;
 }
 
