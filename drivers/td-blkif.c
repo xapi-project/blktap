@@ -198,9 +198,18 @@ tapdisk_xenblkif_destroy(struct td_xenblkif * blkif)
         if (blkif->port >= 0)
             xc_evtchn_unbind(blkif->ctx->xce_handle, blkif->port);
 
-        if (blkif->rings.common.sring)
-            xc_gnttab_munmap(blkif->ctx->xcg_handle, blkif->rings.common.sring,
-                    blkif->ring_n_pages);
+        if (blkif->rings.common.sring) {
+            err = xc_gnttab_munmap(blkif->ctx->xcg_handle,
+					blkif->rings.common.sring, blkif->ring_n_pages);
+			if (unlikely(err)) {
+				err = errno;
+				EPRINTF("failed to unmap ring page %p (%d pages): %s "
+						"(error ignored)\n",
+						blkif->rings.common.sring, blkif->ring_n_pages,
+						strerror(err));
+				err = 0;
+			}
+		}
 
 		list_del(&blkif->entry_ctx);
         list_del(&blkif->entry);
