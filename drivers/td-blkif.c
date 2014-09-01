@@ -184,9 +184,11 @@ tapdisk_xenblkif_destroy(struct td_xenblkif * blkif)
     }
 
     err = tapdisk_xenblkif_show_io_ring_destroy(blkif);
-    if (err)
+    if (err) {
         EPRINTF("failed to clean up ring stats file: %s (error ignored)\n",
                 strerror(-err));
+        err = 0;
+    }
 
     free(blkif);
 
