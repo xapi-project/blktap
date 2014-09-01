@@ -856,12 +856,12 @@ tapdisk_vbd_pause(td_vbd_t *vbd)
 	if (vbd->nbdserver)
 		tapdisk_nbdserver_pause(vbd->nbdserver);
 
-    list_for_each_entry(blkif, &vbd->rings, entry)
-		tapdisk_server_mask_event(tapdisk_xenblkif_event_id(blkif), 1);
-
 	err = tapdisk_vbd_quiesce_queue(vbd);
 	if (err)
 		return err;
+
+    list_for_each_entry(blkif, &vbd->rings, entry)
+		tapdisk_xenblkif_suspend(blkif);
 
 	tapdisk_vbd_close_vdi(vbd);
 
@@ -932,7 +932,7 @@ resume_failed:
 		tapdisk_nbdserver_unpause(vbd->nbdserver);
 
     list_for_each_entry(blkif, &vbd->rings, entry)
-		tapdisk_server_mask_event(tapdisk_xenblkif_event_id(blkif), 0);
+		tapdisk_xenblkif_resume(blkif);
 
 
 	DBG(TLOG_DBG, "state checked\n");

@@ -29,6 +29,7 @@
 #include "tapdisk.h"
 #include "tapdisk-log.h"
 #include "util.h"
+#include "tapdisk-server.h"
 
 #include "td-blkif.h"
 #include "td-ctx.h"
@@ -463,4 +464,22 @@ tapdisk_xenblkif_ring_stats_update(struct td_xenblkif *blkif)
     }
 
     return -err;
+}
+
+
+void
+tapdisk_xenblkif_suspend(struct td_xenblkif * const blkif)
+{
+	ASSERT(blkif);
+
+	tapdisk_server_mask_event(tapdisk_xenblkif_evtchn_event_id(blkif), 1);
+}
+
+
+void
+tapdisk_xenblkif_resume(struct td_xenblkif * const blkif)
+{
+	ASSERT(blkif);
+
+	tapdisk_server_mask_event(tapdisk_xenblkif_evtchn_event_id(blkif), 0);
 }

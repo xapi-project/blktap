@@ -155,6 +155,9 @@ struct td_xenblkif {
     event_id_t reqs_bufcache_evtid;
 
 	bool dead;
+
+	blkif_request_t *barrier;
+
 };
 
 #define RING_DEBUG(blkif, fmt, args...)                                     \
@@ -230,5 +233,18 @@ tapdisk_xenblkif_event_id(const struct td_xenblkif *blkif);
  */
 int
 tapdisk_xenblkif_ring_stats_update(struct td_xenblkif *blkif);
+
+/**
+ * Suspends the operation of the ring. NB the operation of the ring might
+ * have been already suspended.
+ */
+void
+tapdisk_xenblkif_suspend(struct td_xenblkif * const blkif);
+
+/**
+ * Resumes the operation of the ring.
+ */
+void
+tapdisk_xenblkif_resume(struct td_xenblkif * const blkif);
 
 #endif /* __TD_BLKIF_H__ */
