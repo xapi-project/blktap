@@ -192,6 +192,12 @@ tapdisk_xenblkif_destroy(struct td_xenblkif * blkif)
 
     ASSERT(blkif);
 
+    if (tapdisk_xenblkif_chkrng_event_id(blkif) >= 0) {
+        tapdisk_server_unregister_event(
+				tapdisk_xenblkif_chkrng_event_id(blkif));
+        blkif->chkrng_event = -1;
+    }
+
     tapdisk_xenblkif_reqs_free(blkif);
 
     if (blkif->ctx) {
@@ -270,6 +276,37 @@ tapdisk_xenblkif_disconnect(const domid_t domid, const int devid)
         return tapdisk_xenblkif_destroy(blkif);
 }
 
+
+void
+tapdisk_xenblkif_sched_chkrng(const struct td_xenblkif *blkif)
+{
+	int err;
+
+	ASSERT(blkif);
+
+	err = tapdisk_server_event_set_timeout(
+			tapdisk_xenblkif_chkrng_event_id(blkif), 0);
+	ASSERT(!err);
+}
+
+
+static inline void
+tapdisk_xenblkif_cb_chkrng(event_id_t id __attribute__((unused)),
+        char mode __attribute__((unused)), void *private)
+{
+    struct td_xenblkif *blkif = private;
+	int err;
+
+    ASSERT(blkif);
+
+	err = tapdisk_server_event_set_timeout(
+			tapdisk_xenblkif_chkrng_event_id(blkif), (time_t) - 1);
+	ASSERT(!err);
+
+    tapdisk_xenio_ctx_process_ring(blkif, blkif->ctx, 1);
+}
+
+
 int
 tapdisk_xenblkif_connect(domid_t domid, int devid, const grant_ref_t * grefs,
         int order, evtchn_port_t port, int proto, const char *pool,
@@ -312,6 +349,7 @@ tapdisk_xenblkif_connect(domid_t domid, int devid, const grant_ref_t * grefs,
     td_blkif->ctx = td_ctx;
     td_blkif->proto = proto;
     td_blkif->dead = false;
+	td_blkif->chkrng_event = -1;
 
     td_blkif->xenvbd_stats.root = NULL;
     shm_init(&td_blkif->xenvbd_stats.io_ring);
@@ -408,8 +446,17 @@ tapdisk_xenblkif_connect(domid_t domid, int devid, const grant_ref_t * grefs,
         goto fail;
     }
 
+	td_blkif->chkrng_event = tapdisk_server_register_event(
+			SCHEDULER_POLL_TIMEOUT,	-1, (time_t) - 1,
+			tapdisk_xenblkif_cb_chkrng, td_blkif);
+    if (unlikely(td_blkif->chkrng_event < 0)) {
+        err = td_blkif->chkrng_event;
+        RING_ERR(td_blkif, "failed to register event: %s\n", strerror(-err));
+        goto fail;
+    }
+
     err = tapdisk_xenblkif_stats_create(td_blkif);
-    if (err)
+    if (unlikely(err))
         goto fail;
 
     list_add_tail(&td_blkif->entry, &vbd->rings);
@@ -430,11 +477,20 @@ fail:
     return err;
 }
 
-event_id_t
-tapdisk_xenblkif_event_id(const struct td_xenblkif *blkif)
+
+inline event_id_t
+tapdisk_xenblkif_evtchn_event_id(const struct td_xenblkif *blkif)
 {
 	return blkif->ctx->ring_event;
 }
+
+
+inline event_id_t
+tapdisk_xenblkif_chkrng_event_id(const struct td_xenblkif *blkif)
+{
+	return blkif->chkrng_event;
+}
+
 
 int
 tapdisk_xenblkif_ring_stats_update(struct td_xenblkif *blkif)
@@ -491,6 +547,7 @@ tapdisk_xenblkif_suspend(struct td_xenblkif * const blkif)
 	ASSERT(blkif);
 
 	tapdisk_server_mask_event(tapdisk_xenblkif_evtchn_event_id(blkif), 1);
+	tapdisk_server_mask_event(tapdisk_xenblkif_chkrng_event_id(blkif), 1);
 }
 
 
@@ -500,4 +557,5 @@ tapdisk_xenblkif_resume(struct td_xenblkif * const blkif)
 	ASSERT(blkif);
 
 	tapdisk_server_mask_event(tapdisk_xenblkif_evtchn_event_id(blkif), 0);
+	tapdisk_server_mask_event(tapdisk_xenblkif_chkrng_event_id(blkif), 0);
 }

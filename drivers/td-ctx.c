@@ -264,10 +264,9 @@ xenio_blkif_get_requests(struct td_xenblkif * const blkif,
 
 void
 tapdisk_xenio_ctx_process_ring(struct td_xenblkif *blkif,
-		               struct td_xenio_ctx *ctx)
+		               struct td_xenio_ctx *ctx, int final)
 {
     int n_reqs;
-    int final = 0;
     int start;
     blkif_request_t **reqs;
     int limit;
@@ -345,7 +344,7 @@ tapdisk_xenio_ctx_ring_event(event_id_t id __attribute__((unused)),
 
     blkif->stats.kicks.in++;
 
-    tapdisk_xenio_ctx_process_ring(blkif, ctx);
+    tapdisk_xenio_ctx_process_ring(blkif, ctx, 0);
 }
 
 /* NB. may be NULL, but then the image must be bouncing I/O */
