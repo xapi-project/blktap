@@ -365,10 +365,12 @@ shm_destroy(struct shm *shm) {
 
     if (shm->path) {
         err = unlink(shm->path);
-        if (err == -1) {
+        if (unlikely(err == -1)) {
             err = errno;
-            if (err != ENOENT)
+            if (unlikely(err != ENOENT))
                 goto out;
+            else
+                err = 0;
         }
     }
 
