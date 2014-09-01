@@ -175,7 +175,7 @@ tapdisk_xenblkif_free_request(struct td_xenblkif * const blkif,
 {
     ASSERT(blkif);
     ASSERT(tapreq);
-    ASSERT(blkif->n_reqs_free <= blkif->ring_size);
+    ASSERT(blkif->n_reqs_free < blkif->ring_size);
 
 #ifdef DEBUG
 	memset(&tapreq->msg, BLKIF_MSG_POISON, sizeof(tapreq->msg));
@@ -675,7 +675,7 @@ tapdisk_xenblkif_queue_requests(struct td_xenblkif * const blkif,
     ASSERT(reqs);
     ASSERT(nr_reqs >= 0);
 
-    for (i = 0; i < nr_reqs; i++) { /* for each request from the ring... */
+    for (i = 0; i < nr_reqs; i++) { /* for each request in the ring... */
         blkif_request_t *msg = reqs[i];
         struct td_xenblkif_req *tapreq;
 

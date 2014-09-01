@@ -30,6 +30,9 @@
 #define TD_VBD_MAX_RETRIES          100
 #define TD_VBD_RETRY_INTERVAL       1
 
+/*
+ * VBD states
+ */
 #define TD_VBD_DEAD                 0x0001
 #define TD_VBD_CLOSED               0x0002
 #define TD_VBD_QUIESCE_REQUESTED    0x0004
@@ -84,6 +87,10 @@ struct td_vbd_handle {
     struct list_head            dead_rings;
 
 	td_flag_t                   flags;
+
+	/**
+	 * VBD state (TD_VBD_XXX, excluding SECONDARY and request-related)
+	 */
 	td_flag_t                   state;
 
 	/**
@@ -229,7 +236,15 @@ int tapdisk_vbd_pause(td_vbd_t *);
 int tapdisk_vbd_resume(td_vbd_t *, const char *);
 void tapdisk_vbd_kick(td_vbd_t *);
 void tapdisk_vbd_check_state(td_vbd_t *);
+
+/**
+ * Checks whether there are new requests and if so it submits them, prodived
+ * that the queue has not been quiesced.
+ *
+ * Returns 1 if new requests have been issued, otherwise it returns 0.
+ */
 int tapdisk_vbd_recheck_state(td_vbd_t *);
+
 void tapdisk_vbd_check_progress(td_vbd_t *);
 void tapdisk_vbd_debug(td_vbd_t *);
 int tapdisk_vbd_start_nbdserver(td_vbd_t *);

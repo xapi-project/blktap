@@ -296,6 +296,7 @@ tapdisk_xenio_ctx_process_ring(struct td_xenblkif *blkif,
             break;
 
         blkif->n_reqs_free -= n_reqs;
+		ASSERT(blkif->n_reqs_free <= blkif->ring_size);
 	limit -= n_reqs;
         final = 1;
 
@@ -303,10 +304,16 @@ tapdisk_xenio_ctx_process_ring(struct td_xenblkif *blkif,
 
     n_reqs = start - blkif->n_reqs_free;
     if (!n_reqs)
-        /* TODO If there are no requests to be copied, why was there a
-         * notification in the first place?
-         */
-        return;
+		/*
+		 * We got a notification but the ring is empty. This is because we had
+		 * previously suspended the operation of the ring because of a
+		 * VBD.pause but when we completed a request prior to the pause we
+		 * checked the ring for new requests. If there were request in the ring
+		 * at that time, we consumed them but we did not consume the
+		 * notification. This notification is the one we should have consumed,
+		 * and can be ignored.
+		 */
+		return;
     blkif->stats.reqs.in += n_reqs;
 
     reqs = alloca(sizeof(blkif_request_t*) * n_reqs);
