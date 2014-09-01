@@ -183,7 +183,8 @@ tapdisk_xenblkif_free_request(struct td_xenblkif * const blkif,
 
     blkif->reqs_free[blkif->ring_size - (++blkif->n_reqs_free)] = &tapreq->msg;
 
-    td_xenblkif_bufcache_put(blkif, tapreq->vma);
+	if (likely(tapreq->msg.operation != BLKIF_OP_WRITE_BARRIER))
+	    td_xenblkif_bufcache_put(blkif, tapreq->vma);
 }
 
 /**
@@ -376,42 +377,43 @@ out:
  * @error completion status of the request
  * @final controls whether the other end should be notified
  */
-static void
+void
 tapdisk_xenblkif_complete_request(struct td_xenblkif * const blkif,
         struct td_xenblkif_req* tapreq, int err, const int final)
 {
 	int _err;
     long long *max, *sum, *cnt = NULL;
+	bool barrier;
 
     ASSERT(blkif);
     ASSERT(tapreq);
 
+	barrier = tapreq->msg.operation == BLKIF_OP_WRITE_BARRIER;
+
 	if (likely(!blkif->dead)) {
 		if (BLKIF_OP_READ == tapreq->msg.operation) {
 			/*
-			 * FIXME stats should be collected after grant-copy for better
+			 * TODO stats should be collected after grant-copy for better
 			 * accuracy
 			 */
 			cnt = &blkif->stats.xenvbd->st_rd_cnt;
 			sum = &blkif->stats.xenvbd->st_rd_sum_usecs;
 			max = &blkif->stats.xenvbd->st_rd_max_usecs;
-			if (!err) {
+			if (likely(!err)) {
 				_err = guest_copy2(blkif, tapreq);
-				if (_err) {
+				if (unlikely(_err)) {
 					err = _err;
 					RING_ERR(blkif, "req %lu: failed to copy from/to guest: "
 							"%s\n", tapreq->msg.id, strerror(-err));
 				}
 			}
-		} else {
+		} else if (BLKIF_OP_WRITE == tapreq->msg.operation) {
 			cnt = &blkif->stats.xenvbd->st_wr_cnt;
 			sum = &blkif->stats.xenvbd->st_wr_sum_usecs;
 			max = &blkif->stats.xenvbd->st_wr_max_usecs;
 		}
 
-        if (tapreq->msg.operation == BLKIF_OP_WRITE_BARRIER)
-            _err = BLKIF_RSP_EOPNOTSUPP;
-        else if (err)
+        if (err)
             _err = BLKIF_RSP_ERROR;
         else
             _err = BLKIF_RSP_OKAY;
@@ -438,17 +440,36 @@ tapdisk_xenblkif_complete_request(struct td_xenblkif * const blkif,
     if (final)
         blkif->stats.kicks.out++;
 
-    /* Poll the ring in case we left requests in it due to lack of memory. */
-    tapdisk_xenio_ctx_process_ring(blkif, blkif->ctx);
+	if (barrier)
+		blkif->barrier = NULL;
 
     /*
-     * Last request of a dead ring completes, destroy the ring.
-     */
     if (unlikely(blkif->dead) &&
             blkif->ring_size  == blkif->n_reqs_free) {
-        RING_DEBUG(blkif, "destroying dead ring\n");
-        tapdisk_xenblkif_destroy(blkif);
-    }
+	 * Schedule a ring check in case we left requests in it due to lack of
+	 * memory or in case we stopped processing it because of a barrier.
+	*/
+	if (!blkif->barrier) {
+		if (likely(!blkif->dead))
+			tapdisk_xenblkif_sched_chkrng(blkif);
+	} else {
+		/*
+		 * If this is the last request, complete the barrier request.
+		 */
+		if (tapdisk_xenblkif_barrier_should_complete(blkif))
+			tapdisk_xenblkif_complete_request(blkif,
+					msg_to_tapreq(blkif->barrier), 0, 1);
+	}
+
+	/*
+	 * Last request of a dead ring completes, destroy the ring.
+	 */
+    if (unlikely(blkif->dead) && !tapdisk_xenblkif_reqs_pending(blkif)) {
+		RING_DEBUG(blkif, "destroying dead ring\n");
+		tapdisk_xenblkif_destroy(blkif);
+	}
+
+	return;
 }
 
 /**
@@ -620,9 +641,6 @@ out:
     return err;
 }
 
-#define msg_to_tapreq(_req) \
-	containerof(_req, struct td_xenblkif_req, msg)
-
 /**
  * Queues a ring request, after it prepares it, to the standard taodisk queue
  * for processing.
@@ -663,6 +681,7 @@ tapdisk_xenblkif_queue_request(struct td_xenblkif * const blkif,
 
     return 0;
 }
+
 
 void
 tapdisk_xenblkif_queue_requests(struct td_xenblkif * const blkif,

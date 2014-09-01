@@ -118,4 +118,7 @@ void
 tapdisk_xenblkif_complete_request(struct td_xenblkif * const blkif,
         struct td_xenblkif_req* tapreq, int err, const int final);
 
+#define msg_to_tapreq(_req) \
+	containerof(_req, struct td_xenblkif_req, msg)
+
 #endif /* __TD_REQ_H__ */
