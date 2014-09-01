@@ -559,3 +559,13 @@ tapdisk_xenblkif_resume(struct td_xenblkif * const blkif)
 	tapdisk_server_mask_event(tapdisk_xenblkif_evtchn_event_id(blkif), 0);
 	tapdisk_server_mask_event(tapdisk_xenblkif_chkrng_event_id(blkif), 0);
 }
+
+
+bool
+tapdisk_xenblkif_barrier_should_complete(
+		const struct td_xenblkif * const blkif)
+{
+	ASSERT(blkif);
+
+	return blkif->barrier && 1 == tapdisk_xenblkif_reqs_pending(blkif);
+}

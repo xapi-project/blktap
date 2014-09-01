@@ -178,8 +178,8 @@ xenio_blkif_get_request(struct td_xenblkif * const blkif,
 }
 
 /**
- * Retrieves at most @count request descriptors from the ring, copying them to
- * @reqs.
+ * Retrieves at most @count request descriptors from the ring, up to the
+ * first barrier request, copying them to @reqs.
  *
  * @param blkif the block interface
  * @param reqs array of pointers where each element points to sufficient memory
@@ -196,6 +196,7 @@ __xenio_blkif_get_requests(struct td_xenblkif * const blkif,
     blkif_common_back_ring_t * ring;
     RING_IDX rp, rc;
     unsigned int n;
+	bool barrier;
 
     ASSERT(blkif);
     ASSERT(reqs);
@@ -208,10 +209,16 @@ __xenio_blkif_get_requests(struct td_xenblkif * const blkif,
     rp = ring->sring->req_prod;
     xen_rmb(); /* TODO why? */
 
-    for (rc = ring->req_cons, n = 0; rc != rp && n < count; rc++, n++) {
+    for (rc = ring->req_cons, n = 0, barrier = false;
+			rc != rp && n < count && !barrier;
+			rc++, n++) {
+
         blkif_request_t *dst = reqs[n];
 
         xenio_blkif_get_request(blkif, dst, rc);
+
+		if (unlikely(dst->operation == BLKIF_OP_WRITE_BARRIER))
+			barrier = true;
     }
 
     ring->req_cons = rc;
@@ -257,6 +264,10 @@ xenio_blkif_get_requests(struct td_xenblkif * const blkif,
             break;
 
         n += __xenio_blkif_get_requests(blkif, reqs + n, count - n);
+
+		if (unlikely(n && reqs[(n - 1)]->operation == BLKIF_OP_WRITE_BARRIER))
+			break;
+
     } while (1);
 
     return n;
@@ -273,6 +284,9 @@ tapdisk_xenio_ctx_process_ring(struct td_xenblkif *blkif,
 
     start = blkif->n_reqs_free;
 
+	if (unlikely(blkif->barrier))
+		return;
+
     /*
      * In each iteration, copy as many request descriptors from the shared ring
      * that can fit within the constraints.
@@ -280,10 +294,11 @@ tapdisk_xenio_ctx_process_ring(struct td_xenblkif *blkif,
      * If in low memory mode, don't copy any if there's some in flight.
      * Otherwise, only copy one.
      */
-    if (tapdisk_server_mem_mode() == LOW_MEMORY_MODE)
+	if (tapdisk_server_mem_mode() == LOW_MEMORY_MODE)
 	    limit = blkif->ring_size != blkif->n_reqs_free ? 0 : 1;
     else
 	    limit = blkif->n_reqs_free;
+
     do {
         reqs = &blkif->reqs_free[blkif->ring_size - blkif->n_reqs_free];
 
@@ -296,12 +311,20 @@ tapdisk_xenio_ctx_process_ring(struct td_xenblkif *blkif,
 
         blkif->n_reqs_free -= n_reqs;
 		ASSERT(blkif->n_reqs_free <= blkif->ring_size);
-	limit -= n_reqs;
+		limit -= n_reqs;
         final = 1;
+
+		if (unlikely(reqs[(n_reqs - 1)]->operation ==
+					BLKIF_OP_WRITE_BARRIER)) {
+			ASSERT(!blkif->barrier);
+			blkif->barrier = reqs[(n_reqs - 1)];
+			break;
+		}
 
     } while (1);
 
     n_reqs = start - blkif->n_reqs_free;
+
     if (!n_reqs)
 		/*
 		 * We got a notification but the ring is empty. This is because we had
@@ -315,11 +338,36 @@ tapdisk_xenio_ctx_process_ring(struct td_xenblkif *blkif,
 		return;
     blkif->stats.reqs.in += n_reqs;
 
-    reqs = alloca(sizeof(blkif_request_t*) * n_reqs);
-    memcpy(reqs, &blkif->reqs_free[blkif->ring_size - start],
-            sizeof(blkif_request_t*) * n_reqs);
+	/*
+	 * We don't submit barrier requests.
+	 */
+	if (unlikely(blkif->barrier))
+		n_reqs--;
 
-    tapdisk_xenblkif_queue_requests(blkif, reqs, n_reqs);
+	/*
+	 * Submit requests, if any.
+	 */
+	if (likely(n_reqs)) {
+
+		reqs = alloca(sizeof(blkif_request_t*) * n_reqs);
+		memcpy(reqs, &blkif->reqs_free[blkif->ring_size - start],
+				sizeof(blkif_request_t*) * n_reqs);
+
+	    tapdisk_xenblkif_queue_requests(blkif, reqs, n_reqs);
+	}
+	/*
+	 * If we only got one requst from the ring and that was a barrier one,
+	 * check whether the barrier requests completion conditions are satisfied,
+	 * completed the barrier request.
+	 *
+	 * It could be that there are more requests in the ring after the barrier
+	 * request, tapdisk_xenblkif_complete_request() will schedule a ring check.
+	 */
+	else if (tapdisk_xenblkif_barrier_should_complete(blkif))
+		tapdisk_xenblkif_complete_request(blkif,
+				msg_to_tapreq(blkif->barrier), 0, 1);
+
+	return;
 }
 
 /**

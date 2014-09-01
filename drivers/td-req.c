@@ -644,6 +644,7 @@ tapdisk_xenblkif_queue_request(struct td_xenblkif * const blkif,
 
     ASSERT(blkif);
     ASSERT(msg);
+	ASSERT(msg->operation != BLKIF_OP_WRITE_BARRIER);
     ASSERT(tapreq);
 
     err = tapdisk_xenblkif_make_vbd_request(blkif, tapreq);
@@ -680,6 +681,7 @@ tapdisk_xenblkif_queue_requests(struct td_xenblkif * const blkif,
         struct td_xenblkif_req *tapreq;
 
         ASSERT(msg);
+		ASSERT(msg->operation != BLKIF_OP_WRITE_BARRIER);
 
         tapreq = msg_to_tapreq(msg);
 

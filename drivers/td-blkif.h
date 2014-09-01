@@ -272,4 +272,11 @@ tapdisk_xenblkif_reqs_pending(const struct td_xenblkif * const blkif);
 void
 tapdisk_xenblkif_sched_chkrng(const struct td_xenblkif *blkif);
 
+/**
+ * Tells whether a barrier request can be completed.
+ */
+bool
+tapdisk_xenblkif_barrier_should_complete(
+		const struct td_xenblkif * const blkif);
+
 #endif /* __TD_BLKIF_H__ */
