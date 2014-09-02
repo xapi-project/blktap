@@ -1653,18 +1653,18 @@ class SR:
         if not self._srLock:
             return
 
-        self._locked += 1
-        if self._locked > 1:
-            return
+        if self._locked == 0 :
+            abortFlag = IPCFlag(self.uuid)
+            for i in range(SR.LOCK_RETRY_ATTEMPTS_LOCK):
+                if self._srLock.acquireNoblock():
+                    self._locked += 1
+                    return
+                if abortFlag.test(FLAG_TYPE_ABORT):
+                    raise AbortException("Abort requested")
+                time.sleep(SR.LOCK_RETRY_INTERVAL)
+            raise util.SMException("Unable to acquire the SR lock")
 
-        abortFlag = IPCFlag(self.uuid)
-        for i in range(SR.LOCK_RETRY_ATTEMPTS_LOCK):
-            if self._srLock.acquireNoblock():
-                return
-            if abortFlag.test(FLAG_TYPE_ABORT):
-                raise AbortException("Abort requested")
-            time.sleep(SR.LOCK_RETRY_INTERVAL)
-        raise util.SMException("Unable to acquire the SR lock")
+        self._locked += 1
 
     def unlock(self):
         if not self._srLock:
