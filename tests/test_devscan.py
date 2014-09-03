@@ -162,4 +162,24 @@ class TestExtractDevName(unittest.TestCase):
 
         result = devscan._extract_dev_name('/nonexisting')
 
-        self.assertEquals('', result)
+        self.assertEquals(devscan.INVALID_DEVICE_NAME, result)
+
+
+class TestUpdateDevsDict(unittest.TestCase):
+    def test_whencalled_updates_dict(self):
+        devices = {}
+        dev = 'dev'
+        entry = 'entry'
+
+        devscan.update_devs_dict(devices, dev, entry)
+
+        self.assertEquals({'dev': 'entry'}, devices)
+
+    def test_whencalled_with_empty_key_does_not_update_dict(self):
+        devices = {}
+        dev = devscan.INVALID_DEVICE_NAME
+        entry = 'entry'
+
+        devscan.update_devs_dict(devices, dev, entry)
+
+        self.assertEquals({}, devices)
