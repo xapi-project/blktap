@@ -236,6 +236,10 @@ tapdisk_server_check_vbds(void)
 		tapdisk_vbd_check_state(vbd);
 }
 
+/**
+ * Issues new requests. Returns the number of VBDs that contained new requests
+ * which have been issued.
+ */
 static int
 tapdisk_server_recheck_vbds(void)
 {
@@ -340,7 +344,7 @@ tapdisk_server_iterate(void)
 		tapdisk_server_kick_responses();
 
 		ret = tapdisk_server_recheck_vbds();
-	} while (ret);
+	} while (ret); /* repeat until there are no new requests to issue */
 }
 
 static void

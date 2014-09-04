@@ -37,6 +37,10 @@
 #include "tapdisk.h"
 #include "util.h"
 
+#ifdef DEBUG
+#define BLKIF_MSG_POISON 0xdeadbeef
+#endif
+
 #define ERR(blkif, fmt, args...) \
     EPRINTF("%d/%d: "fmt, (blkif)->domid, (blkif)->devid, ##args);
 
@@ -138,6 +142,15 @@ td_xenblkif_bufcache_put(struct td_xenblkif * const blkif, void *buf)
     if (unlikely(!buf))
         return;
 
+#ifdef DEBUG
+	{
+		int i;
+
+		for (i = 0; i < blkif->n_reqs_bufcache_free; i++)
+			ASSERT(blkif->reqs_bufcache[i] != buf);
+	}
+#endif
+
     blkif->reqs_bufcache[blkif->n_reqs_bufcache_free++] = buf;
 
     /* If we're in low memory mode, prune the bufcache immediately. */
@@ -163,6 +176,10 @@ tapdisk_xenblkif_free_request(struct td_xenblkif * const blkif,
     ASSERT(blkif);
     ASSERT(tapreq);
     ASSERT(blkif->n_reqs_free <= blkif->ring_size);
+
+#ifdef DEBUG
+	memset(&tapreq->msg, BLKIF_MSG_POISON, sizeof(tapreq->msg));
+#endif
 
     blkif->reqs_free[blkif->ring_size - (++blkif->n_reqs_free)] = &tapreq->msg;
 
@@ -325,8 +342,10 @@ guest_copy2(struct td_xenblkif * const blkif,
 
     err = -ioctl(blkif->ctx->gntdev_fd, IOCTL_GNTDEV_GRANT_COPY, &gcopy);
     if (err) {
-        RING_ERR(blkif, "req %lu: failed to grant-copy: %s\n",
-                tapreq->msg.id, strerror(err));
+		err = -errno;
+        RING_ERR(blkif, "failed to grant-copy request %"PRIu64" "
+				"(%d segments): %s\n", tapreq->msg.id,
+				tapreq->msg.nr_segments, strerror(-err));
 		goto out;
 	}
 
@@ -378,12 +397,10 @@ tapdisk_xenblkif_complete_request(struct td_xenblkif * const blkif,
             }
         }
 
-        if (tapreq->msg.operation == BLKIF_OP_WRITE_BARRIER)
-            _err = BLKIF_RSP_EOPNOTSUPP;
-        else if (err)
-            _err = BLKIF_RSP_ERROR;
-        else
-            _err = BLKIF_RSP_OKAY;
+    if (err)
+        _err = BLKIF_RSP_ERROR;
+    else
+        _err = BLKIF_RSP_OKAY;
 
         xenio_blkif_put_response(blkif, tapreq, _err, final);
     }
@@ -433,48 +450,17 @@ __tapdisk_xenblkif_request_cb(struct td_vbd_request * const vreq,
     tapdisk_xenblkif_complete_request(blkif, tapreq, error, final);
 }
 
-/**
- * Initialises the standard tapdisk request (td_vbd_request_t) from the
- * intermediate ring request (td_xenblkif_req) in order to prepare it
- * processing.
- *
- * @param blkif the block interface
- * @param tapreq the request to prepare
- * @returns 0 on success
- *
- * TODO only called by tapdisk_xenblkif_queue_request
- */
 static inline int
-tapdisk_xenblkif_make_vbd_request(struct td_xenblkif * const blkif,
-        struct td_xenblkif_req * const tapreq)
+tapdisk_xenblkif_parse_request(struct td_xenblkif * const blkif,
+        struct td_xenblkif_req * const tapreq, td_vbd_request_t *vreq)
 {
-    td_vbd_request_t *vreq;
-    int i;
+    int i, err = 0;
     struct td_iovec *iov;
     void *page, *next, *last;
-    int err = 0;
 
-    ASSERT(tapreq);
-
-    vreq = &tapreq->vreq;
-    ASSERT(vreq);
-    memset(vreq, 0, sizeof(*vreq));
-
-    switch (tapreq->msg.operation) {
-    case BLKIF_OP_READ:
-        tapreq->prot = PROT_WRITE;
-        vreq->op = TD_OP_READ;
-        break;
-    case BLKIF_OP_WRITE:
-        tapreq->prot = PROT_READ;
-        vreq->op = TD_OP_WRITE;
-        break;
-    default:
-        RING_ERR(blkif, "req %lu: invalid request type %d\n",
-                tapreq->msg.id, tapreq->msg.operation);
-        err = EOPNOTSUPP;
-        goto out;
-    }
+	ASSERT(blkif);
+	ASSERT(tapreq);
+	ASSERT(vreq);
 
     /* TODO there should be at least one segment, right? */
     if (tapreq->msg.nr_segments < 1
@@ -552,6 +538,59 @@ tapdisk_xenblkif_make_vbd_request(struct td_xenblkif * const blkif,
             goto out;
         }
     }
+out:
+	return err;
+}
+
+/**
+ * Initialises the standard tapdisk request (td_vbd_request_t) from the
+ * intermediate ring request (td_xenblkif_req) in order to prepare it
+ * processing.
+ *
+ * @param blkif the block interface
+ * @param tapreq the request to prepare
+ * @returns 0 on success
+ *
+ * TODO only called by tapdisk_xenblkif_queue_request
+ */
+static inline int
+tapdisk_xenblkif_make_vbd_request(struct td_xenblkif * const blkif,
+        struct td_xenblkif_req * const tapreq)
+{
+    td_vbd_request_t *vreq;
+    int err = 0;
+
+    ASSERT(tapreq);
+
+    vreq = &tapreq->vreq;
+    ASSERT(vreq);
+    memset(vreq, 0, sizeof(*vreq));
+
+	tapreq->vma = NULL;
+
+    switch (tapreq->msg.operation) {
+    case BLKIF_OP_READ:
+        tapreq->prot = PROT_WRITE;
+        vreq->op = TD_OP_READ;
+        break;
+    case BLKIF_OP_WRITE:
+        tapreq->prot = PROT_READ;
+        vreq->op = TD_OP_WRITE;
+        break;
+	case BLKIF_OP_WRITE_BARRIER:
+        vreq->op = TD_OP_WRITE_BARRIER;
+		break;
+    default:
+        ERR(blkif, "invalid request type %d\n", tapreq->msg.operation);
+        err = EOPNOTSUPP;
+        goto out;
+    }
+
+	if (vreq->op != TD_OP_WRITE_BARRIER) {
+		err = tapdisk_xenblkif_parse_request(blkif, tapreq, vreq);
+		if (unlikely(err))
+			goto out;
+	}
 
     /*
      * TODO Isn't this kind of expensive to do for each requests? Why does
@@ -623,7 +662,7 @@ tapdisk_xenblkif_queue_requests(struct td_xenblkif * const blkif,
     ASSERT(reqs);
     ASSERT(nr_reqs >= 0);
 
-    for (i = 0; i < nr_reqs; i++) { /* for each request from the ring... */
+    for (i = 0; i < nr_reqs; i++) { /* for each request in the ring... */
         blkif_request_t *msg = reqs[i];
         struct td_xenblkif_req *tapreq;
 
