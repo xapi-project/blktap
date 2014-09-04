@@ -641,7 +641,7 @@ tapdisk_xenblkif_queue_requests(struct td_xenblkif * const blkif,
         }
     }
 
-    if (nr_errors)
+    if (nr_errors && !blkif->dead)
         xenio_blkif_put_response(blkif, NULL, 0, 1);
 }
 
