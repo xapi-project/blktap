@@ -291,7 +291,6 @@ guest_copy2(struct td_xenblkif * const blkif,
         struct td_xenblkif_req * const tapreq) {
 
     int i = 0;
-    td_vbd_request_t *vreq = NULL;
     long err = 0;
     struct ioctl_gntdev_grant_copy gcopy;
 
@@ -302,8 +301,6 @@ guest_copy2(struct td_xenblkif * const blkif,
 			|| BLKIF_OP_WRITE == tapreq->msg.operation);
 	ASSERT(tapreq->msg.nr_segments > 0);
 	ASSERT(tapreq->msg.nr_segments <= ARRAY_SIZE(tapreq->gcopy_segs));
-
-    vreq = &tapreq->vreq;
 
     for (i = 0; i < tapreq->msg.nr_segments; i++) {
         struct blkif_request_segment *blkif_seg = &tapreq->msg.seg[i];
