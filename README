@@ -118,5 +118,20 @@ xm block-attach 0 tap:qcow:<FILENAME> /dev/xvda1 w 0
 mount /dev/xvda1 /mnt/disk
 
 
+Enabling verbose log messages for tapback
+=========================================
+
+As of blktap3, the establishment of a connection between blkfront and a tap
+disk is handled by tapback.
+
+When needed, tapback can be configured to print verbose log messages. To do
+that, edit /etc/init.d/tapback and ensure tapback is started with the '-v'
+option, like this:
+
+${TAPBACK} -v -p ${PID_FILE} >/dev/null 2>&1 </dev/null
+
+Then, restart the tapback service:
+
+service tapback restart
 
  
