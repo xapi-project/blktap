@@ -20,6 +20,8 @@
 
 #include "tapdisk.h"
 #include "tapdisk-queue.h"
+#include "tapdisk-image.h"
+#include "tapdisk-driver.h"
 
 int td_open(td_image_t *);
 int __td_open(td_image_t *, td_disk_info_t *);
