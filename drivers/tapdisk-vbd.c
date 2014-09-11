@@ -118,6 +118,42 @@ tapdisk_vbd_initialize(int rfd, int wfd, uint16_t uuid)
 	return 0;
 }
 
+static inline void
+tapdisk_vbd_add_image(td_vbd_t *vbd, td_image_t *image)
+{
+	list_add_tail(&image->next, &vbd->images);
+}
+
+static inline int
+tapdisk_vbd_is_last_image(td_vbd_t *vbd, td_image_t *image)
+{
+	return list_is_last(&image->next, &vbd->images);
+}
+
+static inline td_image_t *
+tapdisk_vbd_first_image(td_vbd_t *vbd)
+{
+	td_image_t *image = NULL;
+	if (!list_empty(&vbd->images))
+		image = list_entry(vbd->images.next, td_image_t, next);
+	return image;
+}
+
+static inline td_image_t *
+tapdisk_vbd_last_image(td_vbd_t *vbd)
+{
+	td_image_t *image = NULL;
+	if (!list_empty(&vbd->images))
+		image = list_entry(vbd->images.prev, td_image_t, next);
+	return image;
+}
+
+static inline td_image_t *
+tapdisk_vbd_next_image(td_image_t *image)
+{
+	return list_entry(image->next.next, td_image_t, next);
+}
+
 static int
 tapdisk_vbd_validate_chain(td_vbd_t *vbd)
 {

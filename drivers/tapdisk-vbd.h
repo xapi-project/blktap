@@ -163,42 +163,6 @@ tapdisk_vbd_move_request(td_vbd_request_t *vreq, struct list_head *dest)
 	vreq->list_head = dest;
 }
 
-static inline void
-tapdisk_vbd_add_image(td_vbd_t *vbd, td_image_t *image)
-{
-	list_add_tail(&image->next, &vbd->images);
-}
-
-static inline int
-tapdisk_vbd_is_last_image(td_vbd_t *vbd, td_image_t *image)
-{
-	return list_is_last(&image->next, &vbd->images);
-}
-
-static inline td_image_t *
-tapdisk_vbd_first_image(td_vbd_t *vbd)
-{
-	td_image_t *image = NULL;
-	if (!list_empty(&vbd->images))
-		image = list_entry(vbd->images.next, td_image_t, next);
-	return image;
-}
-
-static inline td_image_t *
-tapdisk_vbd_last_image(td_vbd_t *vbd)
-{
-	td_image_t *image = NULL;
-	if (!list_empty(&vbd->images))
-		image = list_entry(vbd->images.prev, td_image_t, next);
-	return image;
-}
-
-static inline td_image_t *
-tapdisk_vbd_next_image(td_image_t *image)
-{
-	return list_entry(image->next.next, td_image_t, next);
-}
-
 td_vbd_t *tapdisk_vbd_create(td_uuid_t);
 int tapdisk_vbd_initialize(int, int, td_uuid_t);
 int tapdisk_vbd_open(td_vbd_t *, const char *, int, const char *, td_flag_t);
