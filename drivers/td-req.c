@@ -304,6 +304,7 @@ xenio_blkif_put_response(struct td_xenblkif * const blkif,
     return 0;
 }
 
+
 static int
 guest_copy2(struct td_xenblkif * const blkif,
         struct td_xenblkif_req * const tapreq) {

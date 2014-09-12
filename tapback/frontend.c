@@ -282,7 +282,7 @@ connect_frontend(vbd_t *device) {
 		 * with the appropriate characteristics.
          */
         if ((err = tapback_device_printf(device, xst, "feature-barrier", true,
-                        "%d", 1))) {
+                        "%d", device->backend->barrier ? 1 : 0))) {
             WARN(device, "failed to write feature-barrier: %s\n",
 					strerror(-err));
             break;
