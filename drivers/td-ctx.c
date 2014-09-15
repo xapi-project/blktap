@@ -284,7 +284,7 @@ tapdisk_xenio_ctx_process_ring(struct td_xenblkif *blkif,
 
     start = blkif->n_reqs_free;
 
-	if (unlikely(blkif->barrier))
+	if (unlikely(blkif->barrier.msg))
 		return;
 
     /*
@@ -316,8 +316,10 @@ tapdisk_xenio_ctx_process_ring(struct td_xenblkif *blkif,
 
 		if (unlikely(reqs[(n_reqs - 1)]->operation ==
 					BLKIF_OP_WRITE_BARRIER)) {
-			ASSERT(!blkif->barrier);
-			blkif->barrier = reqs[(n_reqs - 1)];
+			ASSERT(!blkif->barrier.msg);
+			blkif->barrier.msg = reqs[(n_reqs - 1)];
+			blkif->barrier.io_done = false;
+			blkif->barrier.io_err = 0;
 			break;
 		}
 
@@ -338,36 +340,11 @@ tapdisk_xenio_ctx_process_ring(struct td_xenblkif *blkif,
 		return;
     blkif->stats.reqs.in += n_reqs;
 
-	/*
-	 * We don't submit barrier requests.
-	 */
-	if (unlikely(blkif->barrier))
-		n_reqs--;
+	reqs = alloca(sizeof(blkif_request_t*) * n_reqs);
+	memcpy(reqs, &blkif->reqs_free[blkif->ring_size - start],
+			sizeof(blkif_request_t*) * n_reqs);
 
-	/*
-	 * Submit requests, if any.
-	 */
-	if (likely(n_reqs)) {
-
-		reqs = alloca(sizeof(blkif_request_t*) * n_reqs);
-		memcpy(reqs, &blkif->reqs_free[blkif->ring_size - start],
-				sizeof(blkif_request_t*) * n_reqs);
-
-	    tapdisk_xenblkif_queue_requests(blkif, reqs, n_reqs);
-	}
-	/*
-	 * If we only got one requst from the ring and that was a barrier one,
-	 * check whether the barrier requests completion conditions are satisfied,
-	 * completed the barrier request.
-	 *
-	 * It could be that there are more requests in the ring after the barrier
-	 * request, tapdisk_xenblkif_complete_request() will schedule a ring check.
-	 */
-	else if (tapdisk_xenblkif_barrier_should_complete(blkif))
-		tapdisk_xenblkif_complete_request(blkif,
-				msg_to_tapreq(blkif->barrier), 0, 1);
-
-	return;
+	tapdisk_xenblkif_queue_requests(blkif, reqs, n_reqs);
 }
 
 /**

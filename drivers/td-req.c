@@ -183,7 +183,7 @@ tapdisk_xenblkif_free_request(struct td_xenblkif * const blkif,
 
     blkif->reqs_free[blkif->ring_size - (++blkif->n_reqs_free)] = &tapreq->msg;
 
-	if (likely(tapreq->msg.operation != BLKIF_OP_WRITE_BARRIER))
+	if (likely(tapreq->msg.nr_segments))
 	    td_xenblkif_bufcache_put(blkif, tapreq->vma);
 }
 
@@ -305,9 +305,40 @@ xenio_blkif_put_response(struct td_xenblkif * const blkif,
 }
 
 
+/**
+ * Tells whether the request requires data to be read.
+ */
+static inline bool
+blkif_rq_rd(blkif_request_t const * const msg)
+{
+	return BLKIF_OP_READ == msg->operation;
+}
+
+
+/**
+ * Tells whether the request requires data to be written.
+ */
+static inline bool
+blkif_rq_wr(blkif_request_t const * const msg)
+{
+	return BLKIF_OP_WRITE == msg->operation ||
+		(BLKIF_OP_WRITE_BARRIER == msg->operation && msg->nr_segments);
+}
+
+
+/**
+ * Tells whether the request requires data to transferred.
+ */
+static inline bool
+blkif_rq_data(blkif_request_t const * const msg)
+{
+	return blkif_rq_rd(msg) || blkif_rq_wr(msg);
+}
+
+
 static int
 guest_copy2(struct td_xenblkif * const blkif,
-        struct td_xenblkif_req * const tapreq) {
+        struct td_xenblkif_req * const tapreq /* TODO rename to req */) {
 
     int i = 0;
     long err = 0;
@@ -316,8 +347,7 @@ guest_copy2(struct td_xenblkif * const blkif,
     ASSERT(blkif);
     ASSERT(blkif->ctx);
     ASSERT(tapreq);
-    ASSERT(BLKIF_OP_READ == tapreq->msg.operation
-			|| BLKIF_OP_WRITE == tapreq->msg.operation);
+    ASSERT(blkif_rq_data(&tapreq->msg));
 	ASSERT(tapreq->msg.nr_segments > 0);
 	ASSERT(tapreq->msg.nr_segments <= ARRAY_SIZE(tapreq->gcopy_segs));
 
@@ -334,7 +364,7 @@ guest_copy2(struct td_xenblkif * const blkif,
         gcopy_seg->offset = blkif_seg->first_sect << SECTOR_SHIFT;
     }
 
-    gcopy.dir = BLKIF_OP_WRITE == tapreq->msg.operation;
+    gcopy.dir = blkif_rq_wr(&tapreq->msg);
     gcopy.domid = blkif->domid;
     gcopy.count = tapreq->msg.nr_segments;
 	gcopy.segments = tapreq->gcopy_segs;
@@ -374,7 +404,7 @@ out:
  * any more.
  *
  * @blkif the VBD the request belongs belongs to
- * @tapreq the request to complete
+ * @tapreq the request to complete TODO rename to req
  * @error completion status of the request
  * @final controls whether the other end should be notified
  */
@@ -383,9 +413,9 @@ tapdisk_xenblkif_complete_request(struct td_xenblkif * const blkif,
         struct td_xenblkif_req* tapreq, int err, const int final)
 {
 	int _err;
-    long long *max, *sum, *cnt = NULL;
+    long long *max = NULL, *sum = NULL, *cnt = NULL;
 	static int depth = 0;
-	bool barrier;
+	bool processing_barrier_message;
 
     ASSERT(blkif);
     ASSERT(tapreq);
@@ -393,10 +423,30 @@ tapdisk_xenblkif_complete_request(struct td_xenblkif * const blkif,
 
 	depth++;
 
-	barrier = tapreq->msg.operation == BLKIF_OP_WRITE_BARRIER;
+	processing_barrier_message =
+		tapreq->msg.operation == BLKIF_OP_WRITE_BARRIER;
+
+	/*
+	 * If a barrier request completes, check whether it's an I/O completion
+	 * (the barrier carries write I/O data), or a completion because the last
+	 * pending non-barrier request completed. If the former case is true, we
+	 * need to check again whether the latter is true and proceed with the
+	 * completion, otherwise simply note the fact that I/O is done and when
+	 * the last pending non-barrier requests completes, this function will be
+	 * called again passing the barrier request.
+	 */
+	if (unlikely(processing_barrier_message)) {
+		ASSERT(blkif->barrier.msg == &tapreq->msg);
+		if (tapreq->msg.nr_segments && !blkif->barrier.io_done) {
+			blkif->barrier.io_err = err;
+			blkif->barrier.io_done = true;
+		}
+		if (!tapdisk_xenblkif_barrier_should_complete(blkif))
+			goto out;
+	}
 
 	if (likely(!blkif->dead)) {
-		if (BLKIF_OP_READ == tapreq->msg.operation) {
+		if (blkif_rq_rd(&tapreq->msg)) {
 			/*
 			 * TODO stats should be collected after grant-copy for better
 			 * accuracy
@@ -412,16 +462,11 @@ tapdisk_xenblkif_complete_request(struct td_xenblkif * const blkif,
 							"%s\n", tapreq->msg.id, strerror(-err));
 				}
 			}
-		} else if (BLKIF_OP_WRITE == tapreq->msg.operation) {
+		} else if (blkif_rq_wr(&tapreq->msg)) {
 			cnt = &blkif->stats.xenvbd->st_wr_cnt;
 			sum = &blkif->stats.xenvbd->st_wr_sum_usecs;
 			max = &blkif->stats.xenvbd->st_wr_max_usecs;
 		}
-
-        if (err)
-            _err = BLKIF_RSP_ERROR;
-        else
-            _err = BLKIF_RSP_OKAY;
 
 		if (likely(cnt)) {
 			struct timeval now;
@@ -436,6 +481,11 @@ tapdisk_xenblkif_complete_request(struct td_xenblkif * const blkif,
 			*cnt += 1;
 		}
 
+		if (likely(err == 0))
+            _err = BLKIF_RSP_OKAY;
+		else
+            _err = BLKIF_RSP_ERROR;
+
 		xenio_blkif_put_response(blkif, tapreq, _err, final);
 	}
 
@@ -445,14 +495,17 @@ tapdisk_xenblkif_complete_request(struct td_xenblkif * const blkif,
     if (final)
         blkif->stats.kicks.out++;
 
-	if (barrier)
-		blkif->barrier = NULL;
+	if (unlikely(processing_barrier_message))
+		blkif->barrier.msg = NULL;
 
     /*
 	 * Schedule a ring check in case we left requests in it due to lack of
 	 * memory or in case we stopped processing it because of a barrier.
+	 *
+	 * FIXME we should decide whether a ring check is necessary more
+	 * intelligently.
 	*/
-	if (!blkif->barrier) {
+	if (!blkif->barrier.msg) {
 		if (likely(!blkif->dead))
 			tapdisk_xenblkif_sched_chkrng(blkif);
 	} else {
@@ -461,7 +514,7 @@ tapdisk_xenblkif_complete_request(struct td_xenblkif * const blkif,
 		 */
 		if (tapdisk_xenblkif_barrier_should_complete(blkif))
 			tapdisk_xenblkif_complete_request(blkif,
-					msg_to_tapreq(blkif->barrier), 0, 1);
+					msg_to_tapreq(blkif->barrier.msg), 0, 1);
 	}
 
 	/*
@@ -475,8 +528,8 @@ tapdisk_xenblkif_complete_request(struct td_xenblkif * const blkif,
 		tapdisk_xenblkif_destroy(blkif);
 	}
 
+out:
 	depth--;
-	return;
 }
 
 /**
@@ -583,8 +636,7 @@ tapdisk_xenblkif_parse_request(struct td_xenblkif * const blkif,
     vreq->iovcnt = iov - req->iov + 1;
     vreq->sec = req->msg.sector_number;
 
-    if (req->msg.operation == BLKIF_OP_WRITE ||
-            req->msg.operation == BLKIF_OP_WRITE_BARRIER) {
+    if (blkif_rq_wr(&req->msg)) {
         err = guest_copy2(blkif, req);
         if (err) {
             RING_ERR(blkif, "req %lu: failed to copy from guest: %s\n",
@@ -680,7 +732,7 @@ tapdisk_xenblkif_make_vbd_request(struct td_xenblkif * const blkif,
      */
     else if (tapdisk_xenblkif_barrier_should_complete(blkif)) {
         tapdisk_xenblkif_complete_request(blkif,
-                msg_to_tapreq(blkif->barrier), 0, 1);
+                msg_to_tapreq(blkif->barrier.msg), 0, 1);
         err = 0;
     }
 out:
@@ -694,7 +746,7 @@ out:
  *
  * @param blkif the block interface
  * @param msg the ring request
- * @param tapreq the intermediate request
+ * @param tapreq the intermediate request TODO rename to req
  *
  * TODO don't really need to supply the ring request since it's either way
  * contained in the tapreq
@@ -709,22 +761,23 @@ tapdisk_xenblkif_queue_request(struct td_xenblkif * const blkif,
 
     ASSERT(blkif);
     ASSERT(msg);
-	ASSERT(msg->operation != BLKIF_OP_WRITE_BARRIER);
     ASSERT(tapreq);
 
     err = tapdisk_xenblkif_make_vbd_request(blkif, tapreq);
-    if (err) {
+    if (unlikely(err)) {
         /* TODO log error */
         blkif->stats.errors.map++;
         return err;
     }
 
-    err = tapdisk_vbd_queue_request(blkif->vbd, &tapreq->vreq);
-    if (err) {
-        /* TODO log error */
-        blkif->stats.errors.vbd++;
-        return err;
-    }
+	if (likely(tapreq->msg.nr_segments)) {
+		err = tapdisk_vbd_queue_request(blkif->vbd, &tapreq->vreq);
+		if (unlikely(err)) {
+			/* TODO log error */
+			blkif->stats.errors.vbd++;
+			return err;
+		}
+	}
 
     return 0;
 }
@@ -747,7 +800,6 @@ tapdisk_xenblkif_queue_requests(struct td_xenblkif * const blkif,
         struct td_xenblkif_req *tapreq;
 
         ASSERT(msg);
-		ASSERT(msg->operation != BLKIF_OP_WRITE_BARRIER);
 
         tapreq = msg_to_tapreq(msg);
 

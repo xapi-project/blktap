@@ -312,7 +312,7 @@ tapdisk_xenblkif_connect(domid_t domid, int devid, const grant_ref_t * grefs,
         int order, evtchn_port_t port, int proto, const char *pool,
         td_vbd_t * vbd)
 {
-    struct td_xenblkif *td_blkif = NULL;
+    struct td_xenblkif *td_blkif = NULL; /* TODO rename to blkif */
     struct td_xenio_ctx *td_ctx;
     int err;
     unsigned int i;
@@ -350,6 +350,9 @@ tapdisk_xenblkif_connect(domid_t domid, int devid, const grant_ref_t * grefs,
     td_blkif->proto = proto;
     td_blkif->dead = false;
 	td_blkif->chkrng_event = -1;
+	td_blkif->barrier.msg = NULL;
+	td_blkif->barrier.io_done = false;
+	td_blkif->barrier.io_err = 0;
 
     td_blkif->xenvbd_stats.root = NULL;
     shm_init(&td_blkif->xenvbd_stats.io_ring);
@@ -567,5 +570,6 @@ tapdisk_xenblkif_barrier_should_complete(
 {
 	ASSERT(blkif);
 
-	return blkif->barrier && 1 == tapdisk_xenblkif_reqs_pending(blkif);
+	return blkif->barrier.msg && 1 == tapdisk_xenblkif_reqs_pending(blkif) &&
+		(0 == blkif->barrier.msg->nr_segments || blkif->barrier.io_done);
 }

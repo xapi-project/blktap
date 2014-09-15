@@ -156,7 +156,23 @@ struct td_xenblkif {
 
 	bool dead;
 
-	blkif_request_t *barrier;
+	struct {
+		/**
+		 * Pointer to he pending barrier request.
+		 */
+		blkif_request_t *msg;
+
+		/**
+		 * Tells whether the write I/O part of a barrier request (if any) has
+		 * completed.
+		 */
+		bool io_done;
+
+		/**
+		 * I/O error code for the write I/O part of a barrier request (if any).
+		 */
+		int io_err;
+	} barrier;
 
 	event_id_t chkrng_event;
 };
