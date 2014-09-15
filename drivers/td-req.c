@@ -505,20 +505,10 @@ __tapdisk_xenblkif_request_cb(struct td_vbd_request * const vreq,
     tapdisk_xenblkif_complete_request(blkif, tapreq, error, final);
 }
 
-/**
- * Initialises the standard tapdisk request (td_vbd_request_t) from the
- * intermediate ring request (td_xenblkif_req) in order to prepare it
- * processing.
- *
- * @param blkif the block interface
- * @param tapreq the request to prepare
- * @returns 0 on success
- *
- * TODO only called by tapdisk_xenblkif_queue_request
- */
+
 static inline int
-tapdisk_xenblkif_make_vbd_request(struct td_xenblkif * const blkif,
-        struct td_xenblkif_req * const tapreq)
+tapdisk_xenblkif_parse_request(struct td_xenblkif * const blkif,
+        struct td_xenblkif_req * const req)
 {
     td_vbd_request_t *vreq;
     int i;
@@ -527,50 +517,21 @@ tapdisk_xenblkif_make_vbd_request(struct td_xenblkif * const blkif,
     int err = 0;
     unsigned nr_sect = 0;
 
-    ASSERT(tapreq);
+    ASSERT(blkif);
+    ASSERT(req);
 
-    vreq = &tapreq->vreq;
+    vreq = &req->vreq;
     ASSERT(vreq);
-    memset(vreq, 0, sizeof(*vreq));
 
-	tapreq->vma = NULL;
-
-    switch (tapreq->msg.operation) {
-    case BLKIF_OP_READ:
-        blkif->stats.xenvbd->st_rd_req++;
-        tapreq->prot = PROT_WRITE;
-        vreq->op = TD_OP_READ;
-        break;
-    case BLKIF_OP_WRITE:
-        blkif->stats.xenvbd->st_wr_req++;
-        tapreq->prot = PROT_READ;
-        vreq->op = TD_OP_WRITE;
-        break;
-    default:
-        RING_ERR(blkif, "req %lu: invalid request type %d\n",
-                tapreq->msg.id, tapreq->msg.operation);
-        err = EOPNOTSUPP;
-        goto out;
-    }
-
-    /* TODO there should be at least one segment, right? */
-    if (tapreq->msg.nr_segments < 1
-            || tapreq->msg.nr_segments > BLKIF_MAX_SEGMENTS_PER_REQUEST) {
-        RING_ERR(blkif, "req %lu: invalid segment count %d\n",
-                tapreq->msg.id, tapreq->msg.nr_segments);
-        err = EINVAL;
-        goto out;
-    }
-
-    tapreq->vma = td_xenblkif_bufcache_get(blkif);
-    if (unlikely(!tapreq->vma)) {
+    req->vma = td_xenblkif_bufcache_get(blkif);
+    if (unlikely(!req->vma)) {
         err = errno;
         goto out;
     }
 
-    for (i = 0; i < tapreq->msg.nr_segments; i++) {
-        struct blkif_request_segment *seg = &tapreq->msg.seg[i];
-        tapreq->gref[i] = seg->gref;
+    for (i = 0; i < req->msg.nr_segments; i++) {
+        struct blkif_request_segment *seg = &req->msg.seg[i];
+        req->gref[i] = seg->gref;
 
         /*
          * Note that first and last may be equal, which means only one sector
@@ -578,7 +539,7 @@ tapdisk_xenblkif_make_vbd_request(struct td_xenblkif * const blkif,
          */
         if (seg->last_sect < seg->first_sect) {
             RING_ERR(blkif, "req %lu: invalid sectors %d-%d\n",
-                    tapreq->msg.id, seg->first_sect, seg->last_sect);
+                    req->msg.id, seg->first_sect, seg->last_sect);
             err = EINVAL;
             goto out;
         }
@@ -593,12 +554,12 @@ tapdisk_xenblkif_make_vbd_request(struct td_xenblkif * const blkif,
      * order to reuse it if the current and previous segments are
      * consecutive.
      */
-    iov = tapreq->iov - 1;
+    iov = req->iov - 1;
     last = NULL;
-    page = tapreq->vma;
+    page = req->vma;
 
-    for (i = 0; i < tapreq->msg.nr_segments; i++) { /* for each segment */
-        struct blkif_request_segment *seg = &tapreq->msg.seg[i];
+    for (i = 0; i < req->msg.nr_segments; i++) { /* for each segment */
+        struct blkif_request_segment *seg = &req->msg.seg[i];
         size_t size;
 
         /* TODO check that first_sect/last_sect are within page */
@@ -618,15 +579,16 @@ tapdisk_xenblkif_make_vbd_request(struct td_xenblkif * const blkif,
         nr_sect += size;
     }
 
-    vreq->iov = tapreq->iov;
-    vreq->iovcnt = iov - tapreq->iov + 1;
-    vreq->sec = tapreq->msg.sector_number;
+    vreq->iov = req->iov;
+    vreq->iovcnt = iov - req->iov + 1;
+    vreq->sec = req->msg.sector_number;
 
-    if (tapreq->msg.operation == BLKIF_OP_WRITE) {
-        err = guest_copy2(blkif, tapreq);
+    if (req->msg.operation == BLKIF_OP_WRITE ||
+            req->msg.operation == BLKIF_OP_WRITE_BARRIER) {
+        err = guest_copy2(blkif, req);
         if (err) {
             RING_ERR(blkif, "req %lu: failed to copy from guest: %s\n",
-                    tapreq->msg.id, strerror(-err));
+                    req->msg.id, strerror(-err));
             goto out;
         }
         blkif->stats.xenvbd->st_wr_sect += nr_sect;
@@ -637,16 +599,94 @@ tapdisk_xenblkif_make_vbd_request(struct td_xenblkif * const blkif,
      * TODO Isn't this kind of expensive to do for each requests? Why does
      * the tapdisk need this in the first place?
      */
-    snprintf(tapreq->name, sizeof(tapreq->name), "xenvbd-%d-%d.%"SCNx64"",
-             blkif->domid, blkif->devid, tapreq->msg.id);
+    snprintf(req->name, sizeof(req->name), "xenvbd-%d-%d.%"SCNx64"",
+             blkif->domid, blkif->devid, req->msg.id);
 
-    vreq->name = tapreq->name;
+    vreq->name = req->name;
     vreq->token = blkif;
     vreq->cb = __tapdisk_xenblkif_request_cb;
 
 out:
     return err;
 }
+
+
+/**
+ * Initialises the standard tapdisk request (td_vbd_request_t) from the
+ * intermediate ring request (td_xenblkif_req) in order to prepare it
+ * processing.
+ *
+ * @param blkif the block interface
+ * @param tapreq the request to prepare TODO rename to req
+ * @returns 0 on success
+ *
+ * XXX only called by tapdisk_xenblkif_queue_request
+ */
+static inline int
+tapdisk_xenblkif_make_vbd_request(struct td_xenblkif * const blkif,
+        struct td_xenblkif_req * const tapreq)
+{
+    int err = 0;
+    td_vbd_request_t *vreq;
+
+    ASSERT(tapreq);
+
+    vreq = &tapreq->vreq;
+    ASSERT(vreq);
+    memset(vreq, 0, sizeof(*vreq));
+
+	tapreq->vma = NULL;
+
+    switch (tapreq->msg.operation) {
+    case BLKIF_OP_READ:
+        blkif->stats.xenvbd->st_rd_req++;
+        tapreq->prot = PROT_WRITE;
+        vreq->op = TD_OP_READ;
+        break;
+    case BLKIF_OP_WRITE:
+    case BLKIF_OP_WRITE_BARRIER:
+        blkif->stats.xenvbd->st_wr_req++;
+        tapreq->prot = PROT_READ;
+        vreq->op = TD_OP_WRITE;
+        break;
+    default:
+        RING_ERR(blkif, "req %lu: invalid request type %d\n",
+                tapreq->msg.id, tapreq->msg.operation);
+        err = EOPNOTSUPP;
+        goto out;
+    }
+
+    /*
+     * Check that the number of segments is sane.
+     */
+    if (unlikely((tapreq->msg.nr_segments == 0 &&
+                tapreq->msg.operation != BLKIF_OP_WRITE_BARRIER) ||
+            tapreq->msg.nr_segments > BLKIF_MAX_SEGMENTS_PER_REQUEST)) {
+        RING_ERR(blkif, "req %lu: bad number of segments in request (%d)\n",
+                tapreq->msg.id, tapreq->msg.nr_segments);
+        err = EINVAL;
+        goto out;
+    }
+
+    if (likely(tapreq->msg.nr_segments))
+        err = tapdisk_xenblkif_parse_request(blkif, tapreq);
+    /*
+     * If we only got one request from the ring and that was a barrier one,
+     * check whether the barrier requests completion conditions are satisfied
+	 * and if they are, complete the barrier request.
+     *
+     * It could be that there are more requests in the ring after the barrier
+     * request, tapdisk_xenblkif_complete_request() will schedule a ring check.
+     */
+    else if (tapdisk_xenblkif_barrier_should_complete(blkif)) {
+        tapdisk_xenblkif_complete_request(blkif,
+                msg_to_tapreq(blkif->barrier), 0, 1);
+        err = 0;
+    }
+out:
+    return err;
+}
+
 
 /**
  * Queues a ring request, after it prepares it, to the standard taodisk queue
