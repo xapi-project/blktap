@@ -1159,8 +1159,9 @@ class LVHDSR(SR.SR):
                 lvhdutil.deflate(self.lvmCache, vdi.lvname, int(val))
                 if vdi.readonly:
                     self.lvmCache.setReadonly(vdi.lvname, True)
-                lvhdutil.lvRefreshOnAllSlaves(self.session, self.uuid,
-                        self.vgname, vdi.lvname, uuid)
+                if "true" == self.session.xenapi.SR.get_shared(self.sr_ref):
+                    lvhdutil.lvRefreshOnAllSlaves(self.session, self.uuid,
+                            self.vgname, vdi.lvname, uuid)
             self.journaler.remove(lvhdutil.JRN_INFLATE, uuid)
         delattr(self,"vdiInfo")
         delattr(self,"allVDIs")
