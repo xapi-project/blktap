@@ -90,7 +90,7 @@ tapdisk_xenio_ctx_put(struct td_xenio_ctx * ctx);
  */
 void
 tapdisk_xenio_ctx_process_ring(struct td_xenblkif *blkif,
-		               struct td_xenio_ctx *ctx);
+		struct td_xenio_ctx *ctx, int final);
 
 /**
  * List of contexts.

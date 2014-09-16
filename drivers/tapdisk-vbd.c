@@ -856,12 +856,12 @@ tapdisk_vbd_pause(td_vbd_t *vbd)
 	if (vbd->nbdserver)
 		tapdisk_nbdserver_pause(vbd->nbdserver);
 
-    list_for_each_entry(blkif, &vbd->rings, entry)
-		tapdisk_server_mask_event(tapdisk_xenblkif_event_id(blkif), 1);
-
 	err = tapdisk_vbd_quiesce_queue(vbd);
 	if (err)
 		return err;
+
+    list_for_each_entry(blkif, &vbd->rings, entry)
+		tapdisk_xenblkif_suspend(blkif);
 
 	tapdisk_vbd_close_vdi(vbd);
 
@@ -932,7 +932,7 @@ resume_failed:
 		tapdisk_nbdserver_unpause(vbd->nbdserver);
 
     list_for_each_entry(blkif, &vbd->rings, entry)
-		tapdisk_server_mask_event(tapdisk_xenblkif_event_id(blkif), 0);
+		tapdisk_xenblkif_resume(blkif);
 
 
 	DBG(TLOG_DBG, "state checked\n");
@@ -1174,6 +1174,7 @@ tapdisk_vbd_request_should_retry(td_vbd_t *vbd, td_vbd_request_t *vreq)
 	case ENOSYS:
 	case ESTALE:
 	case ENOSPC:
+	case EFAULT:
 		return 0;
 	}
 
@@ -1642,6 +1643,17 @@ tapdisk_vbd_kick(td_vbd_t *vbd)
 	vbd->kicked++;
 
 	while (!list_empty(list)) {
+
+		/*
+		 * Take one request off the completed requests list, and then look for
+		 * other requests in the same list that have the same token and
+		 * complete them. This way we complete requests against the same token
+		 * in one go before we proceed to completing requests with other
+		 * tokens. The token is usually used to point back to some other
+		 * structure, e.g. a blktap or a tapdisk3 connexion. Once all requests
+		 * with a specific token have been completed, proceed to the next one
+		 * until the list is empty.
+		 */
 		prev = list_entry(list->next, td_vbd_request_t, next);
 		list_del(&prev->next);
 

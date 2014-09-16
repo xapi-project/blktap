@@ -273,14 +273,21 @@ connect_frontend(vbd_t *device) {
 
         /*
          * FIXME blkback writes discard-granularity, discard-alignment,
-         * discard-secure, feature-discard, feature-barrier but we don't.
+         * discard-secure, feature-discard but we don't.
          */
 
         /*
-         * Write the number of sectors, sector size, and info to the
-         * back-end path in XenStore so that the front-end creates a VBD
-         * with the appropriate characteristics.
+		 * Write the number of sectors, sector size, info, and barrier support
+		 * to the back-end path in XenStore so that the front-end creates a VBD
+		 * with the appropriate characteristics.
          */
+        if ((err = tapback_device_printf(device, xst, "feature-barrier", true,
+                        "%d", device->backend->barrier ? 1 : 0))) {
+            WARN(device, "failed to write feature-barrier: %s\n",
+					strerror(-err));
+            break;
+        }
+
         if ((err = tapback_device_printf(device, xst, "sector-size", true,
                         "%u", device->sector_size))) {
             WARN(device, "failed to write sector-size: %s\n", strerror(-err));

@@ -117,6 +117,8 @@ or vmdk images:
 xm block-attach 0 tap:qcow:<FILENAME> /dev/xvda1 w 0
 mount /dev/xvda1 /mnt/disk
 
-
-
- 
+Write I/O barriers
+==================
+By default write I/O barriers are enabled for all VBDs. To globally disable
+write I/O barriers, edit /etc/init.d/tapback and add the "-b" option to
+tapback.

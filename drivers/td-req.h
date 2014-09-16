@@ -103,4 +103,22 @@ tapdisk_xenblkif_reqs_init(struct td_xenblkif *td_blkif);
 void
 tapdisk_xenblkif_reqs_free(struct td_xenblkif * const blkif);
 
+/**
+ * Completes a request. If this is the last pending request of a dead block
+ * interface, the block interface is destroyed, the caller must not access it
+ * any more.
+ *
+ * @blkif the VBD the request belongs belongs to
+ * @tapreq the request to complete
+ * @error completion status of the request
+ * @final controls whether the other end should be notified
+ */
+
+void
+tapdisk_xenblkif_complete_request(struct td_xenblkif * const blkif,
+        struct td_xenblkif_req* tapreq, int err, const int final);
+
+#define msg_to_tapreq(_req) \
+	containerof(_req, struct td_xenblkif_req, msg)
+
 #endif /* __TD_REQ_H__ */

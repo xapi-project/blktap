@@ -155,6 +155,26 @@ struct td_xenblkif {
     event_id_t reqs_bufcache_evtid;
 
 	bool dead;
+
+	struct {
+		/**
+		 * Pointer to he pending barrier request.
+		 */
+		blkif_request_t *msg;
+
+		/**
+		 * Tells whether the write I/O part of a barrier request (if any) has
+		 * completed.
+		 */
+		bool io_done;
+
+		/**
+		 * I/O error code for the write I/O part of a barrier request (if any).
+		 */
+		int io_err;
+	} barrier;
+
+	event_id_t chkrng_event;
 };
 
 #define RING_DEBUG(blkif, fmt, args...)                                     \
@@ -222,13 +242,57 @@ tapdisk_xenblkif_destroy(struct td_xenblkif * blkif);
 struct td_xenblkif *
 tapdisk_xenblkif_find(const domid_t domid, const int devid);
 
-event_id_t
-tapdisk_xenblkif_event_id(const struct td_xenblkif *blkif);
+/**
+ * Returns the event ID associated with the event channel. Since the event
+ * channel can be shared by multiple block interfaces, the event ID will be
+ * shared as well.
+ */
+extern inline event_id_t
+tapdisk_xenblkif_evtchn_event_id(const struct td_xenblkif *blkif);
+
+/**
+ * Returns the event ID associated wit checking the ring. This is a private
+ * event.
+ */
+extern inline event_id_t
+tapdisk_xenblkif_chkrng_event_id(const struct td_xenblkif * const blkif);
 
 /**
  * Updates ring stats.
  */
 int
 tapdisk_xenblkif_ring_stats_update(struct td_xenblkif *blkif);
+
+/**
+ * Suspends the operation of the ring. NB the operation of the ring might
+ * have been already suspended.
+ */
+void
+tapdisk_xenblkif_suspend(struct td_xenblkif * const blkif);
+
+/**
+ * Resumes the operation of the ring.
+ */
+void
+tapdisk_xenblkif_resume(struct td_xenblkif * const blkif);
+
+/**
+ * Tells how many requests are pending.
+ */
+int
+tapdisk_xenblkif_reqs_pending(const struct td_xenblkif * const blkif);
+
+/**
+ * Schedules a ring check.
+ */
+void
+tapdisk_xenblkif_sched_chkrng(const struct td_xenblkif *blkif);
+
+/**
+ * Tells whether a barrier request can be completed.
+ */
+bool
+tapdisk_xenblkif_barrier_should_complete(
+		const struct td_xenblkif * const blkif);
 
 #endif /* __TD_BLKIF_H__ */

@@ -190,6 +190,11 @@ typedef struct backend {
 	struct list_head entry;
 
     char *pidfile;
+
+	/**
+	 * Tells whether we support write I/O barriers.
+	 */
+	bool barrier;
 } backend_t;
 
 /**

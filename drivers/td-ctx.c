@@ -178,8 +178,8 @@ xenio_blkif_get_request(struct td_xenblkif * const blkif,
 }
 
 /**
- * Retrieves at most @count request descriptors from the ring, copying them to
- * @reqs.
+ * Retrieves at most @count request descriptors from the ring, up to the
+ * first barrier request, copying them to @reqs.
  *
  * @param blkif the block interface
  * @param reqs array of pointers where each element points to sufficient memory
@@ -196,6 +196,7 @@ __xenio_blkif_get_requests(struct td_xenblkif * const blkif,
     blkif_common_back_ring_t * ring;
     RING_IDX rp, rc;
     unsigned int n;
+	bool barrier;
 
     ASSERT(blkif);
     ASSERT(reqs);
@@ -208,10 +209,16 @@ __xenio_blkif_get_requests(struct td_xenblkif * const blkif,
     rp = ring->sring->req_prod;
     xen_rmb(); /* TODO why? */
 
-    for (rc = ring->req_cons, n = 0; rc != rp && n < count; rc++, n++) {
+    for (rc = ring->req_cons, n = 0, barrier = false;
+			rc != rp && n < count && !barrier;
+			rc++, n++) {
+
         blkif_request_t *dst = reqs[n];
 
         xenio_blkif_get_request(blkif, dst, rc);
+
+		if (unlikely(dst->operation == BLKIF_OP_WRITE_BARRIER))
+			barrier = true;
     }
 
     ring->req_cons = rc;
@@ -257,6 +264,10 @@ xenio_blkif_get_requests(struct td_xenblkif * const blkif,
             break;
 
         n += __xenio_blkif_get_requests(blkif, reqs + n, count - n);
+
+		if (unlikely(n && reqs[(n - 1)]->operation == BLKIF_OP_WRITE_BARRIER))
+			break;
+
     } while (1);
 
     return n;
@@ -264,15 +275,17 @@ xenio_blkif_get_requests(struct td_xenblkif * const blkif,
 
 void
 tapdisk_xenio_ctx_process_ring(struct td_xenblkif *blkif,
-		               struct td_xenio_ctx *ctx)
+		               struct td_xenio_ctx *ctx, int final)
 {
     int n_reqs;
-    int final = 0;
     int start;
     blkif_request_t **reqs;
     int limit;
 
     start = blkif->n_reqs_free;
+
+	if (unlikely(blkif->barrier.msg))
+		return;
 
     /*
      * In each iteration, copy as many request descriptors from the shared ring
@@ -281,10 +294,11 @@ tapdisk_xenio_ctx_process_ring(struct td_xenblkif *blkif,
      * If in low memory mode, don't copy any if there's some in flight.
      * Otherwise, only copy one.
      */
-    if (tapdisk_server_mem_mode() == LOW_MEMORY_MODE)
+	if (tapdisk_server_mem_mode() == LOW_MEMORY_MODE)
 	    limit = blkif->ring_size != blkif->n_reqs_free ? 0 : 1;
     else
 	    limit = blkif->n_reqs_free;
+
     do {
         reqs = &blkif->reqs_free[blkif->ring_size - blkif->n_reqs_free];
 
@@ -296,24 +310,41 @@ tapdisk_xenio_ctx_process_ring(struct td_xenblkif *blkif,
             break;
 
         blkif->n_reqs_free -= n_reqs;
-	limit -= n_reqs;
+		ASSERT(blkif->n_reqs_free <= blkif->ring_size);
+		limit -= n_reqs;
         final = 1;
+
+		if (unlikely(reqs[(n_reqs - 1)]->operation ==
+					BLKIF_OP_WRITE_BARRIER)) {
+			ASSERT(!blkif->barrier.msg);
+			blkif->barrier.msg = reqs[(n_reqs - 1)];
+			blkif->barrier.io_done = false;
+			blkif->barrier.io_err = 0;
+			break;
+		}
 
     } while (1);
 
     n_reqs = start - blkif->n_reqs_free;
+
     if (!n_reqs)
-        /* TODO If there are no requests to be copied, why was there a
-         * notification in the first place?
-         */
-        return;
+		/*
+		 * We got a notification but the ring is empty. This is because we had
+		 * previously suspended the operation of the ring because of a
+		 * VBD.pause but when we completed a request prior to the pause we
+		 * checked the ring for new requests. If there were request in the ring
+		 * at that time, we consumed them but we did not consume the
+		 * notification. This notification is the one we should have consumed,
+		 * and can be ignored.
+		 */
+		return;
     blkif->stats.reqs.in += n_reqs;
 
-    reqs = alloca(sizeof(blkif_request_t*) * n_reqs);
-    memcpy(reqs, &blkif->reqs_free[blkif->ring_size - start],
-            sizeof(blkif_request_t*) * n_reqs);
+	reqs = alloca(sizeof(blkif_request_t*) * n_reqs);
+	memcpy(reqs, &blkif->reqs_free[blkif->ring_size - start],
+			sizeof(blkif_request_t*) * n_reqs);
 
-    tapdisk_xenblkif_queue_requests(blkif, reqs, n_reqs);
+	tapdisk_xenblkif_queue_requests(blkif, reqs, n_reqs);
 }
 
 /**
@@ -338,7 +369,7 @@ tapdisk_xenio_ctx_ring_event(event_id_t id __attribute__((unused)),
 
     blkif->stats.kicks.in++;
 
-    tapdisk_xenio_ctx_process_ring(blkif, ctx);
+    tapdisk_xenio_ctx_process_ring(blkif, ctx, 0);
 }
 
 /* NB. may be NULL, but then the image must be bouncing I/O */

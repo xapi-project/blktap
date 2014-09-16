@@ -1010,7 +1010,7 @@ tapback_backend_handle_backend_watch(backend_t *backend,
                  * FIXME Shall we watch the child process?
                  */
             } else { /* child */
-                char *args[6];
+                char *args[7];
                 int i = 0;
 
                 args[i++] = (char*)tapback_name;
@@ -1024,6 +1024,8 @@ tapback_backend_handle_backend_watch(backend_t *backend,
                 }
                 if (log_level == LOG_DEBUG)
                     args[i++] = "-v";
+				if (!backend->barrier)
+					args[i++] = "-b";
                 args[i] = NULL;
                 /*
                  * TODO we're hard-coding the name of the binary, better let
