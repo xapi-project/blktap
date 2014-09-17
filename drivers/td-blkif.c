@@ -147,7 +147,7 @@ tapdisk_xenblkif_stats_create(struct td_xenblkif *blkif)
     if (unlikely(err))
         goto out;
 
-    blkif->xenvbd_stats.last = time(NULL);
+    blkif->xenvbd_stats.last = 0;
 
 	blkif->stats.xenvbd = blkif->xenvbd_stats.stats.mem;
 
