@@ -4,44 +4,68 @@ import LVHDSR
 import journaler
 import lvhdutil
 
-class SMlog(object):
+
+class SMLog(object):
     def __call__(self, *args):
-        print args[0]
+        print args
 
-class FakeLVHDSR(LVHDSR.LVHDSR):
 
-    def __init__self(self, srcmd, uuid):
-        super(FakeLVHDSR, self).__init__(srcmd, uuid)
+class Stubs(object):
+    def init_stubs(self):
+        self._stubs = []
 
-class TestLVHDSR(unittest.TestCase):
+    def stubout(self, *args, **kwargs):
+        patcher = mock.patch(*args, **kwargs)
+        self._stubs.append(patcher)
+        patcher.start()
+
+    def remove_stubs(self):
+        for patcher in self._stubs:
+            patcher.stop()
+
+
+class TestLVHDSR(unittest.TestCase, Stubs):
+
+    def setUp(self):
+        self.init_stubs()
+
+    def tearDown(self):
+        self.remove_stubs()
 
     def create_LVHDSR(self):
         srcmd = mock.Mock()
         srcmd.dconf = {'device': '/dev/bar'}
         srcmd.params = {'command': 'foo', 'session_ref': 'some session ref'}
-        return FakeLVHDSR(srcmd, "some SR UUID")
+        return LVHDSR.LVHDSR(srcmd, "some SR UUID")
 
     @mock.patch('lvhdutil.getVDIInfo')
     def test_loadvids(self, mock_getVDIInfo):
+        """sr.allVDIs populated by _loadvdis"""
+
         vdi_uuid = 'some VDI UUID'
         mock_getVDIInfo.return_value = {vdi_uuid: lvhdutil.VDIInfo(vdi_uuid)}
         sr = self.create_LVHDSR()
+
         sr._loadvdis()
 
-    @mock.patch('XenAPI.xapi_local')
-    @mock.patch('journaler.Journaler.remove')
+        self.assertEquals([vdi_uuid], sr.allVDIs.keys())
+
     @mock.patch('lvhdutil.lvRefreshOnAllSlaves')
-    @mock.patch('util.zeroOut')
-    @mock.patch('lvmcache.LVMCache')
-    @mock.patch('util.SMlog', new_callable=SMlog)
-    @mock.patch('lvhdutil.deflate')
     @mock.patch('lvhdutil.getVDIInfo')
     @mock.patch('journaler.Journaler.getAll')
-    def test_undoAllInflateJournals(self, mock_getAll, mock_getVDIInfo,
-            mock_lvhdutil_deflate, mock_smlog, mock_lvmcache,
-            mock_util_zeroOut, mock_lvhdutil_lvRefreshOnAllSlaves,
-            mock_journal_remove, mock_xapi):
-        """Test that cleaning up a journal on a local LVHD SR doesn't result in LV refresh calls in other hosts."""
+    def test_undoAllInflateJournals(
+            self,
+            mock_getAll,
+            mock_getVDIInfo,
+            mock_lvhdutil_lvRefreshOnAllSlaves):
+        """No LV refresh on slaves when Cleaning up local LVHD SR's journal"""
+
+        self.stubout('XenAPI.xapi_local')
+        self.stubout('journaler.Journaler.remove')
+        self.stubout('util.zeroOut')
+        self.stubout('lvhdutil.deflate')
+        self.stubout('util.SMlog', new_callable=SMLog)
+        self.stubout('lvmcache.LVMCache')
 
         vdi_uuid = 'some VDI UUID'
 
@@ -51,6 +75,4 @@ class TestLVHDSR(unittest.TestCase):
         sr = self.create_LVHDSR()
 
         sr._undoAllInflateJournals()
-        self.assertEquals(0, mock_lvhdutil_lvRefreshOnAllSlaves.call_count,
-                "cleaning up journals on a local SR shouldn't result in any "
-                "update on other hosts")
+        self.assertEquals(0, mock_lvhdutil_lvRefreshOnAllSlaves.call_count)
