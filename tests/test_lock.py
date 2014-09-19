@@ -75,6 +75,9 @@ def create_lock_class_that_fails_to_create_file(number_of_failures):
 
 class TestLockDestruction(unittest.TestCase):
     def setUp(self):
+        gc.collect()
+        locks = self.retrieve_lock_instances_from_gc()
+        assert 0 == len(locks)
         gc.disable()
 
     @testlib.with_custom_context(FailingOpenContext)
