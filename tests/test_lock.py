@@ -71,37 +71,3 @@ def create_lock_class_that_fails_to_create_file(number_of_failures):
             return lock.Lock._open_lockfile(self)
 
     return LockThatFailsToCreateFile
-
-
-class TestLockDestruction(unittest.TestCase):
-    def setUp(self):
-        gc.collect()
-        locks = self.retrieve_lock_instances_from_gc()
-        assert 0 == len(locks)
-        gc.disable()
-
-    @testlib.with_custom_context(FailingOpenContext)
-    def test_close_if_open_failed(self, ctx):
-        try:
-            lck = lock.Lock('somename')
-            raise AssertionError('An IOError was expected here')
-        except IOError:
-            pass
-
-        locks = self.retrieve_lock_instances_from_gc()
-        self.assertEquals(1, len(locks))
-
-        lck, = locks
-
-        lck._close()
-
-    def retrieve_lock_instances_from_gc(self):
-        locks = []
-        for obj in gc.get_objects():
-            if isinstance(obj, lock.Lock):
-                locks.append(obj)
-
-        return locks
-
-    def tearDown(self):
-        gc.enable()
