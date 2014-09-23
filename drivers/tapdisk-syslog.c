@@ -251,8 +251,8 @@ tapdisk_syslog_ring_dispatch(td_syslog_t *log)
 
 static int
 tapdisk_syslog_vsprintf(char *buf, size_t size,
-			int prio, const struct timeval *tv, const char *ident,
-			const char *fmt, va_list ap)
+			int prio, int facility, const struct timeval *tv,
+			const char *ident, const char *fmt, va_list ap)
 {
 	char tsbuf[TD_SYSLOG_STRTIME_LEN+1];
 	size_t len;
@@ -272,7 +272,11 @@ tapdisk_syslog_vsprintf(char *buf, size_t size,
 	/* NB. meant to work with c99 null buffers */
 
 	len += snprintf(buf ? buf + len : NULL, buf ? size - len : 0,
-			"<%d>%s %s: ", prio, tsbuf, ident);
+			"<%d>%s %s: ", prio | facility, tsbuf, ident);
+
+	if (LOG_WARNING == prio)
+		len += snprintf(buf ? buf + len : NULL, buf ? size - len : 0,
+				"tap-err:");
 
 	len += vsnprintf(buf ? buf + len : NULL, buf ? size - len : 0,
 			 fmt, ap);
@@ -317,7 +321,7 @@ tapdisk_vsyslog(td_syslog_t *log, int prio, const char *fmt, va_list ap)
 	gettimeofday(&now, NULL);
 
 	len = tapdisk_syslog_vsprintf(log->msg, TD_SYSLOG_PACKET_MAX,
-				      prio | log->facility,
+				      prio, log->facility,
 				      &now, log->ident, fmt, ap);
 
 	log->stats.count += 1;
