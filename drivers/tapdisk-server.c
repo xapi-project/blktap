@@ -468,8 +468,6 @@ static void lowmem_timeout(event_id_t id, char mode, void *data)
 		lowmem_cleanup();
 		return;
 	}
-
-	DPRINTF("Entering normal memory mode: backoff finished\n");
 }
 
 /* We received a low memory event.  Switch into low memory mode. */
@@ -520,8 +518,6 @@ static void lowmem_event(event_id_t id, char mode, void *data)
 		return;
 	}
 	server.mem_state.mode = LOW_MEMORY_MODE;
-	DPRINTF("Entering low memory mode: backing off for %d seconds\n",
-		backoff);
 
 	/* Increment backoff up to a limit */
 	if (server.mem_state.backoff < MAX_BACKOFF)
@@ -536,8 +532,6 @@ static void reset_timeout(event_id_t id, char mode, void *data)
 	server.mem_state.backoff = MIN_BACKOFF;
 	tapdisk_server_unregister_event(server.mem_state.reset_evid);
 	server.mem_state.reset_evid = -1;
-	DPRINTF("No low memory event for %u seconds: "
-		"resetting backoff\n", RESET_BACKOFF);
 }
 
 /* Register for low memory notifications.  Register a timer to reset the
