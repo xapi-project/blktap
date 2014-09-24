@@ -192,8 +192,8 @@ __cancel_req(int i, struct td_nbd_request *pos, int e)
 	char handle[9];
 	memcpy(handle, pos->nreq.handle, 8);
 	handle[8] = 0;
-	INFO("Entry %d: handle='%s' type=%d -- reporting errno: %d",
-			i, handle, ntohl(pos->nreq.type), e);
+	INFO("Entry %d: handle='%s' type=%d: %s",
+			i, handle, ntohl(pos->nreq.type), strerror(e));
 
 	if (pos->timeout_event >= 0) {
 		tapdisk_server_unregister_event(pos->timeout_event);
