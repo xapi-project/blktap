@@ -13,6 +13,6 @@ void tearDown(void)
 {
 }
 
-void testDummy(void)
+void test_dummy(void)
 {
 }

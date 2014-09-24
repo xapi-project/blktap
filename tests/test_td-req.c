@@ -46,28 +46,40 @@ struct td_xenblkif* create_dead_blkif(void) {
 }
 
 
-void testCompleteRequestGenericRequestOndeadRingDoesNotDestroyRing(void)
+void test_comptetion_of_non_last_req_on_dead_ring_does_not_destroy_ring(void)
 {
     struct td_xenblkif_req request;
     struct td_xenblkif* blkif;
 
     blkif = create_dead_blkif();
 
+    /* We report that we still have pending requests */
     tapdisk_xenblkif_reqs_pending_IgnoreAndReturn(1);
 
+    /* Note that we do not expect any call to tapdisk_xenblkif_destroy */
+
+    /* We call complete request */
     tapdisk_xenblkif_complete_request(blkif, &request, 0, 0);
+
+    /* At this point the framework verifies that all the calls happened */
 }
 
 
-void testCompleteRequestLastRequestOnDeadringDestroysRing(void)
+void test_completion_of_last_req_on_dead_ring_destroys_ring(void)
 {
     struct td_xenblkif_req request;
     struct td_xenblkif* blkif;
 
     blkif = create_dead_blkif();
 
+    /* We report that this is the last request */
     tapdisk_xenblkif_reqs_pending_IgnoreAndReturn(0);
 
+    /* We expect a call to tapdisk_xenblkif_destroy with parameter blkif */
     tapdisk_xenblkif_destroy_ExpectAndReturn(blkif, 0);
+
+    /* We call complete request */
     tapdisk_xenblkif_complete_request(blkif, &request, 0, 0);
+
+    /* At this point the framework verifies that all the calls happened */
 }
