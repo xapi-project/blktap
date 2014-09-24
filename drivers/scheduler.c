@@ -41,8 +41,12 @@
 #define MIN(a, b)                   ((a) <= (b) ? (a) : (b))
 #define MAX(a, b)                   ((a) >= (b) ? (a) : (b))
 
+/**
+ * Async-signal safe.
+ */
 #define scheduler_for_each_event(s, event)	\
 	list_for_each_entry(event, &(s)->events, next)
+
 #define scheduler_for_each_event_safe(s, event, tmp)	\
 	list_for_each_entry_safe(event, tmp, &(s)->events, next)
 
