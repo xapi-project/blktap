@@ -57,8 +57,20 @@ class udevSR(SR.SR):
 
     def vdi(self, uuid):
         util.SMlog("params = %s" % (self.srcmd.params.keys()))
-        return udevVDI(self, self.srcmd.params['vdi_location'])
-    
+
+        if 'vdi_location' in self.srcmd.params:
+            vdi_location = self.srcmd.params['vdi_location']
+        else:
+            vdi_location = self.get_vdi_location(uuid)
+
+        return udevVDI(self, vdi_location)
+
+    def get_vdi_location(self, uuid):
+        import XenAPI
+        vdi = self.session.xenapi.VDI
+        vdi_ref = vdi.get_by_uuid(uuid)
+        return vdi.get_location(vdi_ref)
+
     def load(self, sr_uuid):
         # First of all, check we've got the correct keys in dconf
         if not self.dconf.has_key('location'):        

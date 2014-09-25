@@ -999,6 +999,7 @@ class VDI(object):
             'iso'  : 'aio', # for ISO SR
             'aio'  : 'aio', # for LVHD
             'file' : 'aio',
+            'phy'  : 'aio'
             } [vdi_type]
 
     def get_tap_type(self):
@@ -1038,13 +1039,26 @@ class VDI(object):
             raise self.UnexpectedVDIType(vdi_type,
                                          self.target.vdi)
 
-        if plug_type == 'tap': return True
+        if plug_type == 'tap':
+            return True
+        elif vdi_type == 'phy':
+            sm_config = util.default(
+                self.target.vdi.sr,
+                "sm_config",
+                self.get_sr_sm_config)
+            if sm_config.get('type') == 'cd':
+                return True
 
         # 2. Otherwise, there may be more reasons
         #
         # .. TBD
 
         return False
+
+    def get_sr_sm_config(self):
+        sr = self.target.vdi.session.xenapi.SR
+        sr_ref = sr.get_by_uuid(self.target.vdi.sr.uuid)
+        return sr.get_sm_config(sr_ref)
 
     class TargetDriver:
         """Safe target driver access."""
