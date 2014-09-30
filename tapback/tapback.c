@@ -129,7 +129,7 @@ tapback_read_watch(backend_t *backend)
 
 	if (err)
 		WARN(NULL, "failed to process XenStore watch on %s: %s\n",
-				path, strerror(err));
+				path, strerror(abs(err)));
 
     free(watch);
     return;
