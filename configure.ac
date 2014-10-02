@@ -63,6 +63,14 @@ AM_CONDITIONAL([ENABLE_TESTS],
 
 AC_CHECK_FUNCS([eventfd])
 
+AC_ARG_ENABLE([gcopy],
+			  [AS_HELP_STRING([--disable-gcopy], [enable grant copy])],
+			  [disable_gcopy=yes],
+			  [])
+
+AS_IF([test "x$disable_gcopy" == "xyes"],
+	  [AC_DEFINE([NOGCOPY], [], [Disable grant copy])],
+	  [])
 
 
 # AC_CONFIG_MACRO_DIR([m4])

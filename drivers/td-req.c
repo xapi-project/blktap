@@ -17,6 +17,10 @@
  * USA.
  */
 
+#ifdef HAVE_CONFIG_H
+#include "config.h"
+#endif
+
 #include <xenctrl.h>
 
 #include <stdlib.h>
@@ -336,6 +340,10 @@ blkif_rq_data(blkif_request_t const * const msg)
 }
 
 
+#ifndef NOGCOPY
+/**
+ * Copy to/from the guest using grant-copy.
+ */
 static int
 guest_copy2(struct td_xenblkif * const blkif,
         struct td_xenblkif_req * const tapreq /* TODO rename to req */) {
@@ -344,7 +352,7 @@ guest_copy2(struct td_xenblkif * const blkif,
     long err = 0;
     struct ioctl_gntdev_grant_copy gcopy;
 
-    ASSERT(blkif);
+	ASSERT(blkif);
     ASSERT(blkif->ctx);
     ASSERT(tapreq);
     ASSERT(blkif_rq_data(&tapreq->msg));
@@ -396,6 +404,57 @@ guest_copy2(struct td_xenblkif * const blkif,
 out:
     return err;
 }
+#else
+/**
+ * Copy to/from the guest using grant-map + memcpy.
+ */
+static int
+guest_copy2(struct td_xenblkif * const blkif,
+		struct td_xenblkif_req * const req) {
+
+    int i = 0;
+    long err = 0;
+	void *src = NULL, *dst = NULL, *raddr = NULL;
+
+    ASSERT(blkif);
+    ASSERT(blkif->ctx);
+    ASSERT(req);
+    ASSERT(blkif_rq_data(&req->msg));
+	ASSERT(req->msg.nr_segments > 0);
+
+	raddr = xc_gnttab_map_domain_grant_refs(blkif->ctx->xcg_handle,
+			req->msg.nr_segments, blkif->domid, req->gref, req->prot);
+	if (unlikely(!raddr)) {
+		err = -errno;
+		ASSERT(err);
+		RING_ERR(blkif, "failed to grant-map request %lu: %s\n", req->msg.id,
+				strerror(-err));
+		goto out;
+	}
+
+	if (blkif_rq_wr(&req->msg))
+		src = raddr, dst = req->vma;
+	else
+		src = req->vma, dst = raddr;
+
+	for (i = 0; i < req->vreq.iovcnt; i++) {
+		unsigned long off = req->vreq.iov[i].base - req->vma;
+		memcpy(dst + off, src + off, req->vreq.iov[i].secs << SECTOR_SHIFT);
+	}
+
+	err = xc_gnttab_munmap(blkif->ctx->xcg_handle, raddr,
+			req->msg.nr_segments);
+	if (unlikely(err)) {
+		err = -errno;
+		ASSERT(err);
+		RING_ERR(blkif, "failed to grant-unmap request %lu: %s\n", req->msg.id,
+				strerror(-err));
+	}
+
+out:
+    return err;
+}
+#endif /* NOGCOPY */
 
 
 /**
