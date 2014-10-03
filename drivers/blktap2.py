@@ -1041,24 +1041,14 @@ class VDI(object):
 
         if plug_type == 'tap':
             return True
-        elif vdi_type == 'phy':
-            sm_config = util.default(
-                self.target.vdi.sr,
-                "sm_config",
-                self.get_sr_sm_config)
-            if sm_config.get('type') == 'cd':
-                return True
+        elif self.target.vdi.sr.handles('udev'):
+            return True
 
         # 2. Otherwise, there may be more reasons
         #
         # .. TBD
 
         return False
-
-    def get_sr_sm_config(self):
-        sr = self.target.vdi.session.xenapi.SR
-        sr_ref = sr.get_by_uuid(self.target.vdi.sr.uuid)
-        return sr.get_sm_config(sr_ref)
 
     class TargetDriver:
         """Safe target driver access."""
