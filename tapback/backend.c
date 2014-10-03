@@ -462,6 +462,15 @@ hotplug_status_changed(vbd_t * const device) {
 
 	ASSERT(device);
 
+	if (unlikely(!device->frontend_path)) {
+		/*
+		 * Something has gone horribly wrong.
+		 */
+		WARN(device, "hotplug scripts ran but front-end does not exist\n");
+		err = -EINVAL;
+		goto out;
+	}
+
 	hotplug_status = tapback_device_read(device, XBT_NULL, HOTPLUG_STATUS_KEY);
 	if (!hotplug_status) {
 		err = -errno;
