@@ -348,8 +348,20 @@ def run(driver, driver_info):
             print util.return_nil ()
         else:
             print ret
-        sys.exit(0)
-        
-    except SR.SRException, inst:
-        print inst.toxml()
-        sys.exit(0)
+
+    except Exception, e:
+        try:
+            util.logException(driver_info['name'])
+        except KeyError:
+            util.SMlog('driver_info does not contain a \'name\' key.')
+        except:
+            pass
+
+        # If exception is of type SR.SRException,
+        # pass to xapi, else re-raise.
+        if isinstance(e, SR.SRException):
+            print e.toxml()
+        else:
+            raise
+
+    sys.exit(0)

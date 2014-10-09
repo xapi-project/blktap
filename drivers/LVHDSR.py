@@ -2126,12 +2126,7 @@ class LVHDVDI(VDI.VDI):
             self.session.xenapi.VDI.get_metadata_of_pool(vdi_ref)
         LVMMetadataHandler(self.sr.mdpath).updateMetadata(update_map)
 
-try:
-    if __name__ == '__main__':
-        SRCommand.run(LVHDSR, DRIVER_INFO)
-    else:
-        SR.registerSR(LVHDSR)
-except Exception:
-    util.logException("LVHD")
-    raise
-
+if __name__ == '__main__':
+    SRCommand.run(LVHDSR, DRIVER_INFO)
+else:
+    SR.registerSR(LVHDSR)
