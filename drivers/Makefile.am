@@ -76,6 +76,7 @@ libtapdisk_la_SOURCES += md5.c
 libtapdisk_la_SOURCES += md5.h
 
 libtapdisk_la_SOURCES += block-aio.c
+libtapdisk_la_SOURCES += block-aio.h
 libtapdisk_la_SOURCES += block-ram.c
 libtapdisk_la_SOURCES += block-cache.c
 libtapdisk_la_SOURCES += block-vhd.c
