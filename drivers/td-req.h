@@ -23,7 +23,9 @@
 #include "tapdisk.h"
 #include <sys/types.h>
 #include <xen/io/blkif.h>
+#ifndef NOGCOPY
 #include <xen/gntdev.h>
+#endif
 #include "td-blkif.h"
 
 /**
