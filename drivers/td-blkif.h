@@ -20,6 +20,10 @@
 #ifndef __TD_BLKIF_H__
 #define __TD_BLKIF_H__
 
+#ifdef HAVE_CONFIG_H
+#include "config.h"
+#endif
+
 #include <inttypes.h> /* required by xen/event_channel.h */
 
 #include <xen/xen.h>
