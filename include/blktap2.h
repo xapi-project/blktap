@@ -37,8 +37,8 @@
 #define BLKTAP2_IOCTL_REMOVE_DEVICE    207
 
 #define BLKTAP2_SYSFS_DIR              "/sys/class/blktap2"
-#define BLKTAP2_CONTROL_NAME           "blktap-control"
-#define BLKTAP2_CONTROL_DIR            "/var/run/"BLKTAP2_CONTROL_NAME
+#define BLKTAP2_CONTROL_NAME           "blktap/control"
+#define BLKTAP2_CONTROL_DIR            "/var/run/blktap-control"
 #define BLKTAP2_CONTROL_SOCKET         "ctl"
 #define BLKTAP2_DIRECTORY              "/dev/xen/blktap-2"
 #define BLKTAP2_CONTROL_DEVICE         BLKTAP2_DIRECTORY"/control"
