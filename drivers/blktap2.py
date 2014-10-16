@@ -579,7 +579,7 @@ class Blktap(ClassDevice):
         return "%s(minor=%d)" % (self.__class__.__name__, self.minor)
 
     def sysfs_devname(self):
-        return "blktap%d" % self.minor
+        return "blktap!blktap%d" % self.minor
 
     class Pool(Attribute):
         SYSFS_NODENAME = "pool"
@@ -2023,7 +2023,7 @@ class __BlktapControl(ClassDevice):
         self._default_pool = None
 
     def sysfs_devname(self):
-        return "blktap-control"
+        return "blktap!control"
 
     class DefaultPool(Attribute):
         SYSFS_NODENAME = "default_pool"
