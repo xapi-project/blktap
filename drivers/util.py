@@ -1688,3 +1688,18 @@ def open_atomic(path, mode=None):
 def isInvalidVDI(exception):
     return exception.details[0] == "HANDLE_INVALID" or \
             exception.details[0] == "UUID_INVALID"
+
+def get_pool_restrictions(session):
+    """Returns pool restrictions as a map, @session must be already
+    established."""
+    return session.xenapi.pool.get_all_records().values()[0]['restrictions']
+
+def read_caching_is_restricted(session):
+    """Tells whether read caching is restricted."""
+    if session is None or session == "":
+        return True
+    restrictions = get_pool_restrictions(session)
+    if 'restrict_read_caching' in restrictions and \
+            restrictions['restrict_read_caching'] == "true":
+        return True
+    return False
