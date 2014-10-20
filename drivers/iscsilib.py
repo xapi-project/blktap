@@ -340,7 +340,7 @@ def restart_daemon():
     if os.path.exists("/etc/init.d/open-iscsi"):
         cmd = ["/etc/init.d/open-iscsi", "start"]
     else:
-        cmd = ["service", "iscsid", "force-start"]
+        cmd = ["service", "iscsid", "start"]
     failuremessage = "Failed to start iscsi daemon"
     exn_on_failure(cmd,failuremessage)
 
