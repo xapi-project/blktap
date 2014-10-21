@@ -1,5 +1,4 @@
 SUBSYSTEM!="block", GOTO="end_mpath"
-RUN+="socket:/org/kernel/dm/multipath_event"
 KERNEL!="dm-*", GOTO="end_mpath"
 ACTION=="add", PROGRAM=="/bin/bash -c '/sbin/dmsetup info -c -o name --noheadings -j %M -m %m | /bin/grep VG_XenStorage'", OPTIONS+="ignore_device"
 ACTION=="add", PROGRAM=="/bin/bash -c '/sbin/dmsetup info -c -o name --noheadings -j %M -m %m | /bin/grep XSLocalEXT'", OPTIONS+="ignore_device"
