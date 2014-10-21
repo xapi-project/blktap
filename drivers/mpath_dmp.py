@@ -41,7 +41,7 @@ DEVBYIDPATH = "/dev/disk/by-id"
 DEVBYSCSIPATH = "/dev/disk/by-scsibus"
 DEVBYMPPPATH = "/dev/disk/by-mpp"
 SYSFS_PATH='/sys/class/scsi_host'
-UMPD_PATH='/var/run/updatempppathd.pid'
+UMPD_PATH='/var/run/updatempppathd.py.pid'
 MP_INUSEDIR = "/dev/disk/mpInuse"
 
 MPPGETAIDLNOBIN = "/opt/xensource/bin/xe-get-arrayid-lunnum"
