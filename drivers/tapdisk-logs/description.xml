@@ -1,0 +1,4 @@
+<collect>
+<command>killall -USR1 tapdisk</command>
+<directory pattern=".*\.log.*">/var/log/blktap</directory>
+</collect>

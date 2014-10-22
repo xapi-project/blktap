@@ -323,3 +323,111 @@ tapdisk_snprintf(char *buf, int * const off, int * const size,
 	*size -= err;
 	return 0;
 }
+
+void
+shm_init(struct shm *shm) {
+
+    ASSERT(shm);
+
+    shm->path = NULL;
+    shm->fd = -1;
+    shm->mem = NULL;
+    shm->size = 0;
+}
+
+
+int
+shm_destroy(struct shm *shm) {
+
+    int err = 0;
+
+    ASSERT(shm);
+
+    if (shm->mem) {
+        err = munmap(shm->mem, shm->size);
+        if (err == -1) {
+            err = errno;
+            EPRINTF("failed to munmap %s: %s\n", shm->path,
+                    strerror(err));
+            goto out;
+        }
+        shm->mem = NULL;
+    }
+
+    if (shm->fd != -1) {
+        do {
+            err = close(shm->fd);
+            if (err)
+                err = errno;
+        } while (err == EINTR);
+        if (err) {
+            EPRINTF("failed to close %s: %s\n", shm->path, strerror(err));
+            goto out;
+        }
+        shm->fd = -1;
+    }
+
+    if (shm->path) {
+        err = unlink(shm->path);
+        if (unlikely(err == -1)) {
+            err = errno;
+            if (unlikely(err != ENOENT))
+                goto out;
+            else
+                err = 0;
+        }
+    }
+
+out:
+    return err;
+}
+
+
+int
+shm_create(struct shm *shm) {
+
+    int err;
+
+    ASSERT(shm);
+    ASSERT(shm->path);
+    ASSERT(shm->size);
+
+    shm->fd = open(shm->path, O_CREAT | O_TRUNC | O_RDWR | O_EXCL,
+            S_IRUSR | S_IWUSR);
+    if (shm->fd == -1) {
+        err = errno;
+        EPRINTF("failed to open %s: %s\n", shm->path, strerror(err));
+        goto out;
+    }
+
+    err = ftruncate(shm->fd, shm->size);
+    if (err == -1) {
+        err = errno;
+        EPRINTF("failed to truncate %s: %s\n", shm->path, strerror(err));
+        goto out;
+    }
+
+    shm->mem = mmap(NULL, shm->size, PROT_READ | PROT_WRITE, MAP_SHARED,
+            shm->fd, 0);
+    if (shm->mem == MAP_FAILED) {
+        err = errno;
+        EPRINTF("failed to mmap %s: %s\n", shm->path, strerror(err));
+        goto out;
+    }
+
+out:
+    if (err) {
+        int err2 = shm_destroy(shm);
+        if (err2)
+            EPRINTF("failed to clean up failed shared memory file creation: "
+                    "%s (error ignored)\n", strerror(-err2));
+    }
+    return err;
+}
+
+const long long USEC_PER_SEC = 1000000L;
+
+inline long long timeval_to_us(struct timeval *tv)
+{
+	return ((long long)tv->tv_sec * USEC_PER_SEC) + tv->tv_usec;
+}

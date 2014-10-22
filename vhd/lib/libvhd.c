@@ -39,6 +39,11 @@
 #include "libvhd.h"
 #include "relative-path.h"
 #include "canonpath.h"
+#include "compiler.h"
+
+/* VHD uses an epoch of 12:00AM, Jan 1, 2000. This is the Unix timestamp for 
+ * the start of the VHD epoch. */
+#define VHD_EPOCH_START 946684800
 
 /* VHD uses an epoch of 12:00AM, Jan 1, 2000. This is the Unix timestamp for 
  * the start of the VHD epoch. */
@@ -232,8 +237,8 @@ vhd_checksum_footer(vhd_footer_t *footer)
 	return ~checksum;
 }
 
-int
-vhd_validate_footer(vhd_footer_t *footer)
+static int
+vhd_validate_footer_impl(vhd_footer_t *footer, bool suppress_invalid_footer_warning)
 {
 	int csize;
 	uint32_t checksum;
@@ -244,7 +249,8 @@ vhd_validate_footer(vhd_footer_t *footer)
 		char buf[9];
 		memcpy(buf, footer->cookie, 8);
 		buf[8]= '\0';
-		VHDLOG("invalid footer cookie: %s\n", buf);
+		if (!suppress_invalid_footer_warning)
+			VHDLOG("invalid footer cookie: %s\n", buf);
 		return -EINVAL;
 	}
 
@@ -267,13 +273,22 @@ vhd_validate_footer(vhd_footer_t *footer)
 				return 0;
 		}
 
-		VHDLOG("invalid footer checksum: "
-		       "footer = 0x%08x, calculated = 0x%08x\n",
-		       footer->checksum, checksum);
+		if (!suppress_invalid_footer_warning)
+		{
+			VHDLOG("invalid footer checksum: "
+			       "footer = 0x%08x, calculated = 0x%08x\n",
+			       footer->checksum, checksum);
+		}
 		return -EINVAL;
 	}
 
 	return 0;
+}
+
+int
+vhd_validate_footer(vhd_footer_t *footer)
+{
+    return vhd_validate_footer_impl(footer, false);
 }
 
 uint32_t
@@ -841,8 +856,8 @@ vhd_put_batmap(vhd_context_t *ctx)
 /*
  * look for 511 byte footer at end of file
  */
-int
-vhd_read_short_footer(vhd_context_t *ctx, vhd_footer_t *footer)
+static int
+vhd_read_short_footer_impl(vhd_context_t *ctx, vhd_footer_t *footer, bool suppress_invalid_footer_warning)
 {
 	off64_t eof;
 	void *buf;
@@ -857,6 +872,19 @@ vhd_read_short_footer(vhd_context_t *ctx, vhd_footer_t *footer)
 	eof = vhd_position(ctx);
 	if (eof == (off64_t)-1) {
 		err = -errno;
+		goto out;
+	}
+
+	if (((eof - 511) % VHD_SECTOR_SIZE) != 0) {
+		/*
+		 * The VHD file with short footer should have the size in the form 512 * n + 511,
+		 * also vhd_read on block VHDs won't succeed if trying to read from a position
+		 * that is not a multiple of 512.
+		 */
+		if (!suppress_invalid_footer_warning)
+			VHDLOG("%s: failed reading short footer: file size does not meet requirement",
+					ctx->file);
+		err = -EINVAL;
 		goto out;
 	}
 
@@ -881,10 +909,10 @@ vhd_read_short_footer(vhd_context_t *ctx, vhd_footer_t *footer)
 	memcpy(footer, buf, sizeof(vhd_footer_t));
 
 	vhd_footer_in(footer);
-	err = vhd_validate_footer(footer);
+	err = vhd_validate_footer_impl(footer, suppress_invalid_footer_warning);
 
 out:
-	if (err)
+	if (err && !suppress_invalid_footer_warning)
 		VHDLOG("%s: failed reading short footer: %d\n",
 		       ctx->file, err);
 	free(buf);
@@ -892,7 +920,13 @@ out:
 }
 
 int
-vhd_read_footer_at(vhd_context_t *ctx, vhd_footer_t *footer, off64_t off)
+vhd_read_short_footer(vhd_context_t *ctx, vhd_footer_t *footer)
+{
+    return vhd_read_short_footer_impl(ctx, footer, false);
+}
+
+static int
+vhd_read_footer_at_impl(vhd_context_t *ctx, vhd_footer_t *footer, off64_t off, bool suppress_invalid_footer_warning)
 {
 	void *buf;
 	int err;
@@ -917,14 +951,20 @@ vhd_read_footer_at(vhd_context_t *ctx, vhd_footer_t *footer, off64_t off)
 	memcpy(footer, buf, sizeof(vhd_footer_t));
 
 	vhd_footer_in(footer);
-	err = vhd_validate_footer(footer);
+	err = vhd_validate_footer_impl(footer, suppress_invalid_footer_warning);
 
 out:
-	if (err)
+	if (err && !suppress_invalid_footer_warning)
 		VHDLOG("%s: reading footer at 0x%08"PRIx64" failed: %d\n",
 		       ctx->file, off, err);
 	free(buf);
 	return err;
+}
+
+int
+vhd_read_footer_at(vhd_context_t *ctx, vhd_footer_t *footer, off64_t off)
+{
+    return vhd_read_footer_at_impl(ctx, footer, off, false);
 }
 
 int
@@ -942,11 +982,16 @@ vhd_read_footer(vhd_context_t *ctx, vhd_footer_t *footer, bool use_bkp_footer)
 		return -errno;
 
 	if (!use_bkp_footer) {
-		err = vhd_read_footer_at(ctx, footer, off - 512);
+		/*
+		 * As we will read the backup footer if the primary one is invalid,
+		 * stop complaining the primary one is invalid
+		 */
+
+		err = vhd_read_footer_at_impl(ctx, footer, off - 512, true);
 		if (err != -EINVAL)
 			return err;
 
-		err = vhd_read_short_footer(ctx, footer);
+		err = vhd_read_short_footer_impl(ctx, footer, true);
 		if (err != -EINVAL)
 			return err;
 	}
@@ -2530,6 +2575,24 @@ vhd_open(vhd_context_t *ctx, const char *file, int flags)
 		VHDLOG("failed to open %s: %d\n", ctx->file, err);
 		goto fail;
 	}
+	if (flags & VHD_OPEN_CACHED) {
+		struct stat st;
+
+		/* Ensure that we only open regular files without O_DIRECT */
+		if (fstat(ctx->fd, &st) < 0) {
+			err = -errno;
+			VHDLOG("failed to stat %s: %d\n", ctx->file, err);
+			goto fail;
+		}
+		if (!S_ISREG(st.st_mode)) {
+			err = -EINVAL;
+			VHDLOG("cannot open non-regular file (%s) "
+			       "with read caching enabled\n", ctx->file);
+			goto fail;
+		}
+
+		posix_fadvise(ctx->fd, 0, 0, POSIX_FADV_RANDOM);
+	}
 
 	err = vhd_test_file_fixed(ctx->file, &ctx->is_block);
 	if (err)
@@ -2693,6 +2756,7 @@ vhd_initialize_header(vhd_context_t *ctx, const char *parent_path,
 	int err;
 	struct stat stats;
 	vhd_context_t parent;
+	uint64_t _max_bat_size;
 
 	if (!vhd_type_dynamic(ctx))
 		return -EINVAL;
@@ -2705,8 +2769,12 @@ vhd_initialize_header(vhd_context_t *ctx, const char *parent_path,
 	ctx->header.block_size   = VHD_BLOCK_SIZE;
 	ctx->header.prt_ts       = 0;
 	ctx->header.res1         = 0;
-	ctx->header.max_bat_size = (ctx->footer.curr_size +
+
+	_max_bat_size = (ctx->footer.curr_size +
 			VHD_BLOCK_SIZE - 1) >> VHD_BLOCK_SHIFT;
+	if (unlikely(_max_bat_size > UINT_MAX))
+		return -EINVAL;
+	ctx->header.max_bat_size = _max_bat_size;
 
 	ctx->footer.data_offset  = VHD_SECTOR_SIZE;
 
@@ -3604,7 +3672,8 @@ vhd_cache_init(vhd_context_t *ctx)
 static int
 vhd_cache_enabled(vhd_context_t *ctx)
 {
-	return vhd_flag_test(ctx->oflags, VHD_OPEN_CACHED);
+	return vhd_flag_test(ctx->oflags, VHD_OPEN_CACHED) &&
+        !vhd_flag_test(ctx->oflags, VHD_OPEN_RDWR);
 }
 
 static int

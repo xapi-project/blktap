@@ -715,6 +715,8 @@ tapdisk_control_open_image(struct tapdisk_ctl_conn *conn,
 	flags = 0;
 	if (request->u.params.flags & TAPDISK_MESSAGE_FLAG_RDONLY)
 		flags |= TD_OPEN_RDONLY;
+	if (request->u.params.flags & TAPDISK_MESSAGE_FLAG_NO_O_DIRECT)
+		flags |= TD_OPEN_NO_O_DIRECT;
 	if (request->u.params.flags & TAPDISK_MESSAGE_FLAG_SHARED)
 		flags |= TD_OPEN_SHAREABLE;
 	if (request->u.params.flags & TAPDISK_MESSAGE_FLAG_ADD_CACHE)
@@ -802,6 +804,7 @@ tapdisk_control_close_image(struct tapdisk_ctl_conn *conn,
 {
 	td_vbd_t *vbd;
 	int err = 0;
+    struct td_xenblkif *blkif, *_blkif;
 
     ASSERT(conn);
     ASSERT(request);
@@ -824,19 +827,30 @@ tapdisk_control_close_image(struct tapdisk_ctl_conn *conn,
 	  tapdisk_nbdserver_pause(vbd->nbdserver);
 	}
 
-	do {
-		if (vbd->sring) {
-			err = tapdisk_xenblkif_disconnect(vbd->sring->domid,
-					vbd->sring->devid);
-			if (err == -EBUSY)
-				tapdisk_server_iterate();
-			else
-				break;
-		} else {
-			err = 0;
-			break;
-		}
-	} while (conn->fd >= 0);
+    err = 0;
+    list_for_each_entry_safe(blkif, _blkif, &vbd->rings, entry) {
+
+        DPRINTF("implicitly disconnecting ring %p domid=%d, devid=%d\n",
+                blkif, blkif->domid, blkif->devid);
+
+        err = tapdisk_xenblkif_disconnect(blkif->domid, blkif->devid);
+        if (unlikely(err)) {
+            EPRINTF("failed to disconnect ring %p: %s\n",
+                    blkif, strerror(-err));
+            break;
+        }
+    }
+
+    if (unlikely(err))
+        goto out;
+
+    /*
+     * Wait for requests against dead rings to complete, otherwise, if we
+     * proceed with tearing down the VBD, we will free memory that will later
+     * be accessed by these requests, and this will lead to a crash.
+     */
+    while (unlikely(tapdisk_vbd_contains_dead_rings(vbd)))
+            tapdisk_server_iterate();
 
 	if (!err) {
 		do {
@@ -1100,6 +1114,7 @@ tapdisk_control_xenblkif_connect(
 
     err = tapdisk_xenblkif_connect(blkif->domid, blkif->devid, blkif->gref,
             blkif->order, blkif->port, blkif->proto, pool, vbd);
+
 out:
 	response->cookie = request->cookie;
     if (!err)
@@ -1129,14 +1144,7 @@ tapdisk_control_xenblkif_disconnect(
     DPRINTF("disconnecting domid=%d, devid=%d\n", blkif_msg->domid,
             blkif_msg->devid);
 
-	while (true) {
-	    err = tapdisk_xenblkif_disconnect(blkif_msg->domid, blkif_msg->devid);
-		if (err == -EBUSY)
-			tapdisk_server_iterate();
-		else
-			break;
-	}
-
+    err = tapdisk_xenblkif_disconnect(blkif_msg->domid, blkif_msg->devid);
     if (!err)
         response->type = TAPDISK_MESSAGE_XENBLKIF_DISCONNECT_RSP;
 	else

@@ -121,6 +121,8 @@ unsigned int SPB;
 #define VHD_FLAG_OPEN_STRICT         8
 #define VHD_FLAG_OPEN_QUERY          16
 #define VHD_FLAG_OPEN_PREALLOCATE    32
+#define VHD_FLAG_OPEN_NO_O_DIRECT    64
+#define VHD_FLAG_OPEN_LOCAL_CACHE    128
 
 #define VHD_FLAG_BAT_LOCKED          1
 #define VHD_FLAG_BAT_WRITE_STARTED   2
@@ -258,11 +260,14 @@ static void finish_data_transaction(struct vhd_state *, struct vhd_bitmap *);
 
 static struct vhd_state  *_vhd_master;
 static unsigned long      _vhd_zsize;
-static char              *_vhd_zeros;
+static char              *_vhd_zeros = NULL;
+int                       _dev_zero = -1;
 
 static int
 vhd_initialize(struct vhd_state *s)
 {
+	int err;
+
 	if (_vhd_zeros)
 		return 0;
 
@@ -270,13 +275,29 @@ vhd_initialize(struct vhd_state *s)
 	if (test_vhd_flag(s->flags, VHD_FLAG_OPEN_PREALLOCATE))
 		_vhd_zsize += VHD_BLOCK_SIZE;
 
-	_vhd_zeros = mmap(0, _vhd_zsize, PROT_READ,
-			  MAP_SHARED | MAP_ANONYMOUS, -1, 0);
+	_dev_zero = open("/dev/zero", O_RDONLY);
+	if (unlikely(_dev_zero == -1)) {
+		err = errno;
+		EPRINTF("failed to open /dev/zero: %s\n", strerror(err));
+		return -err;
+	}
+
+	_vhd_zeros = mmap(NULL, _vhd_zsize, PROT_READ,
+			  MAP_SHARED, _dev_zero, 0);
 	if (_vhd_zeros == MAP_FAILED) {
-		EPRINTF("vhd_initialize failed: %d\n", -errno);
+		int _err;
+		err = errno;
+		EPRINTF("vhd_initialize failed: %s\n", strerror(err));
 		_vhd_zeros = NULL;
 		_vhd_zsize = 0;
-		return -errno;
+		_err = close(_dev_zero);
+		if (unlikely(_err == -1))
+			EPRINTF("failed to close /dev/zero: %s (error ignored)\n",
+					strerror(errno));
+		else
+			_dev_zero = -1;
+
+		return -err;
 	}
 
 	_vhd_master = s;
@@ -294,6 +315,14 @@ vhd_free(struct vhd_state *s)
 	_vhd_zsize  = 0;
 	_vhd_zeros  = NULL;
 	_vhd_master = NULL;
+	if (_dev_zero != -1) {
+		int _err = close(_dev_zero);
+		if (unlikely(_err == -1))
+			EPRINTF("failed to close /dev/zero: %s (error ignored)\n",
+					strerror(errno));
+		else
+			_dev_zero = -1;
+	}
 }
 
 static char *
@@ -635,6 +664,10 @@ __vhd_open(td_driver_t *driver, const char *name, vhd_flag_t flags)
 
 	o_flags = ((test_vhd_flag(flags, VHD_FLAG_OPEN_RDONLY)) ? 
 		   VHD_OPEN_RDONLY : VHD_OPEN_RDWR);
+	if ((test_vhd_flag(flags, VHD_FLAG_OPEN_RDONLY) ||
+                test_vhd_flag(flags, VHD_FLAG_OPEN_LOCAL_CACHE)) &&
+	    test_vhd_flag(flags, VHD_FLAG_OPEN_NO_O_DIRECT))
+		set_vhd_flag(o_flags, VHD_OPEN_CACHED);
 
 	if (test_vhd_flag(flags, VHD_FLAG_OPEN_STRICT))
 		set_vhd_flag(o_flags, VHD_OPEN_STRICT);
@@ -703,6 +736,8 @@ _vhd_open(td_driver_t *driver, const char *name, td_flag_t flags)
 
 	if (flags & TD_OPEN_RDONLY)
 		vhd_flags |= VHD_FLAG_OPEN_RDONLY;
+	if (flags & TD_OPEN_NO_O_DIRECT)
+		vhd_flags |= VHD_FLAG_OPEN_NO_O_DIRECT;
 	if (flags & TD_OPEN_QUIET)
 		vhd_flags |= VHD_FLAG_OPEN_QUIET;
 	if (flags & TD_OPEN_STRICT)
@@ -712,6 +747,8 @@ _vhd_open(td_driver_t *driver, const char *name, td_flag_t flags)
 			      VHD_FLAG_OPEN_QUIET  |
 			      VHD_FLAG_OPEN_RDONLY |
 			      VHD_FLAG_OPEN_NO_CACHE);
+    if (flags & TD_OPEN_LOCAL_CACHE)
+        vhd_flags |= VHD_FLAG_OPEN_LOCAL_CACHE;
 
 	/* pre-allocate for all but NFS and LVM storage */
 	driver->storage = tapdisk_storage_type(name);
@@ -850,8 +887,10 @@ vhd_get_parent_id(td_driver_t *driver, td_disk_id_t *id)
 	int err;
 	char *parent;
 	struct vhd_state *s;
+	int flags;
 
 	DBG(TLOG_DBG, "\n");
+	flags = id->flags;
 	memset(id, 0, sizeof(td_disk_id_t));
 
 	s = (struct vhd_state *)driver->data;
@@ -865,7 +904,7 @@ vhd_get_parent_id(td_driver_t *driver, td_disk_id_t *id)
 
 	id->name   = parent;
 	id->type   = vhd_parent_raw(&s->vhd) ? DISK_TYPE_AIO : DISK_TYPE_VHD;
-	id->flags |= TD_OPEN_SHAREABLE|TD_OPEN_RDONLY;
+	id->flags  = flags|TD_OPEN_SHAREABLE|TD_OPEN_RDONLY;
 
 	return 0;
 }

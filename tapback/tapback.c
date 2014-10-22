@@ -37,17 +37,15 @@
 #include <syslog.h>
 #include <time.h>
 
+#include "config.h"
 #include "blktap3.h"
 #include "stdio.h" /* TODO tap-ctl.h needs to include stdio.h */
 #include "tap-ctl.h"
 #include "tapback.h"
-#include <sys/types.h>
-#include <sys/socket.h>
-#include <sys/un.h>
 #include <signal.h>
 
-void tapback_log(int prio, const char *fmt, ...);
-void (*tapback_vlog) (int prio, const char *fmt, va_list ap);
+const char tapback_name[] = "tapback";
+unsigned log_level;
 
 LIST_HEAD(backends);
 
@@ -77,7 +75,6 @@ tapback_read_watch(backend_t *backend)
     char **watch = NULL, *path = NULL, *token = NULL;
     unsigned int n = 0;
     int err = 0;
-    char *s;
 
 	ASSERT(backend);
 
@@ -90,30 +87,40 @@ tapback_read_watch(backend_t *backend)
      * print the path the watch triggered on for debug purposes
      *
      * TODO include token
-	 * TODO put in an #if DEBUG block
      */
-	s = tapback_xs_read(backend->xs, XBT_NULL, "%s", path);
-    if (s) {
-        if (0 == strlen(s))
-            DBG(NULL, "%s -> (created)\n", path);
-        else
-            DBG(NULL, "%s -> \'%s\'\n", path, s);
-        free(s);
-    } else {
-		err = errno;
-		if (err == ENOENT)
-	        DBG(NULL, "%s -> (removed)\n", path);
-		else
-			WARN(NULL, "failed to read %s: %s\n", path, strerror(err));
-	}
+    if (verbose()) {
+        char *val = tapback_xs_read(backend->xs, XBT_NULL, "%s", path);
+        if (val) {
+            if (0 == strlen(val))
+                /*
+                 * XXX "(created)" might be printed when the a XenStore
+                 * directory gets removed, the XenStore watch fires, and a
+                 * XenStore node is created under the directory that just got
+                 * removed. This usually happens when the toolstack removes the
+                 * VBD from XenStore and then immediately writes the
+                 * tools/xenops/cancel key in it.
+                 */
+                DBG(NULL, "%s -> (created)\n", path);
+            else
+                DBG(NULL, "%s -> \'%s\'\n", path, val);
+            free(val);
+        } else {
+            err = errno;
+            if (err == ENOENT)
+                DBG(NULL, "%s -> (removed)\n", path);
+            else
+                WARN(NULL, "failed to read %s: %s\n", path, strerror(err));
+        }
+    }
 
     /*
      * The token indicates which XenStore watch triggered, the front-end one or
      * the back-end one.
      */
-    if (!strcmp(token, BLKTAP3_FRONTEND_TOKEN)) {
+    if (!strcmp(token, backend->frontend_token)) {
+        ASSERT(!tapback_is_master(backend));
         err = -tapback_backend_handle_otherend_watch(backend, path);
-    } else if (!strcmp(token, backend->token)) {
+    } else if (!strcmp(token, backend->backend_token)) {
         err = -tapback_backend_handle_backend_watch(backend, path);
     } else {
         WARN(NULL, "invalid token \'%s\'\n", token);
@@ -122,70 +129,85 @@ tapback_read_watch(backend_t *backend)
 
 	if (err)
 		WARN(NULL, "failed to process XenStore watch on %s: %s\n",
-				path, strerror(err));
+				path, strerror(abs(err)));
 
     free(watch);
     return;
 }
 
-static void
+/**
+ * NB must be async-signal-safe.
+ */
+void
 tapback_backend_destroy(backend_t *backend)
 {
-    int err;
-
 	if (!backend)
 		return;
 
+    if (backend->pidfile) {
+        unlink(backend->pidfile);
+        free(backend->pidfile);
+    }
+
     free(backend->name);
     free(backend->path);
-    free(backend->token);
+    free(backend->frontend_token);
+    free(backend->backend_token);
 
     if (backend->xs) {
         xs_daemon_close(backend->xs);
         backend->xs = NULL;
     }
 
-    err = unlink(TAPBACK_CTL_SOCK_PATH);
-    if (err == -1 && errno != ENOENT) {
-        err = errno;
-        WARN(NULL, "failed to remove %s: %s\n", TAPBACK_CTL_SOCK_PATH,
-				strerror(err));
-    }
+    unlink(backend->local.sun_path);
 
 	list_del(&backend->entry);
 
 	free(backend);
 }
 
-static FILE *tapback_log_fp = NULL;
-
 static void
-signal_cb(int signum) {
-
-    ASSERT(signum == SIGINT || signum == SIGTERM || signum == SIGHUP);
-
-    if (signum == SIGHUP) {
-        if (tapback_log_fp) {
-            fflush(tapback_log_fp);
-            fclose(tapback_log_fp);
-            tapback_log_fp = fopen(TAPBACK_LOG, "a+");
-        }
-    } else {
+tapback_signal_handler(int signum, siginfo_t *siginfo __attribute__((unused)),
+        void *context __attribute__((unused)))
+{
+    if (likely(signum == SIGINT || signum == SIGTERM)) {
 		backend_t *backend, *tmp;
 
 		list_for_each_entry(backend, &backends, entry) {
-			if (!list_empty(&backend->devices)) {
-				WARN(NULL, "refusing to shutdown while back-end %s has active "
-						"VBDs\n", backend->name);
-				return;
-			}
+            if (tapback_is_master(backend)) {
+                if (backend->master.slaves)
+                    return;
+            } else {
+                if (!list_empty(&backend->slave.slave.devices))
+                    return;
+            }
 		}
 
 		list_for_each_entry_safe(backend, tmp, &backends, entry)
 			tapback_backend_destroy(backend);
 
-        exit(EXIT_SUCCESS);
+        _exit(EXIT_SUCCESS);
     }
+}
+
+static inline int
+tapback_write_pid(const char *pidfile)
+{
+    FILE *fp;
+    int err = 0;
+
+    ASSERT(pidfile);
+
+    fp = fopen(pidfile, "w");
+    if (!fp)
+        return errno;
+    err = fprintf(fp, "%d\n", getpid());
+    if (err < 0)
+        err = errno;
+    else
+        err = 0;
+    fclose(fp);
+    return err;
 }
 
 /**
@@ -194,11 +216,11 @@ signal_cb(int signum) {
  *
  * @returns a new back-end, NULL on failure, sets errno
  */
-static backend_t *
-tapback_backend_create(const char *name)
+static inline backend_t *
+tapback_backend_create(const char *name, const char *pidfile,
+        const domid_t domid, const bool barrier)
 {
     int err;
-    struct sockaddr_un local;
     int len;
 	backend_t *backend = NULL;
 
@@ -209,10 +231,21 @@ tapback_backend_create(const char *name)
 		err = errno;
 		goto out;
 	}
-	INIT_LIST_HEAD(&backend->entry);
-	INIT_LIST_HEAD(&backend->devices);
 
-    backend->path = backend->token = NULL;
+    if (pidfile) {
+        backend->pidfile = strdup(pidfile);
+        if (unlikely(!backend->pidfile)) {
+            err = errno;
+            WARN(NULL, "failed to strdup: %s\n", strerror(err));
+            goto out;
+        }
+        err = tapback_write_pid(backend->pidfile);
+        if (unlikely(err)) {
+            WARN(NULL, "failed to write PID to %s: %s\n",
+                    pidfile, strerror(err));
+            goto out;
+        }
+    }
 
     backend->name = strdup(name);
     if (!backend->name) {
@@ -220,25 +253,69 @@ tapback_backend_create(const char *name)
         goto out;
     }
 
-    err = asprintf(&backend->path, "%s/%s", XENSTORE_BACKEND,
-            backend->name);
-    if (err == -1) {
-        backend->path = NULL;
-        err = errno;
-        goto out;
+	backend->barrier = barrier;
+
+    backend->path = NULL;
+
+    INIT_LIST_HEAD(&backend->entry);
+
+    if (domid) {
+        backend->slave_domid = domid;
+        INIT_LIST_HEAD(&backend->slave.slave.devices);
+        err = asprintf(&backend->path, "%s/%s/%d", XENSTORE_BACKEND,
+                backend->name, backend->slave_domid);
+        if (err == -1) {
+            backend->path = NULL;
+            err = errno;
+            goto out;
+        }
+    } else {
+        backend->master.slaves = NULL;
+        err = asprintf(&backend->path, "%s/%s", XENSTORE_BACKEND,
+                backend->name);
+        if (err == -1) {
+            backend->path = NULL;
+            err = errno;
+            goto out;
+        }
     }
 
-    err = asprintf(&backend->token, "%s-%s", XENSTORE_BACKEND,
-            backend->name);
-    if (err == -1) {
-        backend->token = NULL;
-        err = errno;
-        goto out;
+    if (domid) {
+        err = asprintf(&backend->frontend_token, "%s-%d-front", tapback_name,
+                domid);
+        if (err == -1) {
+            backend->frontend_token = NULL;
+            err = errno;
+            goto out;
+        }
+
+        err = asprintf(&backend->backend_token, "%s-%d-back", tapback_name,
+                domid);
+        if (err == -1) {
+            backend->backend_token = NULL;
+            err = errno;
+            goto out;
+        }
+    } else {
+        err = asprintf(&backend->frontend_token, "%s-master-front",
+                tapback_name);
+        if (err == -1) {
+            backend->frontend_token = NULL;
+            err = errno;
+            goto out;
+        }
+
+        err = asprintf(&backend->backend_token, "%s-master-back",
+                tapback_name);
+        if (err == -1) {
+            backend->backend_token = NULL;
+            err = errno;
+            goto out;
+        }
     }
 
     err = 0;
 
-    INIT_LIST_HEAD(&backend->devices);
     backend->ctrl_sock = -1;
 
     if (!(backend->xs = xs_daemon_open())) {
@@ -271,17 +348,8 @@ tapback_backend_create(const char *name)
     /*
      * Watch the back-end.
      */
-    if (!xs_watch(backend->xs, backend->path,
-                backend->token)) {
+    if (!xs_watch(backend->xs, backend->path, backend->backend_token)) {
         err = errno;
-        goto out;
-    }
-
-    if (SIG_ERR == signal(SIGINT, signal_cb) ||
-            SIG_ERR == signal(SIGTERM, signal_cb) ||
-            SIG_ERR == signal(SIGHUP, signal_cb)) {
-        WARN(NULL, "failed to register signal handlers\n");
-        err = EINVAL;
         goto out;
     }
 
@@ -296,19 +364,39 @@ tapback_backend_create(const char *name)
         WARN(NULL, "failed to create control socket: %s\n", strerror(errno));
         goto out;
     }
-    local.sun_family = AF_UNIX;
-    strcpy(local.sun_path, TAPBACK_CTL_SOCK_PATH);
-    err = unlink(local.sun_path);
-    if (err && errno != ENOENT) {
+    backend->local.sun_family = AF_UNIX;
+    if (domid)
+        err = snprintf(backend->local.sun_path,
+                ARRAY_SIZE(backend->local.sun_path),
+                "/var/run/%s.%d", tapback_name, domid);
+    else
+        err = snprintf(backend->local.sun_path,
+                ARRAY_SIZE(backend->local.sun_path),
+                "/var/run/%s.master", tapback_name);
+    if (err >= (int)ARRAY_SIZE(backend->local.sun_path)) {
+        err = ENAMETOOLONG;
+        WARN(NULL, "UNIX domain socket name too long\n");
+        goto out;
+    } else if (err < 0) {
         err = errno;
-        WARN(NULL, "failed to remove %s: %s\n", local.sun_path, strerror(err));
+        WARN(NULL, "failed to snprintf: %s\n", strerror(err));
         goto out;
     }
-    len = strlen(local.sun_path) + sizeof(local.sun_family);
-    err = bind(backend->ctrl_sock, (struct sockaddr *)&local, len);
+    err = 0;
+
+    err = unlink(backend->local.sun_path);
+    if (err && errno != ENOENT) {
+        err = errno;
+        WARN(NULL, "failed to remove %s: %s\n", backend->local.sun_path,
+                strerror(err));
+        goto out;
+    }
+    len = strlen(backend->local.sun_path) + sizeof(backend->local.sun_family);
+    err = bind(backend->ctrl_sock, (struct sockaddr *)&backend->local, len);
     if (err == -1) {
         err = errno;
-        WARN(NULL, "failed to bind to %s: %s\n", local.sun_path, strerror(err));
+        WARN(NULL, "failed to bind to %s: %s\n", backend->local.sun_path,
+                strerror(err));
         goto out;
     }
 
@@ -339,12 +427,15 @@ tapback_backend_run(backend_t *backend)
 
 	fd = xs_fileno(backend->xs);
 
-    INFO(NULL, "tapback (user-space blkback for tapdisk3) daemon started\n");
+    if (tapback_is_master(backend))
+        INFO(NULL, "master tapback daemon started\n");
+    else
+        INFO(NULL, "slave tapback daemon started, only serving domain %d\n",
+                backend->slave_domid);
 
     do {
         fd_set rfds;
         int nfds = 0;
-        struct timeval ttl = {.tv_sec = 3, .tv_usec = 0};
 
         FD_ZERO(&rfds);
         FD_SET(fd, &rfds);
@@ -352,16 +443,12 @@ tapback_backend_run(backend_t *backend)
         /*
          * poll the fd for changes in the XenStore path we're interested in
          */
-        nfds = select(fd + 1, &rfds, NULL, NULL, &ttl);
-        if (nfds == 0) {
-            fflush(tapback_log_fp);
-            continue;
-        }
+        nfds = select(fd + 1, &rfds, NULL, NULL, NULL);
         if (nfds == -1) {
-            if (errno == EINTR)
+            if (likely(errno == EINTR))
                 continue;
-            WARN(NULL, "error monitoring XenStore");
             err = -errno;
+            WARN(NULL, "error monitoring XenStore: %s\n", strerror(-err));
             break;
         }
 
@@ -371,26 +458,6 @@ tapback_backend_run(backend_t *backend)
     } while (1);
 
     return err;
-}
-
-static char *blkback_ident = NULL;
-
-static void
-blkback_vlog_fprintf(const int prio, const char * const fmt, va_list ap)
-{
-    static const char *strprio[] = {
-        [LOG_DEBUG] = "DBG",
-        [LOG_INFO] = "INF",
-        [LOG_WARNING] = "WRN"
-    };
-
-    assert(LOG_DEBUG == prio || LOG_INFO == prio || LOG_WARNING == prio);
-    assert(strprio[prio]);
-
-    if (tapback_log_fp) {
-        fprintf(tapback_log_fp, "%s[%s] ", blkback_ident, strprio[prio]);
-        vfprintf(tapback_log_fp, fmt, ap);
-    }
 }
 
 /**
@@ -407,18 +474,73 @@ usage(FILE * const stream, const char * const prog)
             "\t[-d|--debug]\n"
 			"\t[-h|--help]\n"
             "\t[-v|--verbose]\n"
+			"\t[-b]--nobarrier]\n"
             "\t[-n|--name]\n", prog);
 }
 
 extern char *optarg;
 
+/**
+ * Returns 0 in success, -errno on failure.
+ */
+static inline int
+tapback_install_sighdl(void)
+{
+    int err;
+    struct sigaction sigact;
+	sigset_t set;
+    static const int signals[] = {SIGTERM, SIGINT, SIGCHLD};
+    unsigned i;
+
+    err = sigfillset(&set);
+    if (unlikely(err == -1)) {
+        err = errno;
+        WARN(NULL, "failed to fill signal set: %s\n", strerror(err));
+        goto out;
+    }
+
+    for (i = 0; i < ARRAY_SIZE(signals); i++) {
+        err = sigdelset(&set, signals[i]);
+        if (unlikely(err == -1)) {
+            err = errno;
+            WARN(NULL, "failed to add signal %d to signal set: %s\n",
+                    signals[i], strerror(err));
+            goto out;
+        }
+    }
+
+    err = sigprocmask(SIG_BLOCK, &set, NULL);
+	if (unlikely(err == -1)) {
+        err = errno;
+        WARN(NULL, "failed to set signal mask: %s\n", strerror(err));
+        goto out;
+	}
+
+    sigact.sa_sigaction = &tapback_signal_handler;
+    sigact.sa_flags = SA_SIGINFO | SA_NOCLDSTOP | SA_NOCLDWAIT;
+
+    for (i = 0; i < ARRAY_SIZE(signals); i++) {
+        err = sigaction(signals[i], &sigact, NULL);
+        if (unlikely(err == -1)) {
+            err = errno;
+            WARN(NULL, "failed to register signal %d: %s\n",
+                    signals[i], strerror(err));
+            goto out;
+        }
+    }
+out:
+    return -err;
+}
+
 int main(int argc, char **argv)
 {
     const char *prog = NULL;
-    char *opt_name = "vbd3";
+    char *opt_name = "vbd3", *opt_pidfile = NULL, *end = NULL;
     bool opt_debug = false, opt_verbose = false;
     int err = 0;
 	backend_t *backend = NULL;
+    domid_t opt_domid = 0;
+	bool opt_barrier = true;
 
 	if (access("/dev/xen/gntdev", F_OK ) == -1) {
 		WARN(NULL, "grant device does not exist\n");
@@ -436,10 +558,14 @@ int main(int argc, char **argv)
             {"debug", 0, NULL, 'd'},
             {"verbose", 0, NULL, 'v'},
             {"name", 0, NULL, 'n'},
+            {"pidfile", 0, NULL, 'p'},
+            {"domain", 0, NULL, 'x'},
+			{"nobarrier", 0, NULL, 'b'},
+
         };
         int c;
 
-        c = getopt_long(argc, argv, "hdvn:", longopts, NULL);
+        c = getopt_long(argc, argv, "hdvn:p:x:b", longopts, NULL);
         if (c < 0)
             break;
 
@@ -460,23 +586,29 @@ int main(int argc, char **argv)
                 goto fail;
             }
             break;
+        case 'p':
+            opt_pidfile = strdup(optarg);
+            if (!opt_pidfile) {
+                err = errno;
+                goto fail;
+            }
+            break;
+        case 'x':
+            opt_domid = strtoul(optarg, &end, 0);
+            if (*end != 0 || end == optarg) {
+                WARN(NULL, "invalid domain ID %s\n", optarg);
+                err = EINVAL;
+                goto fail;
+            }
+            INFO(NULL, "only serving domain %d\n", opt_domid);
+            break;
+		case 'b':
+			opt_barrier = false;
+			break;
         case '?':
             goto usage;
         }
     } while (1);
-
-    if (opt_verbose) {
-        blkback_ident = "";
-        tapback_log_fp = fopen(TAPBACK_LOG, "a+");
-        if (!tapback_log_fp)
-            return errno;
-        tapback_vlog = blkback_vlog_fprintf;
-    }
-    else {
-        blkback_ident = opt_name;
-        openlog(blkback_ident, 0, LOG_DAEMON);
-        setlogmask(LOG_UPTO(LOG_INFO));
-    }
 
     if (!opt_debug) {
         if ((err = daemon(0, 0))) {
@@ -485,10 +617,32 @@ int main(int argc, char **argv)
         }
     }
 
-	backend = tapback_backend_create(opt_name);
+    openlog(tapback_name, LOG_PID, LOG_DAEMON);
+    if (opt_verbose)
+        log_level = LOG_DEBUG;
+    else
+        log_level = LOG_INFO;
+    setlogmask(LOG_UPTO(log_level));
+
+    if (!opt_debug) {
+        if ((err = daemon(0, 0))) {
+            err = -errno;
+            goto fail;
+        }
+    }
+
+    err = tapback_install_sighdl();
+    if (unlikely(err))
+    {
+        WARN(NULL, "failed to set up signal handling: %s\n", strerror(-err));
+        goto fail;
+    }
+
+	backend = tapback_backend_create(opt_name, opt_pidfile, opt_domid,
+			opt_barrier);
 	if (!backend) {
 		err = errno;
-        WARN(NULL, "error creating blkback: %s\n", strerror(err));
+        WARN(NULL, "error creating back-end: %s\n", strerror(err));
         goto fail;
     }
 
@@ -497,36 +651,11 @@ int main(int argc, char **argv)
     tapback_backend_destroy(backend);
 
 fail:
-    if (tapback_log_fp) {
-        INFO(NULL, "tapback shut down\n");
-        fclose(tapback_log_fp);
-    }
     return err ? -err : 0;
 
 usage:
     usage(stderr, prog);
     return 1;
-}
-
-int pretty_time(char *buf, unsigned char buf_len) {
-
-    int err;
-    time_t timer;
-    struct tm* tm_info;
-
-    assert(buf);
-    assert(buf_len > 0);
-
-    err = time(&timer);
-    if (err == (time_t)-1)
-        return errno;
-    tm_info = localtime(&timer);
-    if (!tm_info)
-        return EINVAL;
-    err = strftime(buf, buf_len, "%b %d %H:%M:%S", tm_info);
-    if (err == 0)
-        return EINVAL;
-    return 0;
 }
 
 /**
@@ -553,4 +682,27 @@ out:
 	if (domid >= 0)
 		ASSERT(domid <= UINT16_MAX);
 	return domid;
+}
+
+bool
+tapback_is_master(const backend_t *backend)
+{
+    if (backend->slave_domid == 0)
+        return true;
+    else
+        return false;
+}
+
+int
+compare(const void *pa, const void *pb)
+{
+    const struct backend_slave *_pa, *_pb;
+
+    ASSERT(pa);
+    ASSERT(pb);
+
+    _pa = pa;
+    _pb = pb;
+
+    return _pa->master.domid - _pb->master.domid;
 }

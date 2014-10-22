@@ -30,6 +30,9 @@
 #define TD_VBD_MAX_RETRIES          100
 #define TD_VBD_RETRY_INTERVAL       1
 
+/*
+ * VBD states
+ */
 #define TD_VBD_DEAD                 0x0001
 #define TD_VBD_CLOSED               0x0002
 #define TD_VBD_QUIESCE_REQUESTED    0x0004
@@ -48,20 +51,8 @@
 struct td_nbdserver;
 
 struct td_vbd_rrd {
-    /*
-     * file descriptor for the file in /dev/shm
-     */
-    int fd;
 
-    /*
-     * memory address returned by mmap
-     */
-    char *mem;
-
-    /*
-     * /path/to/file in /dev/shm
-     */
-    char *path;
+    struct shm shm;
 
     /*
      * Previous value of td_vbd_handle.errors. We maintain this in order to
@@ -83,11 +74,23 @@ struct td_vbd_handle {
 	td_uuid_t                   uuid;
 
     /**
-     * shared ring
+     * shared rings
      */
-    struct td_xenblkif         *sring;
+    struct list_head           rings;
+
+    /**
+     * List of rings that contain pending requests but a disconnection was
+     * issued. We need to maintain these rings until all their pending requests
+     * complete. When the last request completes, the ring is destroyed and
+     * removed from this list.
+     */
+    struct list_head            dead_rings;
 
 	td_flag_t                   flags;
+
+	/**
+	 * VBD state (TD_VBD_XXX, excluding SECONDARY and request-related)
+	 */
 	td_flag_t                   state;
 
 	/**
@@ -160,42 +163,6 @@ tapdisk_vbd_move_request(td_vbd_request_t *vreq, struct list_head *dest)
 	vreq->list_head = dest;
 }
 
-static inline void
-tapdisk_vbd_add_image(td_vbd_t *vbd, td_image_t *image)
-{
-	list_add_tail(&image->next, &vbd->images);
-}
-
-static inline int
-tapdisk_vbd_is_last_image(td_vbd_t *vbd, td_image_t *image)
-{
-	return list_is_last(&image->next, &vbd->images);
-}
-
-static inline td_image_t *
-tapdisk_vbd_first_image(td_vbd_t *vbd)
-{
-	td_image_t *image = NULL;
-	if (!list_empty(&vbd->images))
-		image = list_entry(vbd->images.next, td_image_t, next);
-	return image;
-}
-
-static inline td_image_t *
-tapdisk_vbd_last_image(td_vbd_t *vbd)
-{
-	td_image_t *image = NULL;
-	if (!list_empty(&vbd->images))
-		image = list_entry(vbd->images.prev, td_image_t, next);
-	return image;
-}
-
-static inline td_image_t *
-tapdisk_vbd_next_image(td_image_t *image)
-{
-	return list_entry(image->next.next, td_image_t, next);
-}
-
 td_vbd_t *tapdisk_vbd_create(td_uuid_t);
 int tapdisk_vbd_initialize(int, int, td_uuid_t);
 int tapdisk_vbd_open(td_vbd_t *, const char *, int, const char *, td_flag_t);
@@ -233,10 +200,22 @@ int tapdisk_vbd_pause(td_vbd_t *);
 int tapdisk_vbd_resume(td_vbd_t *, const char *);
 void tapdisk_vbd_kick(td_vbd_t *);
 void tapdisk_vbd_check_state(td_vbd_t *);
+
+/**
+ * Checks whether there are new requests and if so it submits them, prodived
+ * that the queue has not been quiesced.
+ *
+ * Returns 1 if new requests have been issued, otherwise it returns 0.
+ */
 int tapdisk_vbd_recheck_state(td_vbd_t *);
+
 void tapdisk_vbd_check_progress(td_vbd_t *);
 void tapdisk_vbd_debug(td_vbd_t *);
 int tapdisk_vbd_start_nbdserver(td_vbd_t *);
 void tapdisk_vbd_stats(td_vbd_t *, td_stats_t *);
 
+/**
+ * Tells whether the VBD contains at least one dead ring.
+ */
+bool inline tapdisk_vbd_contains_dead_rings(td_vbd_t * vbd);
 #endif

@@ -12,6 +12,8 @@ AC_CANONICAL_HOST
 AC_SYS_LARGEFILE
 AC_CHECK_HEADERS([uuid/uuid.h], [], [Need uuid-dev])
 AC_CHECK_HEADERS([libaio.h], [], [Need libaio-dev])
+AC_CHECK_HEADERS([limits.h], [], [AC_MSG_ERROR([cannot find limits.h])])
+AC_CHECK_HEADERS([time.h], [], [AC_MSG_ERROR([cannot find time.h])])
 
 AC_ARG_WITH([libiconv],
 	     [AS_HELP_STRING([--with-libiconv],
@@ -59,10 +61,14 @@ AM_CONDITIONAL([ENABLE_VHDIO],
 AM_CONDITIONAL([ENABLE_TESTS],
 	       [test x$enable_tests = xyes])
 
+AC_CHECK_FUNCS([eventfd])
+
 
 
 # AC_CONFIG_MACRO_DIR([m4])
 AC_CONFIG_HEADERS([config.h])
+AC_DEFINE(_BLKTAP, 1,
+		  Indicates whether this is an internal or external compilation.)
 AC_CONFIG_FILES([
 Makefile
 lvm/Makefile

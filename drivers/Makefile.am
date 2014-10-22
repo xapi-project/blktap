@@ -72,8 +72,11 @@ libtapdisk_la_SOURCES += atomicio.c
 libtapdisk_la_SOURCES += atomicio.h
 libtapdisk_la_SOURCES += tapdisk-fdreceiver.c
 libtapdisk_la_SOURCES += tapdisk-fdreceiver.h
+libtapdisk_la_SOURCES += md5.c
+libtapdisk_la_SOURCES += md5.h
 
 libtapdisk_la_SOURCES += block-aio.c
+libtapdisk_la_SOURCES += block-aio.h
 libtapdisk_la_SOURCES += block-ram.c
 libtapdisk_la_SOURCES += block-cache.c
 libtapdisk_la_SOURCES += block-vhd.c
@@ -97,10 +100,12 @@ libtapdisk_la_SOURCES += td-stats.h
 libtapdisk_la_LIBADD  = ../vhd/lib/libvhd.la
 libtapdisk_la_LIBADD += -laio
 libtapdisk_la_LIBADD += -lxenctrl
-libtapdisk_la_LIBADD += -lcrypto
 
 logrotatedir = $(sysconfdir)/logrotate.d
 dist_logrotate_DATA = blktap
 
-cronddailydir = $(sysconfdir)/cron.daily
-dist_cronddaily_DATA = blktap-log-cleanup
+bugtooldir = $(sysconfdir)/xensource/bugtool
+dist_bugtool_DATA = tapdisk-logs.xml
+
+bugtooltddir = $(sysconfdir)/xensource/bugtool/tapdisk-logs
+dist_bugtooltd_DATA = tapdisk-logs/description.xml

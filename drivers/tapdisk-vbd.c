@@ -28,7 +28,6 @@
 #include <libgen.h>
 #include <sys/mman.h>
 #include <sys/ioctl.h>
-#include <openssl/md5.h>
 #include <sys/stat.h>
 #include <sys/types.h>
 
@@ -46,12 +45,7 @@
 #include "tapdisk-nbdserver.h"
 #include "td-stats.h"
 #include "tapdisk-utils.h"
-
-/*
- * FIXME blktap3 stores the page size in a global variable, use that once
- * blktap3 gets merged
- */
-#define RRD_SHM_SIZE 4096
+#include "md5.h"
 
 #define DBG(_level, _f, _a...) tlog_write(_level, _f, ##_a)
 #define ERR(_err, _f, _a...) tlog_error(_err, _f, ##_a)
@@ -88,6 +82,8 @@ tapdisk_vbd_create(uint16_t uuid)
 		return NULL;
 	}
 
+    shm_init(&vbd->rrd.shm);
+
 	vbd->uuid        = uuid;
 	vbd->req_timeout = TD_VBD_REQUEST_TIMEOUT;
 
@@ -97,6 +93,8 @@ tapdisk_vbd_create(uint16_t uuid)
 	INIT_LIST_HEAD(&vbd->failed_requests);
 	INIT_LIST_HEAD(&vbd->completed_requests);
 	INIT_LIST_HEAD(&vbd->next);
+    INIT_LIST_HEAD(&vbd->rings);
+    INIT_LIST_HEAD(&vbd->dead_rings);
 	tapdisk_vbd_mark_progress(vbd);
 
 	return vbd;
@@ -120,6 +118,42 @@ tapdisk_vbd_initialize(int rfd, int wfd, uint16_t uuid)
 	return 0;
 }
 
+static inline void
+tapdisk_vbd_add_image(td_vbd_t *vbd, td_image_t *image)
+{
+	list_add_tail(&image->next, &vbd->images);
+}
+
+static inline int
+tapdisk_vbd_is_last_image(td_vbd_t *vbd, td_image_t *image)
+{
+	return list_is_last(&image->next, &vbd->images);
+}
+
+static inline td_image_t *
+tapdisk_vbd_first_image(td_vbd_t *vbd)
+{
+	td_image_t *image = NULL;
+	if (!list_empty(&vbd->images))
+		image = list_entry(vbd->images.next, td_image_t, next);
+	return image;
+}
+
+static inline td_image_t *
+tapdisk_vbd_last_image(td_vbd_t *vbd)
+{
+	td_image_t *image = NULL;
+	if (!list_empty(&vbd->images))
+		image = list_entry(vbd->images.prev, td_image_t, next);
+	return image;
+}
+
+static inline td_image_t *
+tapdisk_vbd_next_image(td_image_t *image)
+{
+	return list_entry(image->next.next, td_image_t, next);
+}
+
 static int
 tapdisk_vbd_validate_chain(td_vbd_t *vbd)
 {
@@ -133,41 +167,14 @@ vbd_stats_destroy(td_vbd_t *vbd) {
 
     ASSERT(vbd);
 
-    if (vbd->rrd.mem) {
-        err = munmap(vbd->rrd.mem, RRD_SHM_SIZE);
-        if (err == -1) {
-            err = errno;
-            EPRINTF("failed to munmap %s: %s\n", vbd->rrd.path,
-                    strerror(err));
-            goto out;
-        }
-        vbd->rrd.mem = NULL;
+    err = shm_destroy(&vbd->rrd.shm);
+    if (unlikely(err)) {
+        EPRINTF("failed to destroy RRD file: %s\n", strerror(err));
+        goto out;
     }
 
-    if (vbd->rrd.fd > 0) {
-        do {
-            err = close(vbd->rrd.fd);
-            if (err)
-                err = errno;
-        } while (err == EINTR);
-        if (err) {
-            EPRINTF("failed to close %s: %s\n", vbd->rrd.path, strerror(err));
-            goto out;
-        }
-        vbd->rrd.fd = 0;
-    }
-
-    if (vbd->rrd.path) {
-
-        err = unlink(vbd->rrd.path);
-        if (err == -1) {
-            err = errno;
-            if (err != ENOENT)
-                goto out;
-        }
-        free(vbd->rrd.path);
-        vbd->rrd.path = NULL;
-    }
+    free(vbd->rrd.shm.path);
+    vbd->rrd.shm.path = NULL;
 
 out:
     return -err;
@@ -181,45 +188,34 @@ vbd_stats_create(td_vbd_t *vbd) {
     ASSERT(vbd);
 
 	err = mkdir("/dev/shm/metrics", S_IRUSR | S_IWUSR);
-	if (err && errno != EEXIST)
-		goto out;
+	if (likely(err)) {
+        err = errno;
+        if (unlikely(err != EEXIST))
+    		goto out;
+        else
+            err = 0;
+    }
 
     /*
-     * FIXME we use tap-<tapdisk PID>-<minor number> for now, might want to
-     * reconsider
+     * FIXME Rename this to something like "vbd3-domid-devid". Consider
+     * consolidating this with the io_ring shared memory file. Check if blkback
+     * exports the same information in some sysfs file and if so move this to
+     * the ring location.
      */
-    err = asprintf(&vbd->rrd.path, "/dev/shm/metrics/tap-%d-%d", getpid(),
+    err = asprintf(&vbd->rrd.shm.path, "/dev/shm/metrics/tap-%d-%d", getpid(),
             vbd->uuid);
     if (err == -1) {
         err = errno;
-        vbd->rrd.path = NULL;
+        vbd->rrd.shm.path = NULL;
         EPRINTF("failed to create metric file: %s\n", strerror(err));
         goto out;
     }
     err = 0;
 
-    vbd->rrd.fd = open(vbd->rrd.path, O_CREAT | O_TRUNC | O_RDWR | O_EXCL,
-            S_IRUSR | S_IWUSR);
-    if (vbd->rrd.fd == -1) {
-        err = errno;
-        EPRINTF("failed to open %s: %s\n", vbd->rrd.path, strerror(err));
-        goto out;
-    }
-
-    err = ftruncate(vbd->rrd.fd, RRD_SHM_SIZE);
-    if (err == -1) {
-        err = errno;
-        EPRINTF("failed to truncate %s: %s\n", vbd->rrd.path, strerror(err));
-        goto out;
-    }
-
-    vbd->rrd.mem = mmap(NULL, RRD_SHM_SIZE, PROT_READ | PROT_WRITE, MAP_SHARED,
-            vbd->rrd.fd, 0);
-    if (vbd->rrd.mem == MAP_FAILED) {
-        err = errno;
-        EPRINTF("failed to mmap %s: %s\n", vbd->rrd.path, strerror(err));
-        goto out;
-    }
+    vbd->rrd.shm.size = PAGE_SIZE;
+    err = shm_create(&vbd->rrd.shm);
+    if (err)
+        EPRINTF("failed to create RRD: %s\n", strerror(err));
 
 out:
     if (err) {
@@ -887,6 +883,7 @@ int
 tapdisk_vbd_pause(td_vbd_t *vbd)
 {
 	int err;
+    struct td_xenblkif *blkif;
 
 	INFO("pause requested\n");
 
@@ -895,12 +892,12 @@ tapdisk_vbd_pause(td_vbd_t *vbd)
 	if (vbd->nbdserver)
 		tapdisk_nbdserver_pause(vbd->nbdserver);
 
-	if (vbd->sring)
-		tapdisk_server_mask_event(tapdisk_xenblkif_event_id(vbd->sring), 1);
-
 	err = tapdisk_vbd_quiesce_queue(vbd);
 	if (err)
 		return err;
+
+    list_for_each_entry(blkif, &vbd->rings, entry)
+		tapdisk_xenblkif_suspend(blkif);
 
 	tapdisk_vbd_close_vdi(vbd);
 
@@ -919,6 +916,7 @@ int
 tapdisk_vbd_resume(td_vbd_t *vbd, const char *name)
 {
 	int i, err;
+    struct td_xenblkif *blkif;
 
 	DBG(TLOG_DBG, "resume requested\n");
 
@@ -969,8 +967,9 @@ resume_failed:
 	if (vbd->nbdserver)
 		tapdisk_nbdserver_unpause(vbd->nbdserver);
 
-	if (vbd->sring)
-		tapdisk_server_mask_event(tapdisk_xenblkif_event_id(vbd->sring), 0);
+    list_for_each_entry(blkif, &vbd->rings, entry)
+		tapdisk_xenblkif_resume(blkif);
+
 
 	DBG(TLOG_DBG, "state checked\n");
 
@@ -1043,7 +1042,7 @@ tapdisk_vbd_produce_rrds(td_vbd_t *vbd) {
 
 	ASSERT(vbd);
 
-	buf = vbd->rrd.mem;
+	buf = vbd->rrd.shm.mem;
 
 	/*
 	 * If no VDI has been opened yet there's nothing to report.
@@ -1059,7 +1058,7 @@ tapdisk_vbd_produce_rrds(td_vbd_t *vbd) {
 		return 0;
 	vbd->rrd.last = t;
 
-	size = RRD_SHM_SIZE - off;
+	size = vbd->rrd.shm.size - off;
 	err = tapdisk_snprintf(buf, &off, &size, 0, "DATASOURCES\n");
 	if (err)
 		return err;
@@ -1132,14 +1131,21 @@ tapdisk_vbd_produce_rrds(td_vbd_t *vbd) {
 	buf[(md5sum_str_len_off + j)] = '\n';
 
 	memset(buf + off, '\0', size - off);
-	return msync(buf, RRD_SHM_SIZE, MS_ASYNC);
+	return msync(buf, vbd->rrd.shm.size, MS_ASYNC);
 }
 
 void
 tapdisk_vbd_check_state(td_vbd_t *vbd)
 {
+    struct td_xenblkif *blkif;
 
 	tapdisk_vbd_produce_rrds(vbd);
+
+    /*
+     * TODO don't ignore return value
+     */
+    list_for_each_entry(blkif, &vbd->rings, entry)
+		tapdisk_xenblkif_ring_stats_update(blkif);
 
 	tapdisk_vbd_check_queue_state(vbd);
 
@@ -1204,6 +1210,7 @@ tapdisk_vbd_request_should_retry(td_vbd_t *vbd, td_vbd_request_t *vreq)
 	case ENOSYS:
 	case ESTALE:
 	case ENOSPC:
+	case EFAULT:
 		return 0;
 	}
 
@@ -1672,6 +1679,17 @@ tapdisk_vbd_kick(td_vbd_t *vbd)
 	vbd->kicked++;
 
 	while (!list_empty(list)) {
+
+		/*
+		 * Take one request off the completed requests list, and then look for
+		 * other requests in the same list that have the same token and
+		 * complete them. This way we complete requests against the same token
+		 * in one go before we proceed to completing requests with other
+		 * tokens. The token is usually used to point back to some other
+		 * structure, e.g. a blktap or a tapdisk3 connexion. Once all requests
+		 * with a specific token have been completed, proceed to the next one
+		 * until the list is empty.
+		 */
 		prev = list_entry(list->next, td_vbd_request_t, next);
 		list_del(&prev->next);
 
@@ -1720,10 +1738,25 @@ tapdisk_vbd_start_nbdserver(td_vbd_t *vbd)
 	return 0;
 }
 
+
+static int
+tapdisk_vbd_reqs_outstanding(td_vbd_t *vbd)
+{
+	int new, pending, failed, completed;
+
+	ASSERT(vbd);
+
+	tapdisk_vbd_queue_count(vbd, &new, &pending, &failed, &completed);
+
+	return new + pending + failed + completed;
+}
+
+
 void
 tapdisk_vbd_stats(td_vbd_t *vbd, td_stats_t *st)
 {
 	td_image_t *image, *next;
+    struct td_xenblkif *blkif;
 
 	tapdisk_stats_enter(st, '{');
 	tapdisk_stats_field(st, "name", "s", vbd->name);
@@ -1744,11 +1777,15 @@ tapdisk_vbd_stats(td_vbd_t *vbd, td_stats_t *st)
 		tapdisk_stats_leave(st, '}');
 	}
 
-	if (vbd->sring) {
-		tapdisk_stats_field(st, "xenbus", "{");
-		tapdisk_xenblkif_stats(vbd->sring, st);
-		tapdisk_stats_leave(st, '}');
-	}
+    /*
+     * TODO Is this used by any one?
+     */
+    if (!list_empty(&vbd->rings)) {
+	    tapdisk_stats_field(st, "xenbus", "{");
+        list_for_each_entry(blkif, &vbd->rings, entry)
+		    tapdisk_xenblkif_stats(blkif, st);
+    	tapdisk_stats_leave(st, '}');
+    }
 
 	tapdisk_stats_field(st,
 			"FIXME_enospc_redirect_count",
@@ -1758,5 +1795,16 @@ tapdisk_vbd_stats(td_vbd_t *vbd, td_stats_t *st)
 			"nbd_mirror_failed",
 			"d", vbd->nbd_mirror_failed);
 
+	tapdisk_stats_field(st,
+			"reqs_oustanding",
+			"d", tapdisk_vbd_reqs_outstanding(vbd));
+
 	tapdisk_stats_leave(st, '}');
+}
+
+
+bool inline
+tapdisk_vbd_contains_dead_rings(td_vbd_t * vbd)
+{
+    return !list_empty(&vbd->dead_rings);
 }

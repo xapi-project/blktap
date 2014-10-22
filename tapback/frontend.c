@@ -125,9 +125,6 @@ connect_tap(vbd_t * const device)
          * +10 is for INT_MAX, +1 for NULL termination
          */
 
-        /*
-         * TODO include domid/devid in the error messages
-         */
         static const size_t len = sizeof(RING_REF) + 10 + 1;
         char ring_ref[len];
         for (i = 0; i < nr_pages; i++) {
@@ -223,7 +220,7 @@ connect_tap(vbd_t * const device)
             err = 0;
         } else {
             WARN(device, "tapdisk[%d] failed to connect to the shared "
-                    "ring: %s\n", device->tap->pid, strerror(-err));
+                    "ring: %s\n", device->tap->pid, strerror(err));
             goto out;
         }
     }
@@ -276,14 +273,21 @@ connect_frontend(vbd_t *device) {
 
         /*
          * FIXME blkback writes discard-granularity, discard-alignment,
-         * discard-secure, feature-discard, feature-barrier but we don't.
+         * discard-secure, feature-discard but we don't.
          */
 
         /*
-         * Write the number of sectors, sector size, and info to the
-         * back-end path in XenStore so that the front-end creates a VBD
-         * with the appropriate characteristics.
+		 * Write the number of sectors, sector size, info, and barrier support
+		 * to the back-end path in XenStore so that the front-end creates a VBD
+		 * with the appropriate characteristics.
          */
+        if ((err = tapback_device_printf(device, xst, "feature-barrier", true,
+                        "%d", device->backend->barrier ? 1 : 0))) {
+            WARN(device, "failed to write feature-barrier: %s\n",
+					strerror(-err));
+            break;
+        }
+
         if ((err = tapback_device_printf(device, xst, "sector-size", true,
                         "%u", device->sector_size))) {
             WARN(device, "failed to write sector-size: %s\n", strerror(-err));
@@ -332,9 +336,12 @@ out:
 
 /*
  * Returns 0 on success, a positive error code otherwise.
+ *
+ * If tapdisk is not yet available (the physical-device key has not yet been
+ * written), ESRCH is returned.
  */
 static inline int
-connect(vbd_t *device) {
+xenbus_connect(vbd_t *device) {
     int err;
 
     ASSERT(device);
@@ -416,7 +423,7 @@ frontend_changed(vbd_t * const device, const XenbusState state)
 {
     int err = 0;
 
-    DBG(device, "front-end went into state %s\n", xenbus_strstate(state));
+    DBG(device, "front-end switched to state %s\n", xenbus_strstate(state));
 	device->frontend_state = state;
 
     switch (state) {
@@ -426,12 +433,15 @@ frontend_changed(vbd_t * const device, const XenbusState state)
             break;
         case XenbusStateInitialised:
     	case XenbusStateConnected:
-            /*
-             * Already connected when the front-end switched to Initialising?
-             */
-            if (device->hotplug_status_connected
-					&& device->state != XenbusStateConnected)
-                err = connect(device);
+            if (!device->hotplug_status_connected)
+                DBG(device, "udev scripts haven't yet run\n");
+            else {
+                if (device->state != XenbusStateConnected) {
+                    DBG(device, "connecting to front-end\n");
+                    err = xenbus_connect(device);
+                } else
+                    DBG(device, "already connected\n");
+            }
             break;
         case XenbusStateClosing:
             err = xenbus_switch_state(device, XenbusStateClosing);
@@ -439,9 +449,12 @@ frontend_changed(vbd_t * const device, const XenbusState state)
         case XenbusStateClosed:
             err = backend_close(device);
             break;
+        case XenbusStateUnknown:
+            err = 0;
+            break;
         default:
             err = EINVAL;
-            WARN(device, "invalid front-end state %d", state);
+            WARN(device, "invalid front-end state %d\n", state);
             break;
     }
     return err;
@@ -495,8 +508,7 @@ tapback_backend_handle_otherend_watch(backend_t *backend,
                     device->backend->name, device->domid, device->devid);
             if (err == -1) {
                 err = errno;
-                WARN(device, "failed to asprintf for %d/%d: %s\n",
-                        strerror(err));
+                WARN(device, "failed to asprintf: %s\n", strerror(err));
                 goto out;
             }
             err = 0;
@@ -521,4 +533,19 @@ out:
     free(s);
     free(_path);
     return err;
+}
+
+struct backend_slave*
+tapback_find_slave(const backend_t *master, const domid_t domid) {
+
+    struct backend_slave _slave, **__slave = NULL;
+
+    ASSERT(master);
+
+    _slave.master.domid = domid;
+
+    __slave = tfind(&_slave, &master->master.slaves, compare);
+    if (!__slave)
+        return NULL;
+    return *__slave;
 }

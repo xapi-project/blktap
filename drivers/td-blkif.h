@@ -26,11 +26,13 @@
 #include <xen/io/xenbus.h>
 #include <xen/event_channel.h>
 #include <xen/grant_table.h>
+#include <stdbool.h>
 
 #include "xen_blkif.h"
 #include "td-req.h"
 #include "td-stats.h"
 #include "tapdisk-vbd.h"
+#include "tapdisk-utils.h"
 
 struct td_xenio_ctx;
 struct td_vbd_handle;
@@ -58,6 +60,8 @@ struct td_xenblkif {
 	 * allows struct td_blkif's to be linked into lists, for whomever needs to
 	 * maintain multiple struct td_blkif's
 	 */
+    struct list_head entry_ctx;
+
     struct list_head entry;
 
     /**
@@ -120,7 +124,66 @@ struct td_xenblkif {
      * stats
      */
     struct td_xenblkif_stats stats;
+
+    struct {
+        /**
+         * Root directory of the stats.
+         */
+        char *root;
+
+        /**
+         * Xenbus ring
+         */
+        struct shm io_ring;
+
+        /**
+         * blkback-style stats. We keep all seven of them in a single file
+         * because keeping each one in a separate file requires an entire
+         * page because of mmap(2). The order is: ds_req, f_req, oo_req,
+         * rd_req, rd_sect, wr_req, and wr_sect.
+         */
+        struct shm stats;
+
+        time_t last;
+    } xenvbd_stats;
+
+    /**
+     * Request buffer cache.
+     */
+    void **reqs_bufcache;
+    unsigned n_reqs_bufcache_free;
+    event_id_t reqs_bufcache_evtid;
+
+	bool dead;
+
+	struct {
+		/**
+		 * Pointer to he pending barrier request.
+		 */
+		blkif_request_t *msg;
+
+		/**
+		 * Tells whether the write I/O part of a barrier request (if any) has
+		 * completed.
+		 */
+		bool io_done;
+
+		/**
+		 * I/O error code for the write I/O part of a barrier request (if any).
+		 */
+		int io_err;
+	} barrier;
+
+	event_id_t chkrng_event;
 };
+
+#define RING_DEBUG(blkif, fmt, args...)                                     \
+    DPRINTF("%d/%d, ring=%p: "fmt, (blkif)->domid, (blkif)->devid, (blkif), \
+        ##args);
+
+#define RING_ERR(blkif, fmt, args...)                                       \
+    EPRINTF("%d/%d, ring=%p: "fmt, (blkif)->domid, (blkif)->devid, (blkif), \
+        ##args);
 
 /* TODO rename from xenio */
 #define tapdisk_xenio_for_each_ctx(_ctx) \
@@ -164,12 +227,13 @@ tapdisk_xenblkif_disconnect(const domid_t domid, const int devid);
  *
  * @param blkif the block interface to destroy
  */
-void
+int
 tapdisk_xenblkif_destroy(struct td_xenblkif * blkif);
 
 /**
  * Searches all block interfaces in all contexts for a block interface
- * having the specified domain and device ID.
+ * having the specified domain and device ID. Dead block interfaces are
+ * ignored.
  *
  * @param domid the domain ID
  * @param devid the device ID
@@ -178,7 +242,57 @@ tapdisk_xenblkif_destroy(struct td_xenblkif * blkif);
 struct td_xenblkif *
 tapdisk_xenblkif_find(const domid_t domid, const int devid);
 
-event_id_t
-tapdisk_xenblkif_event_id(const struct td_xenblkif *blkif);
+/**
+ * Returns the event ID associated with the event channel. Since the event
+ * channel can be shared by multiple block interfaces, the event ID will be
+ * shared as well.
+ */
+extern inline event_id_t
+tapdisk_xenblkif_evtchn_event_id(const struct td_xenblkif *blkif);
+
+/**
+ * Returns the event ID associated wit checking the ring. This is a private
+ * event.
+ */
+extern inline event_id_t
+tapdisk_xenblkif_chkrng_event_id(const struct td_xenblkif * const blkif);
+
+/**
+ * Updates ring stats.
+ */
+int
+tapdisk_xenblkif_ring_stats_update(struct td_xenblkif *blkif);
+
+/**
+ * Suspends the operation of the ring. NB the operation of the ring might
+ * have been already suspended.
+ */
+void
+tapdisk_xenblkif_suspend(struct td_xenblkif * const blkif);
+
+/**
+ * Resumes the operation of the ring.
+ */
+void
+tapdisk_xenblkif_resume(struct td_xenblkif * const blkif);
+
+/**
+ * Tells how many requests are pending.
+ */
+int
+tapdisk_xenblkif_reqs_pending(const struct td_xenblkif * const blkif);
+
+/**
+ * Schedules a ring check.
+ */
+void
+tapdisk_xenblkif_sched_chkrng(const struct td_xenblkif *blkif);
+
+/**
+ * Tells whether a barrier request can be completed.
+ */
+bool
+tapdisk_xenblkif_barrier_should_complete(
+		const struct td_xenblkif * const blkif);
 
 #endif /* __TD_BLKIF_H__ */

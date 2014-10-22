@@ -32,25 +32,9 @@
 #include "tapdisk.h"
 #include "tapdisk-driver.h"
 #include "tapdisk-interface.h"
+#include "block-aio.h"
 
-#define MAX_AIO_REQS         TAPDISK_DATA_REQUESTS
 
-struct tdaio_state;
-
-struct aio_request {
-	td_request_t         treq;
-	struct tiocb         tiocb;
-	struct tdaio_state  *state;
-};
-
-struct tdaio_state {
-	int                  fd;
-	td_driver_t         *driver;
-
-	int                  aio_free_count;	
-	struct aio_request   aio_requests[MAX_AIO_REQS];
-	struct aio_request  *aio_free_list[MAX_AIO_REQS];
-};
 
 /*Get Image size, secsize*/
 static int tdaio_get_image_info(int fd, td_disk_info_t *info)
@@ -180,8 +164,8 @@ void tdaio_queue_read(td_driver_t *driver, td_request_t treq)
 	struct tdaio_state *prv;
 
 	prv    = (struct tdaio_state *)driver->data;
-	size   = treq.secs * driver->info.sector_size;
-	offset = treq.sec  * (uint64_t)driver->info.sector_size;
+	size   = treq.secs * SECTOR_SIZE;
+	offset = treq.sec  * (uint64_t)SECTOR_SIZE;
 
 	if (prv->aio_free_count == 0)
 		goto fail;

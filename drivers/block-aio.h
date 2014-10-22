@@ -17,17 +17,32 @@
  * USA.
  */
 
-#include "compiler.h"
-#include <stdarg.h>
-#include <syslog.h>
+#ifndef __BLOCK_AIO_H__
+#define __BLOCK_AIO_H__
 
-void (*tapback_vlog) (int prio, const char *fmt, va_list ap) = vsyslog;
+#include "tapdisk.h"
+#include "tapdisk-queue.h"
 
-__printf(2, 3) void
-tapback_log(int prio, const char *fmt, ...)
-{
-    va_list ap;
-    va_start(ap, fmt);
-    tapback_vlog(prio, fmt, ap);
-    va_end(ap);
-}
+
+#define MAX_AIO_REQS         TAPDISK_DATA_REQUESTS
+
+struct tdaio_state;
+
+struct aio_request {
+	td_request_t         treq;
+	struct tiocb         tiocb;
+	struct tdaio_state  *state;
+};
+
+struct tdaio_state {
+	int                  fd;
+	td_driver_t         *driver;
+
+	int                  aio_free_count;
+	struct aio_request   aio_requests[MAX_AIO_REQS];
+	struct aio_request  *aio_free_list[MAX_AIO_REQS];
+};
+
+void tdaio_complete(void *arg, struct tiocb *tiocb, int err);
+
+#endif
