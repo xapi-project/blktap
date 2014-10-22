@@ -1757,6 +1757,8 @@ tapdisk_vbd_stats(td_vbd_t *vbd, td_stats_t *st)
 {
 	td_image_t *image, *next;
     struct td_xenblkif *blkif;
+	const bool read_caching =
+		TD_OPEN_NO_O_DIRECT == (vbd->flags & TD_OPEN_NO_O_DIRECT);
 
 	tapdisk_stats_enter(st, '{');
 	tapdisk_stats_field(st, "name", "s", vbd->name);
@@ -1798,6 +1800,10 @@ tapdisk_vbd_stats(td_vbd_t *vbd, td_stats_t *st)
 	tapdisk_stats_field(st,
 			"reqs_outstanding",
 			"d", tapdisk_vbd_reqs_outstanding(vbd));
+
+	tapdisk_stats_field(st,
+			"read_caching",
+			"s",  read_caching ? "true": "false");
 
 	tapdisk_stats_leave(st, '}');
 }
