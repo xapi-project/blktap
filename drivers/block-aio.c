@@ -192,8 +192,8 @@ void tdaio_queue_write(td_driver_t *driver, td_request_t treq)
 	struct tdaio_state *prv;
 
 	prv     = (struct tdaio_state *)driver->data;
-	size    = treq.secs * driver->info.sector_size;
-	offset  = treq.sec  * (uint64_t)driver->info.sector_size;
+	size    = treq.secs * SECTOR_SIZE;
+	offset  = treq.sec  * (uint64_t)SECTOR_SIZE;
 
 	if (prv->aio_free_count == 0)
 		goto fail;
