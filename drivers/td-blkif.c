@@ -512,10 +512,10 @@ tapdisk_xenblkif_ring_stats_update(struct td_xenblkif *blkif)
     ASSERT(blkif->xenvbd_stats.io_ring.mem);
 
     /*
-     * Update the ring stats once every five seconds.
+     * Update the ring stats once every three seconds.
      */
     t = time(NULL);
-	if (t - blkif->xenvbd_stats.last < 5)
+	if (t - blkif->xenvbd_stats.last < 3)
 		return 0;
 	blkif->xenvbd_stats.last = t;
 
