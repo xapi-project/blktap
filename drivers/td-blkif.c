@@ -23,6 +23,7 @@
 #include <xenctrl.h>
 #include <unistd.h>
 #include <libgen.h>
+#include <zlib.h>
 
 #include "debug.h"
 #include "blktap3.h"
@@ -514,6 +515,7 @@ tapdisk_xenblkif_ring_stats_update(struct td_xenblkif *blkif)
     time_t t;
     int err = 0, len;
 	struct blkif_common_back_ring *ring = NULL;
+	uLong *chksum = NULL;
 
     if (!blkif)
         return 0;
@@ -532,7 +534,7 @@ tapdisk_xenblkif_ring_stats_update(struct td_xenblkif *blkif)
 		return 0;
 	blkif->xenvbd_stats.last = t;
 
-    len = snprintf(blkif->xenvbd_stats.io_ring.mem,
+    len = snprintf(blkif->xenvbd_stats.io_ring.mem + sizeof(*chksum),
             blkif->xenvbd_stats.io_ring.size,
             "nr_ents %u\n"
             "req prod %u cons %d event %u\n"
@@ -542,16 +544,21 @@ tapdisk_xenblkif_ring_stats_update(struct td_xenblkif *blkif)
             ring->sring->rsp_prod, ring->rsp_prod_pvt, ring->sring->rsp_event);
     if (unlikely(len < 0))
         err = errno;
-    else if (unlikely(len >= blkif->xenvbd_stats.io_ring.size))
+    else if (unlikely(len + sizeof(uLong) >= blkif->xenvbd_stats.io_ring.size))
         err = ENOBUFS;
     else {
-        err = ftruncate(blkif->xenvbd_stats.io_ring.fd, len);
+        err = ftruncate(blkif->xenvbd_stats.io_ring.fd, len + sizeof(*chksum));
         if (unlikely(err)) {
             err = errno;
-            EPRINTF("failed to truncate %s to %d: %s\n",
-                    blkif->xenvbd_stats.io_ring.path, len, strerror(err));
+            EPRINTF("failed to truncate %s to %lu: %s\n",
+                    blkif->xenvbd_stats.io_ring.path, len + sizeof(*chksum),
+					strerror(err));
         }
     }
+
+	chksum = blkif->xenvbd_stats.io_ring.mem;
+	*chksum = crc32(0L, blkif->xenvbd_stats.io_ring.mem + sizeof(*chksum),
+			len);
 
     return -err;
 }
