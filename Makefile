@@ -173,6 +173,7 @@ install: precheck
 	install -m 755 -d $(SM_STAGING)$(CRON_DEST)
 	install -m 644 $(CRON_JOBS:%=etc/cron.d/%) -t $(SM_STAGING)$(CRON_DEST)
 	ln -sf $(SM_DEST)lcache.py $(SM_STAGING)$(BIN_DEST)tapdisk-cache-stats
+	ln -sf /dev/null $(SM_STAGING)$(UDEV_RULES_DIR)/62-multipath.rules
 
 .PHONY: clean
 clean:

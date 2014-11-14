@@ -269,6 +269,7 @@ cp -f /etc/lvm/lvm.conf.orig /etc/lvm/lvm.conf || exit $?
 /sbin/mpathutil
 /etc/rc.d/init.d/sm-multipath
 %config /etc/udev/rules.d/40-multipath.rules
+%config /etc/udev/rules.d/62-multipath.rules
 %config /etc/multipath.xenserver/multipath.conf
 
 
