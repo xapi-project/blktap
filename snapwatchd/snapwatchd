@@ -45,7 +45,7 @@ SNAP_GC_VDI_TASK_TAG = "VDI"
 SNAP_GC_FIELD_SEPARATOR = ":"
 SNAP_GC_TIME_INTERVAL = 60
 TASK_NAME_PREFIX = "OpaqueRef:"
-LIST_DOMAINS_BIN = "/opt/xensource/bin/list_domains"
+LIST_DOMAINS_BIN = "list_domains"
 
 def help():
     print "snapwatchd version %s:\n" % VERSION
