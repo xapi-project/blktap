@@ -21,9 +21,7 @@ class TestStandaloneFunctions(unittest.TestCase):
             mock_reduce,
             mock_SMlog):
 
-        """ Assert that any arbitrary exception raised and with a big
-            message length is logged to SMlog. Only the first line of
-            the message is asserted (traceback ommited).
+        """ Assert that any arbitrary exception raised and with a big message length is logged to SMlog. Only the first line of the message is asserted (traceback ommited).
         """
 
         from random import choice
@@ -69,8 +67,7 @@ class TestStandaloneFunctions(unittest.TestCase):
             mock_run_statics,
             mock_logException):
 
-        """ If an SR.SRException is thrown, assert that
-            "print <SR.SRException instance>.toxml()" is called.
+        """ If an SR.SRException is thrown, assert that print <SR.SRException instance>.toxml()" is called.
         """
 
         import sys
@@ -118,8 +115,7 @@ class TestStandaloneFunctions(unittest.TestCase):
             mock_run_statics,
             mock_logException):
 
-        """ If an exception other than SR.SRException
-            is thrown, assert that it is re-raised.
+        """ If an exception other than SR.SRException is thrown, assert that it is re-raised.
         """
 
         from DummySR import DRIVER_INFO
