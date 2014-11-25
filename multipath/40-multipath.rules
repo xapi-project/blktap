@@ -8,4 +8,5 @@ PROGRAM!="/sbin/dmsetup info -c -o uuid,name --separator ' ' --noheadings -j %M 
 RESULT!="mpath-*", GOTO="end_mpath"
 # ENV is necessary otherwise the child process of mpathcount cannot find multipathd executable
 ACTION=="change", ENV{PATH}="/sbin:/bin:/usr/sbin:/usr/bin", RUN+="/opt/xensource/sm/mpathcount.py %c{2}"
+RUN+="/usr/sbin/kpartx -a $tempnode"
 LABEL="end_mpath"
