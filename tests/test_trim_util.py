@@ -116,7 +116,7 @@ class TestTrimUtil(unittest.TestCase, testlib.XmlMixIn):
 
         lvutil.create.assert_called_once_with(
             'some-uuid_trim_lv', 0, 'VG_XenStorage-some-uuid',
-            size_in_percentage='100%F', activate=True
+            size_in_percentage='100%F'
         )
 
     @mock.patch('trim_util.lvutil')
