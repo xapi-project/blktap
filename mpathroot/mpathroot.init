@@ -16,6 +16,33 @@ XAPI_INIT_COMPLETE_COOKIE=/var/run/xapi_init_complete.cookie
 
 TAG=mpathroot
 
+#
+# This block of functions is taken from dracut
+#
+find_block_device() {
+    local rootdev blkdev fs type opts misc
+    while read blkdev fs type opts misc; do
+        [[ $blkdev = rootfs ]] && continue # skip rootfs entry
+        [[ $fs = $1 ]] && { rootdev=$blkdev; break; } # we have a winner!
+    done < /proc/mounts
+    [[ -b $rootdev ]] || return 1 # oops, not a block device.
+    # get major/minor for the device
+    ls -nLl "$rootdev" | \
+        (read x x x x maj min x; maj=${maj//,/}; echo $maj:$min)
+}
+
+find_root_block_device() { find_block_device /; }
+
+is_mpath() {
+    [ -e /sys/dev/block/$1/dm/uuid ] || return 1
+    # we modified the matching pattern: ^mpath did not work
+    [[ $(cat /sys/dev/block/$1/dm/uuid) =~ mpath- ]] && return 0
+    return 1
+}
+
+#
+# End of block
+
 wait_for_xapi() {
     MAX_RETRIES=300
     RETRY=0
@@ -35,10 +62,8 @@ wait_for_xapi() {
 }
 
 start() {
-	ROOT_PART_MAJOR=$(stat --format=%t /dev/root)
-	DEVICE_MAPPER_MAJOR=$(sed -ne 's/^\([0-9]\+\) device-mapper$/\1/p' /proc/devices)
-	DEVICE_MAPPER_MAJOR_HEX=$(printf "%x" ${DEVICE_MAPPER_MAJOR})
-	if [ "$ROOT_PART_MAJOR" == "$DEVICE_MAPPER_MAJOR_HEX" ] ; then
+	ROOT_PART=$(find_root_block_device)
+	if is_mpath $ROOT_PART; then
 		logger -t "${TAG}" "Updating multipath root status"
 		echo -n $"Updating multipath root status: "
 		if wait_for_xapi; then
@@ -64,6 +89,7 @@ start)
 	start
 	;;
 stop)
+	exit 0
 	;;
 restart)
 	restart
