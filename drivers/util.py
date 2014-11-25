@@ -287,9 +287,9 @@ def ioretry(f, errlist=[errno.EIO], maxretry=IORETRY_MAX, period=IORETRY_PERIOD,
         try:
             return f()
         except OSError, inst:
-             errno = int(inst.errno)
-             if not errno in errlist:
-                 raise CommandException(errno, str(f), "OSError")
+             err = int(inst.errno)
+             if not err in errlist:
+                 raise CommandException(err, str(f), "OSError")
         except CommandException, inst:
             if not int(inst.code) in errlist:
                 raise
