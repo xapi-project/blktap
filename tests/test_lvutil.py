@@ -78,24 +78,6 @@ class TestCreate(unittest.TestCase):
         created_lv, = lvsystem.get_logical_volumes_with_name('volume')
         self.assertEquals('hello', created_lv.tag)
 
-    @with_lvm_subsystem
-    def test_create_creates_logical_volume_inactive(self, lvsystem):
-        lvsystem.add_volume_group('vgroup')
-
-        lvutil.create('volume', ONE_MEGABYTE, 'vgroup', activate=False)
-
-        created_lv, = lvsystem.get_logical_volumes_with_name('volume')
-        self.assertFalse(created_lv.active)
-
-    @with_lvm_subsystem
-    def test_create_inactive_volume_is_not_zeroed(self, lvsystem):
-        lvsystem.add_volume_group('vgroup')
-
-        lvutil.create('volume', ONE_MEGABYTE, 'vgroup', activate=False)
-
-        created_lv, = lvsystem.get_logical_volumes_with_name('volume')
-        self.assertFalse(created_lv.zeroed)
-
     @mock.patch('util.pread2')
     def test_create_percentage_has_precedence_over_size(self, mock_pread2):
         lvutil.create('volume', ONE_MEGABYTE, 'vgroup',

@@ -400,8 +400,7 @@ def setActiveVG(path, active):
     cmd = [CMD_VGCHANGE, "-a" + val, path]
     text = util.pread2(cmd)
 
-def create(name, size, vgname, tag=None, activate=True, 
-           size_in_percentage=None):
+def create(name, size, vgname, tag=None, size_in_percentage=None):
     if size_in_percentage:
         cmd = [CMD_LVCREATE, "-n", name, "-l", size_in_percentage, vgname]
     else:
