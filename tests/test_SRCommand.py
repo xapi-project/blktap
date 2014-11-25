@@ -54,9 +54,7 @@ class TestStandaloneFunctions(unittest.TestCase):
             # test, as it is re-raised after it is logged.
             pass
 
-        self.assertEqual(self.smlog_out,
-                        ('***** dummy: EXCEPTION test_SRCommand.'
-                         'SomeException, ' + rand_huge_msg))
+        self.assertTrue(rand_huge_msg in self.smlog_out)
 
     @mock.patch('util.logException')
     @mock.patch('SRCommand.SRCommand.run_statics')
