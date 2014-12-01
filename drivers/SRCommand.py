@@ -185,7 +185,8 @@ class SRCommand:
         caching_params = dict((k, self.params.get(k)) for k in \
                 [blktap2.VDI.CONF_KEY_ALLOW_CACHING,
                  blktap2.VDI.CONF_KEY_MODE_ON_BOOT,
-                 blktap2.VDI.CONF_KEY_CACHE_SR])
+                 blktap2.VDI.CONF_KEY_CACHE_SR,
+                 blktap2.VDI.CONF_KEY_O_DIRECT])
 
         if self.cmd == 'vdi_create':
             # These are the fields owned by the backend, passed on the
@@ -347,8 +348,20 @@ def run(driver, driver_info):
             print util.return_nil ()
         else:
             print ret
-        sys.exit(0)
-        
-    except SR.SRException, inst:
-        print inst.toxml()
-        sys.exit(0)
+
+    except Exception, e:
+        try:
+            util.logException(driver_info['name'])
+        except KeyError:
+            util.SMlog('driver_info does not contain a \'name\' key.')
+        except:
+            pass
+
+        # If exception is of type SR.SRException,
+        # pass to xapi, else re-raise.
+        if isinstance(e, SR.SRException):
+            print e.toxml()
+        else:
+            raise
+
+    sys.exit(0)

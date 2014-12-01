@@ -43,25 +43,40 @@ SOFTMOUNT_RETRANS  = 0x7fffffff
 RPCINFO_BIN = "/usr/sbin/rpcinfo"
 SHOWMOUNT_BIN = "/usr/sbin/showmount"
 
+DEFAULT_NFSVERSION = '3'
+
+NFS_VERSION = [
+    'nfsversion', 'for type=nfs, NFS protocol version - 3, 4 (optional)']
+
 
 class NfsException(Exception):
     def __init__(self, errstr):
         self.errstr = errstr
 
 
-def check_server_tcp(server):
+def check_server_tcp(server, nfsversion=DEFAULT_NFSVERSION):
     """Make sure that NFS over TCP/IP V3 is supported on the server. 
     Returns True if everything is OK, False otherwise."""
     try:
         util.ioretry(lambda: util.pread([RPCINFO_BIN,"-t", 
-                                         "%s" % server, "nfs","3"]), 
+                                         "%s" % server, "nfs", nfsversion]),
                      errlist=[errno.EPERM], maxretry=2, nofail=True)
     except util.CommandException, inst:
         raise NfsException("rpcinfo failed or timed out: return code %d" % 
                            inst.code)
 
 
-def soft_mount(mountpoint, remoteserver, remotepath, transport, timeout = 0):
+def validate_nfsversion(nfsversion):
+    if not nfsversion:
+        nfsversion = DEFAULT_NFSVERSION
+    else:
+        if nfsversion not in ['3', '4']:
+            raise NfsException("Invalid nfsversion.")
+    return nfsversion
+
+
+def soft_mount(mountpoint, remoteserver, remotepath, transport, timeout=0,
+               nfsversion=DEFAULT_NFSVERSION):
     """Mount the remote NFS export at 'mountpoint'.
     The 'timeout' param here is in seconds"""
     try:
@@ -71,17 +86,22 @@ def soft_mount(mountpoint, remoteserver, remotepath, transport, timeout = 0):
         raise NfsException("Failed to make directory: code is %d" % 
                             inst.code)
 
+    mountcommand = 'mount.nfs'
+    if nfsversion == '4':
+        mountcommand = 'mount.nfs4'
+
     if timeout < 1:
         timeout = SOFTMOUNT_TIMEOUT
 
-    options = "soft,timeo=%d,retrans=%d,%s" % (timeout * 10,
+    options = "soft,timeo=%d,retrans=%d,proto=%s" % (
+                                               timeout * 10,
                                                SOFTMOUNT_RETRANS,
                                                transport)
-    options += ',actimeo=0'
+    options += ',acdirmin=0,acdirmax=0'
 
     try:
         util.ioretry(lambda: 
-                     util.pread(["mount.nfs", "%s:%s" 
+                     util.pread([mountcommand, "%s:%s"
                                  % (remoteserver, remotepath),  
                                  mountpoint, "-o", options]),
                                  errlist=[errno.EPIPE, errno.EIO], 

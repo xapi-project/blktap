@@ -287,9 +287,9 @@ def ioretry(f, errlist=[errno.EIO], maxretry=IORETRY_MAX, period=IORETRY_PERIOD,
         try:
             return f()
         except OSError, inst:
-             errno = int(inst.errno)
-             if not errno in errlist:
-                 raise CommandException(errno, str(f), "OSError")
+             err = int(inst.errno)
+             if not err in errlist:
+                 raise CommandException(err, str(f), "OSError")
         except CommandException, inst:
             if not int(inst.code) in errlist:
                 raise
@@ -313,6 +313,21 @@ def ioretry_stat(f, maxretry=IORETRY_MAX):
         time.sleep(1)
         retries += 1
     raise CommandException(errno.EIO, str(f))
+
+def sr_get_capability(sr_uuid):
+    result = []
+    session = get_localAPI_session()
+    sr_ref = session.xenapi.SR.get_by_uuid(sr_uuid)
+    sm_type = session.xenapi.SR.get_record(sr_ref)['type']
+    sm_rec = session.xenapi.SM.get_all_records_where( \
+                              "field \"type\" = \"%s\"" % sm_type)
+
+    # SM expects atleast one entry of any SR type
+    if len(sm_rec) > 0:
+        result = sm_rec.values()[0]['capabilities']
+    
+    session.xenapi.logout()
+    return result
 
 def sr_get_driver_info(driver_info):
     results = {}
@@ -1673,3 +1688,18 @@ def open_atomic(path, mode=None):
 def isInvalidVDI(exception):
     return exception.details[0] == "HANDLE_INVALID" or \
             exception.details[0] == "UUID_INVALID"
+
+def get_pool_restrictions(session):
+    """Returns pool restrictions as a map, @session must be already
+    established."""
+    return session.xenapi.pool.get_all_records().values()[0]['restrictions']
+
+def read_caching_is_restricted(session):
+    """Tells whether read caching is restricted."""
+    if session is None or (isinstance(session, str) and session == ""):
+        return True
+    restrictions = get_pool_restrictions(session)
+    if 'restrict_read_caching' in restrictions and \
+            restrictions['restrict_read_caching'] == "true":
+        return True
+    return False

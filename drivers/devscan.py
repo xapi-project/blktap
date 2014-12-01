@@ -29,12 +29,19 @@ SYSFS_PATH3='/sys/class/fc_transport'
 
 DRIVER_BLACKLIST = ['^(s|p|)ata_.*', '^ahci$', '^pdc_adma$', '^iscsi_tcp$']
 
+INVALID_DEVICE_NAME = ''
+
 def getManufacturer(s):
     (rc,stdout,stderr) = util.doexec(['/sbin/modinfo', '-d', s])
     if stdout:
         return stdout.strip()
     else:
         return "Unknown"
+
+def update_devs_dict(devs, dev, entry):
+    if dev != INVALID_DEVICE_NAME:
+        devs[dev] = entry
+
 
 def adapters(filterstr="any"):
     dict = {}
@@ -73,7 +80,7 @@ def adapters(filterstr="any"):
                     else:
                         dir = os.path.join(sysfs,lun,"device")
                     (dev, entry) = _extract_dev(dir, proc, id, lun)
-                    devs[dev] = entry
+                    update_devs_dict(devs, dev, entry)
             # for new qlogic sysfs layout (rport under device, then target)
             for i in filter(match_rport,os.listdir(path)):
                 newpath = os.path.join(path, i)
@@ -85,7 +92,7 @@ def adapters(filterstr="any"):
                             continue
                         dir = os.path.join(sysfs,lun,"device")
                         (dev, entry) = _extract_dev(dir, proc, id, lun)
-                        devs[dev] = entry
+                        update_devs_dict(devs, dev, entry)
 
             # for new mptsas sysfs entries, check for phy* node
             for i in filter(match_phy,os.listdir(path)):
@@ -97,7 +104,7 @@ def adapters(filterstr="any"):
                         continue
                     dir = os.path.join(sysfs,lun,"device")
                     (dev, entry) = _extract_dev(dir, proc, id, lun)
-                    devs[dev] = entry
+                    update_devs_dict(devs, dev, entry)
             if path.startswith(SYSFS_PATH2):
                 os.path.join(path,"device","block:*")
                 dev = _extract_dev_name(os.path.join(path, 'device'))
@@ -106,7 +113,7 @@ def adapters(filterstr="any"):
                 hbtl = os.path.basename(path)
                 (h,b,t,l) = hbtl.split(':')
                 entry = {'procname':proc, 'host':id, 'target':l}
-                devs[dev] = entry
+                update_devs_dict(devs, dev, entry)
 
     dict['devs'] = devs
     dict['adt'] = adt
@@ -223,12 +230,19 @@ def _extract_dev_name(device_dir):
         return dev.lstrip('block:')
     elif kernel_version.startswith('3.'):
         # directory for device name lives inside block directory e.g. block/sdx
-        dev = glob.glob(os.path.join(device_dir, 'block/*'))[0]
-        # prune path to extract the device name
-        return os.path.basename(dev)
+
+        return _get_block_device_name_with_kernel_3x(device_dir)
     else:
         msg = 'Kernel version detected: %s' % kernel_version
         raise xs_errors.XenError('UnsupportedKernel', msg)
+
+def _get_block_device_name_with_kernel_3x(device_dir):
+    devs = glob.glob(os.path.join(device_dir, 'block/*'))
+    if len(devs):
+        # prune path to extract the device name
+        return os.path.basename(devs[0])
+    else:
+        return INVALID_DEVICE_NAME
 
 def _extract_dev(device_dir, procname, host, target):
     """Returns device name and creates dictionary entry for it"""

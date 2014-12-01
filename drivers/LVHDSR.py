@@ -52,7 +52,7 @@ import glob
 DEV_MAPPER_ROOT = os.path.join('/dev/mapper', lvhdutil.VG_PREFIX)
 
 geneology = {}
-CAPABILITIES = ["SR_PROBE","SR_UPDATE",
+CAPABILITIES = ["SR_PROBE","SR_UPDATE", "SR_TRIM",
         "VDI_CREATE","VDI_DELETE","VDI_ATTACH", "VDI_DETACH",
         "VDI_CLONE", "VDI_SNAPSHOT", "VDI_RESIZE", "ATOMIC_PAUSE",
         "VDI_RESET_ON_BOOT/2", "VDI_UPDATE"]
@@ -542,10 +542,47 @@ class LVHDSR(SR.SR):
             raise xs_errors.XenError('LVMMaster')
         cleanup.gc_force(self.session, self.uuid)
 
+        success = True
+        for fileName in \
+            filter(lambda x: util.extractSRFromDevMapper(x) == self.uuid, \
+                glob.glob(DEV_MAPPER_ROOT + '*')):
+            if util.doesFileHaveOpenHandles(fileName):
+                util.SMlog("LVHDSR.delete: The dev mapper entry %s has open " \
+                           "handles" % fileName)
+                success = False
+                continue
+
+            # Now attempt to remove the dev mapper entry
+            if not lvutil.removeDevMapperEntry(fileName):
+                success = False
+                continue
+
+            try:
+                lvname = os.path.basename(fileName.replace('-','/').\
+                                          replace('//', '-'))
+                os.unlink(os.path.join(self.path, lvname))
+            except Exception, e:
+                util.SMlog("LVHDSR.delete: failed to remove the symlink for " \
+                           "file %s. Error: %s" % (fileName, str(e)))
+                success = False
+
+        if success:
+            try:
+                if util.pathexists(self.path):
+                    os.rmdir(self.path)
+            except Exception, e:
+                util.SMlog("LVHDSR.delete: failed to remove the symlink " \
+                           "directory %s. Error: %s" % (self.path, str(e)))
+                success = False
+
         self._removeMetadataVolume()
         self.lvmCache.refresh()
         if len(lvhdutil.getLVInfo(self.lvmCache)) > 0:
             raise xs_errors.XenError('SRNotEmpty')
+
+        if not success:
+            raise Exception("LVHDSR delete failed, please refer to the log " \
+                            "for details.")
 
         lvutil.removeVG(self.root, self.vgname)
         self._cleanup()
@@ -1122,8 +1159,9 @@ class LVHDSR(SR.SR):
                 lvhdutil.deflate(self.lvmCache, vdi.lvname, int(val))
                 if vdi.readonly:
                     self.lvmCache.setReadonly(vdi.lvname, True)
-                lvhdutil.lvRefreshOnAllSlaves(self.session, self.uuid,
-                        self.vgname, vdi.lvname, uuid)
+                if "true" == self.session.xenapi.SR.get_shared(self.sr_ref):
+                    lvhdutil.lvRefreshOnAllSlaves(self.session, self.uuid,
+                            self.vgname, vdi.lvname, uuid)
             self.journaler.remove(lvhdutil.JRN_INFLATE, uuid)
         delattr(self,"vdiInfo")
         delattr(self,"allVDIs")
@@ -1313,13 +1351,18 @@ class LVHDVDI(VDI.VDI):
         self.sm_config = self.sr.srcmd.params["vdi_sm_config"]
         self.sr._ensureSpaceAvailable(lvSize)
 
-        self.sr.lvmCache.create(self.lvname, lvSize)
-        if self.vdi_type == vhdutil.VDI_TYPE_RAW:
-            self.size = self.sr.lvmCache.getSize(self.lvname)
-        else:
-            vhdutil.create(self.path, long(size), False, lvhdutil.MSIZE_MB)
-            self.size = vhdutil.getSizeVirt(self.path)
-        self.sr.lvmCache.deactivateNoRefcount(self.lvname)
+        try:
+            self.sr.lvmCache.create(self.lvname, lvSize)
+            if self.vdi_type == vhdutil.VDI_TYPE_RAW:
+                self.size = self.sr.lvmCache.getSize(self.lvname)
+            else:
+               vhdutil.create(self.path, long(size), False, lvhdutil.MSIZE_MB)
+               self.size = vhdutil.getSizeVirt(self.path)
+            self.sr.lvmCache.deactivateNoRefcount(self.lvname)
+        except util.CommandException, e:
+            util.SMlog("Unable to create VDI");
+            self.sr.lvmCache.remove(self.lvname)
+            raise xs_errors.XenError('VDICreate', opterr='error %d' % e.code)
 
         self.utilisation = lvSize
         self.sm_config["vdi_type"] = self.vdi_type
@@ -2083,12 +2126,7 @@ class LVHDVDI(VDI.VDI):
             self.session.xenapi.VDI.get_metadata_of_pool(vdi_ref)
         LVMMetadataHandler(self.sr.mdpath).updateMetadata(update_map)
 
-try:
-    if __name__ == '__main__':
-        SRCommand.run(LVHDSR, DRIVER_INFO)
-    else:
-        SR.registerSR(LVHDSR)
-except Exception:
-    util.logException("LVHD")
-    raise
-
+if __name__ == '__main__':
+    SRCommand.run(LVHDSR, DRIVER_INFO)
+else:
+    SR.registerSR(LVHDSR)

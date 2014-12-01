@@ -35,8 +35,9 @@ CAPABILITIES = ["SR_PROBE","SR_UPDATE", "SR_CACHING",
                 "VDI_GENERATE_CONFIG",
                 "VDI_RESET_ON_BOOT/2", "ATOMIC_PAUSE"]
 
-CONFIGURATION = [ [ 'server', 'hostname or IP address of NFS server (required)' ], \
-                  [ 'serverpath', 'path on remote server (required)' ] ]
+CONFIGURATION = [['server', 'hostname or IP address of NFS server (required)'],
+                 ['serverpath', 'path on remote server (required)'],
+                 nfs.NFS_VERSION]
 
                   
 DRIVER_INFO = {
@@ -83,13 +84,16 @@ class NFSSR(FileSR.FileSR):
         self.nosubdir = self.sm_config.get('nosubdir') == "true"
         if self.dconf.has_key('serverpath'):
             self.remotepath = os.path.join(self.dconf['serverpath'],
-                                           not self.nosubdir and sr_uuid or "")
+                    not self.nosubdir and sr_uuid or "").encode('utf-8')
         self.path = os.path.join(SR.MOUNT_BASE, sr_uuid)
 
-        # Test for the optional 'nfsoptions' dconf attribute
+        # Handle optional dconf attributes
         self.transport = DEFAULT_TRANSPORT
         if self.dconf.has_key('useUDP') and self.dconf['useUDP'] == 'true':
             self.transport = "udp"
+        self.nfsversion = nfs.validate_nfsversion(self.dconf.get('nfsversion'))
+
+        self._check_o_direct()
 
 
     def validate_remotepath(self, scan):
@@ -106,7 +110,7 @@ class NFSSR(FileSR.FileSR):
 
     def check_server(self):
         try:
-            nfs.check_server_tcp(self.remoteserver)
+            nfs.check_server_tcp(self.remoteserver, self.nfsversion)
         except nfs.NfsException, exc:
             raise xs_errors.XenError('NFSVersion',
                                      opterr=exc.errstr)
@@ -114,8 +118,9 @@ class NFSSR(FileSR.FileSR):
 
     def mount(self, mountpoint, remotepath, timeout = 0):
         try:
-            nfs.soft_mount(mountpoint, self.remoteserver, remotepath,
-                    self.transport, timeout)
+            nfs.soft_mount(
+                mountpoint, self.remoteserver, remotepath, self.transport,
+                timeout=timeout, nfsversion=self.nfsversion)
         except nfs.NfsException, exc:
             raise xs_errors.XenError('NFSMount', opterr=exc.errstr)
 
@@ -180,7 +185,7 @@ class NFSSR(FileSR.FileSR):
 
         # Set the target path temporarily to the base dir
         # so that we can create the target SR directory
-        self.remotepath = self.dconf['serverpath']
+        self.remotepath = self.dconf['serverpath'].encode('utf-8')
         try:
             self.mount_remotepath(sr_uuid)
         except Exception, exn:
@@ -216,7 +221,7 @@ class NFSSR(FileSR.FileSR):
 
             # Set the target path temporarily to the base dir
             # so that we can remove the target SR directory
-            self.remotepath = self.dconf['serverpath']
+            self.remotepath = self.dconf['serverpath'].encode('utf-8')
             self.mount_remotepath(sr_uuid)
             if not self.nosubdir:
                 newpath = os.path.join(self.path, sr_uuid)

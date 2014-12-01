@@ -29,8 +29,8 @@ import mpp_luncheck
 import scsiutil
 import xml.dom.minidom
 
-CAPABILITIES = ["SR_PROBE", "SR_UPDATE", "SR_METADATA", "VDI_CREATE",
-                "VDI_DELETE", "VDI_ATTACH", "VDI_DETACH",
+CAPABILITIES = ["SR_PROBE", "SR_UPDATE", "SR_METADATA", "SR_TRIM",
+                "VDI_CREATE", "VDI_DELETE", "VDI_ATTACH", "VDI_DETACH",
                 "VDI_GENERATE_CONFIG", "VDI_CLONE", "VDI_SNAPSHOT",
                 "VDI_RESIZE", "ATOMIC_PAUSE", "VDI_RESET_ON_BOOT/2",
                 "VDI_UPDATE"]
@@ -320,12 +320,8 @@ class LVHDoISCSISR(LVHDSR.LVHDSR):
         dom = xml.dom.minidom.Document()
         element = dom.createElement("iscsi-target")
         dom.appendChild(element)
-        # Omit the scsi-id used by iSL
-        isl_scsiids = util.get_isl_scsiids(self.session)
         for uuid in self.LUNs:
             val = self.LUNs[uuid]
-            if getattr(val,'SCSIid') in isl_scsiids:
-                continue
             entry = dom.createElement('LUN')
             element.appendChild(entry)
 

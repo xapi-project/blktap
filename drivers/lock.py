@@ -39,16 +39,35 @@ class Lock:
 
         # one directory per namespace
         self.nspath = os.path.join(Lock.BASE_DIR, self.ns)
-        self._mkdirs(self.nspath)
 
         # the lockfile inside that namespace directory per namespace
         self.lockpath = os.path.join(self.nspath, self.name)
-        if not os.path.exists(self.lockpath):
-            util.SMlog("lock: creating lock file %s" % self.lockpath)
-        self.lockfile = file(self.lockpath, "w+")
+
+        number_of_enoent_retries = 10
+
+        while True:
+            self._mkdirs(self.nspath)
+
+            try:
+                self._open_lockfile()
+            except IOError, e:
+                # If another lock within the namespace has already
+                # cleaned up the namespace by removing the directory,
+                # _open_lockfile raises an ENOENT, in this case we retry.
+                if e.errno == errno.ENOENT:
+                    if number_of_enoent_retries > 0:
+                        number_of_enoent_retries -= 1
+                        continue
+                raise
+            break
 
         fd = self.lockfile.fileno()
         self.lock = flock.WriteLock(fd)
+
+    def _open_lockfile(self):
+        """Provide a seam, so extreme situations could be tested"""
+        util.SMlog("lock: opening lock file %s" % self.lockpath)
+        self.lockfile = file(self.lockpath, "w+")
 
     def _close(self):
         """Close the lock, which implies releasing the lock."""
@@ -70,6 +89,7 @@ class Lock:
     _mknamespace = staticmethod(_mknamespace)
 
     def __init__(self, name, ns=None):
+        self.lockfile = None
 
         self.ns = Lock._mknamespace(ns)
 

@@ -70,6 +70,8 @@ class EXTSR(FileSR.FileSR):
         self.remotepath = os.path.join("/dev",self.vgname,sr_uuid)
         self.attached = self._checkmount()
 
+        self._check_o_direct()
+
     def delete(self, sr_uuid):
         super(EXTSR, self).delete(sr_uuid)
 

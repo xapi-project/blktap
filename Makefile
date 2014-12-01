@@ -56,6 +56,7 @@ SM_LIBS += lcache
 SM_LIBS += resetvdis
 SM_LIBS += B_util
 SM_LIBS += wwid_conf
+SM_LIBS += trim_util
 
 UDEV_RULES = 40-multipath
 MPATH_DAEMON = sm-multipath
@@ -158,6 +159,8 @@ install: precheck
 	install -m 755 drivers/tapdisk-pause $(SM_STAGING)$(PLUGIN_SCRIPT_DEST)
 	install -m 755 drivers/vss_control $(SM_STAGING)$(PLUGIN_SCRIPT_DEST)
 	install -m 755 drivers/intellicache-clean $(SM_STAGING)$(PLUGIN_SCRIPT_DEST)
+	install -m 755 drivers/enable-borehamwood $(SM_STAGING)$(SM_DEST)
+	install -m 755 drivers/trim $(SM_STAGING)$(PLUGIN_SCRIPT_DEST)
 	ln -sf $(PLUGIN_SCRIPT_DEST)vss_control $(SM_STAGING)$(SM_DEST)
 	install -m 755 drivers/iscsilib.py $(SM_STAGING)$(SM_DEST)
 	mkdir -p $(SM_STAGING)$(LIBEXEC)

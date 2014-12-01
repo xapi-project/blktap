@@ -958,6 +958,7 @@ class VDI(object):
     CONF_KEY_ALLOW_CACHING = "vdi_allow_caching"
     CONF_KEY_MODE_ON_BOOT = "vdi_on_boot"
     CONF_KEY_CACHE_SR = "local_cache_sr"
+    CONF_KEY_O_DIRECT = "o_direct"
     LOCK_CACHE_SETUP = "cachesetup"
 
     ATTACH_DETACH_RETRY_SECS = 120
@@ -998,6 +999,7 @@ class VDI(object):
             'iso'  : 'aio', # for ISO SR
             'aio'  : 'aio', # for LVHD
             'file' : 'aio',
+            'phy'  : 'aio'
             } [vdi_type]
 
     def get_tap_type(self):
@@ -1037,7 +1039,10 @@ class VDI(object):
             raise self.UnexpectedVDIType(vdi_type,
                                          self.target.vdi)
 
-        if plug_type == 'tap': return True
+        if plug_type == 'tap':
+            return True
+        elif self.target.vdi.sr.handles('udev'):
+            return True
 
         # 2. Otherwise, there may be more reasons
         #
@@ -1555,6 +1560,12 @@ class VDI(object):
             # Maybe launch a tapdisk on the physical link
             if self.tap_wanted():
                 vdi_type = self.target.get_vdi_type()
+                if util.read_caching_is_restricted(self._session):
+                    options["o_direct"] = True
+                else:
+                    options["o_direct"] = options.get(self.CONF_KEY_O_DIRECT)
+                    if options["o_direct"] is None:
+                        options["o_direct"] = True
                 dev_path = self._tap_activate(phy_path, vdi_type, sr_uuid,
                         options,
                         self._get_pool_config(sr_uuid).get("mem-pool-size"))

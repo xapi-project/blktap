@@ -41,8 +41,6 @@ DRIVER_INFO = {
     'configuration': CONFIGURATION
     }
 
-HBA_CLI      = "/opt/Citrix/StorageLink/bin/csl_hbascan"
-
 class HBASR(SR.SR):
     """HBA storage repository"""
     def handles(type):
@@ -82,7 +80,7 @@ class HBASR(SR.SR):
                 nodewwnval = str(nodewwn[0].firstChild.nodeValue)
                 break
         except:
-            raise xs_errors.XenError('CSLGXMLParse', opterr='HBA Host WWN scanning failed')
+            raise xs_errors.XenError('XMLParse', opterr='HBA Host WWN scanning failed')
         return nodewwnval
 
     def _init_hbas(self):
@@ -104,7 +102,7 @@ class HBASR(SR.SR):
                     devpath = str(devnames[0].firstChild.nodeValue).split('/')[-1]
                     adt[devpath] = portval.split()[0]
         except:
-            raise xs_errors.XenError('CSLGXMLParse', \
+            raise xs_errors.XenError('XMLParse', \
                                      opterr='HBA scanning failed')
         return adt
 
@@ -166,7 +164,7 @@ class HBASR(SR.SR):
 
             return dom.toxml()
         except:
-            raise xs_errors.XenError('CSLGXMLParse', \
+            raise xs_errors.XenError('XMLParse', \
                                      opterr='HBA probe failed')
     
     def attach(self, sr_uuid):

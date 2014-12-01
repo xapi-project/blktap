@@ -75,6 +75,14 @@ class FileSR(SR.SR):
         return srtype == 'file'
     handles = staticmethod(handles)
 
+    def _check_o_direct(self):
+        if self.sr_ref and self.session is not None:
+            other_config = self.session.xenapi.SR.get_other_config(self.sr_ref)
+            o_direct = other_config.get("o_direct")
+            self.o_direct = o_direct is not None and o_direct == "true"
+        else:
+            self.o_direct = True
+
     def load(self, sr_uuid):
         self.ops_exclusive = OPS_EXCLUSIVE
         self.lock = Lock(vhdutil.LOCK_TYPE_SR, self.uuid)
@@ -84,6 +92,8 @@ class FileSR(SR.SR):
         self.remotepath = self.dconf['location']
         self.path = os.path.join(SR.MOUNT_BASE, sr_uuid)
         self.attached = False
+
+        self._check_o_direct()
 
     def create(self, sr_uuid, size):
         """ Create the SR.  The path must not already exist, or if it does, 
@@ -380,6 +390,8 @@ class FileVDI(VDI.VDI):
 
     def load(self, vdi_uuid):
         self.lock = self.sr.lock
+
+        self.sr.srcmd.params['o_direct'] = self.sr.o_direct
 
         if self.sr.srcmd.cmd == "vdi_create":
             self.vdi_type = vhdutil.VDI_TYPE_VHD

@@ -497,9 +497,22 @@ class VDI:
                 self.uuid, failfast):
             raise util.SMException("Failed to pause VDI %s" % self)
 
+    def _report_tapdisk_unpause_error(self):
+        try:
+            xapi = self.sr.xapi.session.xenapi
+            sr_ref = xapi.SR.get_by_uuid(self.sr.uuid)
+            msg_name = "failed to unpause tapdisk"
+            msg_body = "Failed to unpause tapdisk for VDI %s, " \
+                    "VMs using this tapdisk have lost access " \
+                    "to the corresponding disk(s)" % self.uuid
+            xapi.message.create(msg_name, "4", "SR", self.sr.uuid, msg_body)
+        except Exception, e:
+            util.SMlog("failed to generate message: %s" % e)
+
     def unpause(self):
         if not blktap2.VDI.tap_unpause(self.sr.xapi.session, self.sr.uuid,
                 self.uuid):
+            self._report_tapdisk_unpause_error()
             raise util.SMException("Failed to unpause VDI %s" % self)
 
     def refresh(self, ignoreNonexistent = True):
@@ -509,6 +522,7 @@ class VDI:
             try:
                 if not blktap2.VDI.tap_refresh(self.sr.xapi.session,
                         self.sr.uuid, self.uuid):
+                    self._report_tapdisk_unpause_error()
                     raise util.SMException("Failed to refresh %s" % self)
             except XenAPI.Failure, e:
                 if util.isInvalidVDI(e) and ignoreNonexistent:
@@ -1639,18 +1653,18 @@ class SR:
         if not self._srLock:
             return
 
-        self._locked += 1
-        if self._locked > 1:
-            return
+        if self._locked == 0 :
+            abortFlag = IPCFlag(self.uuid)
+            for i in range(SR.LOCK_RETRY_ATTEMPTS_LOCK):
+                if self._srLock.acquireNoblock():
+                    self._locked += 1
+                    return
+                if abortFlag.test(FLAG_TYPE_ABORT):
+                    raise AbortException("Abort requested")
+                time.sleep(SR.LOCK_RETRY_INTERVAL)
+            raise util.SMException("Unable to acquire the SR lock")
 
-        abortFlag = IPCFlag(self.uuid)
-        for i in range(SR.LOCK_RETRY_ATTEMPTS_LOCK):
-            if self._srLock.acquireNoblock():
-                return
-            if abortFlag.test(FLAG_TYPE_ABORT):
-                raise AbortException("Abort requested")
-            time.sleep(SR.LOCK_RETRY_INTERVAL)
-        raise util.SMException("Unable to acquire the SR lock")
+        self._locked += 1
 
     def unlock(self):
         if not self._srLock:

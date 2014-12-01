@@ -71,6 +71,7 @@ cp -f /etc/lvm/lvm.conf.orig /etc/lvm/lvm.conf || exit $?
 /etc/xapi.d/plugins/testing-hooks
 /etc/xapi.d/plugins/vss_control
 /etc/xapi.d/plugins/intellicache-clean
+/etc/xapi.d/plugins/trim
 /etc/xensource/master.d/02-vhdcleanup
 /opt/xensource/bin/blktap2
 /opt/xensource/bin/tapdisk-cache-stats
@@ -255,6 +256,9 @@ cp -f /etc/lvm/lvm.conf.orig /etc/lvm/lvm.conf || exit $?
 /opt/xensource/sm/vhdutil.py
 /opt/xensource/sm/vhdutil.pyc
 /opt/xensource/sm/vhdutil.pyo
+/opt/xensource/sm/trim_util.py
+/opt/xensource/sm/trim_util.pyc
+/opt/xensource/sm/trim_util.pyo
 /opt/xensource/sm/vss_control
 /opt/xensource/sm/xs_errors.py
 /opt/xensource/sm/xs_errors.pyc
@@ -280,10 +284,11 @@ This package adds a new rawhba SR type. This SR type allows utilization of
 Fiber Channel raw LUNs as separate VDIs (LUN per VDI)
 
 %files rawhba
-/opt/xensource/sm/RawHBASR
 /opt/xensource/sm/RawHBASR.py
+%exclude /opt/xensource/sm/RawHBASR
 /opt/xensource/sm/RawHBASR.pyc
 /opt/xensource/sm/RawHBASR.pyo
 /opt/xensource/sm/B_util.py
 /opt/xensource/sm/B_util.pyc
 /opt/xensource/sm/B_util.pyo
+/opt/xensource/sm/enable-borehamwood

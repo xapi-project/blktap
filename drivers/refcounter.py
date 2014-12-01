@@ -150,9 +150,11 @@ class RefCounter:
         if count == 0 and binaryCount == 0:
             RefCounter._removeObject(ns, obj)
         else:
-            RefCounter._createNamespace(ns)
             objFile = os.path.join(RefCounter.BASE_DIR, ns, obj)
-            RefCounter._writeCount(objFile, count, binaryCount)
+
+            while not RefCounter._writeCount(objFile, count, binaryCount):
+                RefCounter._createNamespace(ns)
+
     _set = staticmethod(_set)
 
     def _getSafeNames(obj, ns):
@@ -185,13 +187,16 @@ class RefCounter:
             os.unlink(objFile)
         except OSError:
             raise RefCounterException("failed to remove '%s'" % objFile)
-        
+
         try:
             os.rmdir(nsDir)
         except OSError, e:
-            # Having a listdir wont help since there could be other vdi related
-            # operations that could create a file in between the python calls.
-            if e.errno != errno.ENOTEMPTY:
+            namespaceAlreadyCleanedUp = e.errno == errno.ENOENT
+            newObjectAddedToNamespace = e.errno == errno.ENOTEMPTY
+
+            if namespaceAlreadyCleanedUp or newObjectAddedToNamespace:
+                pass
+            else:
                 raise RefCounterException("failed to remove '%s'" % nsDir)
     _removeObject = staticmethod(_removeObject)
 
@@ -230,7 +235,11 @@ class RefCounter:
             f = open(fn, 'w')
             f.write("%d %d\n" % (count, binaryCount))
             f.close()
+            return True
         except IOError, e:
+            fileNotFound = e.errno == errno.ENOENT
+            if fileNotFound:
+                return False
             raise RefCounterException("failed to write '(%d %d)' to '%s': %s" \
                     % (count, binaryCount, fn, e))
     _writeCount = staticmethod(_writeCount)

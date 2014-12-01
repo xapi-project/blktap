@@ -45,7 +45,7 @@ class TestScan(unittest.TestCase, testlib.XmlMixIn):
     @testlib.with_context
     def test_scanning_sr_with_devices(self, context):
         sr = create_hba_sr()
-        adapter = context.adapter()
+        adapter = context.add_adapter(testlib.SCSIAdapter())
         adapter.add_disk()
         sr._init_hbadict()
 
@@ -66,7 +66,7 @@ class TestScan(unittest.TestCase, testlib.XmlMixIn):
     @testlib.with_context
     def test_scanning_sr_includes_parameters(self, context):
         sr = create_hba_sr()
-        adapter = context.adapter()
+        adapter = context.add_adapter(testlib.SCSIAdapter())
         adapter.add_disk()
         sr._init_hbadict()
         adapter.add_parameter('fc_host', dict(port_name='VALUE'))
@@ -96,9 +96,27 @@ class TestAdapters(unittest.TestCase):
 
         self.assertEquals({'devs': {}, 'adt': {}}, result)
 
+    @mock.patch('devscan.match_hbadevs')
+    @testlib.with_context
+    def test_exotic_adapter_with_security_device(self, context, match_hbadevs):
+        adapter = context.add_adapter(testlib.AdapterWithNonBlockDevice())
+        adapter.add_disk()
+
+        match_hbadevs.return_value = 'lpfc'
+        result = devscan.adapters()
+
+        self.assertEquals(
+            {
+                'devs': {},
+                'adt': {
+                    'host0': 'lpfc'
+                }
+            },
+            result)
+
     @testlib.with_context
     def test_adapter_and_disk_added(self, context):
-        adapter = context.adapter()
+        adapter = context.add_adapter(testlib.SCSIAdapter())
         adapter.add_disk()
 
         result = devscan.adapters()
@@ -117,3 +135,51 @@ class TestAdapters(unittest.TestCase):
                 }
             },
             result)
+
+
+class TestExtractDevName(unittest.TestCase):
+    @testlib.with_context
+    def test_26_kernel(self, context):
+        context.kernel_version = '2.6'
+        context.fake_makedirs('/somepath/block:sde')
+        result = devscan._extract_dev_name('/somepath')
+
+        self.assertEquals('sde', result)
+
+    @testlib.with_context
+    def test_3x_kernel(self, context):
+        context.kernel_version = '3.2'
+        context.fake_makedirs('/somepath/block/sde')
+        result = devscan._extract_dev_name('/somepath')
+
+        self.assertEquals('sde', result)
+
+    @testlib.with_context
+    def test_extract_dev_name_from_directory_without_block_device(
+            self,
+            context):
+        context.kernel_version = '3.10'
+
+        result = devscan._extract_dev_name('/nonexisting')
+
+        self.assertEquals(devscan.INVALID_DEVICE_NAME, result)
+
+
+class TestUpdateDevsDict(unittest.TestCase):
+    def test_whencalled_updates_dict(self):
+        devices = {}
+        dev = 'dev'
+        entry = 'entry'
+
+        devscan.update_devs_dict(devices, dev, entry)
+
+        self.assertEquals({'dev': 'entry'}, devices)
+
+    def test_whencalled_with_empty_key_does_not_update_dict(self):
+        devices = {}
+        dev = devscan.INVALID_DEVICE_NAME
+        entry = 'entry'
+
+        devscan.update_devs_dict(devices, dev, entry)
+
+        self.assertEquals({}, devices)

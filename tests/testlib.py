@@ -6,6 +6,7 @@ import fnmatch
 import string
 import random
 import textwrap
+import errno
 
 
 PATHSEP = '/'
@@ -26,9 +27,18 @@ def get_error_codes():
 
 
 class SCSIDisk(object):
-    def __init__(self):
+    def __init__(self, adapter):
+        self.adapter = adapter
         self.long_id = ''.join(
             random.choice(string.digits) for _ in range(33))
+
+    def disk_device_paths(self, host_id, disk_id, actual_disk_letter):
+        yield '/sys/class/scsi_disk/%s:0:%s:0' % (host_id, disk_id)
+        yield '/sys/class/scsi_disk/%s:0:%s:0/device/block/sd%s' % (
+            host_id, disk_id, actual_disk_letter)
+        yield '/dev/disk/by-scsibus/%s-%s:0:%s:0' % (
+            self.adapter.long_id, host_id, disk_id)
+        yield '/dev/disk/by-id/%s' % (self.long_id)
 
 
 class SCSIAdapter(object):
@@ -39,12 +49,23 @@ class SCSIAdapter(object):
         self.parameters = []
 
     def add_disk(self):
-        disk = SCSIDisk()
+        disk = SCSIDisk(self)
         self.disks.append(disk)
         return disk
 
     def add_parameter(self, host_class, values):
         self.parameters.append((host_class, values))
+
+    def adapter_device_paths(self, host_id):
+        yield '/sys/class/scsi_host/host%s' % host_id
+
+
+class AdapterWithNonBlockDevice(SCSIAdapter):
+    def adapter_device_paths(self, host_id):
+        for adapter_device_path in super(AdapterWithNonBlockDevice,
+                                         self).adapter_device_paths(host_id):
+            yield adapter_device_path
+        yield '/sys/class/fc_transport/target7:0:0/device/7:0:0:0'
 
 
 class Executable(object):
@@ -106,9 +127,26 @@ class TestContext(object):
             mock.patch('glob.glob', new=self.fake_glob),
             mock.patch('os.uname', new=self.fake_uname),
             mock.patch('subprocess.Popen', new=self.fake_popen),
+            mock.patch('os.rmdir', new=self.fake_rmdir),
+            mock.patch('os.stat', new=self.fake_stat),
         ]
         map(lambda patcher: patcher.start(), self.patchers)
         self.setup_modinfo()
+
+    def fake_rmdir(self, path):
+        if path not in self.get_filesystem():
+            raise OSError(errno.ENOENT, 'No such file %s' % path)
+
+        if self.fake_glob(os.path.join(path, '*')):
+            raise OSError(errno.ENOTEMPTY, 'Directory is not empty %s' % path)
+
+        assert path in self._created_directories
+        self._created_directories = [
+            d for d in self._created_directories if d != path]
+
+    def fake_stat(self, path):
+        if not self.fake_exists(path):
+            raise OSError()
 
     def fake_makedirs(self, path):
         if path in self.get_filesystem():
@@ -164,10 +202,13 @@ class TestContext(object):
             if fpath == fname:
                 return StringIO.StringIO(contents)
 
-        if mode == 'w+':
+        if 'w' in mode:
             if os.path.dirname(fname) in self.get_created_directories():
                 self._path_content[fname] = ''
                 return WriteableFile(self, fname, self._get_inc_fileno())
+            error = IOError('No such file %s' % fname)
+            error.errno = errno.ENOENT
+            raise error
 
         self.log('tried to open file', fname)
         raise IOError(fname)
@@ -222,20 +263,13 @@ class TestContext(object):
     def generate_device_paths(self):
         actual_disk_letter = 'a'
         for host_id, adapter in enumerate(self.scsi_adapters):
-            yield '/sys/class/scsi_host/host%s' % host_id
+            for adapter_device_path in adapter.adapter_device_paths(host_id):
+                yield adapter_device_path
             for disk_id, disk in enumerate(adapter.disks):
-                yield '/sys/class/scsi_disk/%s:0:%s:0' % (
-                    host_id, disk_id)
-
-                yield '/sys/class/scsi_disk/%s:0:%s:0/device/block/sd%s' % (
-                    host_id, disk_id, actual_disk_letter)
-
+                for path in disk.disk_device_paths(host_id, disk_id,
+                                                   actual_disk_letter):
+                    yield path
                 actual_disk_letter = chr(ord(actual_disk_letter) + 1)
-
-                yield '/dev/disk/by-scsibus/%s-%s:0:%s:0' % (
-                    adapter.long_id, host_id, disk_id)
-
-                yield '/dev/disk/by-id/%s' % (disk.long_id)
 
         for path, _content in self.generate_path_content():
             yield path
@@ -263,7 +297,7 @@ class TestContext(object):
         WARNING = '\033[93m'
         ENDC = '\033[0m'
         import sys
-        sys.stderr.write(
+        sys.stdout.write(
             WARNING
             + ' '.join(str(arg) for arg in args)
             + ENDC
@@ -272,26 +306,32 @@ class TestContext(object):
     def stop(self):
         map(lambda patcher: patcher.stop(), self.patchers)
 
-    def adapter(self):
-        adapter = SCSIAdapter()
+    def add_adapter(self, adapter):
         self.scsi_adapters.append(adapter)
         return adapter
 
 
-def with_context(func):
-    def decorated(self, *args, **kwargs):
-        context = TestContext()
-        context.start()
-        try:
-            result = func(self, context, *args, **kwargs)
-            context.stop()
-            return result
-        except:
-            context.stop()
-            raise
+def with_custom_context(context_class):
+    def _with_context(func):
+        def decorated(self, *args, **kwargs):
+            context = context_class()
+            context.start()
+            try:
+                result = func(self, context, *args, **kwargs)
+                context.stop()
+                return result
+            except:
+                context.stop()
+                raise
 
-    decorated.__name__ = func.__name__
-    return decorated
+        decorated.__name__ = func.__name__
+        return decorated
+    return _with_context
+
+
+def with_context(func):
+    decorator = with_custom_context(TestContext)
+    return decorator(func)
 
 
 def xml_string(text):

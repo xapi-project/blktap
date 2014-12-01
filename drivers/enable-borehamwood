@@ -1,0 +1,54 @@
+#!/usr/bin/python
+# Copyright (C) 2014 Citrix Ltd.
+#
+# This program is free software; you can redistribute it and/or modify
+# it under the terms of the GNU Lesser General Public License as published
+# by the Free Software Foundation; version 2.1 only.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+# GNU Lesser General Public License for more details.
+#
+
+import os, sys
+import subprocess
+
+DIR="/opt/xensource/sm/"
+FILENAME="RawHBASR"
+
+def usage():
+    print "Usage: %s enable" % (sys.argv[0])
+
+if __name__ == "__main__":
+    if len(sys.argv) != 2:
+        usage()
+        sys.exit(1)
+
+    try:
+        os.chdir(DIR)
+        os.symlink(FILENAME + ".py", FILENAME)
+    except OSError, e:
+        print "Error: %s [errno=%s]" % (e.args)
+        sys.exit(1)
+
+    print "%s%s symlink created" % (DIR,FILENAME)
+
+    try:
+        ret = subprocess.call(["xe-toolstack-restart"])
+    except OSError, e:
+        print "Error: %s [errno=%s]" % (e.args)
+        ret = 1 # make the following block to cleanup
+
+    if ret != 0:
+        print "Failed toolstack restart, rolling back symlink creation"
+        try:
+            os.unlink(FILENAME)
+        except OSError, e:
+            print "Error: %s [errno=%s], fix manually" % (e.args)
+            sys.exit(1)
+    else:
+        print "toolstack restarted"
+
+    sys.exit(0)
+

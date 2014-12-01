@@ -1,0 +1,27 @@
+#!/usr/bin/python
+#
+# Copyright (C) Citrix Systems Inc.
+#
+# This program is free software; you can redistribute it and/or modify
+# it under the terms of the GNU Lesser General Public License as published
+# by the Free Software Foundation; version 2.1 only.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+# GNU Lesser General Public License for more details.
+#
+# You should have received a copy of the GNU Lesser General Public License
+# along with this program; if not, write to the Free Software Foundation, Inc.,
+# 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
+#
+# A plugin for enabling trim on LVM based SRs to free up storage space
+# in Storage arrays.
+
+import sys
+import XenAPIPlugin
+
+if __name__ == "__main__":
+    sys.path.append("/opt/xensource/sm/")
+    import trim_util
+    XenAPIPlugin.dispatch({"do_trim": trim_util.do_trim})
