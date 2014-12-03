@@ -174,3 +174,48 @@ class TestMultiLUNISCSISR(unittest.TestCase):
         iscsi_sr._initPaths()
 
         self.assertActiveNodeEquals(self.node2, iscsi_sr)
+
+
+class TestISCSISR(TestBase):
+
+    @mock.patch('ISCSISR.util._convertDNS')
+    def test_load_assert_utf_8_chap_credencials(
+            self,
+            mock__convertDNS):
+
+        """ Asserts that CHAP credentials are always encoded in UTF-8.
+
+            Xapi passes CHAP credentials to ISCSISR as strings of type 'str',
+            if they strictly contain ASCII characters, or as strings of type
+            'unicode' if they contain at least one non-ASCII character.
+        """
+
+        s1 =  'ascii'
+        s2 = u'\u03bc\u03b9x\u03b5d'  # == 'mixed' in Greek and Latin chars
+        s3 = u'\u03c4\u03bf\u03c0\u03b9\u03ba\u03cc'  # == 'local' in Greek
+        s4 = u'\u6c5fw\u6708\u03c2\xfc\xe4\xd6'  # gibberish var char len str
+
+        # These are the sizes of the 4 strings
+        # in bytes when encoded in UTF-8
+        s1_size = 5
+        s2_size = 8
+        s3_size = 12
+        s4_size = 15
+
+        iscsi_sr = NonInitingISCSISR({
+                       'chapuser': s1,
+                       'chappassword': s2,
+                       'incoming_chapuser': s3,
+                       'incoming_chappassword': s4
+                   })
+
+        iscsi_sr.load(None)
+
+        self.assertEqual(iscsi_sr.chapuser, s1.encode('utf-8'))
+        self.assertEqual(iscsi_sr.chappassword, s2.encode('utf-8'))
+        self.assertEqual(iscsi_sr.incoming_chapuser, s3.encode('utf-8'))
+        self.assertEqual(iscsi_sr.incoming_chappassword, s4.encode('utf-8'))
+        self.assertEqual(len(iscsi_sr.chapuser), s1_size)
+        self.assertEqual(len(iscsi_sr.chappassword), s2_size)
+        self.assertEqual(len(iscsi_sr.incoming_chapuser), s3_size)
+        self.assertEqual(len(iscsi_sr.incoming_chappassword), s4_size)
