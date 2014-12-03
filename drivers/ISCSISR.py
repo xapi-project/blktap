@@ -143,21 +143,25 @@ class ISCSISR(SR.SR):
         self.chappassword = ""
         if self.dconf.has_key('chapuser') \
                 and (self.dconf.has_key('chappassword') or self.dconf.has_key('chappassword_secret')):
-            self.chapuser = self.dconf['chapuser']
+            self.chapuser = self.dconf['chapuser'].encode('utf-8')
             if self.dconf.has_key('chappassword_secret'):
                 self.chappassword = util.get_secret(self.session, self.dconf['chappassword_secret'])
             else:
                 self.chappassword = self.dconf['chappassword']
 
+            self.chappassword = self.chappassword.encode('utf-8')
+
         self.incoming_chapuser = ""
         self.incoming_chappassword = ""
         if self.dconf.has_key('incoming_chapuser') \
                 and (self.dconf.has_key('incoming_chappassword') or self.dconf.has_key('incoming_chappassword_secret')):
-            self.incoming_chapuser = self.dconf['incoming_chapuser']
+            self.incoming_chapuser = self.dconf['incoming_chapuser'].encode('utf-8')
             if self.dconf.has_key('incoming_chappassword_secret'):
                 self.incoming_chappassword = util.get_secret(self.session, self.dconf['incoming_chappassword_secret'])
             else:
                 self.incoming_chappassword = self.dconf['incoming_chappassword']
+
+            self.incoming_chappassword = self.incoming_chappassword.encode('utf-8')
 
         self.port = DEFAULT_PORT
         if self.dconf.has_key('port') and self.dconf['port']:
