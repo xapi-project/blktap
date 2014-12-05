@@ -1,0 +1,2 @@
+PATH=/bin:/usr/sbin:/usr/bin:/sbin
+*/2 * * * * root xen-ringwatch check -T3 --kick | logger -p daemon.crit -t RINGWATCH-ALERT
