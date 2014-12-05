@@ -560,11 +560,13 @@ class LVHDSR(SR.SR):
             try:
                 lvname = os.path.basename(fileName.replace('-','/').\
                                           replace('//', '-'))
-                os.unlink(os.path.join(self.path, lvname))
-            except Exception, e:
-                util.SMlog("LVHDSR.delete: failed to remove the symlink for " \
-                           "file %s. Error: %s" % (fileName, str(e)))
-                success = False
+                lpath = os.path.join(self.path, lvname)
+                os.unlink(lpath)
+            except OSError, e:
+                if e.errno != errno.ENOENT:
+                    util.SMlog("LVHDSR.delete: failed to remove the symlink for " \
+                               "file %s. Error: %s" % (fileName, str(e)))
+                    success = False
 
         if success:
             try:
