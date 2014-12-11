@@ -68,6 +68,8 @@ typedef struct tapdisk_server {
 		int                          backoff; /* exponential backoff
 							 factor */
 	} mem_state;
+
+	event_id_t                   tlog_reopen_evid;
 } tapdisk_server_t;
 
 static tapdisk_server_t server;
@@ -321,6 +323,9 @@ tapdisk_server_close_tlog(void)
 static void
 tapdisk_server_close(void)
 {
+	if (likely(server.tlog_reopen_evid >= 0))
+		tapdisk_server_unregister_event(server.tlog_reopen_evid);
+
 	tapdisk_server_close_tlog();
 	tapdisk_server_close_aio();
 }
@@ -382,10 +387,19 @@ tapdisk_server_signal_handler(int signal)
 		break;
 
 	case SIGHUP:
-		tlog_reopen();
+		tapdisk_server_event_set_timeout(server.tlog_reopen_evid, 0);
 		break;
 	}
 }
+
+
+static void
+tlog_reopen_cb(event_id_t id, char mode __attribute__((unused)), void *private)
+{
+	tlog_reopen();
+	tapdisk_server_event_set_timeout(id, (time_t)-1);
+}
+
 
 /* Low memory algorithm:
  * Register for low memory notifications from the kernel.
@@ -621,6 +635,8 @@ tapdisk_server_init(void)
 		lowmem_cleanup();
 	}
 
+	server.tlog_reopen_evid = -1;
+
 	return 0;
 }
 
@@ -680,10 +696,21 @@ tapdisk_server_run()
 	signal(SIGHUP, tapdisk_server_signal_handler);
 	signal(SIGXFSZ, tapdisk_server_signal_handler);
 
+	err = tapdisk_server_register_event(SCHEDULER_POLL_TIMEOUT, -1,	(time_t)-1,
+			tlog_reopen_cb,	NULL);
+	if (unlikely(err < 0)) {
+		EPRINTF("failed to register reopen log event: %s\n", strerror(-err));
+		goto out;
+	}
+
+	server.tlog_reopen_evid = err;
+
 	__tapdisk_server_run();
+
+out:
 	tapdisk_server_close();
 
-	return 0;
+	return err;
 }
 
 int
