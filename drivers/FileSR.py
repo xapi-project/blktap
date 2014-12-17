@@ -86,6 +86,14 @@ class FileSR(SR.SR):
         else:
             self.o_direct = True
 
+
+    def __init__(self, srcmd, sr_uuid):
+        # We call SR.SR.__init__ explicitly because
+        # "super" sometimes failed due to circular imports
+        SR.SR.__init__(self, srcmd, sr_uuid)
+        self._check_o_direct()
+
+
     def load(self, sr_uuid):
         self.ops_exclusive = OPS_EXCLUSIVE
         self.lock = Lock(vhdutil.LOCK_TYPE_SR, self.uuid)
@@ -98,8 +106,6 @@ class FileSR(SR.SR):
         self.mountpoint = self.path
         self.attached = False
         self.driver_config = DRIVER_CONFIG
-
-        self._check_o_direct()
 
     def create(self, sr_uuid, size):
         """ Create the SR.  The path must not already exist, or if it does, 

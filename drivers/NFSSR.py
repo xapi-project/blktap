@@ -93,8 +93,6 @@ class NFSSR(FileSR.FileSR):
             self.transport = "udp"
         self.nfsversion = nfs.validate_nfsversion(self.dconf.get('nfsversion'))
 
-        self._check_o_direct()
-
 
     def validate_remotepath(self, scan):
         if not self.dconf.has_key('serverpath'):

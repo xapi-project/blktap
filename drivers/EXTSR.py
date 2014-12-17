@@ -74,8 +74,6 @@ class EXTSR(FileSR.FileSR):
         self.attached = self._checkmount()
         self.driver_config = DRIVER_CONFIG
 
-        self._check_o_direct()
-
     def delete(self, sr_uuid):
         super(EXTSR, self).delete(sr_uuid)
 
