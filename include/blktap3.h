@@ -100,6 +100,11 @@ struct blkback_stats {
 	 * Absolute maximum BLKIF_OP_WRITE response time, in us.
 	 */
 	long long st_wr_max_usecs;
+
+	/**
+	 * Number of read sectors that go to a vhd parent and are therefore cachable.
+	 */
+	long long st_rd_sect_cachable;
 } __attribute__ ((aligned (8)));
 
 #endif /* __BLKTAP_3_H__ */
