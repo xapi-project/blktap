@@ -646,8 +646,6 @@ tapdisk_xenblkif_parse_request(struct td_xenblkif * const blkif,
         blkif->stats.xenvbd->st_wr_sect += nr_sect;
     } else {
         blkif->stats.xenvbd->st_rd_sect += nr_sect;
-	// XXX FIXME this isn't correct!
-	blkif->stats.xenvbd->st_rd_sect_cachable += nr_sect; 
     }
 
     /*
