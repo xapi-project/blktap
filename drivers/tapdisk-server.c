@@ -429,8 +429,8 @@ int eventfd(unsigned int initval, int flags)
 #define RESET_BACKOFF 512
 
 #define MEMORY_PRESSURE_LEVEL "critical"
-#define MEMORY_PRESSURE_PATH "/sys/fs/cgroup/memory.pressure_level"
-#define EVENT_CONTROL_PATH "/sys/fs/cgroup/cgroup.event_control"
+#define MEMORY_PRESSURE_PATH "/sys/fs/cgroup/memory/memory.pressure_level"
+#define EVENT_CONTROL_PATH "/sys/fs/cgroup/memory/cgroup.event_control"
 
 static int tapdisk_server_reset_lowmem_mode(void);
 
