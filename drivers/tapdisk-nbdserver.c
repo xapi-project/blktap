@@ -59,6 +59,7 @@ struct td_nbdserver_req {
 	struct td_iovec         iov;
 };
 
+static void tapdisk_nbdserver_free_client(td_nbdserver_client_t *client);
 static void tapdisk_nbdserver_disable_client(td_nbdserver_client_t *client);
 static void tapdisk_nbdserver_clientcb(event_id_t id, char mode, void *data);
 int tapdisk_nbdserver_setup_listening_socket(td_nbdserver_t *server);
@@ -85,6 +86,9 @@ tapdisk_nbdserver_free_request(td_nbdserver_client_t *client,
 		return;
 	}
 	client->reqs_free[client->n_reqs_free++] = req;
+
+	if (unlikely(client->dead && !tapdisk_nbdserver_reqs_pending(client)))
+		tapdisk_nbdserver_free_client(client);
 }
 
 static void
@@ -175,6 +179,7 @@ tapdisk_nbdserver_alloc_client(td_nbdserver_t *server)
 	list_add(&client->clientlist, &server->clients);
 
 	client->paused = 0;
+	client->dead = false;
 
 	return client;
 
@@ -200,9 +205,12 @@ tapdisk_nbdserver_free_client(td_nbdserver_client_t *client)
 	if (client->client_event_id >= 0)
 		tapdisk_nbdserver_disable_client(client);
 
-	list_del(&client->clientlist);
-	tapdisk_nbdserver_reqs_free(client);
-	free(client);
+	if (likely(!tapdisk_nbdserver_reqs_pending(client))) {
+		list_del(&client->clientlist);
+		tapdisk_nbdserver_reqs_free(client);
+		free(client);
+	} else
+		client->dead = true;
 }
 
 static int
@@ -821,4 +829,12 @@ tapdisk_nbdserver_free(td_nbdserver_t *server)
 				strerror(errno));
 
 	free(server);
+}
+
+int
+tapdisk_nbdserver_reqs_pending(td_nbdserver_client_t *client) {
+
+	ASSERT(client);
+
+	return client->n_reqs - client->n_reqs_free;
 }
