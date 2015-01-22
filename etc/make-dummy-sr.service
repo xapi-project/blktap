@@ -1,0 +1,11 @@
+[Unit]
+Description=Make a dummy SR if necessary
+DefaultDependencies=no
+After=local-fs.target
+Before=basic.target
+
+[Service]
+ExecStart=/opt/xensource/libexec/make-dummy-sr
+
+[Install]
+WantedBy=basic.target

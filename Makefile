@@ -58,7 +58,7 @@ SM_LIBS += B_util
 SM_LIBS += wwid_conf
 SM_LIBS += trim_util
 
-UDEV_RULES = 40-multipath
+UDEV_RULES = 39-multipath 40-multipath 55-xs-mpath-scsidev
 MPATH_DAEMON = sm-multipath
 MPATH_CONF = multipath.conf
 
@@ -74,6 +74,8 @@ PLUGIN_SCRIPT_DEST := /etc/xapi.d/plugins/
 LIBEXEC := /opt/xensource/libexec/
 CRON_DEST := /etc/cron.d/
 UDEV_RULES_DIR := /etc/udev/rules.d/
+UDEV_SCRIPTS_DIR := /etc/udev/scripts/
+SYSTEMD_SERVICE_DIR := /usr/lib/systemd/system/
 INIT_DIR := /etc/rc.d/init.d/
 MPATH_CONF_DIR := /etc/multipath.xenserver/
 
@@ -121,7 +123,9 @@ install: precheck
 	$(call mkdir_clean,$(SM_STAGING))
 	mkdir -p $(SM_STAGING)$(SM_DEST)
 	mkdir -p $(SM_STAGING)$(UDEV_RULES_DIR)
+	mkdir -p $(SM_STAGING)$(UDEV_SCRIPTS_DIR)
 	mkdir -p $(SM_STAGING)$(INIT_DIR)
+	mkdir -p $(SM_STAGING)$(SYSTEMD_SERVICE_DIR)
 	mkdir -p $(SM_STAGING)$(MPATH_CONF_DIR)
 	mkdir -p $(SM_STAGING)$(DEBUG_DEST)
 	mkdir -p $(SM_STAGING)$(BIN_DEST)
@@ -135,6 +139,10 @@ install: precheck
 	  $(SM_STAGING)/$(MPATH_CONF_DIR)
 	install -m 755 multipath/$(MPATH_DAEMON) \
 	  $(SM_STAGING)/$(INIT_DIR)
+	install -m 755 drivers/updatempppathd.init \
+	  $(SM_STAGING)/$(INIT_DIR)/updatempppathd
+	install -m 644 etc/make-dummy-sr.service \
+	  $(SM_STAGING)/$(SYSTEMD_SERVICE_DIR)
 	for i in $(UDEV_RULES); do \
 	  install -m 644 multipath/$$i.rules \
 	    $(SM_STAGING)$(UDEV_RULES_DIR); done
@@ -174,6 +182,11 @@ install: precheck
 	install -m 644 $(CRON_JOBS:%=etc/cron.d/%) -t $(SM_STAGING)$(CRON_DEST)
 	ln -sf $(SM_DEST)lcache.py $(SM_STAGING)$(BIN_DEST)tapdisk-cache-stats
 	ln -sf /dev/null $(SM_STAGING)$(UDEV_RULES_DIR)/62-multipath.rules
+	install -m 755 scripts/xs-mpath-scsidev.sh $(SM_STAGING)$(UDEV_SCRIPTS_DIR)
+	install -m 755 scripts/xe-get-arrayid-lunnum $(SM_STAGING)$(BIN_DEST)
+	install -m 755 scripts/xe-getarrayidentifier $(SM_STAGING)$(BIN_DEST)
+	install -m 755 scripts/xe-getlunidentifier $(SM_STAGING)$(BIN_DEST)
+	install -m 755 scripts/make-dummy-sr $(SM_STAGING)$(LIBEXEC)
 
 .PHONY: clean
 clean:

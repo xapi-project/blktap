@@ -1,0 +1,19 @@
+#!/bin/sh
+usage () {
+    echo "Usage: $0 <devpath>"
+    echo "Get the device(<devpath>) target array id and lun number"
+    exit 1
+}
+
+if [ -z "$1" ]; then
+    usage
+else
+    # RDAC special device handling
+
+    array=`/opt/xensource/bin/xe-getarrayidentifier $1`
+    id=`/usr/sbin/mppUtil -a | grep ${array} | awk '{print $1}'`
+
+    lunid=`/opt/xensource/bin/xe-getlunidentifier $1`
+    lunnum=`/usr/sbin/mppUtil -g ${id} | grep ${lunid} | awk '{gsub(/#/,"");print $2}'`
+    echo "${id}:${lunnum}"
+fi
