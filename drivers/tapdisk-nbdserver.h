@@ -27,6 +27,7 @@ typedef struct td_nbdserver_client td_nbdserver_client_t;
 #include "list.h"
 #include "tapdisk-nbd.h"
 #include <sys/un.h>
+#include <stdbool.h>
 
 struct td_nbdserver {
 	td_vbd_t               *vbd;
@@ -81,6 +82,8 @@ struct td_nbdserver_client {
 	struct list_head        clientlist;
 
 	int                     paused;
+
+	bool                    dead;
 };
 
 td_nbdserver_t *tapdisk_nbdserver_alloc(td_vbd_t *, td_disk_info_t);
@@ -98,5 +101,10 @@ int tapdisk_nbdserver_listen_unix(td_nbdserver_t *server);
 void tapdisk_nbdserver_free(td_nbdserver_t *);
 void tapdisk_nbdserver_pause(td_nbdserver_t *);
 int tapdisk_nbdserver_unpause(td_nbdserver_t *);
+
+/**
+ * Tells how many requests are pending.
+ */
+int tapdisk_nbdserver_reqs_pending(td_nbdserver_client_t *client);
 
 #endif /* _TAPDISK_NBDSERVER_H_ */
