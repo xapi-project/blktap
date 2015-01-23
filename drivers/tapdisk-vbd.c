@@ -1247,6 +1247,8 @@ __tapdisk_vbd_complete_td_request(td_vbd_t *vbd, td_vbd_request_t *vreq,
 				  td_request_t treq, int res)
 {
 	td_image_t *image = treq.image;
+	td_image_t *leaf;
+	struct td_xenblkif *blkif;
 	int err;
 
 	err = (res <= 0 ? res : -res);
@@ -1259,6 +1261,17 @@ __tapdisk_vbd_complete_td_request(td_vbd_t *vbd, td_vbd_request_t *vreq,
 		if (err)
 			td_sector_count_add(&image->stats.fail,
 					    treq.secs, write);
+
+		/* If the image is not the leaf (ie, first in images),
+		   and the operation was a read, increment the
+		   cachable reads statistic */
+
+		/* Nb, is it safe to assume 'images' is not empty? */
+		leaf = list_first_entry(&vbd->images, td_image_t, next);
+		if(image!=leaf && treq.op == TD_OP_READ) {
+			list_for_each_entry(blkif, &vbd->rings, entry)
+				blkif->stats.xenvbd->st_rd_sect_cachable += treq.secs;
+		}
 
 		FIXME_maybe_count_enospc_redirect(vbd, treq);
 	}

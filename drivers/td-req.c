@@ -644,8 +644,9 @@ tapdisk_xenblkif_parse_request(struct td_xenblkif * const blkif,
             goto out;
         }
         blkif->stats.xenvbd->st_wr_sect += nr_sect;
-    } else
+    } else {
         blkif->stats.xenvbd->st_rd_sect += nr_sect;
+    }
 
     /*
      * TODO Isn't this kind of expensive to do for each requests? Why does
