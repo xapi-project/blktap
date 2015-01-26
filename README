@@ -122,3 +122,31 @@ Write I/O barriers
 By default write I/O barriers are enabled for all VBDs. To globally disable
 write I/O barriers, edit /etc/init.d/tapback and add the "-b" option to
 tapback.
+
+
+Testing for O_DIRECT Support
+============================
+
+If the underlying file-system does not support O_DIRECT, utilities (e.g,
+`vhd-util`) may fail with error code 22 (EINVAL). Similarly, Xen may fail with a
+message as follows:
+
+TapdiskException: ('create', '-avhd:/home/cklein/vms/vm-rubis-0/root.vhd') failed (5632  )
+
+Examples of file-systems that do not support O_DIRECT include:
+
+- ext4 with data=journal (until Linux version 3.1);
+- ecryptfs (likely all FUSE-based file-systems).
+
+To test whether your file-system supports O_DIRECT, you may write to a file as
+follows:
+
+    dd if=/dev/zero of=file_in_filesystem.img count=1 oflag=direct
+
+Remember to erase the test file when you are done. Otherwise, if you have an
+existing file that you can read, type:
+
+    dd if=existing_file of=/dev/zero count=1 iflag=direct
+
+If any of the above commands fails with "Invalid argument", then you need to
+choose a different file-system where your virtual images should be stored.

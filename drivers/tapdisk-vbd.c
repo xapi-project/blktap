@@ -1798,7 +1798,7 @@ tapdisk_vbd_stats(td_vbd_t *vbd, td_stats_t *st)
 			"d", vbd->nbd_mirror_failed);
 
 	tapdisk_stats_field(st,
-			"reqs_oustanding",
+			"reqs_outstanding",
 			"d", tapdisk_vbd_reqs_outstanding(vbd));
 
 	tapdisk_stats_field(st,
