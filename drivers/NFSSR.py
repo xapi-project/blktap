@@ -39,7 +39,7 @@ CONFIGURATION = [['server', 'hostname or IP address of NFS server (required)'],
                  ['serverpath', 'path on remote server (required)'],
                  nfs.NFS_VERSION]
 
-                  
+
 DRIVER_INFO = {
     'name': 'NFS VHD',
     'description': 'SR plugin which stores disks as VHD files on a remote NFS filesystem',
