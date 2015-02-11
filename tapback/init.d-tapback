@@ -49,7 +49,7 @@ get_status() {
 }
 
 start() {
-	echo -n "Starting the ${NAME} deamon: "
+	echo -n "Starting the ${NAME} daemon: "
 	check_running
 	RUNNING=$?
 	if [ ${RUNNING} -eq 1 ]; then
