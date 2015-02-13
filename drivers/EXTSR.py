@@ -30,6 +30,7 @@ import cleanup
 CAPABILITIES = ["SR_PROBE","SR_UPDATE", "SR_SUPPORTS_LOCAL_CACHING", \
                 "VDI_CREATE","VDI_DELETE","VDI_ATTACH","VDI_DETACH", \
                 "VDI_UPDATE","VDI_CLONE","VDI_SNAPSHOT","VDI_RESIZE", \
+                "VDI_GENERATE_CONFIG",                                \
                 "VDI_RESET_ON_BOOT/2","ATOMIC_PAUSE"]
 
 CONFIGURATION = [ [ 'device', 'local device path (required) (e.g. /dev/sda3)' ] ]
@@ -44,6 +45,8 @@ DRIVER_INFO = {
     'capabilities': CAPABILITIES,
     'configuration': CONFIGURATION
     }
+
+DRIVER_CONFIG = {"ATTACH_FROM_CONFIG_WITH_TAPDISK": True}
 
 EXT_PREFIX = 'XSLocalEXT-'
 
@@ -69,6 +72,7 @@ class EXTSR(FileSR.FileSR):
         self.vgname = EXT_PREFIX + sr_uuid
         self.remotepath = os.path.join("/dev",self.vgname,sr_uuid)
         self.attached = self._checkmount()
+        self.driver_config = DRIVER_CONFIG
 
         self._check_o_direct()
 
