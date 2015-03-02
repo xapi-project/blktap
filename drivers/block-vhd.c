@@ -832,6 +832,21 @@ _vhd_close(td_driver_t *driver)
 	return 0;
 }
 
+static int
+vhd_get_oflags(td_driver_t *driver, int *flags)
+{
+	struct vhd_state *s = driver->data;
+
+	*flags = fcntl(s->vhd.fd, F_GETFL, 0);
+	if (*flags == -1){
+		*flags = 0;
+		ERR(s, -errno, "fcntl failed\n");
+		return -errno;
+	}
+
+	return 0;
+}
+
 int
 vhd_validate_parent(td_driver_t *child_driver,
 		    td_driver_t *parent_driver, td_flag_t flags)
@@ -2479,6 +2494,7 @@ struct tap_disk tapdisk_vhd = {
 	.private_data_size  = sizeof(struct vhd_state),
 	.td_open            = _vhd_open,
 	.td_close           = _vhd_close,
+	.td_get_oflags      = vhd_get_oflags,
 	.td_queue_read      = vhd_queue_read,
 	.td_queue_write     = vhd_queue_write,
 	.td_get_parent_id   = vhd_get_parent_id,
