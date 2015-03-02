@@ -539,6 +539,31 @@ fail:
 }
 
 int
+tapdisk_vbd_update_o_direct(td_vbd_t *vbd)
+{
+	td_image_t *image, *next;
+	int no_o_direct = 0, oflags, err;
+
+	tapdisk_vbd_for_each_image(vbd, image, next){
+		err = td_get_oflags(image, &oflags);
+		if (err == -ENOTSUP)
+			continue;
+		if (err < 0)
+			return err;
+		if (!(oflags & O_DIRECT)){
+			no_o_direct = 1;
+			break;
+		}
+	}
+
+	td_flag_clear(vbd->flags, TD_OPEN_NO_O_DIRECT);
+	if (no_o_direct)
+		td_flag_set(vbd->flags, TD_OPEN_NO_O_DIRECT);
+
+	return 0;
+}
+
+int
 tapdisk_vbd_open_vdi(td_vbd_t *vbd, const char *name, td_flag_t flags, int prt_devnum)
 {
 	char *tmp = vbd->name;
@@ -600,6 +625,10 @@ tapdisk_vbd_open_vdi(td_vbd_t *vbd, const char *name, td_flag_t flags, int prt_d
 			err = 0;
 		}
 	}
+
+    err = tapdisk_vbd_update_o_direct(vbd);
+    if (err)
+        goto fail;
 
     err = vbd_stats_create(vbd);
     if (err)
