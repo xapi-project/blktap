@@ -27,6 +27,7 @@ int td_open(td_image_t *);
 int __td_open(td_image_t *, td_disk_info_t *);
 int td_load(td_image_t *);
 int td_close(td_image_t *);
+int td_get_oflags(td_image_t *, int *);
 int td_get_parent_id(td_image_t *, td_disk_id_t *);
 int td_validate_parent(td_image_t *, td_image_t *);
 

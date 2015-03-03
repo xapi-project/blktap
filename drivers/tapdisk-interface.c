@@ -121,6 +121,24 @@ td_close(td_image_t *image)
 }
 
 int
+td_get_oflags(td_image_t *image, int *flags)
+{
+	td_driver_t *driver;
+
+	driver = image->driver;
+	if (!driver)
+		return -ENODEV;
+
+	if (!td_flag_test(driver->state, TD_DRIVER_OPEN))
+		return -EBADF;
+
+	if (!driver->ops->td_get_oflags)
+		return -ENOTSUP;
+
+	return driver->ops->td_get_oflags(driver, flags);
+}
+
+int
 td_get_parent_id(td_image_t *image, td_disk_id_t *id)
 {
 	td_driver_t *driver;
