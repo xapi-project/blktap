@@ -59,7 +59,7 @@ DRIVER_CONFIG = {"ATTACH_FROM_CONFIG_WITH_TAPDISK": True}
 PROBE_MOUNTPOINT = "probe"
 NFSPORT = 2049
 DEFAULT_TRANSPORT = "tcp"
-
+PROBEVERSION = 'probeversion'
 
 class NFSSR(FileSR.FileSR):
     """NFS file-based storage repository"""
@@ -110,7 +110,10 @@ class NFSSR(FileSR.FileSR):
 
     def check_server(self):
         try:
-            nfs.check_server_tcp(self.remoteserver, self.nfsversion)
+            if self.dconf.has_key(PROBEVERSION):
+                nfs.check_server_tcp(self.remoteserver)
+            else:
+                nfs.check_server_tcp(self.remoteserver, self.nfsversion)
         except nfs.NfsException, exc:
             raise xs_errors.XenError('NFSVersion',
                                      opterr=exc.errstr)
@@ -118,9 +121,14 @@ class NFSSR(FileSR.FileSR):
 
     def mount(self, mountpoint, remotepath, timeout = 0):
         try:
-            nfs.soft_mount(
-                mountpoint, self.remoteserver, remotepath, self.transport,
-                timeout=timeout, nfsversion=self.nfsversion)
+            if self.dconf.has_key(PROBEVERSION):
+                nfs.soft_mount(
+                    mountpoint, self.remoteserver, remotepath, self.transport,
+                    timeout=timeout)
+            else:
+                nfs.soft_mount(
+                    mountpoint, self.remoteserver, remotepath, self.transport,
+                    timeout=timeout, nfsversion=self.nfsversion)
         except nfs.NfsException, exc:
             raise xs_errors.XenError('NFSMount', opterr=exc.errstr)
 
@@ -151,7 +159,7 @@ class NFSSR(FileSR.FileSR):
 
         self.mount(temppath, self.remotepath)
         try:
-            return nfs.scan_srlist(temppath)
+            return nfs.scan_srlist(temppath, self.dconf)
         finally:
             try:
                 nfs.unmount(temppath, True)

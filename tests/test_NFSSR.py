@@ -27,7 +27,8 @@ class TestNFSSR(unittest.TestCase):
         if nfsversion:
             srcmd.dconf.update({'nfsversion': nfsversion})
         srcmd.params = {
-            'command': 'some_command'
+            'command': 'some_command',
+            'device_config': {}
         }
         nfssr = FakeNFSSR(srcmd, None)
         nfssr.load(sr_uuid)

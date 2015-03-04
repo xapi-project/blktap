@@ -170,7 +170,7 @@ def scan_exports(target):
     return dom
 
 
-def scan_srlist(path):
+def scan_srlist(path, dconf):
     """Scan and report SR, UUID."""
     dom = xml.dom.minidom.Document()
     element = dom.createElement("SRlist")
@@ -189,4 +189,32 @@ def scan_srlist(path):
         textnode = dom.createTextNode(val)
         subentry.appendChild(textnode)
 
+    from NFSSR import PROBEVERSION
+    if dconf.has_key(PROBEVERSION):
+        util.SMlog("Add supported nfs versions to sr-probe")
+        supported_versions = get_supported_nfs_versions(dconf.get('server'))
+        supp_ver = dom.createElement("SupportedVersions")
+        element.appendChild(supp_ver)
+
+        for ver in supported_versions:
+            version = dom.createElement('Version')
+            supp_ver.appendChild(version)
+            textnode = dom.createTextNode(ver)
+            version.appendChild(textnode)
+
     return dom.toprettyxml()
+
+
+def get_supported_nfs_versions(server):
+    """Return list of supported nfs versions."""
+    valid_versions = ['3', '4']
+    supported_versions = []
+    try:
+        ns = util.pread2([RPCINFO_BIN, "-t", "%s" % server, "nfs"])
+        for l in ns.strip().split("\n"):
+            if l.split()[3] in valid_versions:
+                supported_versions.append(l.split()[3])
+
+        return supported_versions
+    except:
+        util.SMlog("Unable to obtain list of valid nfs versions")
