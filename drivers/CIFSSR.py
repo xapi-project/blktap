@@ -99,7 +99,7 @@ class CIFSSR(FileSR.FileSR):
         """Mount the remote CIFS export at 'mountpoint'"""
         if mountpoint == None:
             mountpoint = self.mountpoint
-        elif not util.is_string(mountpoint):
+        elif not util.is_string(mountpoint) or mountpoint == "":
             raise CifsException("mountpoint not a string object")
 
         missing_params = set()
@@ -146,9 +146,11 @@ class CIFSSR(FileSR.FileSR):
         password = util.to_plain_string(password)
 
         # Open credentials file and truncate
-        f = open(self.credentials, 'w')
-        f.write("username=%s\npassword=%s\n" % (username,password))
-        f.close()
+        try:
+            with open(self.credentials, 'w') as f:
+                f.write("username=%s\npassword=%s\n" % (username,password))
+        except IOError, e:
+            raise CifsException("Failed to create credentials file")
 
         try:
             util.ioretry(lambda:
@@ -159,6 +161,11 @@ class CIFSSR(FileSR.FileSR):
         except util.CommandException, inst:
             raise CifsException("mount failed with return code %d" % inst.code)
 
+        try:
+            os.unlink(self.credentials)
+        except OSError, inst:
+            util.SMlog("Error when trying to delete credentials files /tmp/<uuid>")
+ 
     def __unmount(self, mountpoint, rmmountpoint):
         """Unmount the remote CIFS export at 'mountpoint'"""
         try:
