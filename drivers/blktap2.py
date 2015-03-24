@@ -1185,7 +1185,7 @@ class VDI(object):
             return os.readlink(self.path())
 
         def symlink(self):
-            return self.path
+            return self.path()
 
         def _mklink(self, target):
             os.symlink(target, self.path())
