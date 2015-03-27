@@ -11,7 +11,7 @@ include $(B_BASE)/rpmbuild.mk
 $(MY_OBJ_DIR)/version.inc:
 	$(version-makefile) > $@
 	$(call git_cset_number,$(REPONAME)) >> $@
-	echo SM_VERSION := \$$\(PLATFORM_VERSION\) >> $@
+	echo SM_VERSION := $(shell cat ../VERSION) >> $@
 	echo SM_RELEASE := xs\$$\(CSET_NUMBER\) >> $@
 
 SM_SPEC := sm.spec
