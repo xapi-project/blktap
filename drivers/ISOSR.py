@@ -246,7 +246,7 @@ class ISOSR(SR.SR):
                 # CIFS specific stuff
                 # Check for username and password
                 mountcmd=["mount.cifs", location, self.mountpoint]
-                self.appendCIFSPasswordOptions(mountcmd)
+                self.appendCIFSMountOptions(mountcmd)
         else:
             # Not-so-legacy mode:
             if self.dconf.has_key('options'):
@@ -257,7 +257,7 @@ class ISOSR(SR.SR):
                 mountcmd.extend(options)
             else:
                 mountcmd=["mount", location, self.mountpoint]
-            self.appendCIFSPasswordOptions(mountcmd)
+            self.appendCIFSMountOptions(mountcmd)
         # Mount!
         try:
             # For NFS, do a soft mount with tcp as protocol. Since ISO SR is
@@ -279,7 +279,25 @@ class ISOSR(SR.SR):
             self.detach(sr_uuid)
             raise xs_errors.XenError('ISOSharenameFailure')                        
 
-    def appendCIFSPasswordOptions(self, mountcmd):
+    def appendCIFSMountOptions(self, mountcmd):
+        """Append options to mount.cifs"""
+        options = []
+        try:
+            options.append(self.getCIFSPasswordOptions())
+            options.append(self.getCacheOptions())
+        except:
+            util.SMlog("Exception while attempting to append mount options")
+        finally:
+            # Extend mountcmd appropriately
+            if options:
+                options = ",".join(str(x) for x in options if x)
+                mountcmd.extend(["-o", options])
+
+    def getCacheOptions(self):
+        """Pass cache options to mount.cifs"""
+        return "cache=none"
+
+    def getCIFSPasswordOptions(self):
         if self.dconf.has_key('username') \
                 and (self.dconf.has_key('cifspassword') or self.dconf.has_key('cifspassword_secret')):
             username = self.dconf['username'].replace("\\","/")
@@ -296,7 +314,7 @@ class ISOSR(SR.SR):
             f.write("username=%s\npassword=%s\n" % (username,password))
             f.close()            
             credentials = "credentials=%s" % self.credentials            
-            mountcmd.extend(["-o", credentials])
+            return credentials
 
     def _cleanupcredentials(self):
         if self.credentials and os.path.exists(self.credentials):
