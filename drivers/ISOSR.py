@@ -257,7 +257,6 @@ class ISOSR(SR.SR):
                 mountcmd.extend(options)
             else:
                 mountcmd=["mount", location, self.mountpoint]
-            self.appendCIFSMountOptions(mountcmd)
         # Mount!
         try:
             # For NFS, do a soft mount with tcp as protocol. Since ISO SR is
