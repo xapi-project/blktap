@@ -29,6 +29,8 @@
 #include <signal.h>
 #include <stdlib.h>
 
+extern int tapdev_major;
+
 /**
  * Removes the XenStore watch from the front-end.
  *
@@ -303,6 +305,12 @@ physical_device_changed(vbd_t *device) {
         WARN(device, "changing physical device from %x:%x to %x:%x not "
                 "supported\n", device->major, device->minor, major, minor);
         err = -ENOSYS;
+        goto out;
+    }
+
+    if (major != tapdev_major) {
+        WARN(device, "ignoring non-blktap2 physical device: %d\n", major);
+        err = -EINVAL;
         goto out;
     }
 
