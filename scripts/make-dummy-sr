@@ -1,0 +1,17 @@
+#!/bin/bash
+
+# If there is an iSCSI session active at this point it must be the root disk
+if [ -d /sys/class/iscsi_session ] ; then
+    for dir in /sys/class/iscsi_session/* ; do
+     if [ -d "$dir" ] ; then
+       # Ensure that the SR backend /opt/xensource/sm does not deactivate
+       # this iSCSI session by saying it is in use by a "dummy" SR
+       iqn="$(cat $dir/targetname)"
+       dummy_sr="00000000-0000-0000-0000-000000000000"
+       if [ ! -e "/var/run/sr-ref/$iqn" ] || ! grep -q "$dummy_sr" "/var/run/sr-ref/$iqn" ; then
+           mkdir -p /var/run/sr-ref
+           echo "$dummy_sr" >> "/var/run/sr-ref/$iqn"
+       fi
+     fi
+    done
+fi

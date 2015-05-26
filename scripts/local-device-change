@@ -24,8 +24,6 @@ DEVICE=$1 # foo
 
 /usr/bin/logger "local-device-change DEVICE=$DEVICE ACTION=$ACTION"
 
-CDROMMON="/opt/xensource/libexec/cdrommon"
-
 . /etc/xensource-inventory
 
 function remove_vdi {
@@ -45,7 +43,6 @@ do
     grep -q "^drive name:[	]*\W${DEVICE}\(\W\|$\)" /proc/sys/dev/cdrom/info
     # is this a CD or not
     if [ $? -eq 0 ]; then
-      ${CDROMMON} /dev/xapi/cd/${DEVICE}
       for SR in `xe sr-list type=udev sm-config:type=cd uuid=${LOCAL_SR} params=uuid --minimal`
       do
         xe vdi-introduce uuid=`uuidgen` sr-uuid=${SR} type=user location=/dev/xapi/cd/${DEVICE}

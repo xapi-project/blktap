@@ -1,0 +1,5 @@
+KERNEL=="sd*", SUBSYSTEMS=="scsi", PROGRAM="/etc/udev/scripts/xs-mpath-scsidev.sh %b %k $tempnode session %n", SYMLINK+="%c"
+KERNEL=="sd*", SUBSYSTEMS=="scsi", PROGRAM="/etc/udev/scripts/xs-mpath-scsidev.sh %b %k $tempnode serial %n", SYMLINK+="%c"
+KERNEL=="sd*", SUBSYSTEMS=="scsi", PROGRAM="/etc/udev/scripts/xs-mpath-scsidev.sh %b %k $tempnode base %n", SYMLINK+="%c"
+KERNEL=="sd*", SUBSYSTEMS=="scsi", PROGRAM="/etc/udev/scripts/xs-mpath-scsidev.sh %b %k $tempnode scsi_bybus %n", SYMLINK+="%c"
+KERNEL=="sd*", SUBSYSTEMS=="scsi", DRIVER=="sd", WAIT_FOR_SYSFS="dev", PROGRAM="/etc/udev/scripts/xs-mpath-scsidev.sh %b %k $tempnode scsi_bympp %n", SYMLINK+="%c"

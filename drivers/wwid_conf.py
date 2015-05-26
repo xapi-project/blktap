@@ -72,7 +72,7 @@ def edit_wwid(wwid, remove=False):
     shutil.move(tmp_file, CONF_FILE)
 
 def is_blacklisted(dev):
-    """This function returns 0 if the device is not blacklisted according
+    """This function returns True if the device is blacklisted according
     to multipath.conf rules.
 
     It cannot be used to check the current daemon rules because it
@@ -83,18 +83,15 @@ def is_blacklisted(dev):
 
     """
 
-    (rc,stdout,stderr) = util.doexec(['/sbin/multipath','-c',dev])
+    (rc,stdout,stderr) = util.doexec(['/sbin/multipath','-v3','-c',dev])
 
-    # If the devices is truly blacklisted, there is nothing on stdout.
+    # If the devices is blacklisted according to multipath.conf, the
+    # string "wwid blacklisted" appears in the verbose output.
     # This is a very fragile mechanism and keeps changing.
     # What we want is a method to tell immediately if a device is
     # blacklisted according only to configuration file rules regardless
     # of daemon in-memory configuration.
-    # Current "multipath -c" takes into account multipath/wwids file
-    # but we do not care about it.
-    if len(stdout) != 0:
-        rc = 0
-    return rc != False
+    return "wwid blacklisted" in stdout
 
 
 def check_conf_file():

@@ -328,7 +328,7 @@ def createVG(root, vgname):
                 raise xs_errors.XenError('LVMWrite', \
                       opterr='device %s' % dev)
         try:
-            cmd = [CMD_PVCREATE, "--metadatasize", "10M", dev]
+            cmd = [CMD_PVCREATE, "-ff", "-y", "--metadatasize", "10M", dev]
             util.pread2(cmd)
         except util.CommandException, inst:
             raise xs_errors.XenError('LVMPartCreate', \

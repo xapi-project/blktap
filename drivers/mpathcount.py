@@ -131,8 +131,8 @@ def get_path_count(SCSIid, active=True):
     return count
 
 def get_root_dev_major():
-    buf = os.stat('/dev/root')
-    devno = buf.st_rdev
+    buf = os.stat('/')
+    devno = buf.st_dev
     return os.major(devno)
 
 # @key:     key to update

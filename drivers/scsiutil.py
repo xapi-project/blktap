@@ -87,8 +87,8 @@ def SCSIid_sanitise(str):
 
 def getSCSIid(path):
     dev = rawdev(path)
-    cmd_fallback = ["scsi_id", "-g", "-s", "/block/%s" % dev]
-    cmd_new = ["scsi_id", "-g", "--device", "/dev/%s" % dev]
+    cmd_fallback = ["/usr/lib/udev/scsi_id", "-g", "-s", "/block/%s" % dev]
+    cmd_new = ["/usr/lib/udev/scsi_id", "-g", "--device", "/dev/%s" % dev]
     for cmd in cmd_new, cmd_fallback:
         try:
             scsi_id = SCSIid_sanitise(util.pread2(cmd)[:-1])
