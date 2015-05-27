@@ -30,6 +30,10 @@ LOCK_NS = "multipath.conf"
 CONF_FILE = "/etc/multipath.xenserver/multipath.conf"
 BELIST_TAG = "blacklist_exceptions"
 
+class WWIDException(Exception):
+    def __init__(self, errstr):
+        self.errstr = errstr
+
 
 def edit_wwid(wwid, remove=False):
     """Add a wwid to the list of exceptions or remove if
@@ -75,17 +79,33 @@ def is_blacklisted(dev):
     """This function returns True if the device is blacklisted according
     to multipath.conf rules.
 
+    There is also the possibility that the path to the device we are
+    checking is unavailable for some reason. In that case,
+    is_blacklisted() cannot tell if the device is blacklisted or not
+    and a WWIDException is raised.
+
     It cannot be used to check the current daemon rules because it
     could be running with an old configuration file in memory
 
-    dev -- it is any string accepted by "multipath -c". A full path
-    is sufficient
+    Input:
+        dev -- it is any string accepted by "multipath -c". A full path
+               is expected.
 
+    Return:
+        bool -- True or False, depending on whether the device is
+                blacklisted or not.
+
+    Raise:
+        WWIDException
     """
 
     (rc,stdout,stderr) = util.doexec(['/sbin/multipath','-v3','-c',dev])
 
-    # If the devices is blacklisted according to multipath.conf, the
+    if "scope is nul" in stdout:
+        raise WWIDException("WARNING: Could not retrieve device's "
+                            "WWID. Path {} is down".format(dev))
+
+    # If the device is blacklisted according to multipath.conf, the
     # string "wwid blacklisted" appears in the verbose output.
     # This is a very fragile mechanism and keeps changing.
     # What we want is a method to tell immediately if a device is
@@ -146,11 +166,14 @@ if __name__ == "__main__":
         usage()
         sys.exit(1)
 
-    if force or xor(remove, is_blacklisted(device)):
-        try:
-            edit_wwid(wwid, remove)
-        except:
-            sys.exit(1)
+    try:
+        if force or xor(remove, is_blacklisted(device)):
+            try:
+                edit_wwid(wwid, remove)
+            except:
+                sys.exit(1)
+    except WWIDException as e:
+        util.SMlog(e.errstr)
 
     sys.exit(0)
 

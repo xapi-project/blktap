@@ -181,19 +181,30 @@ def map_by_scsibus(sid,npaths=0):
         if(len(devices)>=npaths or npaths==0):
             # Enable this device's sid: it could be blacklisted
             # We expect devices to be blacklisted according to their
-            # wwid only. Checking the first one is sufficient
-            if wwid_conf.is_blacklisted(devices[0]):
+            # wwid only. We go through the list of paths until we have
+            # a definite answer about the device's blacklist status.
+            # If the path we are checking is down, we cannot tell.
+            for dev in devices:
                 try:
-                    wwid_conf.edit_wwid(sid)
-                except:
-                    util.SMlog("WARNING: exception raised while attempting to"
-                               " modify multipath.conf")
-                try:
-                    mpath_cli.reconfigure()
-                except:
-                    util.SMlog("WARNING: exception raised while attempting to"
-                               " reconfigure")
-                time.sleep(5)
+                    if wwid_conf.is_blacklisted(dev):
+                        try:
+                            wwid_conf.edit_wwid(sid)
+                        except:
+                            util.SMlog("WARNING: exception raised while "
+                                       "attempting to modify multipath.conf")
+                        try:
+                            mpath_cli.reconfigure()
+                        except:
+                            util.SMlog("WARNING: exception raised while "
+                                       "attempting to reconfigure")
+                        time.sleep(5)
+
+                    break
+                except wwid_conf.WWIDException as e:
+                    util.SMlog(e.errstr)
+            else:
+                util.SMlog("Device 'SCSI_id: {}' is inaccessible; "
+                           "All paths are down.".format(sid))
 
             __map_explicit(devices)
             return
