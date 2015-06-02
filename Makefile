@@ -63,8 +63,6 @@ UDEV_RULES = 39-multipath 40-multipath 55-xs-mpath-scsidev
 MPATH_DAEMON = sm-multipath
 MPATH_CONF = multipath.conf
 
-CRON_JOBS += ringwatch
-
 SM_XML := XE_SR_ERRORCODES
 
 SM_DEST := /opt/xensource/sm/
@@ -73,7 +71,6 @@ BIN_DEST := /opt/xensource/bin/
 MASTER_SCRIPT_DEST := /etc/xensource/master.d/
 PLUGIN_SCRIPT_DEST := /etc/xapi.d/plugins/
 LIBEXEC := /opt/xensource/libexec/
-CRON_DEST := /etc/cron.d/
 UDEV_RULES_DIR := /etc/udev/rules.d/
 UDEV_SCRIPTS_DIR := /etc/udev/scripts/
 SYSTEMD_SERVICE_DIR := /usr/lib/systemd/system/
@@ -181,8 +178,6 @@ install: precheck
 	$(MAKE) -C snapwatchd install DESTDIR=$(SM_STAGING)
 	$(MAKE) -C mpathroot install DESTDIR=$(SM_STAGING)
 	ln -sf $(SM_DEST)blktap2.py $(SM_STAGING)$(BIN_DEST)/blktap2
-	install -m 755 -d $(SM_STAGING)$(CRON_DEST)
-	install -m 644 $(CRON_JOBS:%=etc/cron.d/%) -t $(SM_STAGING)$(CRON_DEST)
 	ln -sf $(SM_DEST)lcache.py $(SM_STAGING)$(BIN_DEST)tapdisk-cache-stats
 	ln -sf /dev/null $(SM_STAGING)$(UDEV_RULES_DIR)/62-multipath.rules
 	install -m 755 scripts/xs-mpath-scsidev.sh $(SM_STAGING)$(UDEV_SCRIPTS_DIR)
