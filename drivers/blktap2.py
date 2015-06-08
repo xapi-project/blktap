@@ -41,6 +41,7 @@ from SR import SROSError
 
 import resetvdis
 import vhdutil
+import lvhdutil
 
 # For RRDD Plugin Registration
 from SocketServer import UnixStreamServer
@@ -1547,8 +1548,36 @@ class VDI(object):
             if self.target.has_cap("ATOMIC_PAUSE"):
                 self._attach(sr_uuid, vdi_uuid)
 
-            # Activate the physical node
+            # Take Lock for all chain of VHDS before running
+            # tap-ctl open
+            # Needed to avoid race with lvchange -p which is
+            # now taking the same lock
+            # This is a fix for CA-155766
+            if hasattr(self.target.vdi.sr, 'DRIVER_TYPE') and \
+               self.target.vdi.sr.DRIVER_TYPE == 'lvhd' and \
+               self.target.get_vdi_type() == vhdutil.VDI_TYPE_VHD:
+                lvname = 'VHD-' + vdi_uuid
+                vgname = lvhdutil.VG_PREFIX + sr_uuid
+                util.SMlog("Locking all chain before tap-ctl open")
+                vdiList = vhdutil.getParentChain(lvname,
+                                                 lvhdutil.extractUuid, vgname)
+                lock_list = []
+                for uuid, lvName in vdiList.iteritems():
+                    lock = Lock(uuid, lvhdutil.NS_PREFIX_LVM + sr_uuid)
+                    lock_list.append(lock)
+                    lock.acquire()
+            
+            # Activate the physical node            
             dev_path = self._activate(sr_uuid, vdi_uuid, options)
+
+            # Release Lock for all chain
+            if hasattr(self.target.vdi.sr, 'DRIVER_TYPE') and \
+               self.target.vdi.sr.DRIVER_TYPE == 'lvhd' and \
+               self.target.get_vdi_type() == vhdutil.VDI_TYPE_VHD:
+                util.SMlog("Unlocking all chain after tap-ctl open")
+                for lock in lock_list[::-1]:
+                    lock.release()
+
         except:
             util.SMlog("Exception in activate/attach")
             if self.tap_wanted():

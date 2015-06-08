@@ -21,6 +21,7 @@
 import os
 import util
 import lvutil
+import lvhdutil
 from lock import Lock
 from refcounter import RefCounter
 
@@ -218,7 +219,12 @@ class LVMCache:
     def setReadonly(self, lvName, readonly):
         path = self._getPath(lvName)
         if self.lvs[lvName].readonly != readonly:
+            uuids = util.findall_uuid(path)
+            ns = lvhdutil.NS_PREFIX_LVM + uuids[0]
+            lock = Lock(uuids[1], ns)
+            lock.acquire()
             lvutil.setReadonly(path, readonly)
+            lock.release()
             self.lvs[lvName].readonly = readonly
 
     @lazyInit

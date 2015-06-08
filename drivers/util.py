@@ -222,6 +222,10 @@ def match_uuid(s):
     regex = re.compile("^[0-9a-f]{8}-(([0-9a-f]{4})-){3}[0-9a-f]{12}")
     return regex.search(s, 0)
 
+def findall_uuid(s):
+    regex = re.compile("[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}")
+    return regex.findall(s, 0)
+
 def exactmatch_uuid(s):
     regex = re.compile("^[0-9a-f]{8}-(([0-9a-f]{4})-){3}[0-9a-f]{12}$")
     return regex.search(s, 0)
