@@ -1007,7 +1007,7 @@ class VDI(object):
         import XenAPI
 
         session = XenAPI.xapi_local()
-        session.xenapi.login_with_password('root', '')
+        session.xenapi.login_with_password('root', '', '', 'SM')
 
         target = sm.VDI.from_uuid(session, uuid)
         driver_info = target.sr.srcmd.driver_info
@@ -1449,7 +1449,7 @@ class VDI(object):
             # special pool
             return pool_info
         session = XenAPI.xapi_local()
-        session.xenapi.login_with_password('root', '')
+        session.xenapi.login_with_password('root', '', '', 'SM')
         sr_ref = self.target.vdi.sr.srcmd.params.get('sr_ref')
         sr_config = session.xenapi.SR.get_other_config(sr_ref)
         vdi_config = session.xenapi.VDI.get_other_config(vdi_ref)
@@ -1742,7 +1742,7 @@ class VDI(object):
                 return
 
         session = XenAPI.xapi_local()
-        session.xenapi.login_with_password('root', '')
+        session.xenapi.login_with_password('root', '', '', 'SM')
 
         dev_path = None
         local_sr_uuid = params.get(self.CONF_KEY_CACHE_SR)
@@ -1921,7 +1921,7 @@ class VDI(object):
             return
 
         session = XenAPI.xapi_local()
-        session.xenapi.login_with_password('root', '')
+        session.xenapi.login_with_password('root', '', '', 'SM')
 
         if caching:
             self._remove_cache(session, local_sr_uuid)

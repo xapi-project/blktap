@@ -583,7 +583,7 @@ def get_localAPI_session():
     # First acquire a valid session
     session = XenAPI.xapi_local()
     try:
-        session.xenapi.login_with_password('root','')
+        session.xenapi.login_with_password('root', '', '', 'SM')
     except:
         raise xs_errors.XenError('APISession')
     return session

@@ -133,7 +133,7 @@ if __name__ == '__main__':
         usage()
 
     session = XenAPI.xapi_local()
-    session.xenapi.login_with_password('root', '')
+    session.xenapi.login_with_password('root', '', '', 'SM')
     mode = sys.argv[1]
     if mode == "all":
         if len(sys.argv) not in [4, 5]:

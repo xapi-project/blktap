@@ -206,7 +206,7 @@ class CacheFileSR(object):
         import XenAPI
 
         session = XenAPI.xapi_local()
-        session.xenapi.login_with_password('root', '')
+        session.xenapi.login_with_password('root', '', '', 'SM')
 
         return cls.from_session(session)
 

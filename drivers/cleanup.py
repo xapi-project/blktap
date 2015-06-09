@@ -240,7 +240,7 @@ class XAPI:
     
     def getSession():
         session = XenAPI.xapi_local()
-        session.xenapi.login_with_password(XAPI.USER, '')
+        session.xenapi.login_with_password(XAPI.USER, '', '', 'SM')
         return session
     getSession = staticmethod(getSession)
 
