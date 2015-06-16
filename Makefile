@@ -59,9 +59,10 @@ SM_LIBS += B_util
 SM_LIBS += wwid_conf
 SM_LIBS += trim_util
 
-UDEV_RULES = 39-multipath 40-multipath 55-xs-mpath-scsidev
+UDEV_RULES = 39-multipath 40-multipath 55-xs-mpath-scsidev 58-xapi
 MPATH_DAEMON = sm-multipath
 MPATH_CONF = multipath.conf
+CIFS_CONF = cifs.conf
 
 SM_XML := XE_SR_ERRORCODES
 
@@ -76,6 +77,7 @@ UDEV_SCRIPTS_DIR := /etc/udev/scripts/
 SYSTEMD_SERVICE_DIR := /usr/lib/systemd/system/
 INIT_DIR := /etc/rc.d/init.d/
 MPATH_CONF_DIR := /etc/multipath.xenserver/
+MODPROBE_DIR := /etc/modprobe.d/
 
 SM_STAGING := $(DESTDIR)
 SM_STAMP := $(MY_OBJ_DIR)/.staging_stamp
@@ -125,6 +127,7 @@ install: precheck
 	mkdir -p $(SM_STAGING)$(INIT_DIR)
 	mkdir -p $(SM_STAGING)$(SYSTEMD_SERVICE_DIR)
 	mkdir -p $(SM_STAGING)$(MPATH_CONF_DIR)
+	mkdir -p $(SM_STAGING)$(MODPROBE_DIR)
 	mkdir -p $(SM_STAGING)$(DEBUG_DEST)
 	mkdir -p $(SM_STAGING)$(BIN_DEST)
 	mkdir -p $(SM_STAGING)$(MASTER_SCRIPT_DEST)
@@ -137,12 +140,14 @@ install: precheck
 	  $(SM_STAGING)/$(MPATH_CONF_DIR)
 	install -m 755 multipath/$(MPATH_DAEMON) \
 	  $(SM_STAGING)/$(INIT_DIR)
+	install -m 644 etc/modprobe.d/$(CIFS_CONF) \
+	  $(SM_STAGING)/$(MODPROBE_DIR)
 	install -m 755 drivers/updatempppathd.init \
 	  $(SM_STAGING)/$(INIT_DIR)/updatempppathd
 	install -m 644 etc/make-dummy-sr.service \
 	  $(SM_STAGING)/$(SYSTEMD_SERVICE_DIR)
 	for i in $(UDEV_RULES); do \
-	  install -m 644 multipath/$$i.rules \
+	  install -m 644 udev/$$i.rules \
 	    $(SM_STAGING)$(UDEV_RULES_DIR); done
 	for i in $(SM_XML); do \
 	  install -m 755 drivers/$$i.xml \
@@ -180,6 +185,7 @@ install: precheck
 	ln -sf $(SM_DEST)blktap2.py $(SM_STAGING)$(BIN_DEST)/blktap2
 	ln -sf $(SM_DEST)lcache.py $(SM_STAGING)$(BIN_DEST)tapdisk-cache-stats
 	ln -sf /dev/null $(SM_STAGING)$(UDEV_RULES_DIR)/62-multipath.rules
+	ln -sf /dev/null $(SM_STAGING)$(UDEV_RULES_DIR)/69-dm-lvm-metad.rules
 	install -m 755 scripts/xs-mpath-scsidev.sh $(SM_STAGING)$(UDEV_SCRIPTS_DIR)
 	install -m 755 scripts/xe-get-arrayid-lunnum $(SM_STAGING)$(BIN_DEST)
 	install -m 755 scripts/xe-getarrayidentifier $(SM_STAGING)$(BIN_DEST)

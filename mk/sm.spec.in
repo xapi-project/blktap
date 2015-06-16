@@ -43,6 +43,8 @@ sed -i 's/archive = .*/archive = 0/' /etc/lvm/master/lvm.conf || exit $?
 sed -i 's/filter \= \[ \"a\/\.\*\/\" \]/filter = \[ \"r\|\/dev\/xvd\.\|\"\, \"r\|\/dev\/VG\_Xen\.\*\/\*\|\"\]/g' /etc/lvm/master/lvm.conf || exit $?
 cp /etc/lvm/master/lvm.conf /etc/lvm/lvm.conf || exit $?
 sed -i 's/metadata_read_only =.*/metadata_read_only = 1/' /etc/lvm/lvm.conf || exit $?
+sed -i 's/use_lvmetad = 1/use_lvmetad = 0/' /etc/lvm/lvm.conf
+sed -i 's/use_lvmetad = 1/use_lvmetad = 0/' /etc/lvm/master/lvm.conf
 # We try to be "update-alternatives" ready.
 # If a file exists and it is not a symlink we back it up
 if [ -e /etc/multipath.conf -a ! -h /etc/multipath.conf ]; then
@@ -286,8 +288,10 @@ cp -f /etc/lvm/lvm.conf.orig /etc/lvm/lvm.conf || exit $?
 %config /etc/udev/rules.d/40-multipath.rules
 %config /etc/udev/rules.d/55-xs-mpath-scsidev.rules
 %config /etc/udev/rules.d/62-multipath.rules
+%config /etc/udev/rules.d/58-xapi.rules
 %config /etc/multipath.xenserver/multipath.conf
-
+%config /etc/udev/rules.d/69-dm-lvm-metad.rules
+%config /etc/modprobe.d/cifs.conf
 
 %changelog
 
