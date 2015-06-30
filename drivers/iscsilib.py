@@ -408,8 +408,10 @@ def match_targetIQN(tgtIQN, s):
         return False
     if tgtIQN == "any":
         return True
-    regex = re.compile(tgtIQN)
-    return regex.search(s, 0)
+    # Extract IQN from iscsiadm -m session
+    # Ex: tcp: [17] 10.220.98.9:3260,1 iqn.2009-01.xenrt.test:iscsi4181a93e
+    siqn = s.split(",")[1].split()[1]
+    return (siqn == tgtIQN)
 
 def match_session(s):
     regex = re.compile("^tcp:")
