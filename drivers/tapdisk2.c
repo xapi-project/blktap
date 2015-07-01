@@ -29,6 +29,7 @@
 #include "tapdisk-utils.h"
 #include "tapdisk-server.h"
 #include "tapdisk-control.h"
+#include "tapdisk-metrics.h"
 
 void tdnbd_fdreceiver_start();
 void tdnbd_fdreceiver_stop();
@@ -129,6 +130,11 @@ main(int argc, char *argv[])
 	fprintf(out, "%s\n", control);
 	fclose(out);
 
+	err = td_metrics_start();
+	if (err) {
+		DPRINTF("failed to create metrics folder: %d\n", err);
+		goto out;
+	}
 	/*
 	 * NB: We're unconditionally starting the FD receiver here - this is 
 	 * for the block-nbd driver. In the future we may want to start this as 
@@ -139,6 +145,7 @@ main(int argc, char *argv[])
 	err = tapdisk_server_run();
 
 out:
+	td_metrics_stop();
 	tdnbd_fdreceiver_stop();
 	tapdisk_control_close();
 	tapdisk_stop_logging();
