@@ -107,7 +107,8 @@ class CIFSSR(FileSR.FileSR):
         if not self.dconf.has_key('username'):
             missing_params.add('username')
 
-        if not self.dconf.has_key('password'):
+        if not (self.dconf.has_key('password') or
+                self.dconf.has_key('password_secret')):
             missing_params.add('password')
 
         if missing_params:
@@ -132,9 +133,16 @@ class CIFSSR(FileSR.FileSR):
         ])
 
         username = self.dconf['username'].replace("\\","/")
-        password = self.dconf['password']
-
         username = util.to_plain_string(username)
+
+        if self.dconf.has_key('password_secret'):
+            password = util.get_secret(
+                    self.session,
+                    self.dconf['password_secret']
+            )
+        else:
+            password = self.dconf['password']
+
         password = util.to_plain_string(password)
 
         # Open credentials file and truncate
