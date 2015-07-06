@@ -102,6 +102,19 @@ class CIFSSR(FileSR.FileSR):
         elif not util.is_string(mountpoint):
             raise CifsException("mountpoint not a string object")
 
+        missing_params = set()
+
+        if not self.dconf.has_key('username'):
+            missing_params.add('username')
+
+        if not self.dconf.has_key('password'):
+            missing_params.add('password')
+
+        if missing_params:
+            errstr = 'device-config is missing the following parameters: ' + \
+                     ', '.join([param for param in missing_params])
+            raise xs_errors.XenError('ConfigParamsMissing', opterr=errstr)
+
         try:
             if not util.ioretry(lambda: util.isdir(mountpoint)):
                 util.ioretry(lambda: util.makedirs(mountpoint))
@@ -109,27 +122,26 @@ class CIFSSR(FileSR.FileSR):
             raise CifsException("Failed to make directory: code is %d" %
                                 inst.code)
 
-        options = 'sec=ntlm'
-        options += ',cache=none'
-        options += ',vers=3.0'
-
         self.credentials = os.path.join("/tmp", util.gen_uuid())
 
-        if self.dconf.has_key('username') \
-                and self.dconf.has_key('password'):
-            username = self.dconf['username'].replace("\\","/")
-            password = self.dconf['password']
+        options = ','.join([
+                'sec=ntlm',
+                'cache=none',
+                'vers=3.0',
+                'credentials=%s' % self.credentials
+        ])
 
-            username = util.to_plain_string(username)
-            password = util.to_plain_string(password)
+        username = self.dconf['username'].replace("\\","/")
+        password = self.dconf['password']
 
-            # Open credentials file and truncate
-            f = open(self.credentials, 'w')
-            f.write("username=%s\npassword=%s\n" % (username,password))
-            f.close()
+        username = util.to_plain_string(username)
+        password = util.to_plain_string(password)
 
-            options += ',credentials=%s' % self.credentials
-    
+        # Open credentials file and truncate
+        f = open(self.credentials, 'w')
+        f.write("username=%s\npassword=%s\n" % (username,password))
+        f.close()
+
         try:
             util.ioretry(lambda:
                 util.pread(["mount.cifs", self.remoteserver,
@@ -177,7 +189,6 @@ class CIFSSR(FileSR.FileSR):
 
     def probe(self):
         try:
-            self.check_dconf(['username', 'password'])
             err = "CIFSMount"
             self.__mount(PROBE_MOUNTPOINT)
             sr_list = filter(util.match_uuid, util.listdir(PROBE_MOUNTPOINT))
