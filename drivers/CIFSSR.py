@@ -160,11 +160,24 @@ class CIFSSR(FileSR.FileSR):
                 maxretry=2, nofail=True)
         except util.CommandException, inst:
             raise CifsException("mount failed with return code %d" % inst.code)
+        finally:
+            try:
+                os.unlink(self.credentials)
+            except OSError:
+                util.SMlog("Error when trying to delete "
+                           "credentials files /tmp/<uuid>")
 
+        # Sanity check to ensure that the user has at least RO access to the
+        # mounted share. Windows sharing and security settings can be tricky.
         try:
-            os.unlink(self.credentials)
-        except OSError, inst:
-            util.SMlog("Error when trying to delete credentials files /tmp/<uuid>")
+            util.listdir(mountpoint)
+        except util.CommandException:
+            try:
+                self.unmount(mountpoint, True)
+            except CifsException:
+                util.logException('CIFSSR.unmount()')
+            raise CifsException("Permission denied. "
+                                "Please check user privileges.")
  
     def __unmount(self, mountpoint, rmmountpoint):
         """Unmount the remote CIFS export at 'mountpoint'"""
