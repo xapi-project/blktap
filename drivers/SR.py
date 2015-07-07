@@ -484,7 +484,28 @@ class SR(object):
         except:
             pass
 
-    
+    def check_dconf(self, key_list, raise_flag=True):
+        """ Checks if all keys in 'key_list' exist in 'self.dconf'.
+
+            Input:
+                key_list:   a list of keys to check if they exist in self.dconf
+                raise_flag: if true, raise an exception if there are 1 or more
+                            keys missing
+
+            Return: set() containing the missing keys (empty set() if all exist)
+            Raise: xs_errors.XenError('ConfigParamsMissing')
+        """
+
+        missing_keys = {key for key in key_list if not self.dconf.has_key(key)}
+
+        if missing_keys and raise_flag:
+            errstr = 'device-config is missing the following parameters: ' + \
+                     ', '.join([key for key in missing_keys])
+            raise xs_errors.XenError('ConfigParamsMissing', opterr=errstr)
+
+        return missing_keys
+
+
 class ScanRecord:
     def __init__(self, sr):
         self.sr = sr

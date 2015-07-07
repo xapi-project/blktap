@@ -480,6 +480,11 @@
                 <description>Failed to remove CIFS mount point</description>
                 <value>114</value>
         </code>
+        <code>
+                <name>ConfigParamsMissing</name>
+                <description>Not all required parameters specified.</description>
+                <value>115</value>
+        </code>
 
        <!-- Agent database query errors 150+ -->
         <code>
