@@ -38,6 +38,7 @@ ERROR_CODE_KEY = "errcode"
 ERROR_MSG_KEY = "errmsg"
 
 TRIM_LAST_TRIGGERED_KEY = "trim_last_triggered"
+MASTER_LVM_CONF = '/etc/lvm/master'
 
 def _vg_by_sr_uuid(sr_uuid):
     return lvhdutil.VG_PREFIX + sr_uuid
@@ -85,6 +86,7 @@ def do_trim(session, args):
     """Attempt to trim the given LVHDSR"""
     util.SMlog("do_trim: %s" % args)
     sr_uuid = args["sr_uuid"]
+    os.environ['LVM_SYSTEM_DIR'] = MASTER_LVM_CONF
 
     if TRIM_CAP not in util.sr_get_capability(sr_uuid):
         util.SMlog("Trim command ignored on unsupported SR %s" % sr_uuid)
