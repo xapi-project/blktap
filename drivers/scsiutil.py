@@ -31,6 +31,7 @@ import mpath_cli
 PREFIX_LEN = 4
 SUFFIX_LEN = 12
 SECTOR_SHIFT = 9
+SCSI_ID_BIN = '/usr/lib/udev/scsi_id'
 
 def gen_hash(st, len):
     hs = 0
@@ -86,17 +87,25 @@ def SCSIid_sanitise(str):
     return re.sub("\s+","_",text)
 
 def getSCSIid(path):
-    dev = rawdev(path)
-    cmd_fallback = ["/usr/lib/udev/scsi_id", "-g", "-s", "/block/%s" % dev]
-    cmd_new = ["/usr/lib/udev/scsi_id", "-g", "--device", "/dev/%s" % dev]
-    for cmd in cmd_new, cmd_fallback:
-        try:
-            scsi_id = SCSIid_sanitise(util.pread2(cmd)[:-1])
-            return scsi_id
-        except Exception, e:
-            util.SMlog("%s failed with %s" %(cmd, e.args))
-            to_raise = e
-    raise to_raise
+    """Get the SCSI id of a block device
+
+        Input:
+            path -- (str) path to block device; can be symlink
+
+        Return:
+            scsi_id -- (str) the device's SCSI id
+
+        Raise:
+            util.CommandException
+    """
+
+    try:
+        stdout = util.pread2([SCSI_ID_BIN, '-g', '--device', path])
+    except util.CommandException: # fallback call
+        dev = rawdev(path)
+        stdout = util.pread2([SCSI_ID_BIN, '-g', '-s', '/block/%s' % dev])
+
+    return SCSIid_sanitise(stdout[:-1])
 
 def compareSCSIid_2_6_18(SCSIid, path):
     serial = getserial(path)
@@ -186,7 +195,11 @@ def get_devices_by_SCSIid(SCSIid):
     return devices
 
 def rawdev(dev):
-    return re.sub("[0-9]*$","",getdev(dev))
+    device = getdev(dev)
+    if device.startswith('dm-') and device[3:].isdigit():
+        return device
+
+    return re.sub('[0-9]*$', '', device)
 
 def getSessionID(path):
     for line in filter(match_session, util.listdir(path)):
