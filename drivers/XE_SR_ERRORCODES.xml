@@ -485,6 +485,11 @@
                 <description>Not all required parameters specified.</description>
                 <value>115</value>
         </code>
+        <code>
+                <name>CIFSCreate</name>
+                <description>Failed to create CIFS SR.</description>
+                <value>116</value>
+        </code>
 
        <!-- Agent database query errors 150+ -->
         <code>
