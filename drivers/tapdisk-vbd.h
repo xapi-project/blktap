@@ -25,6 +25,7 @@
 #include "tapdisk-image.h"
 #include "tapdisk-blktap.h"
 #include "td-blkif.h"
+#include "tapdisk-metrics.h"
 
 #define TD_VBD_REQUEST_TIMEOUT      120
 #define TD_VBD_MAX_RETRIES          100
@@ -146,6 +147,7 @@ struct td_vbd_handle {
 	td_disk_info_t              disk_info;
 
     struct td_vbd_rrd           rrd;
+    stats_t vdi_stats;
 };
 
 #define tapdisk_vbd_for_each_request(vreq, tmp, list)	                \

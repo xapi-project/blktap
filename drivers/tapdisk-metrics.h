@@ -19,7 +19,29 @@
 #ifndef TAPDISK_METRICS_H
 #define TAPDISK_METRICS_H
 
-#define TAPDISK_METRICS_PATHF "/dev/shm/td3-%d"
+#define TAPDISK_METRICS_PATHF     "/dev/shm/td3-%d"
+#define TAPDISK_METRICS_VDI_PATHF "%s/vdi-%hu"
+
+#include <libaio.h>
+
+#include "tapdisk-utils.h"
+#include "tapdisk.h"
+
+struct stats {
+    unsigned long long read_reqs_submitted;
+    unsigned long long read_reqs_completed;
+    unsigned long long read_sectors;
+    unsigned long long read_total_ticks;
+    unsigned long long write_reqs_submitted;
+    unsigned long long write_reqs_completed;
+    unsigned long long write_sectors;
+    unsigned long long write_total_ticks;
+};
+
+typedef struct {
+    struct shm shm;
+    struct stats *stats;
+} stats_t;
 
 typedef struct {
     char *path;
@@ -27,8 +49,10 @@ typedef struct {
 
 /* Creates a folder in which to store tapdisk3 statistics: /dev/shm/td3-<pid> */
 int td_metrics_start();
-
 /* Destroys the folder /dev/shm/td3-<pid> and its contents */
 void td_metrics_stop();
-
+/* Creates the shm for the file that will store the metrics */
+int td_metrics_vdi_start(int minor, stats_t *vdi_stats);
+/* Destroys the files created to store metrics */
+int td_metrics_vdi_stop(stats_t *vdi_stats);
 #endif /* TAPDISK_METRICS_H */
