@@ -32,6 +32,7 @@
 #include "td-blkif.h"
 #include "td-ctx.h"
 #include "tapdisk-server.h"
+#include "tapdisk-metrics.h"
 #include "tapdisk-vbd.h"
 #include "tapdisk-log.h"
 #include "tapdisk.h"
@@ -416,6 +417,7 @@ tapdisk_xenblkif_complete_request(struct td_xenblkif * const blkif,
     long long *max = NULL, *sum = NULL, *cnt = NULL;
 	static int depth = 0;
 	bool processing_barrier_message;
+        unsigned long long *ticks = NULL;
 
     ASSERT(blkif);
     ASSERT(tapreq);
@@ -454,6 +456,8 @@ tapdisk_xenblkif_complete_request(struct td_xenblkif * const blkif,
 			cnt = &blkif->stats.xenvbd->st_rd_cnt;
 			sum = &blkif->stats.xenvbd->st_rd_sum_usecs;
 			max = &blkif->stats.xenvbd->st_rd_max_usecs;
+                        blkif->vbd_stats.stats->read_reqs_completed++;
+                        ticks = &blkif->vbd_stats.stats->read_total_ticks;
 			if (likely(!err)) {
 				_err = guest_copy2(blkif, tapreq);
 				if (unlikely(_err)) {
@@ -466,14 +470,16 @@ tapdisk_xenblkif_complete_request(struct td_xenblkif * const blkif,
 			cnt = &blkif->stats.xenvbd->st_wr_cnt;
 			sum = &blkif->stats.xenvbd->st_wr_sum_usecs;
 			max = &blkif->stats.xenvbd->st_wr_max_usecs;
+                        blkif->vbd_stats.stats->write_reqs_completed++;
+                        ticks = &blkif->vbd_stats.stats->write_total_ticks;
 		}
 
 		if (likely(cnt)) {
 			struct timeval now;
 			long long interval;
 			gettimeofday(&now, NULL);
-			interval = timeval_to_us(&now) - timeval_to_us(&tapreq->vreq.ts);
-
+			interval = timeval_to_us(&now) - timeval_to_us(&tapreq->ts);
+                       *ticks += interval;
 			if (interval > *max)
 				*max = interval;
 
@@ -644,8 +650,10 @@ tapdisk_xenblkif_parse_request(struct td_xenblkif * const blkif,
             goto out;
         }
         blkif->stats.xenvbd->st_wr_sect += nr_sect;
+        blkif->vbd_stats.stats->write_sectors += nr_sect;
     } else
         blkif->stats.xenvbd->st_rd_sect += nr_sect;
+        blkif->vbd_stats.stats->read_sectors += nr_sect;
 
     /*
      * TODO Isn't this kind of expensive to do for each requests? Why does
@@ -688,16 +696,17 @@ tapdisk_xenblkif_make_vbd_request(struct td_xenblkif * const blkif,
     memset(vreq, 0, sizeof(*vreq));
 
 	tapreq->vma = NULL;
-
     switch (tapreq->msg.operation) {
     case BLKIF_OP_READ:
         blkif->stats.xenvbd->st_rd_req++;
+        blkif->vbd_stats.stats->read_reqs_submitted++;
         tapreq->prot = PROT_WRITE;
         vreq->op = TD_OP_READ;
         break;
     case BLKIF_OP_WRITE:
     case BLKIF_OP_WRITE_BARRIER:
         blkif->stats.xenvbd->st_wr_req++;
+        blkif->vbd_stats.stats->write_reqs_submitted++;
         tapreq->prot = PROT_READ;
         vreq->op = TD_OP_WRITE;
         break;
@@ -707,6 +716,8 @@ tapdisk_xenblkif_make_vbd_request(struct td_xenblkif * const blkif,
         err = EOPNOTSUPP;
         goto out;
     }
+    /* Timestamp before the requests leave the blkif layer */
+    gettimeofday(&tapreq->ts, NULL);
 
     /*
      * Check that the number of segments is sane.
