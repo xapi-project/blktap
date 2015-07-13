@@ -241,3 +241,58 @@ td_metrics_vbd_stop(stats_t *vbd_stats)
 end:
     return err;
 }
+
+int
+td_metrics_blktap_start(int minor, stats_t *blktap_stats)
+{
+
+    int err = 0;
+
+    if(!td_metrics.path)
+        goto out;
+
+    shm_init(&blktap_stats->shm);
+
+    err = asprintf(&blktap_stats->shm.path, TAPDISK_METRICS_BLKTAP_PATHF, td_metrics.path, minor);
+    if(unlikely(err == -1)){
+        err = errno;
+        EPRINTF("failed to allocate memory to store blktap metrics path: %s\n",strerror(err));
+        blktap_stats->shm.path = NULL;
+        goto out;
+    }
+
+    blktap_stats->shm.size = PAGE_SIZE;
+
+    err = shm_create(&blktap_stats->shm);
+    if (unlikely(err)) {
+        err = errno;
+        EPRINTF("failed to create blktap shm ring stats file: %s\n", strerror(err));
+        goto out;
+    }
+    blktap_stats->stats = blktap_stats->shm.mem;
+out:
+    return err;
+}
+
+int
+td_metrics_blktap_stop(stats_t *blktap_stats)
+{
+    int err = 0;
+
+    if(!blktap_stats->shm.path)
+        goto end;
+
+    err = shm_destroy(&blktap_stats->shm);
+    if (unlikely(err)) {
+        err = errno;
+        EPRINTF("failed to destroy blktap metrics file: %s\n", strerror(err));
+    }
+
+    free(blktap_stats->shm.path);
+    blktap_stats->shm.path = NULL;
+
+end:
+    return err;
+
+}
+

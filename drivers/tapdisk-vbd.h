@@ -25,7 +25,6 @@
 #include "tapdisk-image.h"
 #include "tapdisk-blktap.h"
 #include "td-blkif.h"
-#include "tapdisk-metrics.h"
 
 #define TD_VBD_REQUEST_TIMEOUT      120
 #define TD_VBD_MAX_RETRIES          100
