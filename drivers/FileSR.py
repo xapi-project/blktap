@@ -688,6 +688,7 @@ class FileVDI(VDI.VDI):
         assert(util.pathexists(parent_path))
         vhdutil.setParent(self.path, parent_path, False)
         vhdutil.setHidden(parent_path)
+        self.sr.session.xenapi.VDI.set_managed(self.sr.srcmd.params['args'][0], False)
         util.pread2([vhdutil.VHD_UTIL, "modify", "-p", parent_path,
             "-n", self.path])
         # Tell tapdisk the chain has changed

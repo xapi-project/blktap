@@ -1572,6 +1572,7 @@ class LVHDVDI(VDI.VDI):
 
         vhdutil.setParent(self.path, parent_path, False)
         vhdutil.setHidden(parent_path)
+        self.sr.session.xenapi.VDI.set_managed(self.sr.srcmd.params['args'][0], False)
 
         if not blktap2.VDI.tap_refresh(self.session, self.sr.uuid, self.uuid,
                 True):
