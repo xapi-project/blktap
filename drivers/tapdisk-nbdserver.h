@@ -66,6 +66,8 @@ struct td_nbdserver {
 	char                    sockpath[TAPDISK_NBDSERVER_MAX_PATH_LEN];
 
 	struct list_head        clients;
+
+	stats_t                 nbd_stats;
 };
 
 struct td_nbdserver_client {
