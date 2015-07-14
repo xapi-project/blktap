@@ -269,7 +269,10 @@ __tapdisk_nbdserver_request_cb(td_vbd_request_t *vreq, int error,
 		void *token, int final)
 {
 	td_nbdserver_client_t *client = token;
+        td_nbdserver_t *server = client->server;
 	td_nbdserver_req_t *req = containerof(vreq, td_nbdserver_req_t, vreq);
+        unsigned long long interval;
+        struct timeval now;
 	struct nbd_reply reply;
 	int tosend = 0;
 	int sent = 0;
@@ -278,6 +281,9 @@ __tapdisk_nbdserver_request_cb(td_vbd_request_t *vreq, int error,
 	reply.magic = htonl(NBD_REPLY_MAGIC);
 	reply.error = htonl(error);
 	memcpy(reply.handle, req->id, sizeof(reply.handle));
+
+        gettimeofday(&now, NULL);
+        interval = timeval_to_us(&now) - timeval_to_us(&vreq->ts);
 
 	if (client->client_fd < 0) {
 		ERROR("Finishing request for client that has disappeared");
@@ -289,6 +295,9 @@ __tapdisk_nbdserver_request_cb(td_vbd_request_t *vreq, int error,
 	switch(vreq->op) {
 	case TD_OP_READ:
 		tosend = len = vreq->iov->secs << SECTOR_SHIFT;
+                server->nbd_stats.stats->read_reqs_completed++;
+                server->nbd_stats.stats->read_sectors += vreq->iov->secs;
+                server->nbd_stats.stats->read_total_ticks += interval;
 		while (tosend > 0) {
 			sent = send(client->client_fd,
 					vreq->iov->base + (len - tosend),
@@ -302,6 +311,10 @@ __tapdisk_nbdserver_request_cb(td_vbd_request_t *vreq, int error,
 			tosend -= sent;
 		}
 		break;
+        case TD_OP_WRITE:
+                server->nbd_stats.stats->write_reqs_completed++;
+                server->nbd_stats.stats->write_sectors += vreq->iov->secs;
+                server->nbd_stats.stats->write_total_ticks += interval;
 	default:
 		break;
 	}
@@ -393,10 +406,11 @@ tapdisk_nbdserver_clientcb(event_id_t id, char mode, void *data)
 	switch(request.type) {
 	case NBD_CMD_READ:
 		vreq->op = TD_OP_READ;
+                server->nbd_stats.stats->read_reqs_submitted++;
 		break;
 	case NBD_CMD_WRITE:
 		vreq->op = TD_OP_WRITE;
-
+                server->nbd_stats.stats->write_reqs_submitted++;
 		n = 0;
 		while (n < len) {
 			rc = recv(fd, vreq->iov->base + n, (len - n), 0);
@@ -548,56 +562,60 @@ tapdisk_nbdserver_alloc(td_vbd_t *vbd, td_disk_info_t info)
 {
 	td_nbdserver_t *server;
 	char fdreceiver_path[TAPDISK_NBDSERVER_MAX_PATH_LEN];
-	int err = 0;
 
-	server = malloc(sizeof(*server));
+	server = calloc(1, sizeof(*server));
 	if (!server) {
-		err = errno;
-		ERROR("Failed to allocate memory for nbdserver: %s", strerror(err));
-		goto out;
+		ERR("Failed to allocate memory for nbdserver: %s",
+				strerror(errno));
+		goto fail;
 	}
 
-	memset(server, 0, sizeof(*server));
+	server->vbd = vbd;
+	server->info = info;
 	server->fdrecv_listening_fd = -1;
 	server->fdrecv_listening_event_id = -1;
 	server->unix_listening_fd = -1;
 	server->unix_listening_event_id = -1;
 	INIT_LIST_HEAD(&server->clients);
 
-	server->vbd = vbd;
-	server->info = info;
+        err = td_metrics_nbd_start(&server->nbd_stats, server->vbd->tap->minor);
 
-	snprintf(fdreceiver_path, TAPDISK_NBDSERVER_MAX_PATH_LEN, "%s%d.%d",
-			TAPDISK_NBDSERVER_LISTEN_SOCK_PATH, getpid(),
-			vbd->uuid);
+        if(err){
+            err = errno;
+            ERR("failed to create metrics file for nbdserver: %s", strerror(err));
+        }
+
+	if (snprintf(fdreceiver_path, TAPDISK_NBDSERVER_MAX_PATH_LEN,
+			"%s%d.%d", TAPDISK_NBDSERVER_LISTEN_SOCK_PATH, getpid(),
+			vbd->uuid) < 0) {
+		ERR("Failed to snprintf fdreceiver_path");
+		goto fail;
+	}
 
 	server->fdreceiver = td_fdreceiver_start(fdreceiver_path,
 			tapdisk_nbdserver_fdreceiver_cb, server);
-
 	if (!server->fdreceiver) {
-		ERROR("Error setting up fd receiver");
-		goto out;
+		ERR("Error setting up fd receiver");
+		goto fail;
 	}
 
-	if (-1 == snprintf(server->sockpath, TAPDISK_NBDSERVER_MAX_PATH_LEN,
-				"%s%d.%d", TAPDISK_NBDSERVER_SOCK_PATH, getpid(), vbd->uuid))
-	{
-		err = errno;
-		ERROR("failed to snprintf %s...%d: %s", TAPDISK_NBDSERVER_SOCK_PATH,
-				vbd->uuid, strerror(err));
-		goto out;
+	if (snprintf(server->sockpath, TAPDISK_NBDSERVER_MAX_PATH_LEN,
+			"%s%d.%d", TAPDISK_NBDSERVER_SOCK_PATH, getpid(),
+			vbd->uuid) < 0) {
+		ERR("Failed to snprintf sockpath");
+		goto fail;
 	}
 
-out:
-	if (err) {
-		if (server) {
-			tapdisk_server_unregister_event(server->fdrecv_listening_event_id);
-			close(server->fdrecv_listening_fd);
-			free(server);
-		}
-		return NULL;
-	} else
-		return server;
+	return server;
+
+fail:
+	if (server) {
+		if (server->fdreceiver)
+			td_fdreceiver_stop(server->fdreceiver);
+		free(server);
+	}
+
+	return NULL;
 }
 
 int
@@ -825,6 +843,10 @@ tapdisk_nbdserver_free(td_nbdserver_t *server)
 	if (err)
 		ERROR("failed to remove UNIX domain socket %s: %s\n", server->sockpath,
 				strerror(errno));
+        err = td_metrics_nbd_stop(&server->nbd_stats);
+
+        if (err)
+            ERR("failed to delete NBD metrics: %s\n", strerror(errno));
 
 	free(server);
 }

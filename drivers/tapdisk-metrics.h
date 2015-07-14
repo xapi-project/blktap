@@ -23,6 +23,7 @@
 #define TAPDISK_METRICS_VDI_PATHF    "%s/vdi-%hu"
 #define TAPDISK_METRICS_VBD_PATHF    "%s/vbd-%d-%d"
 #define TAPDISK_METRICS_BLKTAP_PATHF "%s/blktap-%d"
+#define TAPDISK_METRICS_NBD_PATHF "%s/nbd-%d"
 
 #include <libaio.h>
 
@@ -72,4 +73,7 @@ int td_metrics_blktap_start(int minor, stats_t *blktap_stats);
 /* Destroys the metrics file between tapdisk and blktap */
 int td_metrics_blktap_stop(stats_t *blktap_stats);
 
+int td_metrics_nbd_start(stats_t *nbd_server, int minor);
+
+int td_metrics_nbd_stop(stats_t *nbd_server);
 #endif /* TAPDISK_METRICS_H */
