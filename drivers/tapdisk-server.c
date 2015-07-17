@@ -38,6 +38,7 @@
 #include "tapdisk-driver.h"
 #include "tapdisk-interface.h"
 #include "tapdisk-log.h"
+#include "td-blkif.h"
 
 #define DBG(_level, _f, _a...)       tlog_write(_level, _f, ##_a)
 #define ERR(_err, _f, _a...)         tlog_error(_err, _f, ##_a)
@@ -471,10 +472,16 @@ static void lowmem_cleanup(void)
 static void lowmem_timeout(event_id_t id, char mode, void *data)
 {
 	int ret;
+	td_vbd_t           *vbd,   *tmpv;
+	struct td_xenblkif *blkif, *tmpb;
 
 	server.mem_state.mode = NORMAL_MEMORY_MODE;
 	tapdisk_server_unregister_event(server.mem_state.mem_evid);
 	server.mem_state.mem_evid = -1;
+
+	tapdisk_server_for_each_vbd(vbd, tmpv)
+		tapdisk_vbd_for_each_blkif(vbd, blkif, tmpb)
+			td_flag_clear(blkif->stats.xenvbd->flags, BT3_LOW_MEMORY_MODE);
 
 	if ((ret = tapdisk_server_reset_lowmem_mode()) < 0) {
 		ERR(-ret, "Failed to re-init low memory handler: %s\n",
@@ -490,6 +497,9 @@ static void lowmem_event(event_id_t id, char mode, void *data)
 	uint64_t result;
 	ssize_t n;
 	int backoff;
+
+	td_vbd_t           *vbd,   *tmpv;
+	struct td_xenblkif *blkif, *tmpb;
 
 	n = read(server.mem_state.efd, &result, sizeof(result));
 	if (n < 0) {
@@ -532,6 +542,10 @@ static void lowmem_event(event_id_t id, char mode, void *data)
 		return;
 	}
 	server.mem_state.mode = LOW_MEMORY_MODE;
+
+	tapdisk_server_for_each_vbd(vbd, tmpv)
+		tapdisk_vbd_for_each_blkif(vbd, blkif, tmpb)
+			td_flag_set(blkif->stats.xenvbd->flags, BT3_LOW_MEMORY_MODE);
 
 	/* Increment backoff up to a limit */
 	if (server.mem_state.backoff < MAX_BACKOFF)

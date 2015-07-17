@@ -155,6 +155,9 @@ struct td_vbd_handle {
 #define tapdisk_vbd_for_each_image(vbd, image, tmp)	\
 	tapdisk_for_each_image_safe(image, tmp, &vbd->images)
 
+#define tapdisk_vbd_for_each_blkif(vbd, blkif, tmp)	\
+	list_for_each_entry_safe((blkif), (tmp), (&vbd->rings), entry)
+
 static inline void
 tapdisk_vbd_move_request(td_vbd_request_t *vreq, struct list_head *dest)
 {
