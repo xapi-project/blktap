@@ -30,6 +30,11 @@
 
 
 /**
+ * Flag defines
+ */
+#define BT3_LOW_MEMORY_MODE 0x0000000000000001
+
+/**
  * blkback-style stats
  */
 struct blkback_stats {
@@ -100,6 +105,13 @@ struct blkback_stats {
 	 * Absolute maximum BLKIF_OP_WRITE response time, in us.
 	 */
 	long long st_wr_max_usecs;
+
+	/**
+	 * Allocated space for 64 flags (due to 8-byte alignment)
+	 * 1st flag is LSB, last flag is MSB.
+	 * mem_mode: 0 - NORMAL_MEMORY_MODE; 1 - LOW_MEMORY_MODE;
+	 */
+	unsigned long long flags;
 } __attribute__ ((aligned (8)));
 
 #endif /* __BLKTAP_3_H__ */

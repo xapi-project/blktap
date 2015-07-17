@@ -151,6 +151,10 @@ tapdisk_xenblkif_stats_create(struct td_xenblkif *blkif)
 
 	blkif->stats.xenvbd = blkif->xenvbd_stats.stats.mem;
 
+    if (tapdisk_server_mem_mode()) {
+        td_flag_set(blkif->stats.xenvbd->flags, BT3_LOW_MEMORY_MODE);
+    }
+
     err = tapdisk_xenblkif_ring_stats_update(blkif);
     if (unlikely(err)) {
         EPRINTF("failed to generate shared I/O ring stats: %s\n",
