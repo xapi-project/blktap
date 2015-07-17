@@ -65,9 +65,8 @@ def check_server_tcp(server, nfsversion=DEFAULT_NFSVERSION):
     False otherwise.
     """
     try:
-        util.ioretry(lambda: util.pread([RPCINFO_BIN, "-t",
-                                         "%s" % server, "nfs", nfsversion]),
-                     errlist=[errno.EPERM], maxretry=2, nofail=True)
+        sv = get_supported_nfs_versions(server)
+        return (True if nfsversion in sv else False)
     except util.CommandException, inst:
         raise NfsException("rpcinfo failed or timed out: return code %d" %
                            inst.code)
@@ -207,14 +206,15 @@ def scan_srlist(path, dconf):
 
 def get_supported_nfs_versions(server):
     """Return list of supported nfs versions."""
-    valid_versions = ['3', '4']
-    supported_versions = []
+    valid_versions = set(['3', '4'])
+    cv = set()
     try:
-        ns = util.pread2([RPCINFO_BIN, "-t", "%s" % server, "nfs"])
-        for l in ns.strip().split("\n"):
-            if l.split()[3] in valid_versions:
-                supported_versions.append(l.split()[3])
-
-        return supported_versions
+        ns = util.pread2([RPCINFO_BIN, "-p", "%s" % server])
+        ns = ns.split("\n")
+        for i in range(len(ns)):
+            if ns[i].find("nfs") > 0:
+                cvi = ns[i].split()[1]
+                cv.add(cvi)
+        return list(cv & valid_versions)
     except:
         util.SMlog("Unable to obtain list of valid nfs versions")
