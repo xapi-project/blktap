@@ -1509,6 +1509,7 @@ class LVHDVDI(VDI.VDI):
         util.SMlog("LVHDVDI.create: type = %s, %s (size=%s)" %\
                 (self.vdi_type, self.path, size))
         lvSize = 0
+        self.sm_config = self.sr.srcmd.params["vdi_sm_config"]
         if self.vdi_type == vhdutil.VDI_TYPE_RAW:
             lvSize = util.roundup(lvutil.LVM_SIZE_INCREMENT, long(size))
         else:
@@ -1518,8 +1519,30 @@ class LVHDVDI(VDI.VDI):
             elif self.sr.provision == "thick":
                 lvSize = lvhdutil.calcSizeVHDLV(long(size))
             elif self.sr.provision == "dynamic":
-                if 'initial_allocation' in self.sr.sm_config:
-                    ia = float (self.sr.sm_config['initial_allocation'])
+                # Check for allocation-quantum
+                if 'allocation_quantum' in self.sm_config:
+                    aq = float(self.sm_config['allocation_quantum'])
+                    if aq <=0.0 or aq >= 1.0:
+                        raise xs_errors.XenError('InvalidArg',
+                                opterr='Allocation quantum must be between [0.0-1.0]')
+                elif 'allocation_quantum' in self.sr.sm_config:
+                    aq_str = self.sr.sm_config['allocation_quantum']
+                    aq = float(aq_str)
+                    self.sm_config['allocation_quantum'] = aq_str
+                else:
+                    # Should never reach here
+                    raise xs_errors.XenError('InvalidArg',
+                            opterr='Allocation quantum must be between [0.0-1.0]')
+                # Check for initial-allocation
+                if 'initial_allocation' in self.sm_config:
+                    ia = float(self.sm_config['initial_allocation'])
+                    if ia <=0.0 or ia >= 1.0:
+                        raise xs_errors.XenError('InvalidArg',
+                                opterr='Initial allocation must be between [0.0-1.0]')
+                elif 'initial_allocation' in self.sr.sm_config:
+                    ia_str = self.sr.sm_config['initial_allocation']
+                    ia = float(ia_str)
+                    self.sm_config['initial_allocation'] = ia_str
                 else:
                     # Should never reach here
                     raise xs_errors.XenError('InvalidArg',
@@ -1530,7 +1553,6 @@ class LVHDVDI(VDI.VDI):
                 dynamic_sz = min(dynamic_sz, thick_sz)
                 lvSize = util.roundup(lvutil.LVM_SIZE_INCREMENT, dynamic_sz)
 
-        self.sm_config = self.sr.srcmd.params["vdi_sm_config"]
         self.sr._ensureSpaceAvailable(lvSize)
 
         try:
