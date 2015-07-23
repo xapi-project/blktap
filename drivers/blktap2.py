@@ -1539,10 +1539,15 @@ class VDI(object):
                                            "but %s not running" % \
                                        (sr_uuid, lvutil.DYNAMIC_DAEMON))
             options["dynamic"] = True
-            if "allocation_quantum" in self.target.vdi.sr.sm_config:
+            sm_config = self.target.vdi.sm_config_override
+            aq = None
+            if "allocation_quantum" in sm_config:
+                aq = float (sm_config["allocation_quantum"])
+            elif "allocation_quantum" in self.target.vdi.sr.sm_config:
                 aq = float (self.target.vdi.sr.sm_config["allocation_quantum"])
+            if aq is not None:
                 vdi_sz = int (util.get_vdi_virtual_size(vdi_uuid))
-                aq = aq * int ((vdi_sz) / (1024 * 1024))
+                aq *= (vdi_sz) / (1024 * 1024)
                 # Min allocation quantum is 16MB
                 options["allocation_quantum"] = max (int (aq), DYN_AQ_MIN)
 
