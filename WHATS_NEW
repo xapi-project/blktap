@@ -1,3 +1,7 @@
+Version 1.11.0 - 24th July 2015
+===============================
+  New feature supporting CIFS as a first class SR
+
 Version 1.10.0 - 20th July 2015
 ===============================
   Various updates to make it work on CentOS 7
