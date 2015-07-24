@@ -146,6 +146,16 @@ class CIFSSR(FileSR.FileSR):
     def __extract_server(self):
         return self.remoteserver[2:]
 
+    def __check_license(self):
+        """Raises an exception if CIFS is not licensed."""
+        if self.session is None or (isinstance(self.session, str) and \
+                self.session == ""):
+            raise xs_errors.XenError('NoCifsLicense',
+                    'No session object to talk to XAPI')
+        restrictions = util.get_pool_restrictions(self.session)
+        if 'restrict_cifs' in restrictions and \
+                restrictions['restrict_cifs'] == "true":
+            raise xs_errors.XenError('NoCifsLicense')
 
     def attach(self, sr_uuid):
         if not self.__checkmount():
@@ -179,6 +189,8 @@ class CIFSSR(FileSR.FileSR):
         self.attached = False
         
     def create(self, sr_uuid, size):
+        self.__check_license()
+
         if self.__checkmount():
             raise xs_errors.XenError('CIFSAttached')
 

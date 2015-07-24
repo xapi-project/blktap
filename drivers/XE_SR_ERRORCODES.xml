@@ -788,4 +788,10 @@
             <value>453</value>
         </code>
 
+        <code>
+            <name>NoCifsLicense</name>
+            <description>CIFS SR is not licensed on this host</description>
+            <value>454</value>
+        </code>
+
 </SM-errorcodes>
