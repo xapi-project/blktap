@@ -268,16 +268,27 @@ def write_xenvmd_config(uuid,vg,devices):
     global config_dir
     configfile = "%s/%s.xenvmd.config" % (config_dir, vg)
     sockpath = sockpath_of_sr_uuid(uuid)
+    #Max host allocation quantum in MiB, i.e., 20GiB:
+    max_host_allocation_quantum = 20480
+    #Min host allocation quantum in MiB, i.e., 1GiB:
+    min_host_allocation_quantum = 1024
+    currentvgsize = _getVGstats(vg)['physical_size']
+    #host_allocation_quantum is 0.5% of SR size
+    host_allocation_quantum = (currentvgsize * 0.005) / (1024 * 1024)
+    #host_allocation_quantum should lie between 1GiB and 20GiB
+    host_allocation_quantum = max(min_host_allocation_quantum, \
+                     min(max_host_allocation_quantum, host_allocation_quantum))
+    host_low_water_mark = (host_allocation_quantum * 0.5)
     config = """
 (
  (listenPort ())
  (listenPath (Some %s))
- (host_allocation_quantum 2048)
- (host_low_water_mark 1024)
+ (host_allocation_quantum %d)
+ (host_low_water_mark %d)
  (vg %s)
  (devices (%s))
 )
-""" % (sockpath,vg," ".join(devices))
+""" % (sockpath,host_allocation_quantum,host_low_water_mark,vg," ".join(devices))
     if not os.path.exists(config_dir):
       util.makedirs("/etc/xenvm.d")
     if not os.path.exists(os.path.dirname(sockpath)):
