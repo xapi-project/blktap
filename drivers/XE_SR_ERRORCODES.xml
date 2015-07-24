@@ -460,6 +460,36 @@
                 <description>VDI resize failed</description>
                 <value>110</value>
         </code>
+        <code>
+                <name>CIFSMount</name>
+                <description>CIFS mount error</description>
+                <value>111</value>
+        </code>
+        <code>
+                <name>CIFSUnMount</name>
+                <description>CIFS unmount error</description>
+                <value>112</value>
+        </code>
+        <code>
+                <name>CIFSAttached</name>
+                <description>CIFS mount point already attached</description>
+                <value>113</value>
+        </code>
+        <code>
+                <name>CIFSDelete</name>
+                <description>Failed to remove CIFS mount point</description>
+                <value>114</value>
+        </code>
+        <code>
+                <name>ConfigParamsMissing</name>
+                <description>Not all required parameters specified.</description>
+                <value>115</value>
+        </code>
+        <code>
+                <name>CIFSCreate</name>
+                <description>Failed to create CIFS SR.</description>
+                <value>116</value>
+        </code>
 
        <!-- Agent database query errors 150+ -->
         <code>
@@ -766,6 +796,12 @@
             <name>TapdiskFailed</name>
             <description>tapdisk experienced an error</description>
             <value>453</value>
+        </code>
+
+        <code>
+            <name>NoCifsLicense</name>
+            <description>CIFS SR is not licensed on this host</description>
+            <value>454</value>
         </code>
 
 </SM-errorcodes>

@@ -145,6 +145,10 @@ cp -f /etc/lvm/lvm.conf.orig /etc/lvm/lvm.conf || exit $?
 /opt/xensource/sm/NFSSR.py
 /opt/xensource/sm/NFSSR.pyc
 /opt/xensource/sm/NFSSR.pyo
+/opt/xensource/sm/CIFSSR
+/opt/xensource/sm/CIFSSR.py
+/opt/xensource/sm/CIFSSR.pyc
+/opt/xensource/sm/CIFSSR.pyo
 /opt/xensource/sm/SHMSR.py
 /opt/xensource/sm/SHMSR.pyc
 /opt/xensource/sm/SHMSR.pyo
