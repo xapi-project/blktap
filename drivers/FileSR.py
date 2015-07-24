@@ -94,6 +94,8 @@ class FileSR(SR.SR):
             raise xs_errors.XenError('ConfigLocationMissing')
         self.remotepath = self.dconf['location']
         self.path = os.path.join(SR.MOUNT_BASE, sr_uuid)
+        self.linkpath = self.path
+        self.mountpoint = self.path
         self.attached = False
         self.driver_config = DRIVER_CONFIG
 
@@ -199,10 +201,15 @@ class FileSR(SR.SR):
         # CA-15607: make sure we are robust to the directory being unmounted beneath
         # us (eg by a confused user). Without this we might forget all our VDI references
         # which would be a shame.
-        if not self.handles("file") and not os.path.ismount(self.path):
-            util.SMlog("Error: FileSR.scan called but directory %s isn't a mountpoint" % self.path)
+        # For CIFS SRs, this path is mountpoint
+        mount_path = self.path
+        if self.handles("cifs"):
+            mount_path = self.mountpoint
+
+        if not self.handles("file") and not os.path.ismount(mount_path):
+            util.SMlog("Error: FileSR.scan called but directory %s isn't a mountpoint" % mount_path)
             raise xs_errors.XenError('SRUnavailable', \
-                                     opterr='not mounted %s' % self.path)
+                                     opterr='not mounted %s' % mount_path)
 
         self._kickGC()
 
@@ -291,7 +298,10 @@ class FileSR(SR.SR):
                 del self.vdis[uuid]
 
     def _getsize(self):
-        return util.get_fs_size(self.path)
+        path = self.path
+        if self.handles("cifs"):
+            path = self.linkpath
+        return util.get_fs_size(path)
     
     def _getutilisation(self):
         return util.get_fs_utilisation(self.path)
@@ -375,8 +385,12 @@ class FileSR(SR.SR):
         return st1.st_dev == st2.st_dev and st1.st_ino == st2.st_ino
 
     def _checkmount(self):
-        return util.ioretry(lambda: util.pathexists(self.path) and \
-                                (util.ismount(self.path) or \
+        mount_path = self.path
+        if self.handles("cifs"):
+            mount_path = self.mountpoint
+
+        return util.ioretry(lambda: util.pathexists(mount_path) and \
+                                (util.ismount(mount_path) or \
                                  util.pathexists(self.remotepath) and self._isbind()))
 
 
