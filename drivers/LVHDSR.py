@@ -1716,6 +1716,22 @@ class LVHDVDI(VDI.VDI):
             if self.sr.provision == "thin":
                 # VDI is currently deflated, so keep it deflated
                 lvSizeNew = lvSizeOld
+            elif self.sr.provision == "dynamic":
+                if 'initial_allocation' in self.sm_config_override:
+                    ia = float (self.sm_config_override['initial_allocation'])
+                    if ia <= 0.0 or ia >= 1.0:
+                        raise xs_errors.XenError('InvalidArg',
+                            opterr='Initial allocation must be between [0.0-1.0]')
+                else:
+                    # Should never reach here
+                    raise xs_errors.XenError('InvalidArg',
+                            opterr='Initial allocation must be specified')
+                thick_sz = lvhdutil.calcSizeVHDLV(long(size))
+                dynamic_sz = max(long(thick_sz * ia),
+                                 self.DYNAMIC_PROVISIONING_MIN)
+                dynamic_sz = min(dynamic_sz, thick_sz)
+                dynamic_sz = max(dynamic_sz, lvSizeOld)
+                lvSizeNew = util.roundup(lvutil.LVM_SIZE_INCREMENT, dynamic_sz)
         assert(lvSizeNew >= lvSizeOld)
         spaceNeeded = lvSizeNew - lvSizeOld
         self.sr._ensureSpaceAvailable(spaceNeeded)
