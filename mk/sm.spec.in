@@ -118,11 +118,9 @@ cp -f /etc/lvm/lvm.conf.orig /etc/lvm/lvm.conf || exit $?
 /opt/xensource/sm/OCFSSR.py
 /opt/xensource/sm/OCFSSR.pyc
 /opt/xensource/sm/OCFSSR.pyo
-/opt/xensource/sm/OCFSoISCSISR
 /opt/xensource/sm/OCFSoISCSISR.py
 /opt/xensource/sm/OCFSoISCSISR.pyc
 /opt/xensource/sm/OCFSoISCSISR.pyo
-/opt/xensource/sm/OCFSoHBASR
 /opt/xensource/sm/OCFSoHBASR.py
 /opt/xensource/sm/OCFSoHBASR.pyc
 /opt/xensource/sm/OCFSoHBASR.pyo
