@@ -1895,6 +1895,21 @@ class LVHDVDI(VDI.VDI):
         fullpr = lvhdutil.calcSizeVHDLV(self.size)
         thinpr = util.roundup(lvutil.LVM_SIZE_INCREMENT, \
                 vhdutil.calcOverheadEmpty(lvhdutil.MSIZE))
+        if self.sr.provision == "dynamic":
+            if 'initial_allocation' in self.sm_config:
+                ia = float(self.sm_config['initial_allocation'])
+                if ia <=0.0 or ia >= 1.0:
+                    raise xs_errors.XenError('InvalidArg',
+                            opterr='Initial allocation must be between [0.0-1.0]')
+            else:
+                # Should never reach here
+                raise xs_errors.XenError('InvalidArg',
+                        opterr='Initial allocation must be between [0.0-1.0]')
+            thick_sz = fullpr
+            dynamic_sz = max(long(thick_sz * ia),
+                             self.DYNAMIC_PROVISIONING_MIN)
+            dynamic_sz = min(dynamic_sz, thick_sz)
+            thinpr = util.roundup(lvutil.LVM_SIZE_INCREMENT, dynamic_sz)
         lvSizeOrig = thinpr
         lvSizeClon = thinpr
 
@@ -1903,7 +1918,7 @@ class LVHDVDI(VDI.VDI):
             hostRefs = util.get_hosts_attached_on(self.session, [self.uuid])
             if hostRefs:
                 lvSizeOrig = fullpr
-        if self.sr.provision == "thick" or self.sr.provision == "dynamic":
+        if self.sr.provision == "thick":
             if not self.issnap:
                 lvSizeOrig = fullpr
             if self.sr.cmd != "vdi_snapshot":
