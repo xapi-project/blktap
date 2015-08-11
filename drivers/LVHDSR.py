@@ -41,7 +41,8 @@ from ipc import IPCFlag
 from lvmanager import LVActivator
 import XenAPI
 import re
-from srmetadata import ALLOCATION_TAG, NAME_LABEL_TAG, NAME_DESCRIPTION_TAG, \
+from srmetadata import ALLOCATION_TAG, INIT_ALLOCATION_TAG, \
+    ALLOCATION_QUANTUM_TAG, NAME_LABEL_TAG, NAME_DESCRIPTION_TAG, \
     UUID_TAG, IS_A_SNAPSHOT_TAG, SNAPSHOT_OF_TAG, TYPE_TAG, VDI_TYPE_TAG, \
     READ_ONLY_TAG, MANAGED_TAG, SNAPSHOT_TIME_TAG, METADATA_OF_POOL_TAG, \
     requiresUpgrade, LVMMetadataHandler, METADATA_OBJECT_TYPE_VDI, \
@@ -237,11 +238,14 @@ class LVHDSR(SR.SR):
         if not self.lvActivator.deactivateAll():
             raise util.SMException("failed to deactivate LVs")
 
-    def updateSRMetadata(self, allocation):
+    def updateSRMetadata(self, allocation, initial_allocation="", \
+                         allocation_quantum=""):
         try:
             # Add SR specific SR metadata
             sr_info = \
             { ALLOCATION_TAG: allocation,
+              INIT_ALLOCATION_TAG: initial_allocation,
+              ALLOCATION_QUANTUM_TAG: allocation_quantum,
               UUID_TAG: self.uuid,
               NAME_LABEL_TAG: util.to_plain_string\
                 (self.session.xenapi.SR.get_name_label(self.sr_ref)),
@@ -414,6 +418,20 @@ class LVHDSR(SR.SR):
             else:
                 raise Exception("Allocation key not found in SR metadata. " \
                                 "SR info found: %s" % sr_info)
+
+            if self.provision == "dynamic":
+                if sr_info.has_key(self.INITIAL_ALLOCATION):
+                    map['initial_allocation'] = sr_info.get(self.INITIAL_ALLOCATION)
+                else:
+                    raise Exception("Intial allocation key not found in SR " \
+                                    "metadata. SR info found: %s" % sr_info)
+
+                if sr_info.has_key(self.ALLOCATION_QUANTUM):
+                    map['allocation_quantum'] = sr_info.get(self.ALLOCATION_QUANTUM)
+                else:
+                    raise Exception("Allocation quantum key not found in SR " \
+                                    "metadata. SR info found: %s" % sr_info)
+
         except Exception, e:
             raise xs_errors.XenError('MetadataError', \
                          opterr='Error reading SR params from ' \
@@ -463,8 +481,14 @@ class LVHDSR(SR.SR):
                     map['initial_allocation'] = str (self.DYNAMIC_PROVISIONING_FACTOR)
             self.session.xenapi.SR.set_sm_config(self.sr_ref, map)
 
+            # Write empty strings for thick-SRs 
+            if self.provision != "dynamic": 
+                map['initial_allocation'] = ""
+                map['allocation_quantum'] = ""
+
             # Add the SR metadata
-            self.updateSRMetadata(self.provision)
+            self.updateSRMetadata(self.provision, map['initial_allocation'], \
+                                  map['allocation_quantum'])
         except Exception, e:
             raise xs_errors.XenError('MetadataError', \
                         opterr='Error introducing Metadata Volume: %s' % str(e))
