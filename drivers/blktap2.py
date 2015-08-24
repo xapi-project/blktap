@@ -398,7 +398,7 @@ class TapCtl(object):
         if options.get("timeout"):
             args.append("-t")
             args.append(str(options["timeout"]))
-        if options.get("dynamic"):
+        if options.get("xlvhd"):
             args.append("-T")
         if options.get("allocation_quantum"):
             args.extend(("-q", options["allocation_quantum"]))
@@ -1530,15 +1530,15 @@ class VDI(object):
         options = {"rdonly": not writable}
         options.update(caching_params)
 
-        # Check whether tapdisk needs to be in dynamic allocation mode
+        # Check whether tapdisk needs to be in xlvhd allocation mode
         if hasattr(self.target.vdi.sr, "provision") and \
-                self.target.vdi.sr.provision == "dynamic":
-            # Flag error if daemon not running, and provisioning set to dynamic
-            if not util.is_daemon_running(lvutil.DYNAMIC_DAEMON):
-                raise util.SMException("Error: Provisioning for %s set to dynamic, " 
+                self.target.vdi.sr.provision == "xlvhd":
+            # Flag error if daemon not running, and provisioning set to xlvhd
+            if not util.is_daemon_running(lvutil.THINPROV_DAEMON):
+                raise util.SMException("Error: Provisioning for %s set to xlvhd, " 
                                            "but %s not running" % \
-                                       (sr_uuid, lvutil.DYNAMIC_DAEMON))
-            options["dynamic"] = True
+                                       (sr_uuid, lvutil.THINPROV_DAEMON))
+            options["xlvhd"] = True
             sm_config = self.target.vdi.sm_config_override
             aq = None
             if "allocation_quantum" in sm_config:

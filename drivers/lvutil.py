@@ -64,8 +64,8 @@ LVM_FAIL_RETRIES = 10
 MASTER_LVM_CONF = '/etc/lvm/master'
 DEF_LVM_CONF = '/etc/lvm'
 
-DYNAMIC_DAEMON = "/usr/sbin/thinprovd"
-DYNAMIC_DAEMON_CLI = "/usr/sbin/thin-cli"
+THINPROV_DAEMON = "/usr/sbin/thinprovd"
+THINPROV_DAEMON_CLI = "/usr/sbin/thin-cli"
 
 VG_COMMANDS = frozenset({CMD_VGS, CMD_VGCREATE, CMD_VGREMOVE, CMD_VGCHANGE,
                          CMD_VGEXTEND})
@@ -80,7 +80,7 @@ def get_sr_alloc(filename):
     """Return the SR allocation type
 
         Check for the existence of 'filename' in '/etc/xenvm.d/'. If the
-        file exists, the SR is 'dynamic'. If not, it is 'thick'. The
+        file exists, the SR is 'xlvhd'. If not, it is 'thick'. The
         filename can be either 'VG_XenStorage-<UUID>' or the device's
         SCSI id.
 
@@ -101,7 +101,7 @@ def get_sr_alloc(filename):
     path = config_dir + filename
 
     if os.path.isfile(path):
-        sr_alloc = 'dynamic'
+        sr_alloc = 'xlvhd'
     else:
         sr_alloc = 'thick'
 
@@ -147,7 +147,7 @@ def extract_vgname(str_in):
 def cmd_lvm(cmd, sr_alloc=None, pread_func=util.pread2, *args):
     """ Construct and run the appropriate lvm command
 
-        depending on the SR's allocation type; 'thick' or 'dynamic'. For
+        depending on the SR's allocation type; 'thick' or 'xlvhd'. For
         PV commands, the full path to the device is required.
 
         Input:
@@ -155,7 +155,7 @@ def cmd_lvm(cmd, sr_alloc=None, pread_func=util.pread2, *args):
                 cmd[0]  -- (str) lvm command name
                 cmd[1:] -- (str) lvm command parameters
 
-            sr_alloc -- (str) SR's allocation type; 'thick' or 'dynamic'
+            sr_alloc -- (str) SR's allocation type; 'thick' or 'xlvhd'
                               if it's not supplied, the function will
                               figure it out
                 Default: None
@@ -224,12 +224,12 @@ def cmd_lvm(cmd, sr_alloc=None, pread_func=util.pread2, *args):
 
         sr_alloc = get_sr_alloc(filename)
 
-    if sr_alloc == 'dynamic':
+    if sr_alloc == 'xlvhd':
         stdout = pread_func(['/bin/xenvm', lvm_cmd] + lvm_args, *args)
     elif sr_alloc == 'thick':
         stdout = pread_func([os.path.join(LVM_BIN, lvm_cmd)] + lvm_args, *args)
     else:
-        util.SMlog("CMD_LVM: ERROR: 'sr_alloc' neither 'dynamic' nor 'thick'")
+        util.SMlog("CMD_LVM: ERROR: 'sr_alloc' neither 'xlvhd' nor 'thick'")
         return None
 
     return stdout
@@ -475,7 +475,7 @@ def scan_srlist(prefix, root, sr_alloc=None):
         except Exception, e:
             util.logException("exception (ignored): %s" % e)
             continue
-    if sr_alloc == 'dynamic':
+    if sr_alloc == 'xlvhd':
         for vg in VGs.keys():
             if not os.path.isfile('/etc/xenvm.d/%s' % (VG_PREFIX+vg)):
                 util.SMlog('vg=%s VGs[vg]=%s' % (vg,VGs[vg]))

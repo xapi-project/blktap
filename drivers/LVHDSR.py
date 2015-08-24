@@ -85,7 +85,7 @@ OPS_EXCLUSIVE = [
 class LVHDSR(SR.SR):
     DRIVER_TYPE = 'lvhd'
 
-    PROVISIONING_TYPES = ["thin", "thick", "dynamic"]
+    PROVISIONING_TYPES = ["thin", "thick", "xlvhd"]
     PROVISIONING_DEFAULT = "thick"
     THIN_PLUGIN = "lvhd-thin"
 
@@ -97,8 +97,8 @@ class LVHDSR(SR.SR):
     ALLOCATION_QUANTUM = "allocation_quantum"
     INITIAL_ALLOCATION = "initial_allocation"
 
-    DYNAMIC_PROVISIONING_FACTOR = .2
-    DYNAMIC_ALLOCATION_QUANTUM = .01
+    XLVHD_PROVISIONING_FACTOR = .2
+    XLVHD_ALLOCATION_QUANTUM = .01
 
     LOCK_RETRY_INTERVAL = 3
     LOCK_RETRY_ATTEMPTS = 10
@@ -419,7 +419,7 @@ class LVHDSR(SR.SR):
                 raise Exception("Allocation key not found in SR metadata. " \
                                 "SR info found: %s" % sr_info)
 
-            if self.provision == "dynamic":
+            if self.provision == "xlvhd":
                 if sr_info.has_key(self.INITIAL_ALLOCATION):
                     map['initial_allocation'] = sr_info.get(self.INITIAL_ALLOCATION)
                 else:
@@ -458,7 +458,7 @@ class LVHDSR(SR.SR):
                     self.session.xenapi.SR.get_name_description(self.sr_ref))
             map[self.FLAG_USE_VHD] = "true"
             map['allocation'] = self.provision
-            if self.provision == "dynamic":
+            if self.provision == "xlvhd":
                 if self.ALLOCATION_QUANTUM in self.sm_config:
                     aq = float (self.sm_config[self.ALLOCATION_QUANTUM])
                     if aq > 0.0 and aq <= 1.0:
@@ -468,7 +468,7 @@ class LVHDSR(SR.SR):
                                 opterr='Allocation quantum must be between [0.0-1.0]')
                 else:
                     util.SMlog("Using defaults for allocation quantum")
-                    map['allocation_quantum'] = str (self.DYNAMIC_ALLOCATION_QUANTUM)
+                    map['allocation_quantum'] = str (self.XLVHD_ALLOCATION_QUANTUM)
                 if self.INITIAL_ALLOCATION in self.sm_config:
                     ia = float (self.sm_config[self.INITIAL_ALLOCATION])
                     if ia > 0.0 and ia <= 1.0:
@@ -478,11 +478,11 @@ class LVHDSR(SR.SR):
                                 opterr='Initial allocation must be between [0.0-1.0]')
                 else:
                     util.SMlog("Using defaults for initial allocation")
-                    map['initial_allocation'] = str (self.DYNAMIC_PROVISIONING_FACTOR)
+                    map['initial_allocation'] = str (self.XLVHD_PROVISIONING_FACTOR)
             self.session.xenapi.SR.set_sm_config(self.sr_ref, map)
 
             # Write empty strings for thick-SRs 
-            if self.provision != "dynamic": 
+            if self.provision != "xlvhd": 
                 map['initial_allocation'] = ""
                 map['allocation_quantum'] = ""
 
@@ -565,8 +565,8 @@ class LVHDSR(SR.SR):
 
         if ((hasattr(self, 'iscsiSRs') or hasattr(self, 'hbasr')) and
                 'allocation' in self.sm_config and
-                self.sm_config['allocation'] == 'dynamic'):
-            sr_alloc = 'dynamic'
+                self.sm_config['allocation'] == 'xlvhd'):
+            sr_alloc = 'xlvhd'
         else:
             sr_alloc = 'thick'
 
@@ -668,14 +668,14 @@ class LVHDSR(SR.SR):
         # Set the block scheduler
         for dev in self.root.split(','): self.block_setscheduler(dev)
 
-        if self.provision == "dynamic":
+        if self.provision == "xlvhd":
             # Register VG name with thin-tapdisk daemon if the VG is local or 
             # if the host if Master. 
             srRef = self.session.xenapi.SR.get_by_uuid(uuid)
             srRecord = self.session.xenapi.SR.get_record(srRef)
             # Pass the info on new VG to thin provision daemon
             try:
-                cmd = [lvutil.DYNAMIC_DAEMON_CLI, "--add", lvhdutil.VG_PREFIX + uuid]
+                cmd = [lvutil.THINPROV_DAEMON_CLI, "--add", lvhdutil.VG_PREFIX + uuid]
                 util.pread2(cmd)
             except util.CommandException, inst:
                 raise xs_errors.XenError('VGReg', \
@@ -736,7 +736,7 @@ class LVHDSR(SR.SR):
         # only place to do so.
         self._cleanup(self.isMaster)
 
-        if lvutil.get_sr_alloc(self.vgname) == 'dynamic':
+        if lvutil.get_sr_alloc(self.vgname) == 'xlvhd':
             lvutil.stopxenvm_local_allocator(self.vgname)
 
             if self.isMaster:
@@ -746,12 +746,12 @@ class LVHDSR(SR.SR):
 
         # De-Register VG name with thin-tapdisk daemon if the VG is local or 
         # if the host if Master. Error could be ignored at this point
-        if self.provision == "dynamic":
+        if self.provision == "xlvhd":
             srRef = self.session.xenapi.SR.get_by_uuid(uuid)
             srRecord = self.session.xenapi.SR.get_record(srRef)
             # Pass the info on new VG to thin provision daemon
             try:
-                cmd = [lvutil.DYNAMIC_DAEMON_CLI, "--del", lvhdutil.VG_PREFIX + uuid]
+                cmd = [lvutil.THINPROV_DAEMON_CLI, "--del", lvhdutil.VG_PREFIX + uuid]
                 util.pread2(cmd)
             except util.CommandException, inst:
                 util.SMlog("VG de-registration failed for %s with %d" % \
@@ -830,7 +830,7 @@ class LVHDSR(SR.SR):
                                     util.roundup(lvutil.LVM_SIZE_INCREMENT,
                                       vhdutil.calcOverheadEmpty(lvhdutil.MSIZE))
                             else:
-                                # We show the VHD size for both dynamic and thick.
+                                # We show the VHD size for both xlvhd and thick.
                                 utilisation = lvhdutil.calcSizeVHDLV(long(size))
                         
                         vdi_ref = self.session.xenapi.VDI.db_introduce(
@@ -1361,7 +1361,7 @@ class LVHDSR(SR.SR):
 
 
     def _start_xenvmd(self, uuid):
-        if lvutil.get_sr_alloc(self.vgname) == 'dynamic':
+        if lvutil.get_sr_alloc(self.vgname) == 'xlvhd':
             vg = self.vgname
             devices = self.root.split(',')
             # move the "if" up!
@@ -1371,7 +1371,7 @@ class LVHDSR(SR.SR):
 
 
     def _start_local_allocator(self, uuid):
-        if lvutil.get_sr_alloc(self.vgname) == 'dynamic':
+        if lvutil.get_sr_alloc(self.vgname) == 'xlvhd':
             vg = self.vgname
             devices = self.root.split(',')
             uri = "file://local/services/xenvmd/%s" % uuid
@@ -1380,7 +1380,7 @@ class LVHDSR(SR.SR):
 
     def _write_vginfo(self, uuid):
         if ('allocation' in self.sm_config and
-                self.sm_config['allocation'] == 'dynamic'):
+                self.sm_config['allocation'] == 'xlvhd'):
             vg = self.vgname
             devices = self.root.split(',')
             uri = "file://local/services/xenvmd/%s" % uuid
@@ -1473,7 +1473,7 @@ class LVHDVDI(VDI.VDI):
 
     JRN_CLONE = "clone" # journal entry type for the clone operation
 
-    DYNAMIC_PROVISIONING_MIN = 200 * 1024 * 1024
+    XLVHD_PROVISIONING_MIN = 200 * 1024 * 1024
 
     def load(self, vdi_uuid):
         self.lock = self.sr.lock
@@ -1542,7 +1542,7 @@ class LVHDVDI(VDI.VDI):
                         vhdutil.calcOverheadEmpty(lvhdutil.MSIZE))
             elif self.sr.provision == "thick":
                 lvSize = lvhdutil.calcSizeVHDLV(long(size))
-            elif self.sr.provision == "dynamic":
+            elif self.sr.provision == "xlvhd":
                 # Check for allocation-quantum
                 if 'allocation_quantum' in self.sm_config:
                     aq = float(self.sm_config['allocation_quantum'])
@@ -1573,7 +1573,7 @@ class LVHDVDI(VDI.VDI):
                             opterr='Initial allocation must be between [0.0-1.0]')
                 thick_sz = lvhdutil.calcSizeVHDLV(long(size))
                 dynamic_sz = max(long(thick_sz * ia),
-                                 self.DYNAMIC_PROVISIONING_MIN)
+                                 self.XLVHD_PROVISIONING_MIN)
                 dynamic_sz = min(dynamic_sz, thick_sz)
                 lvSize = util.roundup(lvutil.LVM_SIZE_INCREMENT, dynamic_sz)
 
@@ -1660,8 +1660,8 @@ class LVHDVDI(VDI.VDI):
             needInflate = False
         else:
             self._loadThis()
-            # TODO, skip the check if dynamic
-            if self.utilisation >= lvhdutil.calcSizeVHDLV(self.size) or self.sr.provision == "dynamic":
+            # TODO, skip the check if xlvhd
+            if self.utilisation >= lvhdutil.calcSizeVHDLV(self.size) or self.sr.provision == "xlvhd":
                 needInflate = False
 
         if needInflate:
@@ -1686,7 +1686,7 @@ class LVHDVDI(VDI.VDI):
         needDeflate = True
         if self.vdi_type == vhdutil.VDI_TYPE_RAW or already_deflated:
             needDeflate = False
-        elif self.sr.provision == "thick" or self.sr.provision == "dynamic":
+        elif self.sr.provision == "thick" or self.sr.provision == "xlvhd":
             needDeflate = False
             # except for snapshots, which are always deflated
             vdi_ref = self.sr.srcmd.params['vdi_ref']
@@ -1740,7 +1740,7 @@ class LVHDVDI(VDI.VDI):
             if self.sr.provision == "thin":
                 # VDI is currently deflated, so keep it deflated
                 lvSizeNew = lvSizeOld
-            elif self.sr.provision == "dynamic":
+            elif self.sr.provision == "xlvhd":
                 if 'initial_allocation' in self.sm_config_override:
                     ia = float (self.sm_config_override['initial_allocation'])
                     if ia <= 0.0 or ia >= 1.0:
@@ -1752,7 +1752,7 @@ class LVHDVDI(VDI.VDI):
                             opterr='Initial allocation must be specified')
                 thick_sz = lvhdutil.calcSizeVHDLV(long(size))
                 dynamic_sz = max(long(thick_sz * ia),
-                                 self.DYNAMIC_PROVISIONING_MIN)
+                                 self.XLVHD_PROVISIONING_MIN)
                 dynamic_sz = min(dynamic_sz, thick_sz)
                 dynamic_sz = max(dynamic_sz, lvSizeOld)
                 lvSizeNew = util.roundup(lvutil.LVM_SIZE_INCREMENT, dynamic_sz)
@@ -1919,7 +1919,7 @@ class LVHDVDI(VDI.VDI):
         fullpr = lvhdutil.calcSizeVHDLV(self.size)
         thinpr = util.roundup(lvutil.LVM_SIZE_INCREMENT, \
                 vhdutil.calcOverheadEmpty(lvhdutil.MSIZE))
-        if self.sr.provision == "dynamic":
+        if self.sr.provision == "xlvhd":
             if 'initial_allocation' in self.sm_config:
                 ia = float(self.sm_config['initial_allocation'])
                 if ia <=0.0 or ia >= 1.0:
@@ -1931,7 +1931,7 @@ class LVHDVDI(VDI.VDI):
                         opterr='Initial allocation must be between [0.0-1.0]')
             thick_sz = fullpr
             dynamic_sz = max(long(thick_sz * ia),
-                             self.DYNAMIC_PROVISIONING_MIN)
+                             self.XLVHD_PROVISIONING_MIN)
             dynamic_sz = min(dynamic_sz, thick_sz)
             thinpr = util.roundup(lvutil.LVM_SIZE_INCREMENT, dynamic_sz)
         lvSizeOrig = thinpr
