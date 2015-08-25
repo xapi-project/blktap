@@ -1725,13 +1725,64 @@ def get_pool_master_info(attrib):
     finally:
         session.xenapi.logout()
 
-def get_vdi_virtual_size(vdi_uuid):
-    session = get_localAPI_session()
-    vdi_sz = 0
-    try:
-        vdi_ref = session.xenapi.VDI.get_by_uuid(vdi_uuid)
-        vdi_sz  = session.xenapi.VDI.get_virtual_size(vdi_ref)
-    except:
-        SMlog("error: while attempting to get VDI.virtual_size")
-    finally:
-        return vdi_sz
+def xlvhd_adjust_allocation_quantum(physical_size, val=None):
+    """Return the adjusted allocation quantum
+
+       Accept a desired allocation quantum in bytes and returns
+       the adjusted value considering:
+
+       - relative max and min depending on the physical size
+       - absolute min quantum
+
+       If val is not given, the function will return a default 
+       value for the allocation quantum.
+    
+       NOTE: The behaviour is undefined if something different 
+       from int or long is passed as input.
+
+       Input:
+           physical_size -- Physical SR size (bytes)
+           val           -- Desired Allocation Quantum (bytes)
+
+       Returns:
+           val           -- Adjusted Allocation Quantum (bytes)
+    """
+
+    relative_maxval = physical_size / 4000
+    relative_minval = physical_size / 50000
+    absolute_min_allocation_quantum = 16777216
+
+    if (val == None):
+        val = physical_size / 10000
+    if (val < relative_minval):
+        val = relative_minval
+    elif (val > relative_maxval):
+        val = relative_maxval
+    val = max(val, absolute_min_allocation_quantum)
+
+    return val
+        
+def xlvhd_adjust_initial_allocation(val=None):
+    """Return the adjusted initial allocation
+
+       Accept a desired initial allocation in bytes and returns
+       the adjusted value considering:
+
+       - absolute min initial allocation
+
+       If val is not given, the function will return a default 
+       value for the initial allocation.
+    
+       NOTE: The behaviour is undefined if something different 
+       from int or long is passed as input.
+
+       Input:
+           val           -- Desired Initial Allocation (bytes)
+
+       Returns:
+           val           -- Adjusted Initial Allocation (bytes)
+    """
+
+    if (val == None or val < 0):
+        val = 0
+    return val

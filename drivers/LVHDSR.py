@@ -97,9 +97,6 @@ class LVHDSR(SR.SR):
     ALLOCATION_QUANTUM = "allocation_quantum"
     INITIAL_ALLOCATION = "initial_allocation"
 
-    XLVHD_PROVISIONING_FACTOR = .2
-    XLVHD_ALLOCATION_QUANTUM = .01
-
     LOCK_RETRY_INTERVAL = 3
     LOCK_RETRY_ATTEMPTS = 10
 
@@ -460,25 +457,23 @@ class LVHDSR(SR.SR):
             map['allocation'] = self.provision
             if self.provision == "xlvhd":
                 if self.ALLOCATION_QUANTUM in self.sm_config:
-                    aq = float (self.sm_config[self.ALLOCATION_QUANTUM])
-                    if aq > 0.0 and aq <= 1.0:
-                        map['allocation_quantum'] = str (aq)
-                    else:
-                        raise xs_errors.XenError('InvalidArg',
-                                opterr='Allocation quantum must be between [0.0-1.0]')
+                    # FIXME: this should accept also GiB and MiB
+                    aq = long (self.sm_config[self.ALLOCATION_QUANTUM])
+                    aq = util.xlvhd_adjust_allocation_quantum(self.physical_size, aq)
+                    map['allocation_quantum'] = str (aq)
                 else:
                     util.SMlog("Using defaults for allocation quantum")
-                    map['allocation_quantum'] = str (self.XLVHD_ALLOCATION_QUANTUM)
+                    aq = util.xlvhd_adjust_allocation_quantum(self.physical_size)
+                    map['allocation_quantum'] = str (aq)
                 if self.INITIAL_ALLOCATION in self.sm_config:
-                    ia = float (self.sm_config[self.INITIAL_ALLOCATION])
-                    if ia > 0.0 and ia <= 1.0:
-                        map['initial_allocation'] = str (ia)
-                    else:
-                        raise xs_errors.XenError('InvalidArg',
-                                opterr='Initial allocation must be between [0.0-1.0]')
+                    # FIXME: this should accept also GiB and MiB
+                    ia = long(self.sm_config[self.INITIAL_ALLOCATION])
+                    ia = util.xlvhd_adjust_initial_allocation(ia)
+                    map['initial_allocation'] = str (ia)
                 else:
                     util.SMlog("Using defaults for initial allocation")
-                    map['initial_allocation'] = str (self.XLVHD_PROVISIONING_FACTOR)
+                    ia = util.xlvhd_adjust_initial_allocation()
+                    map['initial_allocation'] = str (ia)
             self.session.xenapi.SR.set_sm_config(self.sr_ref, map)
 
             # Write empty strings for thick-SRs 
@@ -1457,7 +1452,7 @@ class LVHDSR(SR.SR):
             vginfo_path,
             lvutil.config_dir + scsi_id
         ])
-
+        
 class LVHDVDI(VDI.VDI):
 
     # 2TB - (Pad/bitmap + BAT + Header/footer)
@@ -1545,35 +1540,32 @@ class LVHDVDI(VDI.VDI):
             elif self.sr.provision == "xlvhd":
                 # Check for allocation-quantum
                 if 'allocation_quantum' in self.sm_config:
-                    aq = float(self.sm_config['allocation_quantum'])
-                    if aq <=0.0 or aq >= 1.0:
-                        raise xs_errors.XenError('InvalidArg',
-                                opterr='Allocation quantum must be between [0.0-1.0]')
+                    # FIXME: this should accept also GiB and MiB
+                    aq = long (self.sm_config['allocation_quantum'])
+                    aq = util.xlvhd_adjust_allocation_quantum(self.sr.physical_size, aq)
+                    self.sm_config['allocation_quantum'] = str (aq)
                 elif 'allocation_quantum' in self.sr.sm_config:
-                    aq_str = self.sr.sm_config['allocation_quantum']
-                    aq = float(aq_str)
-                    self.sm_config['allocation_quantum'] = aq_str
+                    self.sm_config['allocation_quantum'] = self.sr.sm_config['allocation_quantum']
                 else:
                     # Should never reach here
                     raise xs_errors.XenError('InvalidArg',
-                            opterr='Allocation quantum must be between [0.0-1.0]')
+                            opterr='allocation_quantum not in sm-config')
                 # Check for initial-allocation
                 if 'initial_allocation' in self.sm_config:
-                    ia = float(self.sm_config['initial_allocation'])
-                    if ia <=0.0 or ia >= 1.0:
-                        raise xs_errors.XenError('InvalidArg',
-                                opterr='Initial allocation must be between [0.0-1.0]')
+                    # FIXME: this should accept also GiB and MiB
+                    ia = long (self.sm_config['initial_allocation'])
+                    ia = util.xlvhd_adjust_initial_allocation(ia)
+                    self.sm_config['initial_allocation'] = str (ia)
                 elif 'initial_allocation' in self.sr.sm_config:
                     ia_str = self.sr.sm_config['initial_allocation']
-                    ia = float(ia_str)
+                    ia = long (ia_str)
                     self.sm_config['initial_allocation'] = ia_str
                 else:
                     # Should never reach here
                     raise xs_errors.XenError('InvalidArg',
-                            opterr='Initial allocation must be between [0.0-1.0]')
+                            opterr='initial_allocation not in sm-config')
                 thick_sz = lvhdutil.calcSizeVHDLV(long(size))
-                dynamic_sz = max(long(thick_sz * ia),
-                                 self.XLVHD_PROVISIONING_MIN)
+                dynamic_sz = max(ia, self.XLVHD_PROVISIONING_MIN)
                 dynamic_sz = min(dynamic_sz, thick_sz)
                 lvSize = util.roundup(lvutil.LVM_SIZE_INCREMENT, dynamic_sz)
 
@@ -1742,17 +1734,13 @@ class LVHDVDI(VDI.VDI):
                 lvSizeNew = lvSizeOld
             elif self.sr.provision == "xlvhd":
                 if 'initial_allocation' in self.sm_config_override:
-                    ia = float (self.sm_config_override['initial_allocation'])
-                    if ia <= 0.0 or ia >= 1.0:
-                        raise xs_errors.XenError('InvalidArg',
-                            opterr='Initial allocation must be between [0.0-1.0]')
+                    ia = long (self.sm_config_override['initial_allocation'])
                 else:
                     # Should never reach here
                     raise xs_errors.XenError('InvalidArg',
                             opterr='Initial allocation must be specified')
                 thick_sz = lvhdutil.calcSizeVHDLV(long(size))
-                dynamic_sz = max(long(thick_sz * ia),
-                                 self.XLVHD_PROVISIONING_MIN)
+                dynamic_sz = max(ia, self.XLVHD_PROVISIONING_MIN)
                 dynamic_sz = min(dynamic_sz, thick_sz)
                 dynamic_sz = max(dynamic_sz, lvSizeOld)
                 lvSizeNew = util.roundup(lvutil.LVM_SIZE_INCREMENT, dynamic_sz)
@@ -1921,17 +1909,13 @@ class LVHDVDI(VDI.VDI):
                 vhdutil.calcOverheadEmpty(lvhdutil.MSIZE))
         if self.sr.provision == "xlvhd":
             if 'initial_allocation' in self.sm_config:
-                ia = float(self.sm_config['initial_allocation'])
-                if ia <=0.0 or ia >= 1.0:
-                    raise xs_errors.XenError('InvalidArg',
-                            opterr='Initial allocation must be between [0.0-1.0]')
+                ia = long (self.sm_config['initial_allocation'])
             else:
                 # Should never reach here
                 raise xs_errors.XenError('InvalidArg',
-                        opterr='Initial allocation must be between [0.0-1.0]')
+                        opterr='initial_allocation not in sm-config')
             thick_sz = fullpr
-            dynamic_sz = max(long(thick_sz * ia),
-                             self.XLVHD_PROVISIONING_MIN)
+            dynamic_sz = max(ia, self.XLVHD_PROVISIONING_MIN)
             dynamic_sz = min(dynamic_sz, thick_sz)
             thinpr = util.roundup(lvutil.LVM_SIZE_INCREMENT, dynamic_sz)
         lvSizeOrig = thinpr

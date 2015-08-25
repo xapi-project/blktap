@@ -1542,14 +1542,10 @@ class VDI(object):
             sm_config = self.target.vdi.sm_config_override
             aq = None
             if "allocation_quantum" in sm_config:
-                aq = float (sm_config["allocation_quantum"])
+                aq = long (sm_config["allocation_quantum"])
             elif "allocation_quantum" in self.target.vdi.sr.sm_config:
-                aq = float (self.target.vdi.sr.sm_config["allocation_quantum"])
-            if aq is not None:
-                vdi_sz = int (util.get_vdi_virtual_size(vdi_uuid))
-                aq *= (vdi_sz) / (1024 * 1024)
-                # Min allocation quantum is 16MB
-                options["allocation_quantum"] = max (int (aq), DYN_AQ_MIN)
+                aq = long (self.target.vdi.sr.sm_config["allocation_quantum"])
+            options["allocation_quantum"] = int(aq)
 
         timeout = util.get_nfs_timeout(self.target.vdi.session, sr_uuid)
         if timeout:
