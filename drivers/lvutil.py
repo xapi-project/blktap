@@ -264,15 +264,14 @@ def setvginfo(uuid,vg,devices,uri, local_allocator=None):
 
 config_dir = "/etc/xenvm.d/"
 
-def write_xenvmd_config(uuid,vg,devices):
+def write_xenvmd_config(uuid, vg, devices, vgsize):
     global config_dir
     configfile = "%s/%s.xenvmd.config" % (config_dir, vg)
     sockpath = sockpath_of_sr_uuid(uuid)
     #Min host allocation quantum in MiB, i.e., 1GiB:
     min_host_allocation_quantum = 1024
-    currentvgsize = _getVGstats(vg)['physical_size']
     #host_allocation_quantum is 0.5% of SR size
-    host_allocation_quantum = (currentvgsize * 0.005) / (1024 * 1024)
+    host_allocation_quantum = (vgsize * 0.005) / (1024 * 1024)
     #host_allocation_quantum should be bigger than 1GiB
     host_allocation_quantum = max(min_host_allocation_quantum,
                                   host_allocation_quantum)

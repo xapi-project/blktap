@@ -1360,7 +1360,7 @@ class LVHDSR(SR.SR):
             vg = self.vgname
             devices = self.root.split(',')
             # move the "if" up!
-            lvutil.write_xenvmd_config(uuid, vg, devices)
+            lvutil.write_xenvmd_config(uuid, vg, devices, self.physical_size)
             if self.isMaster:
                 lvutil.run_xenvmd(vg)
 
