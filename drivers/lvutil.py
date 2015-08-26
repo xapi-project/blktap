@@ -838,6 +838,9 @@ def activateNoRefcount(path, refresh):
     #cmd = cmd_lvm([CMD_LVCHANGE, "-ay", path])
     #text = util.pread2(cmd)
     cmd = [CMD_LVCHANGE, "-ay", path]
+    stateFileAttach = os.getenv('THIN_STATE_FILE_ATTACH', None)
+    if stateFileAttach == "true":
+        cmd.append("--offline")
     text = cmd_lvm(cmd)
     if not _checkActive(path):
         raise util.CommandException(-1, str(cmd), "LV not activated")

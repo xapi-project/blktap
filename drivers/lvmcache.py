@@ -74,8 +74,15 @@ class LVMCache:
         #cmd = lvutil.cmd_lvm([lvutil.CMD_LVS, "--noheadings", "--units",
         #                    "b", "-o", "+lv_tags", self.vgPath])
         #text = util.pread2(cmd)
-        text = lvutil.cmd_lvm([lvutil.CMD_LVS, "--noheadings", "--units",
-                               "b", "-o", "+lv_tags", self.vgPath])
+
+        cmd = [lvutil.CMD_LVS, "--noheadings", "--units",
+                               "b", "-o", "+lv_tags", self.vgPath]
+
+        stateFileAttach = os.getenv('THIN_STATE_FILE_ATTACH', None)
+        if stateFileAttach == "true":
+            cmd.append("--offline")
+
+        text = lvutil.cmd_lvm(cmd)
         self.lvs.clear()
         self.tags.clear()
         for line in text.split('\n'):

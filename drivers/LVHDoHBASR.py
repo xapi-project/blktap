@@ -221,6 +221,7 @@ class LVHDoHBAVDI(LVHDSR.LVHDVDI):
         dict['device_config'] = self.sr.dconf
         dict['sr_uuid'] = sr_uuid
         dict['vdi_uuid'] = vdi_uuid
+        dict['allocation'] =  self.sr.sm_config['allocation']
         dict['command'] = 'vdi_attach_from_config'
         # Return the 'config' encoded within a normal XMLRPC response so that
         # we can use the regular response/error parsing code.

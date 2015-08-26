@@ -286,11 +286,17 @@ class SRCommand:
             return target.compose(self.params['sr_uuid'], vdi1_uuid, self.vdi_uuid)
 
         elif self.cmd == 'vdi_attach_from_config':
-            ret = target.attach_from_config(self.params['sr_uuid'], self.vdi_uuid)
-            if not target.sr.driver_config.get("ATTACH_FROM_CONFIG_WITH_TAPDISK"):
-                return ret
-            target = blktap2.VDI(self.vdi_uuid, target, self.driver_info)
-            return target.attach(self.params['sr_uuid'], self.vdi_uuid, True, True)
+            try: 
+                if self.params.has_key('allocation') \
+                        and self.params['allocation'] == 'xlvhd':
+                    os.environ['THIN_STATE_FILE_ATTACH'] = "true"
+                ret = target.attach_from_config(self.params['sr_uuid'], self.vdi_uuid)
+                if not target.sr.driver_config.get("ATTACH_FROM_CONFIG_WITH_TAPDISK"):
+                    return ret
+                target = blktap2.VDI(self.vdi_uuid, target, self.driver_info)
+                return target.attach(self.params['sr_uuid'], self.vdi_uuid, True, True)
+            finally:
+                os.unsetenv('THIN_STATE_FILE_ATTACH')
 
         elif self.cmd == 'sr_create':
             return sr.create(self.params['sr_uuid'], long(self.params['args'][0]))
