@@ -100,7 +100,7 @@ lvm_parse_pv(struct vg *vg, const char *name, int pvs, uint64_t start)
 static int
 lvm_create_cmd(char *out, const char *command, const char *vgname)
 {
-	char  path[96] = "/etc/xenvm.d/";
+	char  path[96] = "/var/run/nonpersistent/xenvm.d/";
 	char  vgs_opts[] = "vg_name,vg_extent_size,lv_count,"
 		"pv_count,pv_name,pe_start";
 	char  lvs_opts[] = "lv_name,lv_size,segtype,seg_count,"
