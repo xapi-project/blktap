@@ -1422,10 +1422,10 @@ class LVHDSR(SR.SR):
 
 
     def _symlink_xenvm_conf(self):
-        """ Create a symlink of '/etc/xenvm.d/<VG_name>'
+        """ Create a symlink of '<config_dir>/<VG_name>'
 
             The symlink's name is the respective Volume Group's device
-            SCSI id. The symlink is created in '/etc/xenvm.d/' LVM PV
+            SCSI id. The symlink is created in config_dir. LVM PV
             commands take a device path as input. This way we can easily
             find out the VG name given a device path.
 

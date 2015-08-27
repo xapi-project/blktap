@@ -79,7 +79,7 @@ LVM_COMMANDS = VG_COMMANDS.union(PV_COMMANDS, LV_COMMANDS)
 def get_sr_alloc(filename):
     """Return the SR allocation type
 
-        Check for the existence of 'filename' in '/etc/xenvm.d/'. If the
+        Check for the existence of 'filename' in <config_dir>. If the
         file exists, the SR is 'xlvhd'. If not, it is 'thick'. The
         filename can be either 'VG_XenStorage-<UUID>' or the device's
         SCSI id.
@@ -257,12 +257,20 @@ def sockpath_of_sr_uuid(uuid):
 
 def setvginfo(uuid,vg,devices,uri, local_allocator=None):
     sockpath = sockpath_of_sr_uuid(uuid)
-    cmd = ["/bin/xenvm", "set-vg-info", "--pvpath", devices[0], "--uri", uri, "-S", "/var/lib/xcp/xapi", vg]
+
+    try:
+        util.makedirs(config_dir)
+    except OSError, e:
+        if e.errno != errno.EEXIST:
+            raise
+
+    cmd = ["/bin/xenvm", "set-vg-info", "--config", config_dir, "--pvpath", 
+           devices[0], "--uri", uri, "-S", "/var/lib/xcp/xapi", vg]
     if local_allocator is not None:
       cmd = cmd + [ "--local-allocator-path", local_allocator ]
     util.pread2(cmd)    
 
-config_dir = "/etc/xenvm.d/"
+config_dir = "/var/run/nonpersistent/xenvm.d/"
 
 def write_xenvmd_config(uuid, vg, devices, vgsize):
     global config_dir
@@ -287,7 +295,7 @@ def write_xenvmd_config(uuid, vg, devices, vgsize):
 )
 """ % (sockpath,host_allocation_quantum,host_low_water_mark,vg," ".join(devices))
     if not os.path.exists(config_dir):
-      util.makedirs("/etc/xenvm.d")
+      util.makedirs(config_dir)
     if not os.path.exists(os.path.dirname(sockpath)):
       util.makedirs(os.path.dirname(sockpath))
     with open(configfile,'w') as f:
@@ -320,7 +328,7 @@ def runxenvm_local_allocator(uuid, vg, devices, uri):
 )
 """ % (local_allocator, journal_dir, vg, "".join(devices), uuid, uuid)
     if not os.path.exists(config_dir):
-      util.makedirs("/etc/xenvm.d")
+      util.makedirs(config_dir)
     with open(configfile, 'w') as f:
         f.write(config)
     cmd = [ "/bin/xenvm", "host-create", vg, uuid ]
@@ -474,7 +482,7 @@ def scan_srlist(prefix, root, sr_alloc=None):
             continue
     if sr_alloc == 'xlvhd':
         for vg in VGs.keys():
-            if not os.path.isfile('/etc/xenvm.d/%s' % (VG_PREFIX+vg)):
+            if not os.path.isfile('%s/%s' % (config_dir, VG_PREFIX+vg)):
                 util.SMlog('vg=%s VGs[vg]=%s' % (vg,VGs[vg]))
 	        setvginfo(vg,VG_PREFIX+vg,VGs[vg].split(','),"file://local/dev/null", local_allocator=None)
     return VGs
