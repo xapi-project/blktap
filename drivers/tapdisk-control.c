@@ -749,8 +749,10 @@ tapdisk_control_open_image(struct tapdisk_ctl_conn *conn,
 		goto out;
 
 	if (request->u.params.flags & TAPDISK_MESSAGE_FLAG_THIN) {
+		/* Save parameters in vbd for unpause */
+		vbd->xlvhd_alloc_quantum = request->u.params.alloc_quantum;
 		/* Set allocation Quantum only to the leaf */
-		tapdisk_vbd_set_quantum(vbd, request->u.params.alloc_quantum);
+		tapdisk_vbd_set_quantum(vbd);
 	}
 
 	err = tapdisk_vbd_get_disk_info(vbd, &vbd->disk_info);
