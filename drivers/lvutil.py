@@ -292,8 +292,9 @@ def write_xenvmd_config(uuid, vg, devices, vgsize):
  (host_low_water_mark %d)
  (vg %s)
  (devices (%s))
+ (rrd_ds_owner %s)
 )
-""" % (sockpath,host_allocation_quantum,host_low_water_mark,vg," ".join(devices))
+""" % (sockpath, host_allocation_quantum, host_low_water_mark, vg, " ".join(devices), uuid)
     if not os.path.exists(config_dir):
       util.makedirs(config_dir)
     if not os.path.exists(os.path.dirname(sockpath)):
