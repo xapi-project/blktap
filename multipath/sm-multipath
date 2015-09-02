@@ -71,7 +71,8 @@ start() {
 		ROOT_DISK_MINOR=${ROOT_PART_SLAVE#dm-}
 		MPATH_NODES="$(dmsetup ls --target multipath --exec ls)"
 		for n in $MPATH_NODES ; do
-			NODE_MINOR="$(stat -L --format=%T $n)"
+			# stat %T returns value in hex, convert to decimal before comparing
+			NODE_MINOR="$((0x$(stat -L --format=%T $n)))"
 			if [ "$ROOT_DISK_MINOR" = "$NODE_MINOR" ] ; then
 				mkdir -p /dev/disk/mpInuse
 				ln -sf $n /dev/disk/mpInuse
