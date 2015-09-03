@@ -1468,8 +1468,6 @@ class LVHDVDI(VDI.VDI):
 
     JRN_CLONE = "clone" # journal entry type for the clone operation
 
-    XLVHD_PROVISIONING_MIN = 200 * 1024 * 1024
-
     def load(self, vdi_uuid):
         self.lock = self.sr.lock
         self.lvActivator = self.sr.lvActivator
@@ -1564,9 +1562,11 @@ class LVHDVDI(VDI.VDI):
                     # Should never reach here
                     raise xs_errors.XenError('InvalidArg',
                             opterr='initial_allocation not in sm-config')
-                thick_sz = lvhdutil.calcSizeVHDLV(long(size))
-                dynamic_sz = max(ia, self.XLVHD_PROVISIONING_MIN)
-                dynamic_sz = min(dynamic_sz, thick_sz)
+                fullpr = lvhdutil.calcSizeVHDLV(long(size))
+                thinpr = util.roundup(lvutil.LVM_SIZE_INCREMENT, \
+                         vhdutil.calcOverheadEmpty(lvhdutil.MSIZE))
+                dynamic_sz = max(ia, thinpr)
+                dynamic_sz = min(dynamic_sz, fullpr)
                 lvSize = util.roundup(lvutil.LVM_SIZE_INCREMENT, dynamic_sz)
 
         self.sr._ensureSpaceAvailable(lvSize)
@@ -1733,17 +1733,8 @@ class LVHDVDI(VDI.VDI):
                 # VDI is currently deflated, so keep it deflated
                 lvSizeNew = lvSizeOld
             elif self.sr.provision == "xlvhd":
-                if 'initial_allocation' in self.sm_config_override:
-                    ia = long (self.sm_config_override['initial_allocation'])
-                else:
-                    # Should never reach here
-                    raise xs_errors.XenError('InvalidArg',
-                            opterr='Initial allocation must be specified')
-                thick_sz = lvhdutil.calcSizeVHDLV(long(size))
-                dynamic_sz = max(ia, self.XLVHD_PROVISIONING_MIN)
-                dynamic_sz = min(dynamic_sz, thick_sz)
-                dynamic_sz = max(dynamic_sz, lvSizeOld)
-                lvSizeNew = util.roundup(lvutil.LVM_SIZE_INCREMENT, dynamic_sz)
+                # VDI is currently deflated, so keep it deflated
+                lvSizeNew = lvSizeOld
         assert(lvSizeNew >= lvSizeOld)
         spaceNeeded = lvSizeNew - lvSizeOld
         self.sr._ensureSpaceAvailable(spaceNeeded)
@@ -1907,17 +1898,6 @@ class LVHDVDI(VDI.VDI):
         fullpr = lvhdutil.calcSizeVHDLV(self.size)
         thinpr = util.roundup(lvutil.LVM_SIZE_INCREMENT, \
                 vhdutil.calcOverheadEmpty(lvhdutil.MSIZE))
-        if self.sr.provision == "xlvhd":
-            if 'initial_allocation' in self.sm_config:
-                ia = long (self.sm_config['initial_allocation'])
-            else:
-                # Should never reach here
-                raise xs_errors.XenError('InvalidArg',
-                        opterr='initial_allocation not in sm-config')
-            thick_sz = fullpr
-            dynamic_sz = max(ia, self.XLVHD_PROVISIONING_MIN)
-            dynamic_sz = min(dynamic_sz, thick_sz)
-            thinpr = util.roundup(lvutil.LVM_SIZE_INCREMENT, dynamic_sz)
         lvSizeOrig = thinpr
         lvSizeClon = thinpr
 
@@ -1931,6 +1911,24 @@ class LVHDVDI(VDI.VDI):
                 lvSizeOrig = fullpr
             if self.sr.cmd != "vdi_snapshot":
                 lvSizeClon = fullpr
+
+        if self.sr.provision == "xlvhd":
+            # By design on clone and snapshot operation instead of
+            # using the original VDI parameters we would use the SR ones.
+            # Being the SR default initial_allocation = 0, we can expect
+            # that every clone or snapshot will use minimal space.
+            if 'initial_allocation' in self.sr.sm_config:
+                ia = long (self.sr.sm_config['initial_allocation'])
+            else:
+                # Should never reach here
+                raise xs_errors.XenError('InvalidArg',
+                        opterr='initial_allocation not in sm-config')
+            thick_sz = fullpr
+            dynamic_sz = max(ia, thinpr)
+            dynamic_sz = min(dynamic_sz, thick_sz)
+            thinpr = util.roundup(lvutil.LVM_SIZE_INCREMENT, dynamic_sz)
+            lvSizeOrig = thinpr
+            lvSizeClon = thinpr
 
         if (snapType == self.SNAPSHOT_SINGLE or
                 snapType == self.SNAPSHOT_INTERNAL):

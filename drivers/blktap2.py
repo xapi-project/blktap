@@ -1545,7 +1545,8 @@ class VDI(object):
                 aq = long (sm_config["allocation_quantum"])
             elif "allocation_quantum" in self.target.vdi.sr.sm_config:
                 aq = long (self.target.vdi.sr.sm_config["allocation_quantum"])
-            options["allocation_quantum"] = int(aq)
+            # Tapdisk needs the allocation_quantum to be in MB
+            options["allocation_quantum"] = int(aq / (1024*1024))
 
         timeout = util.get_nfs_timeout(self.target.vdi.session, sr_uuid)
         if timeout:
