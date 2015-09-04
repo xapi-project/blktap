@@ -559,6 +559,8 @@ class LVHDoISCSIVDI(LVHDSR.LVHDVDI):
         util.SMlog("LVHDoISCSIVDI.generate_config")
         if not lvutil._checkLV(self.path):
                 raise xs_errors.XenError('VDIUnavailable')
+        if self.sr.sm_config['allocation'] == "xlvhd":
+            lvutil.flushLV(self.path)
         dict = {}
         self.sr.dconf['localIQN'] = self.sr.iscsi.localIQN
         self.sr.dconf['multipathing'] = self.sr.mpath

@@ -349,6 +349,10 @@ def stopxenvmd(vg):
     cmd = [ "/bin/xenvm", "shutdown", vg ]
     util.pread2(cmd)
 
+def flushLV(path):
+    cmd = [ "/bin/xenvm", "flush", path ]
+    util.pread2(cmd)
+
 def _checkVG(vgname):
     try:
         #cmd = cmd_lvm([CMD_VGS, vgname])
