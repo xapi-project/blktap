@@ -132,7 +132,20 @@ class CIFSSR(FileSR.FileSR):
                 'credentials=%s' % self.credentials
         ])
 
-        username = self.dconf['username'].replace("\\","/")
+        dom_username = self.dconf['username'].split('\\')
+
+        if len(dom_username) == 1:
+            domain = None
+            username = dom_username[0]
+        elif len(dom_username) == 2:
+            domain = dom_username[0]
+            username = dom_username[1]
+        else:
+            raise CifsException("A maximum of 2 tokens are expected "
+                                "(<domain>\<username>). {} were given."
+                                .format(len(dom_username)))
+
+        domain = util.to_plain_string(domain)
         username = util.to_plain_string(username)
 
         if self.dconf.has_key('password_secret'):
@@ -145,10 +158,15 @@ class CIFSSR(FileSR.FileSR):
 
         password = util.to_plain_string(password)
 
+        cred_str = 'username={}\npassword={}\n'.format(username, password)
+
+        if domain:
+            cred_str += 'domain={}\n'.format(domain)
+
         # Open credentials file and truncate
         try:
             with open(self.credentials, 'w') as f:
-                f.write("username=%s\npassword=%s\n" % (username,password))
+                f.write(cred_str)
         except IOError, e:
             raise CifsException("Failed to create credentials file")
 

@@ -286,11 +286,12 @@ class ISOSR(SR.SR):
             options.append(self.getCacheOptions())
         except:
             util.SMlog("Exception while attempting to append mount options")
-        finally:
-            # Extend mountcmd appropriately
-            if options:
-                options = ",".join(str(x) for x in options if x)
-                mountcmd.extend(["-o", options])
+            raise
+
+        # Extend mountcmd appropriately
+        if options:
+            options = ",".join(str(x) for x in options if x)
+            mountcmd.extend(["-o", options])
 
     def getCacheOptions(self):
         """Pass cache options to mount.cifs"""
@@ -299,18 +300,37 @@ class ISOSR(SR.SR):
     def getCIFSPasswordOptions(self):
         if self.dconf.has_key('username') \
                 and (self.dconf.has_key('cifspassword') or self.dconf.has_key('cifspassword_secret')):
-            username = self.dconf['username'].replace("\\","/")
+            dom_username = self.dconf['username'].split('\\')
+            if len(dom_username) == 1:
+                domain = None
+                username = dom_username[0]
+            elif len(dom_username) == 2:
+                domain = dom_username[0]
+                username = dom_username[1]
+            else:
+                err_str = ("A maximum of 2 tokens are expected "
+                           "(<domain>\<username>). {} were given."
+                           .format(len(dom_username)))
+                util.SMlog('CIFS ISO SR mount error: ' + err_str)
+                raise xs_errors.XenError('ISOMountFailure', opterr=err_str)
+
             if self.dconf.has_key('cifspassword_secret'):
                 password = util.get_secret(self.session, self.dconf['cifspassword_secret'])
             else:
                 password = self.dconf['cifspassword']
 
+            domain = util.to_plain_string(domain)
             username = util.to_plain_string(username)
             password = util.to_plain_string(password)
 
+            cred_str = 'username={}\npassword={}\n'.format(username, password)
+
+            if domain:
+                cred_str += 'domain={}\n'.format(domain)
+
             # Open credentials file and truncate
             f = open(self.credentials, 'w')
-            f.write("username=%s\npassword=%s\n" % (username,password))
+            f.write(cred_str)
             f.close()            
             credentials = "credentials=%s" % self.credentials            
             return credentials
