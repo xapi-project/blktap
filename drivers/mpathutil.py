@@ -21,18 +21,6 @@ import scsiutil
 import os
 import time
 
-def add(scsi_id):
-    devices = scsiutil._genReverseSCSIidmap(scsi_id)
-    for device in devices:
-        realpath = os.path.realpath(device)
-        base = os.path.basename(realpath)
-        mpath_cli.add_path(base)
-
-def remove(scsi_id):
-    paths=mpath_cli.list_paths(scsi_id)
-    mpath_cli.remove_map(scsi_id)
-    for path in paths:
-        mpath_cli.remove_path(path)
 
 def list():
     maps = mpath_cli.list_maps()
@@ -51,14 +39,8 @@ def status():
     for line in (mpath_cli.get_all_topologies()):
         print line
 
-def resize(scsi_id):
-    mpath_cli.resize_map(scsi_id)
-
 def usage():
     print "Usage:";
-    print "%s add <scsi_id>" % sys.argv[0]
-    print "%s remove <scsi_id>" % sys.argv[0]
-    print "%s resize <scsi_id>" % sys.argv[0]
     print "%s list" % sys.argv[0]
     print "%s status" % sys.argv[0]
 
@@ -78,23 +60,9 @@ def main():
     elif mode=="status":
         status()
     else:
-        if len(sys.argv) < 3:
-            usage()
-            sys.exit(-1)
-        scsi_id=sys.argv[2]
-
-        if mode=="add":
-            add(scsi_id)
-        elif mode=="remove":
-            remove(scsi_id)
-        elif mode=="resize":
-            resize(scsi_id)
-        else:
-            usage()
-            sys.exit(-1)
+        usage()
+        sys.exit(-1)
 
 if __name__ == "__main__":
     main()
-
-
     
