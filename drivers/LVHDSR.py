@@ -1404,7 +1404,7 @@ class LVHDSR(SR.SR):
 
         with open(vginfo_path + '.xenvmd.config', 'r') as f:
             # Device path is in the 2nd to last line
-            line = f.readlines()[-2]
+            line = f.readlines()[-3]
 
             # Strip 11 chars from start and 3 from end.
             # Will break if formatting changes.
@@ -1441,7 +1441,7 @@ class LVHDSR(SR.SR):
             return
 
         with open(vginfo_path + '.xenvmd.config', 'r') as f:
-            line = f.readlines()[-2]
+            line = f.readlines()[-3]
             scsi_id = scsiutil.getSCSIid(line[11:-3])
 
         # Remove symlink if it exists            
