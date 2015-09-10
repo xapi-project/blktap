@@ -1389,32 +1389,23 @@ class LVHDSR(SR.SR):
         lvutil.setvginfo(uuid, vg, devices, uri)
 
     def upgrade(self, uuid):
-        util.SMlog("Inside Upgrade")
-        util.SMlog("Self: %s, UUID: %s" % (self.__dict__, uuid))
+        util.SMlog("Upgrade to thin-prov for SR: %s" % uuid)
         try:
             if self.isMaster:
                 # Check if SR has enough space for upgrade
                 stats = lvutil._getVGstats(self.vgname)
                 self.physical_size = stats['physical_size']
-                util.SMlog("Got Physical Size %d" % self.physical_size)
                 self.physical_utilisation = stats['physical_utilisation']
-                util.SMlog("Got SR utilisation %d" % self.physical_utilisation)
                 # Calculate free space in the SR
                 sr_free_space = self.physical_size - self.physical_utilisation
-                util.SMlog("SR Free space %d" % sr_free_space)
-
                 num_hosts = len(self.session.xenapi.host.get_all())
-                util.SMlog("Num hosts calculated")
-
                 min_host_pool_size = 1024
                 host_pool_size = (self.physical_size * 0.005) / (1024 * 1024)
                 pool_size = max(min_host_pool_size, host_pool_size)
-
                 # Calculate the space required for upgrade in bytes
                 space_reqd_for_upgrade = (num_hosts * \
                      ( pool_size + 2 * self.RING_SIZE) + \
                      self.JOURNAL_SIZE + self.REDO_LOG_SIZE) * (1024 * 1024)
-                util.SMlog("Space required for upgrade %d" % space_reqd_for_upgrade)
 
                 # If free space in SR is less than the space required
                 # for upgrade, throw an error
@@ -1485,7 +1476,7 @@ class LVHDSR(SR.SR):
             raise
 
     def rollback(self, uuid):
-        util.SMlog("Inside Rollback")
+        util.SMlog("Rolling back thin-prov upgrade for SR: %s" % uuid)
         try:
             lvutil.stopxenvm_local_allocator(self.vgname)
         except:

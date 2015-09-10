@@ -18,17 +18,7 @@ def failure_message(code, params):
 
 if __name__ == "__main__":
     txt = sys.stdin.read()
-    #print "Input is %s" % txt
     params, methodname = xmlrpclib.loads(txt)
-
-    #Pool ref
-    util.SMlog("params[0] is %s" % params[0])
-    #sr ref
-    util.SMlog("params[1] is %s" % params[1])
-    #initial allocation
-    util.SMlog("params[2] is %s" % params[2])
-    #allocation quantum
-    util.SMlog("params[3] is %s" % params[3])
     acquired = False
     
     try:
@@ -74,10 +64,11 @@ if __name__ == "__main__":
                 if sm_config['allocation'] == 'thick':
                     if (sr_type != 'lvmoiscsi' and sr_type != 'lvmohba'):
                         print (failure_message("Unsupported", ["Enabling \
-                        thin provisioning not supported for SR of type:", sr_type]))
+                        thin provisioning not supported for SR of type:", \
+                        sr_type]))
                 elif sm_config['allocation'] == 'xlvhd':
                     print (failure_message("EnableThinProvisionException", 
-                           ["Thin provisioning already enabled on SR:", sr_uuid]))
+                    ["Thin provisioning already enabled on SR:", sr_uuid]))
                     
             sr.upgrade(sr_uuid)
             for host_ref in hosts_ref:
@@ -92,8 +83,8 @@ if __name__ == "__main__":
             msg = "Enabling thin provisioning was successful for SR: " + sr_uuid
             print (success_message(msg))
         else:
-            util.SMlog("Could not enable thin provision on %s, Lock unavailable"\
-                 % sr_uuid)
+            util.SMlog("Could not enable thin provision on %s,"
+                       "Lock unavailable" % sr_uuid)
             print (failure_message("SRUnavailable", ["Unable to get SR lock \
                 for SR:", sr_uuid]))
 
