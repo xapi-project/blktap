@@ -118,7 +118,6 @@ def do_trim(session, args):
             cmd = ["/usr/sbin/blkdiscard", "-v", lv_path]
             stdout = util.pread2(cmd)
             util.SMlog("Stdout is %s" % stdout)
-            lvutil.remove(lv_path)
             util.SMlog("Trim on SR: %s complete. " % sr_uuid)
             result = str(True)
         except util.CommandException, e:
@@ -134,6 +133,9 @@ def do_trim(session, args):
                 % sr_uuid
             }
             result = to_xml(err_msg)
+        finally:
+            if lvutil.exists(lv_path):
+                lvutil.remove(lv_path)
 
         _log_last_triggered(session, sr_uuid)
 
