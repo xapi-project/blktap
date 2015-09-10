@@ -100,6 +100,15 @@ class LVHDSR(SR.SR):
     LOCK_RETRY_INTERVAL = 3
     LOCK_RETRY_ATTEMPTS = 10
 
+    #Ring Size in MiB
+    RING_SIZE = 4
+
+    #Journal Size in MiB
+    JOURNAL_SIZE = 4
+
+    #Redo Log Size in MiB
+    REDO_LOG_SIZE = 4
+
     TEST_MODE_KEY = "testmode"
     TEST_MODE_VHD_FAIL_REPARENT_BEGIN   = "vhd_fail_reparent_begin"
     TEST_MODE_VHD_FAIL_REPARENT_LOCATOR = "vhd_fail_reparent_locator"
@@ -463,7 +472,7 @@ class LVHDSR(SR.SR):
                     map['allocation_quantum'] = str (aq)
                 else:
                     util.SMlog("Using defaults for allocation quantum")
-                    aq = util.xlvhd_adjust_allocation_quantum(self.physical_size, -1)
+                    aq = util.xlvhd_adjust_allocation_quantum(self.physical_size)
                     map['allocation_quantum'] = str (aq)
                 if self.INITIAL_ALLOCATION in self.sm_config:
                     # FIXME: this should accept also GiB and MiB
@@ -472,7 +481,7 @@ class LVHDSR(SR.SR):
                     map['initial_allocation'] = str (ia)
                 else:
                     util.SMlog("Using defaults for initial allocation")
-                    ia = util.xlvhd_adjust_initial_allocation(-1)
+                    ia = util.xlvhd_adjust_initial_allocation()
                     map['initial_allocation'] = str (ia)
             self.session.xenapi.SR.set_sm_config(self.sr_ref, map)
 
@@ -1397,9 +1406,9 @@ class LVHDSR(SR.SR):
                 num_hosts = len(self.session.xenapi.host.get_all())
                 util.SMlog("Num hosts calculated")
 
-                min_host_allocation_quantum = 1024
-                host_allocation_quantum = (vgsize * 0.005) / (1024 * 1024)
-                pool_size = max(min_host_allocation_quantum, host_allocation_quantum)
+                min_host_pool_size = 1024
+                host_pool_size = (self.physical_size * 0.005) / (1024 * 1024)
+                pool_size = max(min_host_pool_size, host_pool_size)
 
                 # Calculate the space required for upgrade in bytes
                 space_reqd_for_upgrade = (num_hosts * \
@@ -1433,17 +1442,24 @@ class LVHDSR(SR.SR):
                 map['initial_allocation'] = ia_str
                 map['allocation_quantum'] = aq_str
                 self.session.xenapi.SR.set_sm_config(self.sr_ref, map)
+                self.sm_config = self.session.xenapi.SR.get_sm_config(self.sr_ref)
+                if self.sm_config.get('allocation') in self.PROVISIONING_TYPES:
+                    self.provision = self.sm_config.get('allocation')
 
                 # Change the key values in VDI sm-config
                 vdirefs = self.session.xenapi.SR.get_VDIs(self.sr_ref)
                 for vref in vdirefs:
-                    vsmc = self.session.xenapi.VDI.get_sm_config(vref)
-                    virtual_size = self.session.xenapi.VDI.get_virtual_size(vref)
+                    vdi_rec = self.session.xenapi.VDI.get_record(vref)
+                    vsmc = vdi_rec["sm_config"]
+                    virtual_size = vdi_rec["virtual_size"]
                     vsmc['initial_allocation'] = str(virtual_size)
-                    vsmc['allocation_quantum'] = "0.01"
+                    vsmc['allocation_quantum'] = aq_str
                     self.session.xenapi.VDI.set_sm_config(vref, vsmc)
 
                 self._write_vginfo(uuid)
+                self.updateSRMetadata(self.provision, \
+                                      map['initial_allocation'], \
+                                      map['allocation_quantum'])
 
                 # Write config file and start xenvmd
                 self._start_xenvmd(uuid)

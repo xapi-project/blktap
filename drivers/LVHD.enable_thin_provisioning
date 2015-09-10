@@ -33,33 +33,24 @@ if __name__ == "__main__":
     
     try:
         session = util.get_localAPI_session()
-        sr_uuid = session.xenapi.SR.get_uuid(params[1])    
-        hosts = session.xenapi.host.get_all()
-        host_ref = util.get_this_host_ref(session)
-
-        sm_config = session.xenapi.SR.get_sm_config(params[1])
-        sr_type = session.xenapi.SR.get_type(params[1])
-        util.SMlog("sr_type is %s" % sr_type)
-
-        if sm_config.has_key('allocation') and \
-            sm_config['allocation'] == 'thick' and \
-            (sr_type != 'lvmoiscsi' and sr_type != 'lvmohba'):
-            print (failure_message("Unimplemented", ["Enabling \
-            thin provisioning not implemented for SR of type:", sr_type]))
+        srRecord = session.xenapi.SR.get_record(params[1])
+        sr_uuid = srRecord["uuid"]
+        hosts_ref = session.xenapi.host.get_all()
+        master_ref = util.get_this_host_ref(session)
 
         driver_info = LVHDSR.DRIVER_INFO    
         cmd = SRCommand.SRCommand(driver_info)
     
         input_params = {}
         input_params['session_ref'] = session._session
-        input_params['host_ref'] = host_ref
+        input_params['host_ref'] = master_ref
         input_params['sr_ref'] = params[1]
         input_params['initial_allocation'] = params[2]
         input_params['allocation_quantum'] = params[3]
         input_params['command'] = methodname
         input_params['sr_uuid'] = sr_uuid
 
-        pbd_ref = util.find_my_pbd(session, host_ref, params[1])
+        pbd_ref = util.find_my_pbd(session, master_ref, params[1])
         pbd = session.xenapi.PBD
         device_config = pbd.get_device_config(pbd_ref)
         input_params['device_config'] = device_config
@@ -75,15 +66,28 @@ if __name__ == "__main__":
                 break
             time.sleep(LOCK_RETRY_INTERVAL)
         if acquired:
+            #refresh sr record and check sm_config
+            srRecord = session.xenapi.SR.get_record(params[1])
+            sm_config = srRecord["sm_config"]
+            sr_type = srRecord["type"]
+            if sm_config.has_key('allocation'): 
+                if sm_config['allocation'] == 'thick':
+                    if (sr_type != 'lvmoiscsi' and sr_type != 'lvmohba'):
+                        print (failure_message("Unsupported", ["Enabling \
+                        thin provisioning not supported for SR of type:", sr_type]))
+                elif sm_config['allocation'] == 'xlvhd':
+                    print (failure_message("EnableThinProvisionException", 
+                           ["Thin provisioning already enabled on SR:", sr_uuid]))
+                    
             sr.upgrade(sr_uuid)
-            for host in hosts:
-                if host == host_ref:
+            for host_ref in hosts_ref:
+                if host_ref == master_ref:
                     continue
-                util.SMlog("Calling plugin for host with ref = %s" %host)
+                util.SMlog("Calling plugin for host with ref = %s" %host_ref)
                 slave_params = {}
-                slave_params['host_ref'] = host
+                slave_params['host_ref'] = host_ref
                 slave_params['sr_ref'] = params[1]
-                result = session.xenapi.host.call_plugin(hosts[1], \
+                result = session.xenapi.host.call_plugin(host_ref, \
                 "enable_thin_lvhd_on_slave", "enable_thin_lvhd", slave_params)
             msg = "Enabling thin provisioning was successful for SR: " + sr_uuid
             print (success_message(msg))
@@ -100,5 +104,3 @@ if __name__ == "__main__":
         if acquired:
             sr.lock.release()
         session.xenapi.session.logout() 
-
-
