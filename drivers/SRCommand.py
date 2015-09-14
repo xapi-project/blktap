@@ -290,6 +290,7 @@ class SRCommand:
                 if self.params.has_key('allocation') \
                         and self.params['allocation'] == 'xlvhd':
                     os.environ['THIN_STATE_FILE_ATTACH'] = "true"
+                    target.sr._write_vginfo(self.params['sr_uuid'])
                 ret = target.attach_from_config(self.params['sr_uuid'], self.vdi_uuid)
                 if not target.sr.driver_config.get("ATTACH_FROM_CONFIG_WITH_TAPDISK"):
                     return ret

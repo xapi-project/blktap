@@ -472,7 +472,9 @@ class LVHDoISCSISR(LVHDSR.LVHDSR):
             i.detach(sr_uuid)
 
     def attach(self, sr_uuid):
-        self._write_vginfo(sr_uuid)
+        if ('allocation' in self.sm_config and
+                self.sm_config['allocation'] == 'xlvhd'):
+            self._write_vginfo(sr_uuid)
 
         try:
             connected = False

@@ -116,7 +116,9 @@ class LVHDoHBASR(LVHDSR.LVHDSR):
                                              self.sr_ref, self.SCSIid)
 
     def attach(self, sr_uuid):
-        self._write_vginfo(sr_uuid)
+        if ('allocation' in self.sm_config and
+                self.sm_config['allocation'] == 'xlvhd'):
+            self._write_vginfo(sr_uuid)
 
         self.hbasr.attach(sr_uuid)
         if self.mpath == "true":

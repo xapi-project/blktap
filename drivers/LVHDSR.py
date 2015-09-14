@@ -1374,12 +1374,10 @@ class LVHDSR(SR.SR):
 
 
     def _write_vginfo(self, uuid):
-        if ('allocation' in self.sm_config and
-                self.sm_config['allocation'] == 'xlvhd'):
-            vg = self.vgname
-            devices = self.root.split(',')
-            uri = "file://local/services/xenvmd/%s" % uuid
-            lvutil.setvginfo(uuid, vg, devices, uri)
+        vg = self.vgname
+        devices = self.root.split(',')
+        uri = "file://local/services/xenvmd/%s" % uuid
+        lvutil.setvginfo(uuid, vg, devices, uri)
 
 
     def _rm_xenvm_conf(self):
