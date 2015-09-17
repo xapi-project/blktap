@@ -19,72 +19,58 @@
 
 import sys
 import XenAPIPlugin
+import os
 sys.path.append("/opt/xensource/sm/")
 import util
 import LVHDSR
 import SRCommand
 import lvhdutil
 import lvutil
+import pluginutil
 
-def to_xml(d):
-
-    dom = xml.dom.minidom.Document()
-    upgrade_response = dom.createElement("upgrade_response")
-    dom.appendChild(upgrade_response)
-
-    for key, value in sorted(d.items()):
-        key_value_element = dom.createElement("key_value_pair")
-        upgrade_response.appendChild(key_value_element)
-
-        key_element = dom.createElement("key")
-        key_text_node = dom.createTextNode(key)
-        key_element.appendChild(key_text_node)
-        key_value_element.appendChild(key_element)
-
-        value_element = dom.createElement("value")
-        value_text_mode = dom.createTextNode(value)
-        value_element.appendChild(value_text_mode)
-        key_value_element.appendChild(value_element)
-
-    return dom.toxml()
+ERROR_CODE_KEY = "errcode"
+ERROR_MSG_KEY = "errmsg"
 
 def enable_thin_lvhd(session, args):
-    util.SMlog("host_ref is %s" % args['host_ref'])
-    util.SMlog("sr_ref is %s" % args['sr_ref'])
+    util.SMlog("Upgrading SR %s to thin provision on host %s" 
+               % (args['sr_ref'], args['host_ref'])) 
 
     try:
         driver_info = LVHDSR.DRIVER_INFO
         cmd = SRCommand.SRCommand(driver_info)
+        if util.is_master(session):
+            util.SMlog("Cannot invoke plugin on master host")
+            raise
 
         input_params = {}
         input_params['session_ref'] = session._session
         input_params['host_ref'] = args['host_ref']
         input_params['sr_ref'] = args['sr_ref']
         input_params['command'] = "LVHD.enable_thin_provisioning"
-        sr_uuid = session.xenapi.SR.get_uuid(args['sr_ref'])
-        input_params['sr_uuid'] = sr_uuid
+        srRecord = session.xenapi.SR.get_record(args['sr_ref'])
+        input_params['sr_uuid'] = srRecord["uuid"]
 
         pbd_ref = util.find_my_pbd(session, args['host_ref'], args['sr_ref'])
         pbd = session.xenapi.PBD
         device_config = pbd.get_device_config(pbd_ref)
         input_params['device_config'] = device_config
         cmd.dconf = input_params['device_config']
-        cmd.dconf['device'] = "/dev/disk/by-id/scsi-"+device_config['SCSIid']
-        if util.is_master(session):
-            cmd.dconf['SRmaster'] = "true"
-        else:
-            cmd.dconf['SRmaster'] = "false"
+        cmd.dconf['SRmaster'] = "false"
+        device_path = "/dev/disk/mpInuse/" + device_config['SCSIid']
+        if not os.path.exists(device_path):
+            device_path = "/dev/disk/by-id/scsi-" + device_config['SCSIid']
+        cmd.dconf['device'] = device_path
         cmd.params = input_params
-        sr = LVHDSR.LVHDSR(cmd, sr_uuid)
-        sr.upgrade(sr_uuid)
+        sr = LVHDSR.LVHDSR(cmd, srRecord["uuid"])
+        sr.upgrade(srRecord["uuid"])
         return str(True)
     except:
         err_msg = {
             ERROR_CODE_KEY: 'EnableThinProvisionException',
             ERROR_MSG_KEY: 'EnableThinProvisionException: Enabling thin provision failed on SR [%s]'
-            % sr_uuid
+            % srRecord["uuid"]
         }
-        result = to_xml(err_msg)
+        result = pluginutil.to_xml(err_msg)
         return result
 
 if __name__ == "__main__":

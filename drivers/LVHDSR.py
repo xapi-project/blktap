@@ -1403,8 +1403,8 @@ class LVHDSR(SR.SR):
                 host_pool_size = (self.physical_size * 0.005) / (1024 * 1024)
                 pool_size = max(min_host_pool_size, host_pool_size)
                 # Calculate the space required for upgrade in bytes
-                space_reqd_for_upgrade = (num_hosts * \
-                     ( pool_size + 2 * self.RING_SIZE) + \
+                space_reqd_for_upgrade = (num_hosts * 
+                     (pool_size + 2 * self.RING_SIZE) + 
                      self.JOURNAL_SIZE + self.REDO_LOG_SIZE) * (1024 * 1024)
 
                 # If free space in SR is less than the space required
@@ -1434,8 +1434,7 @@ class LVHDSR(SR.SR):
                 map['allocation_quantum'] = aq_str
                 self.session.xenapi.SR.set_sm_config(self.sr_ref, map)
                 self.sm_config = self.session.xenapi.SR.get_sm_config(self.sr_ref)
-                if self.sm_config.get('allocation') in self.PROVISIONING_TYPES:
-                    self.provision = self.sm_config.get('allocation')
+                self.provision = self.sm_config.get('allocation')
 
                 # Change the key values in VDI sm-config
                 vdirefs = self.session.xenapi.SR.get_VDIs(self.sr_ref)
@@ -1458,20 +1457,19 @@ class LVHDSR(SR.SR):
             else:
                 self._write_vginfo(uuid)
 
-            retrycount = 10
-
-            while True:
+            for retrycount in range(0, 10):
                 try:
                     # Start local allocator
                     self._start_local_allocator(uuid)
-                except:
-                    if retrycount == 0:
-                        raise
-                    retrycount = retrycount - 1
+                    break
+                except Exception, e:
                     continue
-                break
+            else:
+                raise e
+
         except:
-            util.SMlog("Exception ")
+            util.SMlog("Exception caught while trying to upgrade SR %s "
+                       " to thin-provisioning. Now rolling back" % uuid)
             self.rollback(uuid)
             raise
 
@@ -1480,16 +1478,18 @@ class LVHDSR(SR.SR):
         try:
             lvutil.stopxenvm_local_allocator(self.vgname)
         except:
-            pass
+            util.SMlog("Failed to stop xenvm local allocator for VG: %s" 
+                       % self.vgname)
+        try:
+            self._rm_xenvm_conf()
+        except:
+            util.SMlog("Failed to remove xenvm conf for VG: %s" % self.vgname)
+
         if self.isMaster:
             try:
                 lvutil.stopxenvmd(self.vgname)
             except:
-                pass
-            try:
-                self._rm_xenvm_conf()
-            except:
-                pass
+                util.SMlog("Failed to stop xenvmd for VG: %s" % self.vgname)
 
             try:
                 #Remove the keys for each VDI
@@ -1508,15 +1508,21 @@ class LVHDSR(SR.SR):
                     self.session.xenapi.SR.remove_from_sm_config(self.sr_ref, 'initial_allocation')
                 if map.has_key('allocation_quantum'):
                     self.session.xenapi.SR.remove_from_sm_config(self.sr_ref, 'allocation_quantum')
+                self.sm_config = self.session.xenapi.SR.get_sm_config(self.sr_ref)
+                if self.sm_config.has_key('allocation'):
+                    self.provision = self.sm_config.get('allocation')
+                self.updateSRMetadata(self.provision)
             except:
-                pass
+                util.SMlog("Failed to cleanup thin-provisioning specific config"
+                           " keys for SR %s and/or its VDIs" % uuid) 
 
             try:
                 # Change LVM metadata string from xenvm to standard lvm
                 devices = self.root.split(',')
                 util.pread2(['xenvm', 'downgrade', self.vgname, '--pvpath', devices[0]])
             except:
-                pass
+                util.SMlog("Failed to change LVM metadata string while"
+                           "  downgrading SR: %s" % uuid)
 
 
     def _rm_xenvm_conf(self):

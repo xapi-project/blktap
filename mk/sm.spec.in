@@ -283,6 +283,9 @@ cp -f /etc/lvm/lvm.conf.orig /etc/lvm/lvm.conf || exit $?
 /opt/xensource/sm/wwid_conf.py
 /opt/xensource/sm/wwid_conf.pyc
 /opt/xensource/sm/wwid_conf.pyo
+/opt/xensource/sm/pluginutil.py
+/opt/xensource/sm/pluginutil.pyc
+/opt/xensource/sm/pluginutil.pyo
 /sbin/mpathutil
 /etc/rc.d/init.d/sm-multipath
 %{_unitdir}/make-dummy-sr.service
