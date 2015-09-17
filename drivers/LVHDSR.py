@@ -463,7 +463,7 @@ class LVHDSR(SR.SR):
                     map['allocation_quantum'] = str (aq)
                 else:
                     util.SMlog("Using defaults for allocation quantum")
-                    aq = util.xlvhd_adjust_allocation_quantum(self.physical_size)
+                    aq = util.xlvhd_adjust_allocation_quantum(self.physical_size, -1)
                     map['allocation_quantum'] = str (aq)
                 if self.INITIAL_ALLOCATION in self.sm_config:
                     # FIXME: this should accept also GiB and MiB
@@ -472,7 +472,7 @@ class LVHDSR(SR.SR):
                     map['initial_allocation'] = str (ia)
                 else:
                     util.SMlog("Using defaults for initial allocation")
-                    ia = util.xlvhd_adjust_initial_allocation()
+                    ia = util.xlvhd_adjust_initial_allocation(-1)
                     map['initial_allocation'] = str (ia)
             self.session.xenapi.SR.set_sm_config(self.sr_ref, map)
 
@@ -1378,6 +1378,138 @@ class LVHDSR(SR.SR):
         devices = self.root.split(',')
         uri = "file://local/services/xenvmd/%s" % uuid
         lvutil.setvginfo(uuid, vg, devices, uri)
+
+    def upgrade(self, uuid):
+        util.SMlog("Inside Upgrade")
+        util.SMlog("Self: %s, UUID: %s" % (self.__dict__, uuid))
+        try:
+            if self.isMaster:
+                # Check if SR has enough space for upgrade
+                stats = lvutil._getVGstats(self.vgname)
+                self.physical_size = stats['physical_size']
+                util.SMlog("Got Physical Size %d" % self.physical_size)
+                self.physical_utilisation = stats['physical_utilisation']
+                util.SMlog("Got SR utilisation %d" % self.physical_utilisation)
+                # Calculate free space in the SR
+                sr_free_space = self.physical_size - self.physical_utilisation
+                util.SMlog("SR Free space %d" % sr_free_space)
+
+                num_hosts = len(self.session.xenapi.host.get_all())
+                util.SMlog("Num hosts calculated")
+
+                min_host_allocation_quantum = 1024
+                host_allocation_quantum = (vgsize * 0.005) / (1024 * 1024)
+                pool_size = max(min_host_allocation_quantum, host_allocation_quantum)
+
+                # Calculate the space required for upgrade in bytes
+                space_reqd_for_upgrade = (num_hosts * \
+                     ( pool_size + 2 * self.RING_SIZE) + \
+                     self.JOURNAL_SIZE + self.REDO_LOG_SIZE) * (1024 * 1024)
+                util.SMlog("Space required for upgrade %d" % space_reqd_for_upgrade)
+
+                # If free space in SR is less than the space required
+                # for upgrade, throw an error
+                if sr_free_space < space_reqd_for_upgrade:
+                    util.SMlog("free space is less than space required")
+                    raise xs_errors.XenError('SRInsufficientSpace')
+
+                devices = self.root.split(',')
+                # Change LVM metadata string from standard LVM to xenvm
+                util.pread2(['xenvm', 'upgrade', self.vgname, '--pvpath', devices[0]])
+
+                # Check allocation-quantum
+                aq = long (self.srcmd.params['allocation_quantum'])
+                aq = util.xlvhd_adjust_allocation_quantum(self.physical_size, aq)
+                aq_str = str (aq)
+
+                # Check initial-allocation
+                ia = long (self.srcmd.params['initial_allocation'])
+                ia = util.xlvhd_adjust_initial_allocation(ia)
+                ia_str = str (ia)
+
+                #Change key values in sm SR config
+                map = self.sm_config
+                map['allocation'] = "xlvhd"
+                map['initial_allocation'] = ia_str
+                map['allocation_quantum'] = aq_str
+                self.session.xenapi.SR.set_sm_config(self.sr_ref, map)
+
+                # Change the key values in VDI sm-config
+                vdirefs = self.session.xenapi.SR.get_VDIs(self.sr_ref)
+                for vref in vdirefs:
+                    vsmc = self.session.xenapi.VDI.get_sm_config(vref)
+                    virtual_size = self.session.xenapi.VDI.get_virtual_size(vref)
+                    vsmc['initial_allocation'] = str(virtual_size)
+                    vsmc['allocation_quantum'] = "0.01"
+                    self.session.xenapi.VDI.set_sm_config(vref, vsmc)
+
+                self._write_vginfo(uuid)
+
+                # Write config file and start xenvmd
+                self._start_xenvmd(uuid)
+                self._symlink_xenvm_conf()
+            else:
+                self._write_vginfo(uuid)
+
+            retrycount = 10
+
+            while True:
+                try:
+                    # Start local allocator
+                    self._start_local_allocator(uuid)
+                except:
+                    if retrycount == 0:
+                        raise
+                    retrycount = retrycount - 1
+                    continue
+                break
+        except:
+            util.SMlog("Exception ")
+            self.rollback(uuid)
+            raise
+
+    def rollback(self, uuid):
+        util.SMlog("Inside Rollback")
+        try:
+            lvutil.stopxenvm_local_allocator(self.vgname)
+        except:
+            pass
+        if self.isMaster:
+            try:
+                lvutil.stopxenvmd(self.vgname)
+            except:
+                pass
+            try:
+                self._rm_xenvm_conf()
+            except:
+                pass
+
+            try:
+                #Remove the keys for each VDI
+                vdirefs = self.session.xenapi.SR.get_VDIs(self.sr_ref)
+                for vref in vdirefs:
+                    vsmc = self.session.xenapi.VDI.get_sm_config(vref)
+                    if vsmc.has_key('initial_allocation'):
+                        self.session.xenapi.VDI.remove_from_sm_config(vref, 'initial_allocation')
+                    if vsmc.has_key('allocation_quantum'):
+                        self.session.xenapi.VDI.remove_from_sm_config(vref, 'allocation_quantum')
+                #Remove the keys for SR
+                map = self.sm_config
+                map['allocation'] = "thick"
+                self.session.xenapi.SR.set_sm_config(self.sr_ref, map)
+                if map.has_key('initial_allocation'):
+                    self.session.xenapi.SR.remove_from_sm_config(self.sr_ref, 'initial_allocation')
+                if map.has_key('allocation_quantum'):
+                    self.session.xenapi.SR.remove_from_sm_config(self.sr_ref, 'allocation_quantum')
+            except:
+                pass
+
+            try:
+                # Change LVM metadata string from xenvm to standard lvm
+                devices = self.root.split(',')
+                util.pread2(['xenvm', 'downgrade', self.vgname, '--pvpath', devices[0]])
+            except:
+                pass
 
 
     def _rm_xenvm_conf(self):

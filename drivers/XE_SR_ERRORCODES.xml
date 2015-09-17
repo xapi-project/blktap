@@ -816,4 +816,10 @@
             <value>456</value>
         </code>
 
+        <code>
+            <name>SRInsufficientSpace</name>
+            <description>Not enough space to enable LVHD thin provisioning.</description>
+            <value>457</value>
+       </code>
+
 </SM-errorcodes>

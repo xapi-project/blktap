@@ -78,6 +78,7 @@ SYSTEMD_SERVICE_DIR := /usr/lib/systemd/system/
 INIT_DIR := /etc/rc.d/init.d/
 MPATH_CONF_DIR := /etc/multipath.xenserver/
 MODPROBE_DIR := /etc/modprobe.d/
+EXTENSION_SCRIPT_DEST := /etc/xapi.d/extensions/
 
 SM_STAGING := $(DESTDIR)
 SM_STAMP := $(MY_OBJ_DIR)/.staging_stamp
@@ -132,6 +133,7 @@ install: precheck
 	mkdir -p $(SM_STAGING)$(BIN_DEST)
 	mkdir -p $(SM_STAGING)$(MASTER_SCRIPT_DEST)
 	mkdir -p $(SM_STAGING)$(PLUGIN_SCRIPT_DEST)
+	mkdir -p $(SM_STAGING)$(EXTENSION_SCRIPT_DEST)
 	mkdir -p $(SM_STAGING)/sbin
 	for i in $(SM_PY_FILES); do \
 	  install -m 755 $$i $(SM_STAGING)$(SM_DEST); \
@@ -174,6 +176,8 @@ install: precheck
 	install -m 755 drivers/intellicache-clean $(SM_STAGING)$(PLUGIN_SCRIPT_DEST)
 	install -m 755 drivers/enable-borehamwood $(SM_STAGING)$(SM_DEST)
 	install -m 755 drivers/trim $(SM_STAGING)$(PLUGIN_SCRIPT_DEST)
+	install -m 755 drivers/enable_thin_lvhd_on_slave $(SM_STAGING)$(PLUGIN_SCRIPT_DEST)
+	install -m 755 drivers/LVHD.enable_thin_provisioning $(SM_STAGING)$(EXTENSION_SCRIPT_DEST)
 	ln -sf $(PLUGIN_SCRIPT_DEST)vss_control $(SM_STAGING)$(SM_DEST)
 	install -m 755 drivers/iscsilib.py $(SM_STAGING)$(SM_DEST)
 	mkdir -p $(SM_STAGING)$(LIBEXEC)
