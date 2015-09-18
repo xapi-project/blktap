@@ -634,8 +634,23 @@ class LVHDSR(SR.SR):
             raise Exception("LVHDSR delete failed, please refer to the log " \
                             "for details.")
 
+        if self.provision == "xlvhd":
+            lvutil.stopxenvm_local_allocator(self.vgname)
+            if self.isMaster:
+                lvutil.stopxenvmd(self.vgname)
+
         lvutil.removeVG(self.root, self.vgname)
         self._cleanup()
+
+        if self.provision == "xlvhd":
+            self._rm_xenvm_conf()
+            try:
+                cmd = [lvutil.THINPROV_DAEMON_CLI, "--del", lvhdutil.VG_PREFIX + uuid]
+                util.pread2(cmd)
+            except util.CommandException, inst:
+                util.SMlog("VG de-registration failed for %s with %d" % \
+                           (uuid, inst.code))
+
 
     def attach(self, uuid):
         util.SMlog("LVHDSR.attach for %s" % self.uuid)
