@@ -740,20 +740,16 @@ class LVHDSR(SR.SR):
         # only place to do so.
         self._cleanup(self.isMaster)
 
-        if lvutil.get_sr_alloc(self.vgname) == 'xlvhd':
+        if self.provision == "xlvhd":
+            # Stop the daemons
             lvutil.stopxenvm_local_allocator(self.vgname)
-
             if self.isMaster:
                 lvutil.stopxenvmd(self.vgname)
 
+            # clean-up files
             self._rm_xenvm_conf()
 
-        # De-Register VG name with thin-tapdisk daemon if the VG is local or 
-        # if the host if Master. Error could be ignored at this point
-        if self.provision == "xlvhd":
-            srRef = self.session.xenapi.SR.get_by_uuid(uuid)
-            srRecord = self.session.xenapi.SR.get_record(srRef)
-            # Pass the info on new VG to thin provision daemon
+            # Shut threads down
             try:
                 cmd = [lvutil.THINPROV_DAEMON_CLI, "--del", lvhdutil.VG_PREFIX + uuid]
                 util.pread2(cmd)
