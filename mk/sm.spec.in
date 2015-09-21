@@ -63,8 +63,12 @@ exit 0
 
 %postun
 %systemd_postun make-dummy-sr.service
-[ ! -d /etc/lvm/master ] || rm -Rf /etc/lvm/master || exit $?
-cp -f /etc/lvm/lvm.conf.orig /etc/lvm/lvm.conf || exit $?
+if [ $1 -eq 0 ]; then
+    [ ! -d /etc/lvm/master ] || rm -Rf /etc/lvm/master || exit $?
+    cp -f /etc/lvm/lvm.conf.orig /etc/lvm/lvm.conf || exit $?
+elif [ $1 -eq 1 ]; then
+    true; 
+fi
 
 %files
 %defattr(-,root,root,-)
