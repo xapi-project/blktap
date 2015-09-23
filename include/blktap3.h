@@ -27,7 +27,7 @@
 #endif
 
 #define TAPBACK_CTL_SOCK_PATH       "/var/run/tapback.sock"
-
+#define BLKTAP2_DEVNAME             "tapdev"
 
 /**
  * blkback-style stats

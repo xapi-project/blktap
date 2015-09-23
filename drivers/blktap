@@ -5,6 +5,6 @@
     nocreate
     sharedscripts
     postrotate
-               /usr/bin/killall -HUP tapdisk
+               /usr/bin/killall -q -HUP tapdisk
     endscript
 }

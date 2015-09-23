@@ -64,6 +64,14 @@ vhd_util_repair(int argc, char **argv)
 		return err;
 	}
 
+	err = vhd_get_footer(&vhd);
+	if (err) {
+		printf("error reading footer %s: %d\n", name, err);
+		return err;
+	}
+	if (uuid_is_null(vhd.footer.uuid))
+		uuid_generate(vhd.footer.uuid);
+
 	err = vhd_write_footer(&vhd, &vhd.footer);
 	if (err)
 		printf("error writing footer: %d\n", err);
