@@ -39,7 +39,7 @@ Blktap and VHD development files.
 
 %build
 %configure
-make
+%{?cov_wrap} make
 
 %install
 rm -rf %{buildroot}

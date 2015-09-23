@@ -2798,6 +2798,10 @@ vhd_initialize_header(vhd_context_t *ctx, const char *parent_path,
 
 		ctx->header.prt_ts = vhd_time(stats.st_mtime);
 		uuid_copy(ctx->header.prt_uuid, parent.footer.uuid);
+		if (uuid_is_null(ctx->header.prt_uuid)) {
+			vhd_close(&parent);
+			return -EINVAL;
+		}
 		*psize = parent.footer.curr_size;
 		if (!size)
 			size = *psize;

@@ -58,7 +58,7 @@ struct td_nbdserver {
 	/**
 	 * Socket for the UNIX domain socket.
 	 */
-	struct sockaddr_un		local;
+	struct sockaddr_un	local;
 
 	/**
 	 * UNIX domain socket path.

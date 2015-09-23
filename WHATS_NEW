@@ -1,0 +1,10 @@
+Version 3.1.0 - 23th Sep 2015
+================================
+  Coverity integration
+  tapdisk3 shm entry should always be present
+  Report read caching status in tap-ctl stat
+  Own log directory in package
+  Various updates to make it work on CentOS 7
+
+Version 3.0.50 - 26th Mar 2015
+================================
