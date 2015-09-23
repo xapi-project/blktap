@@ -61,6 +61,8 @@ struct td_xenblkif_req {
      */
     char name[16 + 1];
 
+    struct timeval ts;
+
     /**
      * The scatter/gather list td_vbd_request_t.iov points to.
      */

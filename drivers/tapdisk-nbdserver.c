@@ -266,7 +266,10 @@ __tapdisk_nbdserver_request_cb(td_vbd_request_t *vreq, int error,
 		void *token, int final)
 {
 	td_nbdserver_client_t *client = token;
+        td_nbdserver_t *server = client->server;
 	td_nbdserver_req_t *req = containerof(vreq, td_nbdserver_req_t, vreq);
+        unsigned long long interval;
+        struct timeval now;
 	struct nbd_reply reply;
 	int tosend = 0;
 	int sent = 0;
@@ -275,6 +278,9 @@ __tapdisk_nbdserver_request_cb(td_vbd_request_t *vreq, int error,
 	reply.magic = htonl(NBD_REPLY_MAGIC);
 	reply.error = htonl(error);
 	memcpy(reply.handle, req->id, sizeof(reply.handle));
+
+        gettimeofday(&now, NULL);
+        interval = timeval_to_us(&now) - timeval_to_us(&vreq->ts);
 
 	if (client->client_fd < 0) {
 		ERR("Finishing request for client that has disappeared");
@@ -286,6 +292,9 @@ __tapdisk_nbdserver_request_cb(td_vbd_request_t *vreq, int error,
 	switch(vreq->op) {
 	case TD_OP_READ:
 		tosend = len = vreq->iov->secs << SECTOR_SHIFT;
+                server->nbd_stats.stats->read_reqs_completed++;
+                server->nbd_stats.stats->read_sectors += vreq->iov->secs;
+                server->nbd_stats.stats->read_total_ticks += interval;
 		while (tosend > 0) {
 			sent = send(client->client_fd,
 					vreq->iov->base + (len - tosend),
@@ -299,6 +308,10 @@ __tapdisk_nbdserver_request_cb(td_vbd_request_t *vreq, int error,
 			tosend -= sent;
 		}
 		break;
+        case TD_OP_WRITE:
+                server->nbd_stats.stats->write_reqs_completed++;
+                server->nbd_stats.stats->write_sectors += vreq->iov->secs;
+                server->nbd_stats.stats->write_total_ticks += interval;
 	default:
 		break;
 	}
@@ -440,10 +453,11 @@ tapdisk_nbdserver_clientcb(event_id_t id, char mode, void *data)
 	switch(request.type) {
 	case NBD_CMD_READ:
 		vreq->op = TD_OP_READ;
+                server->nbd_stats.stats->read_reqs_submitted++;
 		break;
 	case NBD_CMD_WRITE:
 		vreq->op = TD_OP_WRITE;
-
+                server->nbd_stats.stats->write_reqs_submitted++;
 		n = 0;
 		while (n < len) {
 			rc = recv(fd, vreq->iov->base + n, (len - n), 0);
@@ -891,6 +905,10 @@ tapdisk_nbdserver_free(td_nbdserver_t *server)
 	if (err)
 		ERR("failed to remove UNIX domain socket %s: %s\n", server->sockpath,
 				strerror(errno));
+        err = td_metrics_nbd_stop(&server->nbd_stats);
+
+        if (err)
+            ERR("failed to delete NBD metrics: %s\n", strerror(errno));
 
 	free(server);
 }
