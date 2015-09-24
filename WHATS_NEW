@@ -1,3 +1,7 @@
+Version 3.2.0 - 24th Sep 2015
+================================
+Added code to ask lvm blocks on demand (xlvhd thin-provisioning)
+
 Version 3.1.1 - 24th Sep 2015
 ================================
 CA-148438: Expose mem_mode flag in statistics file
