@@ -35,6 +35,8 @@ static int do_daemon(void);
 static void split_command(char *, char **);
 static int add_vg(char *vg);
 static int del_vg(char *vg);
+static int signal_set(int signo, void (*func) (int));
+static void clean_handler(int signo);
 
 #ifdef THIN_REFRESH_LVM
 static int refresh_lvm(const char * path);
@@ -148,7 +150,7 @@ put_req_into_queue(struct kpr_queue *q, struct sq_entry *req )
 }
 
 /**
- * SIGINT handler to clean-up socket file on exit
+ * Signal handler to clean-up socket file on exit
  *
  * This is very basic and it assumes it is registered once the socket file
  * is created, so no checks.
@@ -162,15 +164,35 @@ static void clean_handler(int signo)
 	_exit(0);
 }
 
+
+/**
+ * Set a new signal handler for the specified signal
+ *
+ * @param[in] signo the signal to handle
+ * @return the same as sigaction
+ */
+static int
+signal_set(int signo, void (*func) (int))
+{
+	struct sigaction new_act;
+	struct sigaction old_act;
+	int r;
+
+	new_act.sa_handler = func;
+	sigemptyset(&new_act.sa_mask);
+	new_act.sa_flags = 0;	
+
+	r = sigaction(signo, &new_act, &old_act);
+	if (r < 0)
+		fprintf(stderr, "Signal %d: handler registration failed",
+			signo);
+	return r;
+}
+
+
 int
 main(int argc, char *argv[]) {
 
-	struct sigaction new_act, old_act; /* SIGINT handling */
-
-	/* SIGINT handling */
-	new_act.sa_handler = clean_handler;
-	sigemptyset(&new_act.sa_mask);
-	new_act.sa_flags = 0;
 	struct pollfd fds[2];
 	nfds_t maxfds = 2;
 
@@ -213,12 +235,8 @@ main(int argc, char *argv[]) {
 		return -errno;
 	}
 
-	/* Register now the SIGINT handler to remove socket cleanly */
-	if ( sigaction(SIGINT, &new_act, &old_act) < 0 ) {
-		printf("Signal handler registration failed: expect manual"
-		       " clean-up\n");
-	}
-	
+	signal_set(SIGINT, clean_handler);
+
 	fds[0].fd = out_queue->efd;
 	fds[0].events = POLLIN;
 	fds[1].fd = sfd;
