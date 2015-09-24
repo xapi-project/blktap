@@ -773,7 +773,7 @@ increase_size(off64_t size, const char * path)
 	case -1:
 		return -1;
 	case 0: /* child */
-		execl("/opt/xensource/sm/lvhdutil.py", "lvhdutil.py", "extend", ssize,
+		execl("/opt/xensource/sm/resize-demo", "resize-demo", ssize,
 		      path, (char *)NULL);
 		_exit(127); /* TBD */
 	default: /* parent */
@@ -802,8 +802,7 @@ refresh_lvm(const char * path)
 	case -1:
 		return -1;
 	case 0: /* child */
-		execl("/sbin/lvchange", "lvchange", "--refresh", path,
-		      "--config", "global{metadata_read_only=0}",
+		execl("/opt/xensource/sm/refresh-demo", "refresh-demo", path,
 		      (char *)NULL);
 		_exit(127); /* TBD */
 	default: /* parent */
