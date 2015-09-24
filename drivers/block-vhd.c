@@ -54,6 +54,7 @@
 #include <sys/mman.h>
 #include <limits.h>
 
+#include <time.h>
 #include "debug.h"
 #include "libvhd.h"
 #include "tapdisk.h"
@@ -142,6 +143,11 @@ unsigned int SPB;
 
 #define VHD_FLAG_TX_LIVE             1
 #define VHD_FLAG_TX_UPDATE_BAT       2
+
+/*******THIN PARAMETERS******/
+#define THIN_WARN_1            52428800L /* 50 MBs to go, send resize request */
+#define THIN_WARN_2            10485760L /* 10 MBs to go, start slow down */
+#define THIN_RESIZE_INCREMENT 104857600L /* 100 MBs incremets */
 
 typedef uint16_t vhd_flag_t;
 
@@ -237,6 +243,7 @@ struct vhd_state {
 
 	/* thin provisioning data */
 	off64_t                   eof_bytes;
+	uint64_t                  req_bytes;
 
 	/* for redundant bitmap writes */
 	int                       padbm_size;
@@ -398,97 +405,10 @@ vhd_kill_footer(struct vhd_state *s)
 	return 0;
 }
 
-
-static int
-thin_prepare_req(const struct vhd_state * s,
-		 struct payload * message,
-		 uint64_t next_db, int query)
-{
-	/*
-	 * sectors can be converted in bytes using info.sector_size
-	 * that happens to be calculated using the same VHD define used
-	 * by vhd_sectors_to_bytes. This is no more unreliable than using
-	 * 2 different macros to do the job (see __vhd_open)
-	 */
-	uint64_t virt_bytes, phy_bytes, req_bytes;
-	const uint64_t warn1 = 52428800; /* 50 MBs warning */
-	const uint64_t warn2 = 4194304; /* 4 MBs warning */
-	uint64_t safe_threshold, critical_threshold;
-
-	virt_bytes = vhd_sectors_to_bytes(s->driver->info.size);
-	phy_bytes = s->eof_bytes;
-	req_bytes = vhd_sectors_to_bytes(next_db);
-
-	/* we want to exit as soon as possible if not needed */
-	if (phy_bytes >= virt_bytes)
-		return 1; /* nothing to be done: space is enough */
-	safe_threshold = (phy_bytes < warn1) ? 0 : (phy_bytes - warn1);
-	if (req_bytes < safe_threshold)
-		return 1; /* we do not bother yet */
-
-	init_payload(message);
-
-	critical_threshold = (phy_bytes < warn2) ? 0 : (phy_bytes - warn2);
-	if (req_bytes > critical_threshold) {
-		/* this must be our last request so we have to loop for
-		   a final answer or block: do something more.. */
-		message->reply = PAYLOAD_QUERY;
-	} else { /* if we are here it means we hit the threshold */
-		/* if we already issued a request just check its status */
-		message->reply = query ? PAYLOAD_QUERY: PAYLOAD_REQUEST;
-	}
-
-	strncpy(message->path, s->vhd.file, PAYLOAD_MAX_PATH_LENGTH);
-	message->curr = phy_bytes;
-	message->req = req_bytes;
-	message->vhd_size = virt_bytes;
-
-	return 0;
-}
-
-
-static int
-thin_parse_reply(const struct payload * buf, struct vhd_state *s, int * query)
-{
-	switch (buf->reply) {
-	case PAYLOAD_ACCEPTED:
-		*query = 1; /* next time just query */
-		break;
-	case PAYLOAD_WAIT:
-		break; /* just keep asking */
-	case PAYLOAD_REJECTED:
-		*query = 0; /* can make new requests if necessary */
-		break;
-	default: /* It should be only DONE but to be safe..*/
-		*query = 0; /* we cannot query any more, it has been served */
-		vhd_thin_prepare(s);
-	}
-	return 0;
-}
-
 static void
-update_next_db(struct vhd_state *s, uint64_t next_db, int notify)
+update_next_db(struct vhd_state *s, uint64_t next_db)
 {
-	int err;
-	struct payload message;
-	static int query = 0; /* distinguish requests from queries */
-
-	DPRINTF("update_next_db");
-
 	s->next_db = next_db;
-
-	if (!(s->flags & VHD_FLAG_OPEN_THIN))
-		return;
-
-	if (notify && !thin_prepare_req(s, &message, next_db, query)) {
-		/* socket message block */
-		err = thin_sock_comm(&message);
-		if (err)
-			DBG(TLOG_WARN, "socket returned: %d\n", err);
-		err = thin_parse_reply(&message, s, &query);
-		if (err)
-			DBG(TLOG_WARN, "thin_parse_reply returned: %d\n", err);
-	}
 }
 
 
@@ -505,7 +425,7 @@ find_next_free_block(struct vhd_state *s)
 	if (err)
 		return err;
 
-	update_next_db(s, secs_round_up(eom), 0);
+	update_next_db(s, secs_round_up(eom));
 	s->first_db = s->next_db;
 	if ((s->first_db + s->bm_secs) % s->spp)
 		s->first_db += (s->spp - ((s->first_db + s->bm_secs) % s->spp));
@@ -515,7 +435,7 @@ find_next_free_block(struct vhd_state *s)
 		if (entry != DD_BLK_UNUSED && entry >= s->next_db) {
 			next_db = (uint64_t)entry + (uint64_t)s->spb
 				+ (uint64_t)s->bm_secs;
-			update_next_db(s, next_db, 0);
+			update_next_db(s, next_db);
 		}
 
 		if (s->next_db > UINT_MAX)
@@ -753,6 +673,7 @@ vhd_thin_prepare(struct vhd_state *s)
 {
 	if ((s->eof_bytes = lseek64(s->vhd.fd, 0, SEEK_END)) == -1)
 		return -errno;
+	s->req_bytes = 0;
 
 	return 0;
 }
@@ -812,7 +733,7 @@ __vhd_open(td_driver_t *driver, const char *name, vhd_flag_t flags)
 	vhd_log_open(s);
 
 	if(!test_vhd_flag(flags, VHD_FLAG_OPEN_RDONLY)) {
-		update_next_db(s, s->next_db, 0);
+		update_next_db(s, s->next_db);
 	}
 
 	if(test_vhd_flag(flags, VHD_FLAG_OPEN_THIN)) {
@@ -1459,6 +1380,128 @@ aio_write(struct vhd_state *s, struct vhd_request *req, uint64_t offset)
 	TRACE(s);
 }
 
+static inline int
+thin_check_warn_2(struct vhd_state *s, int64_t available_bytes)
+{
+	uint64_t phy_bytes;
+
+	/* we are worried the resize is taking too long, we will try to
+	 * buy some time sleeping some time for every new block request
+	 * We sleep more if available_bytes is getting small.
+	 */
+	sleep((THIN_WARN_2 - available_bytes)/(1024*1024));
+	EPRINTF("Sleep(%ld)", (THIN_WARN_2 - available_bytes)/(1024*1024));
+	phy_bytes = lseek64(s->vhd.fd, 0, SEEK_END);
+	if ((s->eof_bytes + THIN_RESIZE_INCREMENT) <= phy_bytes) {
+		/* Request is completed but maybe the response got lost */
+		s->eof_bytes = phy_bytes;
+		s->req_bytes = 0;
+		return 0;
+	}
+
+	if (available_bytes < 0) {
+		/* We must fail with ENOSPC after we tried everything */
+		EPRINTF("Returning -1");
+		return -1;
+	} else {
+		return 0;
+	}
+}
+
+static inline void
+check_resize_request_progress(struct vhd_state *s, struct payload *message,
+		              int64_t available_bytes)
+{
+	int err;
+	uint64_t phy_bytes;
+
+	message->reply = PAYLOAD_QUERY;
+	err = thin_sock_comm(message);
+	if (err) {
+		DBG(TLOG_WARN, "socket returned: %d\n", err);
+	} else if (message->reply == PAYLOAD_DONE) {
+		/* check if the obtained size is compatible with the
+		 * requested one */
+		phy_bytes = lseek64(s->vhd.fd, 0, SEEK_END);
+		
+		EPRINTF("Requested:%ld, obtained:%ld:\n",
+				s->req_bytes, phy_bytes);
+		if (s->req_bytes <= phy_bytes) {
+			s->eof_bytes = phy_bytes;
+			s->req_bytes = 0;
+
+		} else {
+			/* The daemon was thinking that the resize was 
+			 * successfull but somehow it extended less than
+			 * asked, do an other request */
+			EPRINTF("Extended less than expected");
+			s->req_bytes = 0;
+		}
+	}
+}
+
+static inline void
+send_resize_request(struct vhd_state *s, struct payload *message)
+{
+	int err;
+
+	message->reply = PAYLOAD_REQUEST;
+	err = thin_sock_comm(message);
+	if (err) {
+		DBG(TLOG_WARN, "socket returned: %d\n", err);
+	} else if (message->reply == PAYLOAD_ACCEPTED) {
+		/* record that req_bytes request has been submitted*/
+		s->req_bytes = message->req;
+	} else {
+		/* we will try to send the request again next time */
+		DBG(TLOG_WARN, "failed reply: %d\n", message->reply);
+	}
+}
+
+/**
+ * @brief Execute checks related to thin provisioning
+ *
+ * This function is called every time there is a request for a new
+ * block in the VHD, but only if VHD_FLAG_OPEN_THIN is set.
+ * This is implementing the high level state machine and is using
+ * some other helper functions to do some specific bits.
+ * @param s Pointer to vhd_state structure
+ * @param needed_sectors Number of sectors needed
+ */
+static inline int
+thin_provisioning_checks(struct vhd_state *s, uint64_t needed_sectors)
+{
+	int64_t available_bytes;
+	struct payload message;
+	int ret = 0;
+
+	available_bytes = s->eof_bytes - vhd_sectors_to_bytes(needed_sectors);
+	EPRINTF("needed_bytes=%ld", available_bytes);
+
+	if (available_bytes < THIN_WARN_1) {
+		/* prepare common part of the message */
+		init_payload(&message);
+		strncpy(message.path, s->vhd.file, PAYLOAD_MAX_PATH_LENGTH);
+		message.curr = s->eof_bytes;
+		message.req = s->eof_bytes + THIN_RESIZE_INCREMENT;
+		message.vhd_size = vhd_sectors_to_bytes(s->driver->info.size);
+
+		/* s->req_bytes is indicating our state */
+		if (s->req_bytes != 0) {
+			check_resize_request_progress(s, &message, available_bytes);
+		} else {
+			send_resize_request(s, &message);
+		}
+
+		/* let's be more pedantic when we reach end of space */
+		if (available_bytes < THIN_WARN_2) {
+			ret = thin_check_warn_2(s, available_bytes);
+		}
+	}
+
+	return ret;
+}
+
 /**
  * Reserves a new extent.
  *
@@ -1471,6 +1514,7 @@ static inline uint64_t
 reserve_new_block(struct vhd_state *s, uint32_t blk)
 {
 	int gap = 0;
+	int ret;
 
 	ASSERT(!test_vhd_flag(s->bat.status, VHD_FLAG_BAT_WRITE_STARTED));
 
@@ -1480,6 +1524,12 @@ reserve_new_block(struct vhd_state *s, uint32_t blk)
 
 	if (s->next_db + gap > UINT_MAX)
 		return (uint64_t)ENOSPC << 32;
+
+	if ((s->flags & VHD_FLAG_OPEN_THIN)) {
+		ret = thin_provisioning_checks(s, s->next_db + gap + s->spb + s->bm_secs);
+		if (ret < 0)
+			return (uint64_t)ENOSPC << 32;
+	}
 
 	s->bat.pbw_blk    = blk;
 	s->bat.pbw_offset = s->next_db + gap;
@@ -1604,7 +1654,7 @@ update_bat(struct vhd_state *s, uint32_t blk)
 	int err;
 	uint64_t lb_end;
 	struct vhd_bitmap *bm;
-
+	EPRINTF("SSS update_bat enter blk=%d", blk);
 	ASSERT(bat_entry(s, blk) == DD_BLK_UNUSED);
 	
 	if (bat_locked(s)) {
@@ -1632,7 +1682,7 @@ update_bat(struct vhd_state *s, uint32_t blk)
 	}
 	schedule_zero_bm_write(s, bm, lb_end);
 	set_vhd_flag(bm->tx.status, VHD_FLAG_TX_UPDATE_BAT);
-
+	EPRINTF("SSS update_bat exit");
 	return 0;
 }
 
@@ -1667,7 +1717,7 @@ allocate_block(struct vhd_state *s, uint32_t blk)
 	if (next_db > UINT_MAX)
 		return -ENOSPC;
 
-	update_next_db(s,next_db, 0);
+	update_next_db(s,next_db);
 
 	s->bat.pbw_blk = blk;
 	s->bat.pbw_offset = s->next_db;
@@ -2276,7 +2326,7 @@ finish_bat_write(struct vhd_request *req)
 
 	if (!req->error) {
 		bat_entry(s, s->bat.pbw_blk) = s->bat.pbw_offset;
-		update_next_db(s, s->bat.pbw_offset + s->spb + s->bm_secs, 1);
+		update_next_db(s, s->bat.pbw_offset + s->spb + s->bm_secs);
 	} else
 		tx->error = req->error;
 
