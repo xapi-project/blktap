@@ -1423,7 +1423,8 @@ thin_check_warn_2(struct vhd_state *s, int64_t available_bytes)
 	while (count--) {
 		phy_bytes = lseek64(s->vhd.fd, 0, SEEK_END);
 		EPRINTF("thin_check_warn_2 phy_bytes = %ld", phy_bytes);
-		if (s->req_bytes <= phy_bytes) {
+		if (s->req_bytes != 0 &&
+		    s->req_bytes <= phy_bytes) {
 			/* Request is completed */
 			EPRINTF("Request has been completed");
 			s->eof_bytes = phy_bytes;
