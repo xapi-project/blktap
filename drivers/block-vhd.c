@@ -62,6 +62,8 @@
 #include "tapdisk-disktype.h"
 #include "tapdisk-storage.h"
 
+#include "payload.h"
+
 unsigned int SPB;
 
 #define DEBUGGING   2
@@ -123,6 +125,7 @@ unsigned int SPB;
 #define VHD_FLAG_OPEN_PREALLOCATE    32
 #define VHD_FLAG_OPEN_NO_O_DIRECT    64
 #define VHD_FLAG_OPEN_LOCAL_CACHE    128
+#define VHD_FLAG_OPEN_THIN           256
 
 #define VHD_FLAG_BAT_LOCKED          1
 #define VHD_FLAG_BAT_WRITE_STARTED   2
@@ -232,6 +235,9 @@ struct vhd_state {
 	struct vhd_request       *vreq_free[VHD_REQS_DATA];
 	struct vhd_request        vreq_list[VHD_REQS_DATA];
 
+	/* thin provisioning data */
+	off64_t                   eof_bytes;
+
 	/* for redundant bitmap writes */
 	int                       padbm_size;
 	char                     *padbm_buf;
@@ -257,6 +263,7 @@ struct vhd_state {
 
 static void vhd_complete(void *, struct tiocb *, int);
 static void finish_data_transaction(struct vhd_state *, struct vhd_bitmap *);
+static int vhd_thin_prepare(struct vhd_state *);
 
 static struct vhd_state  *_vhd_master;
 static unsigned long      _vhd_zsize;
@@ -391,29 +398,128 @@ vhd_kill_footer(struct vhd_state *s)
 	return 0;
 }
 
+
+static int
+thin_prepare_req(const struct vhd_state * s,
+		 struct payload * message,
+		 uint64_t next_db, int query)
+{
+	/*
+	 * sectors can be converted in bytes using info.sector_size
+	 * that happens to be calculated using the same VHD define used
+	 * by vhd_sectors_to_bytes. This is no more unreliable than using
+	 * 2 different macros to do the job (see __vhd_open)
+	 */
+	uint64_t virt_bytes, phy_bytes, req_bytes;
+	const uint64_t warn1 = 52428800; /* 50 MBs warning */
+	const uint64_t warn2 = 4194304; /* 4 MBs warning */
+	uint64_t safe_threshold, critical_threshold;
+
+	virt_bytes = vhd_sectors_to_bytes(s->driver->info.size);
+	phy_bytes = s->eof_bytes;
+	req_bytes = vhd_sectors_to_bytes(next_db);
+
+	/* we want to exit as soon as possible if not needed */
+	if (phy_bytes >= virt_bytes)
+		return 1; /* nothing to be done: space is enough */
+	safe_threshold = (phy_bytes < warn1) ? 0 : (phy_bytes - warn1);
+	if (req_bytes < safe_threshold)
+		return 1; /* we do not bother yet */
+
+	init_payload(message);
+
+	critical_threshold = (phy_bytes < warn2) ? 0 : (phy_bytes - warn2);
+	if (req_bytes > critical_threshold) {
+		/* this must be our last request so we have to loop for
+		   a final answer or block: do something more.. */
+		message->reply = PAYLOAD_QUERY;
+	} else { /* if we are here it means we hit the threshold */
+		/* if we already issued a request just check its status */
+		message->reply = query ? PAYLOAD_QUERY: PAYLOAD_REQUEST;
+	}
+
+	strncpy(message->path, s->vhd.file, PAYLOAD_MAX_PATH_LENGTH);
+	message->curr = phy_bytes;
+	message->req = req_bytes;
+	message->vhd_size = virt_bytes;
+
+	return 0;
+}
+
+
+static int
+thin_parse_reply(const struct payload * buf, struct vhd_state *s, int * query)
+{
+	switch (buf->reply) {
+	case PAYLOAD_ACCEPTED:
+		*query = 1; /* next time just query */
+		break;
+	case PAYLOAD_WAIT:
+		break; /* just keep asking */
+	case PAYLOAD_REJECTED:
+		*query = 0; /* can make new requests if necessary */
+		break;
+	default: /* It should be only DONE but to be safe..*/
+		*query = 0; /* we cannot query any more, it has been served */
+		vhd_thin_prepare(s);
+	}
+	return 0;
+}
+
+static void
+update_next_db(struct vhd_state *s, uint64_t next_db, int notify)
+{
+	int err;
+	struct payload message;
+	static int query = 0; /* distinguish requests from queries */
+
+	DPRINTF("update_next_db");
+
+	s->next_db = next_db;
+
+	if (!(s->flags & VHD_FLAG_OPEN_THIN))
+		return;
+
+	if (notify && !thin_prepare_req(s, &message, next_db, query)) {
+		/* socket message block */
+		err = thin_sock_comm(&message);
+		if (err)
+			DBG(TLOG_WARN, "socket returned: %d\n", err);
+		err = thin_parse_reply(&message, s, &query);
+		if (err)
+			DBG(TLOG_WARN, "thin_parse_reply returned: %d\n", err);
+	}
+}
+
+
+
 static inline int
 find_next_free_block(struct vhd_state *s)
 {
 	int err;
 	off64_t eom;
 	uint32_t i, entry;
+	uint64_t next_db;
 
 	err = vhd_end_of_headers(&s->vhd, &eom);
 	if (err)
 		return err;
 
-	s->next_db = secs_round_up(eom);
+	update_next_db(s, secs_round_up(eom), 0);
 	s->first_db = s->next_db;
 	if ((s->first_db + s->bm_secs) % s->spp)
 		s->first_db += (s->spp - ((s->first_db + s->bm_secs) % s->spp));
 
 	for (i = 0; i < s->bat.bat.entries; i++) {
 		entry = bat_entry(s, i);
-		if (entry != DD_BLK_UNUSED && entry >= s->next_db)
-			s->next_db = (uint64_t)entry + (uint64_t)s->spb
+		if (entry != DD_BLK_UNUSED && entry >= s->next_db) {
+			next_db = (uint64_t)entry + (uint64_t)s->spb
 				+ (uint64_t)s->bm_secs;
-			if (s->next_db > UINT_MAX)
-				break;
+			update_next_db(s, next_db, 0);
+		}
+
+		if (s->next_db > UINT_MAX)
+		  break;
 	}
 
 	return 0;
@@ -643,6 +749,15 @@ vhd_log_open(struct vhd_state *s)
 }
 
 static int
+vhd_thin_prepare(struct vhd_state *s)
+{
+	if ((s->eof_bytes = lseek64(s->vhd.fd, 0, SEEK_END)) == -1)
+		return -errno;
+
+	return 0;
+}
+
+static int
 __vhd_open(td_driver_t *driver, const char *name, vhd_flag_t flags)
 {
         int i, o_flags, err;
@@ -695,6 +810,14 @@ __vhd_open(td_driver_t *driver, const char *name, vhd_flag_t flags)
 	}
 
 	vhd_log_open(s);
+
+	if(!test_vhd_flag(flags, VHD_FLAG_OPEN_RDONLY)) {
+		update_next_db(s, s->next_db, 0);
+	}
+
+	if(test_vhd_flag(flags, VHD_FLAG_OPEN_THIN)) {
+		vhd_thin_prepare(s);
+	}
 
 	SPB = s->spb;
 
@@ -749,9 +872,16 @@ _vhd_open(td_driver_t *driver, const char *name, td_flag_t flags)
 			      VHD_FLAG_OPEN_NO_CACHE);
     if (flags & TD_OPEN_LOCAL_CACHE)
         vhd_flags |= VHD_FLAG_OPEN_LOCAL_CACHE;
+	if (flags & TD_OPEN_THIN)
+		if(!(flags & TD_OPEN_RDONLY))
+			vhd_flags |= VHD_FLAG_OPEN_THIN;
 
 	/* pre-allocate for all but NFS and LVM storage */
 	driver->storage = tapdisk_storage_type(name);
+
+	/* Disable thin provisioning if not LVM */
+	if (driver->storage != TAPDISK_STORAGE_TYPE_LVM)
+		clear_vhd_flag(vhd_flags, VHD_FLAG_OPEN_THIN);
 
 	if (driver->storage != TAPDISK_STORAGE_TYPE_NFS &&
 	    driver->storage != TAPDISK_STORAGE_TYPE_LVM)
@@ -1537,7 +1667,7 @@ allocate_block(struct vhd_state *s, uint32_t blk)
 	if (next_db > UINT_MAX)
 		return -ENOSPC;
 
-	s->next_db = next_db;
+	update_next_db(s,next_db, 0);
 
 	s->bat.pbw_blk = blk;
 	s->bat.pbw_offset = s->next_db;
@@ -2146,7 +2276,7 @@ finish_bat_write(struct vhd_request *req)
 
 	if (!req->error) {
 		bat_entry(s, s->bat.pbw_blk) = s->bat.pbw_offset;
-		s->next_db = s->bat.pbw_offset + s->spb + s->bm_secs;
+		update_next_db(s, s->bat.pbw_offset + s->spb + s->bm_secs, 1);
 	} else
 		tx->error = req->error;
 

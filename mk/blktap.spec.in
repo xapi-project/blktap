@@ -61,6 +61,8 @@ mkdir -p %{buildroot}%{_localstatedir}/log/blktap
 %{_sbindir}/td-rated
 %{_sbindir}/part-util
 %{_sbindir}/vhdpartx
+%{_sbindir}/thin-tapdisk
+%{_sbindir}/thin-cli
 %{_libexecdir}/tapdisk
 %{_sysconfdir}/udev/rules.d/blktap.rules
 %{_sysconfdir}/rc.d/init.d/tapback

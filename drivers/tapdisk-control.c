@@ -731,6 +731,8 @@ tapdisk_control_open_image(struct tapdisk_ctl_conn *conn,
 		flags |= TD_OPEN_REUSE_PARENT;
 	if (request->u.params.flags & TAPDISK_MESSAGE_FLAG_STANDBY)
 		flags |= TD_OPEN_STANDBY;
+	if (request->u.params.flags & TAPDISK_MESSAGE_FLAG_THIN)
+		flags |= TD_OPEN_THIN;
 	if (request->u.params.flags & TAPDISK_MESSAGE_FLAG_SECONDARY) {
 		char *name = strdup(request->u.params.secondary);
 		if (!name) {

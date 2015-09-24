@@ -27,5 +27,6 @@
 #define BLKTAP2_RING_DEVICE            BLKTAP2_DIRECTORY"/blktap"
 #define BLKTAP2_IO_DEVICE              BLKTAP2_DIRECTORY"/tapdev"
 #define BLKTAP2_ENOSPC_SIGNAL_FILE     "/var/run/tapdisk-enospc"
+#define THIN_CONTROL_SOCKET            "/var/run/thin-prov-ctl"
 
 #endif /* _TD_BLKTAP_H_ */
