@@ -20,6 +20,7 @@ blktap_HEADERS += debug.h
 blktap_HEADERS += util.h
 blktap_HEADERS += payload.h
 blktap_HEADERS += kpr_util.h
+blktap_HEADERS += thinprovd_log.h
 
 noinst_HEADERS  = blktap.h
 noinst_HEADERS += compiler.h
