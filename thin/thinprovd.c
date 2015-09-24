@@ -266,6 +266,7 @@ main(int argc, char *argv[]) {
 		}
 
 		if (fds[1].revents) {
+			len = sizeof(struct sockaddr_un);
 			/* read from the control socket */
 			ret = recvfrom(sfd, &buf, sizeof(buf), 0, 
 					&cl_addr, &len);
