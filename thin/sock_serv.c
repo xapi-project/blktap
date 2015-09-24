@@ -440,6 +440,9 @@ worker_thread(void * ap)
 		o_queue = get_out_queue(data);
 		pthread_mutex_lock(&o_queue->mtx);
 		SIMPLEQ_INSERT_TAIL(&o_queue->qhead, req, entries);
+		/* net queue needs to notify through eventfd */
+		if (o_queue == net_queue)
+			eventfd_write(o_queue->efd, 1);
 		pthread_mutex_unlock(&o_queue->mtx);
 	}
 	return NULL;
