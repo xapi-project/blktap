@@ -595,7 +595,7 @@ increase_size(off64_t size, const char * path)
 	char ssize[NCHARS]; /* enough for G bytes */
 
 	/* prepare size for command line */
-	num_read = snprintf(ssize, NCHARS, "-L""%"PRIu64"b", size);
+	num_read = snprintf(ssize, NCHARS, "%"PRIu64"b", size);
 	if (num_read >= NCHARS)
 		return -1; /* size too big */
 
@@ -603,7 +603,7 @@ increase_size(off64_t size, const char * path)
 	case -1:
 		return -1;
 	case 0: /* child */
-		execl("/opt/xensource/sm/resize-demo", "resize-demo", ssize,
+		execl("/usr/sbin/xlvhd-resize", "xlvhd-resize", ssize,
 		      path, (char *)NULL);
 		_exit(127); /* TBD */
 	default: /* parent */
@@ -632,7 +632,7 @@ refresh_lvm(const char * path)
 	case -1:
 		return -1;
 	case 0: /* child */
-		execl("/opt/xensource/sm/refresh-demo", "refresh-demo", path,
+		execl("/usr/sbin/xlvhd-refresh", "xlvhd-refresh", path,
 		      (char *)NULL);
 		_exit(127); /* TBD */
 	default: /* parent */

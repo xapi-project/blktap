@@ -63,6 +63,8 @@ mkdir -p %{buildroot}%{_localstatedir}/log/blktap
 %{_sbindir}/vhdpartx
 %{_sbindir}/thinprovd
 %{_sbindir}/thin-cli
+%{_sbindir}/xlvhd-resize
+%{_sbindir}/xlvhd-refresh
 %{_libexecdir}/tapdisk
 %{_sysconfdir}/udev/rules.d/blktap.rules
 %{_sysconfdir}/rc.d/init.d/tapback

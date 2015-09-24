@@ -14,6 +14,9 @@ sbin_PROGRAMS += thin-cli
 thin_cli_SOURCES = thin_cli.c
 thin_cli_LDADD = libtapdiskthin.la
 
+dist_sbin_SCRIPTS = xlvhd-resize
+dist_sbin_SCRIPTS += xlvhd-refresh
+
 lib_LTLIBRARIES = libtapdiskthin.la
 
 libtapdiskthin_la_SOURCES = payload.c
