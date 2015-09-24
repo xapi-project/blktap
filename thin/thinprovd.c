@@ -417,9 +417,9 @@ handle_cli(struct payload * buf)
 		ret = 1;
 
 	if (ret)
-		strcpy(buf->path, "fail");
+		buf->err_code = THIN_ERR_CODE_FAILURE;
 	else
-		strcpy(buf->path, "ok");
+		buf->err_code = THIN_ERR_CODE_SUCCESS;
 
 	return 0;
 }

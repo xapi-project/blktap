@@ -72,9 +72,12 @@ main(int argc, char *argv[]) {
 		fprintf(stderr, "socket error (%d)\n", ret);
 		return 1;
 	}
-	thin_connection_destroy(ch);
-	printf("message: %s\n", message.path);
+	if(message.err_code == THIN_ERR_CODE_SUCCESS)
+		printf("message: ok\n");
+	else
+		printf("message: fail\n"); 
 
+	thin_connection_destroy(ch);
 	return 0;
 }
 
