@@ -61,7 +61,7 @@ mkdir -p %{buildroot}%{_localstatedir}/log/blktap
 %{_sbindir}/td-rated
 %{_sbindir}/part-util
 %{_sbindir}/vhdpartx
-%{_sbindir}/thin-tapdisk
+%{_sbindir}/thinprovd
 %{_sbindir}/thin-cli
 %{_libexecdir}/tapdisk
 %{_sysconfdir}/udev/rules.d/blktap.rules
@@ -69,6 +69,7 @@ mkdir -p %{buildroot}%{_localstatedir}/log/blktap
 %{_sysconfdir}/logrotate.d/blktap
 %{_sysconfdir}/xensource/bugtool/tapdisk-logs.xml
 %{_sysconfdir}/xensource/bugtool/tapdisk-logs/description.xml
+%{_sysconfdir}/rc.d/init.d/thinprovd
 %{_localstatedir}/log/blktap
 
 %files devel
@@ -81,5 +82,6 @@ mkdir -p %{buildroot}%{_localstatedir}/log/blktap
 
 %post
 [ ! -x /sbin/chkconfig ] || chkconfig --add tapback
+[ ! -x /sbin/chkconfig ] || chkconfig --add thinprovd
 
 %changelog
