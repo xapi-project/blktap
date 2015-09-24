@@ -681,7 +681,9 @@ slave_net_hook(struct payload *data)
 	case PAYLOAD_REJECTED:
 		break;
 	case PAYLOAD_DONE:
-		refresh_lvm(data->path);
+		if ( refresh_lvm(data->path) ) {
+			printf("*** Refresh failed ***\n");
+		}
 		break;
 	default:
 		fprintf(stderr, "Spurious payload in slave_net_hook\n");
@@ -770,6 +772,7 @@ refresh_lvm(const char * path)
 		return -1;
 	case 0: /* child */
 		execl("/sbin/lvchange", "lvchange", "--refresh", path,
+		      "--config", "global{metadata_read_only=0}",
 		      (char *)NULL);
 		_exit(127); /* TBD */
 	default: /* parent */
