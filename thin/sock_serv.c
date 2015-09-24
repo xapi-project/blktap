@@ -155,8 +155,11 @@ main(int argc, char *argv[]) {
 	net_thr.thr.hook = dispatch_hook;
 	if (master)
 		net_thr.thr.net_hook = master_net_hook;
-	else
+	else {
+		printf("Starting daemon in slave mode with master at: %s\n",
+		       master_ip);
 		net_thr.thr.net_hook = slave_net_hook;
+	}
 	net_thr.thr.net = true;
 	if (pthread_create(&net_thr.thr.thr_id, NULL, worker_thread_net,
 			   &net_thr.thr)) {
@@ -776,13 +779,19 @@ parse_cmdline(int argc, char ** argv)
 {
 	int arg, fd_open = 0;
 
-	while ((arg = getopt(argc, argv, "df")) != EOF ) {
+	while ((arg = getopt(argc, argv, "dfs:")) != EOF ) {
 		switch(arg) {
 		case 'd': /* daemonize and close fd */
 			daemonize = 1;
 			break;
 		case 'f': /* if daemonized leave fd open */
 			fd_open = 1;
+			break;
+		case 's':  /* start daemon in slave mode */
+			printf("Master Ip address passed as: %s\n", optarg);
+			strncpy(master_ip, optarg, IP_MAX_LEN);
+			master = false;
+			break;
 		default:
 			break;
 		}
