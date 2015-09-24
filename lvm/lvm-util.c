@@ -24,6 +24,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <syslog.h>
+#include <unistd.h>
 
 #include "lvm-util.h"
 
@@ -99,15 +100,11 @@ lvm_parse_pv(struct vg *vg, const char *name, int pvs, uint64_t start)
 static int
 lvm_create_cmd(char *out, const char *command, const char *vgname)
 {
-	char  path[96] = "/var/run/nonpersistent/sr_alloc_";
+	char  path[96] = "/etc/xenvm.d/";
 	char  vgs_opts[] = "vg_name,vg_extent_size,lv_count,"
-			"pv_count,pv_name,pe_start";
+		"pv_count,pv_name,pe_start";
 	char  lvs_opts[] = "lv_name,lv_size,segtype,seg_count,"
-			"seg_start,seg_size,devices";
-	char  sr_alloc[8];
-	char *c;
-	FILE *f = 0;
-	int   dnmc_flag;
+		"seg_start,seg_size,devices";
 	int   err = 0;
 
 	if (strcmp(command, "vgs") && strcmp(command, "lvs")) {
@@ -115,45 +112,15 @@ lvm_create_cmd(char *out, const char *command, const char *vgname)
 		goto exit;
 	}
 
-	/* 'vgname' is a string that looks like:
+	/**
+	 * 'vgname' is a string in the form:
 	 * 'VG_XenStorage-85fcc87c-0167-acf1-da64-ed982543add8'.
-	 * '+14' is used to strip the 'VG_XenStorage-' part.
 	 */
-	strcat(path, vgname + 14);
-
-	if ((f = fopen(path, "r"))) {
-		if (!fgets(sr_alloc, 8, f)) {
-			if ((err = ferror(f))) {
-			} else if ((err = feof(f))) {
-			} else { /* Unknown error */
-				err = 666;
-			}
-
-			goto exit;
-		}
-
-		if ((c = strchr(sr_alloc, '\n'))) {
-			*c = '\0';
-		}
-
-		/* "dnmc": dynamic
-		 * "thck": thick
-		 */
-		if (!strcmp(sr_alloc, "dnmc")) {
-			dnmc_flag = 1;
-		} else if (!strcmp(sr_alloc, "thck")) {
-			dnmc_flag = 0;
-		} else {
-			err = EINVAL;
-			goto exit;
-		}
-
-	} else { /* Fallback to original LVM commands. */
-		dnmc_flag = 0;
-	}
+	strcat(path, vgname);
 
 	/* Construct the lvm command. */
-	strcpy(out, dnmc_flag ? "/bin/xenvm " : "");
+	/* This file exists only if the SR is of type 'dynamic'. */
+	strcpy(out, access(path, F_OK) ? "" : "/bin/xenvm ");
 
 	strcat(out, command);
 	strcat(out, " ");
@@ -165,10 +132,6 @@ lvm_create_cmd(char *out, const char *command, const char *vgname)
 	strcat(out, " 2> /dev/null");
 
 exit:
-	if (f) {
-		fclose(f);
-		f = 0;
-	}
 	return -err;
 }
 
@@ -390,15 +353,11 @@ lvm_scan_vg(const char *vg_name, struct vg *vg)
 	if (err)
 		return err;
 
-    fprintf(stderr, "lvm_open_vg success");
-
 	err = lvm_scan_lvs(vg);
 	if (err) {
 		lvm_free_vg(vg);
 		return err;
 	}
-
-    fprintf(stderr, "lvm_scan_lvs success");
 
 	return 0;
 }
