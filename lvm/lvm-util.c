@@ -97,28 +97,79 @@ lvm_parse_pv(struct vg *vg, const char *name, int pvs, uint64_t start)
 }
 
 static int
-lvm_create_cmd(char *out, const char *command)
+lvm_create_cmd(char *out, const char *command, const char *vgname)
 {
-	char *sr_alloc;
-	int   thin_flag;
+	char  path[96] = "/var/run/nonpersistent/sr_alloc_";
+	char  vgs_opts[] = "vg_name,vg_extent_size,lv_count,"
+			"pv_count,pv_name,pe_start";
+	char  lvs_opts[] = "lv_name,lv_size,segtype,seg_count,"
+			"seg_start,seg_size,devices";
+	char  sr_alloc[8];
+	char *c;
+	FILE *f = 0;
+	int   dnmc_flag;
+	int   err = 0;
 
-	if (!(sr_alloc = getenv("SR_ALLOC"))) {                                     
-		return -EINVAL;                                                         
+	if (strcmp(command, "vgs") && strcmp(command, "lvs")) {
+		err = EINVAL;
+		goto exit;
 	}
 
-	if (!strcmp(sr_alloc, "thin")) {
-		thin_flag = 1;
-	} else if (!strcmp(sr_alloc, "thick")) {
-		thin_flag = 0;
-	} else {
-		return -EINVAL;
+	/* 'vgname' is a string that looks like:
+	 * 'VG_XenStorage-85fcc87c-0167-acf1-da64-ed982543add8'.
+	 * '+14' is used to strip the 'VG_XenStorage-' part.
+	 */
+	strcat(path, vgname + 14);
+
+	if ((f = fopen(path, "r"))) {
+		if (!fgets(sr_alloc, 8, f)) {
+			if ((err = ferror(f))) {
+			} else if ((err = feof(f))) {
+			} else { /* Unknown error */
+				err = 666;
+			}
+
+			goto exit;
+		}
+
+		if ((c = strchr(sr_alloc, '\n'))) {
+			*c = '\0';
+		}
+
+		/* "dnmc": dynamic
+		 * "thck": thick
+		 */
+		if (!strcmp(sr_alloc, "dnmc")) {
+			dnmc_flag = 1;
+		} else if (!strcmp(sr_alloc, "thck")) {
+			dnmc_flag = 0;
+		} else {
+			err = EINVAL;
+			goto exit;
+		}
+
+	} else { /* Fallback to original LVM commands. */
+		dnmc_flag = 0;
 	}
 
-	strcpy(out, thin_flag ? "/bin/xenvm " : "");
+	/* Construct the lvm command. */
+	strcpy(out, dnmc_flag ? "/bin/xenvm " : "");
+
 	strcat(out, command);
+	strcat(out, " ");
+	strcat(out, vgname);
+	strcat(out, " --noheadings --nosuffix --units=b --options=");
+
+	strcat(out, strcmp(command, "vgs") ? lvs_opts : vgs_opts);
+
 	strcat(out, " 2> /dev/null");
 
-	return 0;
+exit:
+	if (f) {
+		fclose(f);
+		f = 0;
+	}
+	return -err;
 }
 
 static int
@@ -130,15 +181,13 @@ lvm_open_vg(const char *vgname, struct vg *vg)
 	uint64_t size, pv_start;
 	char buf[MAX_NAME_SIZE + 256];
 
-	if ((err = lvm_create_cmd(buf, "vgs %s --noheadings --nosuffix --units=b "
-				  "--options=vg_name,vg_extent_size,lv_count,pv_count,"
-				  "pv_name,pe_start"))) {
+	if ((err = lvm_create_cmd(buf, "vgs", vgname))) {
 		return err;
 	}
 
 	memset(vg, 0, sizeof(*vg));
 
-	err = asprintf(&cmd, buf, vgname);
+	err = asprintf(&cmd, buf);
 
 	if (err == -1)
 		return -ENOMEM;
@@ -243,13 +292,11 @@ lvm_scan_lvs(struct vg *vg)
 	int i, err;
 	char buf[MAX_NAME_SIZE + 256];
 
-	if ((err = lvm_create_cmd(buf, "lvs %s --noheadings --nosuffix --units=b "
-				  "--options=lv_name,lv_size,segtype,seg_count,seg_start,"
-				  "seg_size,devices"))) {
+	if ((err = lvm_create_cmd(buf, "lvs", vg->name))) {
 		return err;
 	}
 
-	err = asprintf(&cmd, buf, vg->name);
+	err = asprintf(&cmd, buf);
 
 	if (err == -1)
 		return -ENOMEM;
@@ -343,11 +390,15 @@ lvm_scan_vg(const char *vg_name, struct vg *vg)
 	if (err)
 		return err;
 
+    fprintf(stderr, "lvm_open_vg success");
+
 	err = lvm_scan_lvs(vg);
 	if (err) {
 		lvm_free_vg(vg);
 		return err;
 	}
+
+    fprintf(stderr, "lvm_scan_lvs success");
 
 	return 0;
 }
