@@ -35,6 +35,11 @@
 #define BT3_LOW_MEMORY_MODE 0x0000000000000001
 
 /**
+ * Flag defines
+ */
+#define BT3_LOW_MEMORY_MODE 0x0000000000000001
+
+/**
  * blkback-style stats
  */
 struct blkback_stats {
