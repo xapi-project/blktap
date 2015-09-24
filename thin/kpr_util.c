@@ -122,6 +122,7 @@ kpr_tcp_conn_tx_rx(const char *ip, uint16_t port, struct payload * message)
 	int sfd, len;
 	struct sockaddr_in s_addr;
 	struct in_addr ipaddr;
+	int ret = 1;
 
 	if ( !inet_aton(ip, &ipaddr) ) {
 		return 0;
@@ -141,21 +142,27 @@ kpr_tcp_conn_tx_rx(const char *ip, uint16_t port, struct payload * message)
 	s_addr.sin_addr = ipaddr;
 
 	if ( connect(sfd, (struct sockaddr *) &s_addr, sizeof(s_addr)) ) {
+		fprintf(stderr,"Connect failed!\n");
+		ret = 0;
 		goto end;
 	}
 
 	/* TBD: very basic write, need a while loop */
 	if (write(sfd, message, len) != len) {
+		fprintf(stderr,"Failed to write to socket!\n");
+		ret = 0;
 		goto end;
 	}
 
 	/* TBD: very basic read */
 	if (read(sfd, message, len) != len) {
+		fprintf(stderr,"Failed to read from socket!\n");
+		ret = 0;
 		goto end;
 	}
 
 end:
 	close(sfd);
-	return 0;    /* Closes our socket; server sees EOF */
+	return ret;    /* Closes our socket; server sees EOF */
 
 }
