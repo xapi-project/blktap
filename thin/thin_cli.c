@@ -1,6 +1,11 @@
 #include <getopt.h>
 #include <stdio.h>
 #include <string.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <fcntl.h>
+#include <errno.h>
+#include <unistd.h>
 #include "payload.h"
 
 static void usage(char *);
@@ -12,7 +17,8 @@ main(int argc, char *argv[]) {
 	int arg;
 	int opt_idx = 0, flag = 1;
 	int ret;
-
+	char vg_name[256];
+	mode_t mode = S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH;
 	const struct option longopts[] = {
 		{ "add", required_argument, NULL, 0 },
 		{ "del", required_argument, NULL, 0 },
@@ -64,21 +70,63 @@ main(int argc, char *argv[]) {
 
 	ch = thin_connection_create();
 	if (ch == NULL) {
-		fprintf(stderr, "connection initialization failed");
+		fprintf(stderr, "connection initialization failed,"
+			" maybe thinprovd is not running?\n");
 		return 1;
 	}	
 	ret = thin_sync_send_and_receive(ch, &message);
 	if(ret) {
 		fprintf(stderr, "socket error (%d)\n", ret);
-		return 1;
+		return -ret;
 	}
-	if(message.err_code == THIN_ERR_CODE_SUCCESS)
-		printf("message: ok\n");
-	else
-		printf("message: fail\n"); 
 
 	thin_connection_destroy(ch);
-	return 0;
+
+	if(message.err_code == THIN_ERR_CODE_SUCCESS) {
+		/* The request has been successful, so we record it
+		 * creating or deleting a VG file in THINPROVD_DIR. In
+		 * this way if thinprovd will restart it will find all
+		 * the VGs that had been added previously inside
+		 * THINPROVD_DIR and it will we able to add them
+		 * back.
+		 */
+		sprintf(vg_name, "%s/%s", THINPROVD_DIR, &message.path[4]);
+		if (strncmp("add ", message.path, 4) == 0) {
+			ret = open(vg_name, O_CREAT|O_RDONLY|O_EXCL, mode);
+			if (ret == -1) {
+				if (errno == 17) {
+					printf("%s already added\n",
+					       &message.path[4]);
+				} else {
+					fprintf(stderr, "failed to create"
+						" %s errno=%d\n", 
+						vg_name, errno);
+				}
+			} else {
+				printf("%s added\n", &message.path[4]);
+			}
+			close(ret);
+		} else {
+			ret = unlink(vg_name);
+			if (ret == -1) {
+				if (errno == 2) {
+					printf("%s already deleted\n",
+					       &message.path[4]);
+				} else {
+					fprintf(stderr, "failed to unlink"
+						" %s errno=%d\n", 
+						vg_name, errno);
+				}
+			} else {
+				printf("%s deleted\n", &message.path[4]);
+			}
+		}
+		return 0;
+	} else {
+		fprintf(stderr, "operation failed: err_code=%d\n",
+			message.err_code);
+		return message.err_code;
+	}
 }
 
 static void

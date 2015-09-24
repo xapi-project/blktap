@@ -4,6 +4,8 @@
 #include <netinet/in.h> /* TCP accept client info */
 #include <arpa/inet.h> /* TCP accept client info */
 #include <sys/types.h>
+#include <dirent.h>
+#include <sys/stat.h>
 #include <sys/wait.h>
 #include <unistd.h>
 #include <errno.h>
@@ -198,12 +200,50 @@ signal_set(int signo, void (*func) (int))
 	return r;
 }
 
+static int
+add_previously_added_vgs(void)
+{
+	DIR *dir;
+	struct dirent *ent;
+	int ret;
+
+	if ((dir = opendir(THINPROVD_DIR)) != NULL) {
+		/* Wen need to call add_vg for every file in this
+		 * directory excluding '.' and '..' since these files
+		 * were added as a consequence of a successfull
+		 * 'thin-cli --add <VG>' command
+		 */
+		while ((ent = readdir(dir)) != NULL) {
+			if (ent->d_name[0] != '.') {
+				fprintf(stderr, "adding VG %s\n", ent->d_name);
+				ret = add_vg(ent->d_name);
+				if (ret != 0) {
+					fprintf(stderr, "failed to add VG %s\n",
+						ent->d_name);
+				}
+			}
+		}
+		closedir(dir);
+	} else {
+		/* could not open directory */
+		fprintf(stderr, "could not open %s\n", THINPROVD_DIR);
+		return errno;
+	}
+	return 0;
+}
 
 int
 main(int argc, char *argv[]) {
 
 	struct pollfd fds[2];
 	nfds_t maxfds = 2;
+	struct sockaddr_un sv_addr, cl_addr;
+	int sfd;
+	socklen_t len;
+	ssize_t ret;
+	int poll_ret;
+	struct payload buf;
+	mode_t mode = S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH;
 
 	/* Init pool */
 	LIST_INIT(&vg_pool.head);
@@ -224,12 +264,29 @@ main(int argc, char *argv[]) {
 	if (do_daemon() == -1)
 		return 1; /* can do better */
 
-	struct sockaddr_un sv_addr, cl_addr;
-	int sfd;
-	socklen_t len;
-	ssize_t ret;
-	int poll_ret;
-	struct payload buf;
+	ret = mkdir(THINPROVD_DIR, mode);
+	if (ret == -1) {
+		if (errno == EEXIST) {
+			/* If there are some volume groups files in
+			 * this directory, we need to add the
+			 * corresponding VGs back.  This is because
+			 * some logic was able to successfully add
+			 * them and is relying on that, so it is not
+			 * going to do an other "add" to the newly
+			 * started thinprovd.
+			 */
+			fprintf(stderr, "adding previously added vgs\n");
+			ret = add_previously_added_vgs();
+			if (ret != 0) {
+				fprintf(stderr,
+					"failed to add previously added vgs\n");
+			}
+		} else {
+			fprintf(stderr, "failed to create %s errno=%d\n", 
+				THINPROVD_DIR, errno);
+			return errno;
+		}
+	}
 
 	sfd = socket(AF_UNIX, SOCK_DGRAM|SOCK_CLOEXEC, 0);
 	if (sfd == -1)
@@ -707,7 +764,7 @@ del_vg(char *vg)
 	p_vg = vg_pool_find_and_remove(vg);
 	if(!p_vg) {
 		fprintf(stderr, "Nothing removed\n");
-		return 1;
+		return 0;
 	}
 
 	/* The thread is still able to crunch requests in its queue

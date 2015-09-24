@@ -4,6 +4,7 @@
 #include <inttypes.h>
 #include "tapdisk-message.h"
 
+#define THINPROVD_DIR "/var/run/thinprovd"
 #define PAYLOAD_MAX_PATH_LENGTH TAPDISK_MESSAGE_MAX_PATH_LENGTH
 #define IP_MAX_LEN 32
 
