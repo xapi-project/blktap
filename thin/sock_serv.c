@@ -13,6 +13,7 @@
 #include <sys/eventfd.h> /* non POSIX */
 #include <poll.h>
 #include <stdbool.h>
+#include <signal.h>
 #include "blktap.h"
 #include "payload.h"
 #include "kpr_util.h"
@@ -121,8 +122,30 @@ alloc_init_queue(void)
 		return NULL;
 }
 
+/**
+ * SIGINT handler to clean-up socket file on exit
+ *
+ * This is very basic and it assumes it is registered once the socket file
+ * is created, so no checks.
+ * FIXME: did not give much thought to its behaviour in multi-threaded env
+ *
+ * @param signo the signal to hanlder (SIGINT)
+ */
+static void clean_handler(int signo)
+{
+	if ( unlink(THIN_CONTROL_SOCKET) )
+		_exit(1);
+}
+
 int
 main(int argc, char *argv[]) {
+
+	struct sigaction new_act, old_act; /* SIGINT handling */
+
+	/* SIGINT handling */
+	new_act.sa_handler = clean_handler;
+	sigemptyset(&new_act.sa_mask);
+	new_act.sa_flags = 0;
 
 	/* default is master mode */
 	master = true;
@@ -181,8 +204,16 @@ main(int argc, char *argv[]) {
 	addr.sun_family = AF_UNIX;
 	strncpy(addr.sun_path, THIN_CONTROL_SOCKET, sizeof(addr.sun_path) - 1);
 
-	if (bind(sfd, (struct sockaddr *) &addr, sizeof(struct sockaddr_un)) == -1)
+	if (bind(sfd, (struct sockaddr *) &addr, sizeof(struct sockaddr_un)) == -1) {
+		perror("bind failed");
 		return -errno;
+	}
+
+	/* Register now the SIGINT handler to remove socket cleanly */
+	if ( sigaction(SIGINT, &new_act, &old_act) < 0 ) {
+		printf("Signal handler registration failed: expect manual"
+		       " clean-up\n");
+	}
 
 	if (listen(sfd, BACKLOG) == -1)
 		return -errno;
