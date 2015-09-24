@@ -7,7 +7,7 @@ AM_CPPFLAGS  = -D_GNU_SOURCE
 AM_CPPFLAGS += -I$(top_srcdir)/include
 
 sbin_PROGRAMS = thinprovd
-thinprovd_SOURCES = sock_serv.c
+thinprovd_SOURCES = thinprovd.c
 thinprovd_LDADD = libtapdiskthin.la
 
 sbin_PROGRAMS += thin-cli
@@ -17,7 +17,7 @@ thin_cli_LDADD = libtapdiskthin.la
 lib_LTLIBRARIES = libtapdiskthin.la
 
 libtapdiskthin_la_SOURCES = payload.c
-libtapdiskthin_la_SOURCES += sock_client2.c
+libtapdiskthin_la_SOURCES += thin_client.c
 libtapdiskthin_la_SOURCES += kpr_util.c
 libtapdiskthin_la_SOURCES += thinprovd_log.c
 
