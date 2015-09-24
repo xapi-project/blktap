@@ -94,6 +94,21 @@ __td_open(td_image_t *image, td_disk_info_t *info)
 }
 
 int
+td_set_quantum(td_image_t *image, int quantum)
+{
+	td_driver_t *driver;
+
+	driver = image->driver;
+	if (!driver)
+		return -EINVAL;
+
+	if (driver->ops->td_set_quantum)
+		return driver->ops->td_set_quantum(driver, quantum);
+
+	return -EINVAL;
+}
+
+int
 td_open(td_image_t *image)
 {
 	return __td_open(image, NULL);

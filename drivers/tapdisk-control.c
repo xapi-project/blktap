@@ -748,6 +748,11 @@ tapdisk_control_open_image(struct tapdisk_ctl_conn *conn,
 	if (err)
 		goto out;
 
+	if (request->u.params.flags & TAPDISK_MESSAGE_FLAG_THIN) {
+		/* Set allocation Quantum only to the leaf */
+		tapdisk_vbd_set_quantum(vbd, request->u.params.alloc_quantum);
+	}
+
 	err = tapdisk_vbd_get_disk_info(vbd, &vbd->disk_info);
 	if (err) {
         EPRINTF("VBD %d failed to get disk info: %s\n", vbd->uuid,

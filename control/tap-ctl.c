@@ -253,13 +253,15 @@ tap_cli_create_usage(FILE *stream)
 		"use secondary image (in mirror mode if no -s)] [-s "
 		"fail over to the secondary image on ENOSPC] "
 		"[-t request timeout in seconds] [-D no O_DIRECT] "
-		"[-T enable thin provisioning]\n");
+		"[-T enable thin provisioning] "
+		"[-q allocation quantum in MBytes]\n");
+
 }
 
 static int
 tap_cli_create(int argc, char **argv)
 {
-	int c, err, flags, prt_minor, timeout;
+	int c, err, flags, prt_minor, timeout, alloc_quantum;
 	char *args, *devname, *secondary;
 
 	args      = NULL;
@@ -268,9 +270,10 @@ tap_cli_create(int argc, char **argv)
 	prt_minor = -1;
 	flags     = 0;
 	timeout   = 0;
+	alloc_quantum = 0;
 
 	optind = 0;
-	while ((c = getopt(argc, argv, "a:RDd:e:r2:st:Th")) != -1) {
+	while ((c = getopt(argc, argv, "a:RDd:e:r2:st:Tq:h")) != -1) {
 		switch (c) {
 		case 'a':
 			args = optarg;
@@ -304,6 +307,9 @@ tap_cli_create(int argc, char **argv)
 		case 'T':
 			flags |= TAPDISK_MESSAGE_FLAG_THIN;
 			break;
+		case 'q':
+			alloc_quantum = atoi(optarg);
+			break;
 		case '?':
 			goto usage;
 		case 'h':
@@ -316,7 +322,7 @@ tap_cli_create(int argc, char **argv)
 		goto usage;
 
 	err = tap_ctl_create(args, &devname, flags, prt_minor, secondary,
-			timeout);
+			timeout, alloc_quantum);
 	if (!err)
 		printf("%s\n", devname);
 
@@ -722,14 +728,15 @@ tap_cli_open_usage(FILE *stream)
 		"use secondary image (in mirror mode if no -s)] [-s "
 		"fail over to the secondary image on ENOSPC] "
 		"[-t request timeout in seconds] [-D no O_DIRECT] "
-		"[-T enable thin provisioning]\n");
+		"[-T enable thin provisioning] "
+		"[-q allocation quantum in MBytes]\n");
 }
 
 static int
 tap_cli_open(int argc, char **argv)
 {
 	const char *args, *secondary;
-	int c, pid, minor, flags, prt_minor, timeout;
+	int c, pid, minor, flags, prt_minor, timeout, alloc_quantum;
 
 	flags      = 0;
 	pid        = -1;
@@ -738,9 +745,11 @@ tap_cli_open(int argc, char **argv)
 	timeout    = 0;
 	args      = NULL;
 	secondary  = NULL;
+	alloc_quantum = 0;
+
 
 	optind = 0;
-	while ((c = getopt(argc, argv, "a:RDm:p:e:r2:st:Th")) != -1) {
+	while ((c = getopt(argc, argv, "a:RDm:p:e:r2:st:Tq:h")) != -1) {
 		switch (c) {
 		case 'p':
 			pid = atoi(optarg);
@@ -777,6 +786,9 @@ tap_cli_open(int argc, char **argv)
 		case 'T':
 			flags |= TAPDISK_MESSAGE_FLAG_THIN;
 			break;
+		case 'q':
+			alloc_quantum = atoi(optarg);
+			break;
 		case '?':
 			goto usage;
 		case 'h':
@@ -789,7 +801,7 @@ tap_cli_open(int argc, char **argv)
 		goto usage;
 
 	return tap_ctl_open(pid, minor, args, flags, prt_minor, secondary,
-			timeout);
+			timeout, alloc_quantum);
 
 usage:
 	tap_cli_open_usage(stderr);

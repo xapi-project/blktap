@@ -145,9 +145,9 @@ unsigned int SPB;
 #define VHD_FLAG_TX_UPDATE_BAT       2
 
 /*******THIN PARAMETERS******/
-#define THIN_WARN_1            52428800L /* 50 MBs to go, send resize request */
-#define THIN_WARN_2            10485760L /* 10 MBs to go, start slow down */
-#define THIN_RESIZE_INCREMENT 104857600L /* 100 MBs incremets */
+#define THIN_RESIZE_MIN_INCREMENT   16777216L /* 16 MBs incremets */
+#define THIN_RESIZE_MAX_INCREMENT 1073741824L /* 1024 MBs incremets */
+#define THIN_RESIZE_DEF_INCREMENT  104857600L /* 100 MBs incremets */
 
 typedef uint16_t vhd_flag_t;
 
@@ -245,6 +245,20 @@ struct vhd_state {
 	off64_t                   eof_bytes;
 	uint64_t                  req_bytes;
 	struct thin_conn_handle   *ch;
+	/* bytes to increase the LV */
+	int64_t                   alloc_quantum; /* bytes the LV will be
+						  * increased every time */
+	int64_t                   virt_bytes;    /* virtual VHD size, will be
+						  * set to 0 when the LV is
+						  * increased  at least as the
+						  * virtual size */
+	int64_t                   thin_warn_1;   /* when available_bytes follow
+						  * below this watermark, a new 
+						  * resize is requested */
+	int64_t                   thin_warn_2;   /* when available_bytes follow
+						  * below this watermark, we
+						  * start checking if resize 
+						  * has succeded */
 
 	/* for redundant bitmap writes */
 	int                       padbm_size;
@@ -675,6 +689,8 @@ vhd_thin_prepare(struct vhd_state *s)
 	if ((s->eof_bytes = lseek64(s->vhd.fd, 0, SEEK_END)) == -1)
 		return -errno;
 	s->req_bytes = 0;
+	s->virt_bytes = vhd_sectors_to_bytes(s->driver->info.size);
+	EPRINTF("Thin VHD virt_bytes = %ld", s->virt_bytes);
 	s->ch = thin_connection_create();
 	if (s->ch == NULL) {
 		EPRINTF("thin connection creation has failed");
@@ -741,10 +757,6 @@ __vhd_open(td_driver_t *driver, const char *name, vhd_flag_t flags)
 		update_next_db(s, s->next_db);
 	}
 
-	if(test_vhd_flag(flags, VHD_FLAG_OPEN_THIN)) {
-		vhd_thin_prepare(s);
-	}
-
 	SPB = s->spb;
 
 	s->vreq_free_count = VHD_REQS_DATA;
@@ -754,6 +766,10 @@ __vhd_open(td_driver_t *driver, const char *name, vhd_flag_t flags)
 	driver->info.size        = s->vhd.footer.curr_size >> VHD_SECTOR_SHIFT;
 	driver->info.sector_size = VHD_SECTOR_SIZE;
 	driver->info.info        = 0;
+
+	if(test_vhd_flag(flags, VHD_FLAG_OPEN_THIN)) {
+		vhd_thin_prepare(s);
+	}
 
         DBG(TLOG_INFO, "vhd_open: done (sz:%"PRIu64", sct:%lu, inf:%u)\n",
 	    driver->info.size, driver->info.sector_size, driver->info.info);
@@ -1397,24 +1413,31 @@ static inline int
 thin_check_warn_2(struct vhd_state *s, int64_t available_bytes)
 {
 	uint64_t phy_bytes;
+	int count;
 
-	/* we are worried the resize is taking too long, we will try to
-	 * buy some time sleeping some time for every new block request
-	 * We sleep more if available_bytes is getting small.
-	 */
-	sleep((THIN_WARN_2 - available_bytes)/(1024*1024));
-	EPRINTF("Sleep(%ld)", (THIN_WARN_2 - available_bytes)/(1024*1024));
-	phy_bytes = lseek64(s->vhd.fd, 0, SEEK_END);
-	if ((s->eof_bytes + THIN_RESIZE_INCREMENT) <= phy_bytes) {
-		/* Request is completed but maybe the response got lost */
-		s->eof_bytes = phy_bytes;
-		s->req_bytes = 0;
-		return 0;
+	if (available_bytes < 0) {
+		count = 40;
+	} else {
+		count = 1;
+	}
+	while (count--) {
+		phy_bytes = lseek64(s->vhd.fd, 0, SEEK_END);
+		EPRINTF("thin_check_warn_2 phy_bytes = %ld", phy_bytes);
+		if (s->req_bytes <= phy_bytes) {
+			/* Request is completed */
+			EPRINTF("Request has been completed");
+			s->eof_bytes = phy_bytes;
+			s->req_bytes = 0;
+			return 0;
+		}
+		if (count > 0) {
+			sleep(1);
+		}
 	}
 
 	if (available_bytes < 0) {
 		/* We must fail with ENOSPC after we tried everything */
-		EPRINTF("Returning -1");
+		EPRINTF("Returning -1, fail with ENOSPC");
 		return -1;
 	} else {
 		return 0;
@@ -1422,45 +1445,38 @@ thin_check_warn_2(struct vhd_state *s, int64_t available_bytes)
 }
 
 static inline void
-check_resize_request_progress(struct vhd_state *s, struct payload *message,
-		              int64_t available_bytes)
-{
-#ifdef THIN_OLD_PROTOCOL
-	int err;
-	uint64_t phy_bytes;
-	message->reply = PAYLOAD_QUERY;
-	err = thin_sock_comm(message);
-	if (err) {
-		DBG(TLOG_WARN, "socket returned: %d\n", err);
-	} else if (message->reply == PAYLOAD_DONE) {
-		/* check if the obtained size is compatible with the
-		 * requested one */
-		phy_bytes = lseek64(s->vhd.fd, 0, SEEK_END);
-		
-		EPRINTF("Requested:%ld, obtained:%ld:\n",
-				s->req_bytes, phy_bytes);
-		if (s->req_bytes <= phy_bytes) {
-			s->eof_bytes = phy_bytes;
-			s->req_bytes = 0;
-
-		} else {
-			/* The daemon was thinking that the resize was 
-			 * successfull but somehow it extended less than
-			 * asked, do an other request */
-			EPRINTF("Extended less than expected");
-			s->req_bytes = 0;
-		}
-	}
-#else
-	return;
-#endif /* THIN_OLD_PROTOCOL */
-}
-
-static inline void
 send_resize_request(struct vhd_state *s, struct payload *message)
 {
 	int err;
+
+	init_payload(message);
+	strncpy(message->path, s->vhd.file, PAYLOAD_MAX_PATH_LENGTH);
+	if (s->virt_bytes < s->eof_bytes + s->alloc_quantum &&
+		s->virt_bytes != 0) {
+
+		/* This is so we do not waste too much space if we
+		 * have a big quantum. For example if the virtual size 
+		 * of the VHD is 1000 MB and the alloc_quantum is 200MB,
+		 * when the lv is 980MB and we need to resize again we 
+		 * go to 1180MB, meaning we are wasting around 180MB.
+		 */
+
+                /* We extend once up to the virtual size and than start
+		 * resizing at THIN_RESIZE_MIN_INCREMENT
+		 * for the remaining metadata part of the VHD.
+		 */
+		message->req_size = s->virt_bytes;
+		s->virt_bytes = 0;
+		s->alloc_quantum = THIN_RESIZE_MIN_INCREMENT;
+		s->thin_warn_1 = s->alloc_quantum / 2;
+		s->thin_warn_2 = s->alloc_quantum / 4;
+	} else {
+		message->req_size = s->eof_bytes + s->alloc_quantum;
+	}
 	message->type = PAYLOAD_RESIZE;
+
+	EPRINTF("sending resize request for %ld", message->req_size);
+
 	err = thin_sync_send_and_receive(s->ch, message);
 	if (err) {
 		DBG(TLOG_WARN, "socket returned: %d\n", err);
@@ -1491,23 +1507,17 @@ thin_provisioning_checks(struct vhd_state *s, uint64_t needed_sectors)
 	int ret = 0;
 
 	available_bytes = s->eof_bytes - vhd_sectors_to_bytes(needed_sectors);
-	EPRINTF("needed_bytes=%ld", available_bytes);
+	EPRINTF("virt_bytes=%ld eof_bytes=%ld available_bytes=%ld", 
+		s->virt_bytes, s->eof_bytes, available_bytes);
 
-	if (available_bytes < THIN_WARN_1) {
-		/* prepare common part of the message */
-		init_payload(&message);
-		strncpy(message.path, s->vhd.file, PAYLOAD_MAX_PATH_LENGTH);
-		message.req_size = s->eof_bytes + THIN_RESIZE_INCREMENT;
-
+	if (available_bytes < s->thin_warn_1) {
 		/* s->req_bytes is indicating our state */
-		if (s->req_bytes != 0) {
-			check_resize_request_progress(s, &message, available_bytes);
-		} else {
+		if (s->req_bytes == 0) {
 			send_resize_request(s, &message);
 		}
 
 		/* let's be more pedantic when we reach end of space */
-		if (available_bytes < THIN_WARN_2) {
+		if (available_bytes < s->thin_warn_2) {
 			ret = thin_check_warn_2(s, available_bytes);
 		}
 	}
@@ -1667,7 +1677,6 @@ update_bat(struct vhd_state *s, uint32_t blk)
 	int err;
 	uint64_t lb_end;
 	struct vhd_bitmap *bm;
-	EPRINTF("SSS update_bat enter blk=%d", blk);
 	ASSERT(bat_entry(s, blk) == DD_BLK_UNUSED);
 	
 	if (bat_locked(s)) {
@@ -1695,7 +1704,6 @@ update_bat(struct vhd_state *s, uint32_t blk)
 	}
 	schedule_zero_bm_write(s, bm, lb_end);
 	set_vhd_flag(bm->tx.status, VHD_FLAG_TX_UPDATE_BAT);
-	EPRINTF("SSS update_bat exit");
 	return 0;
 }
 
@@ -2666,12 +2674,40 @@ vhd_debug(td_driver_t *driver)
 */
 }
 
+int
+vhd_set_quantum(td_driver_t *driver, int quantum_mb)
+{
+	struct vhd_state *s = (struct vhd_state *)driver->data;
+	int64_t quantum = quantum_mb * 1048576;
+
+	/* This is always called in case of thin, and even if the 
+	 * tap-ctl open/create is not passed as parameter,
+	 * s->alloc_quantum will still be set:
+	 */
+
+	if (quantum < THIN_RESIZE_MIN_INCREMENT && quantum != 0) {
+		s->alloc_quantum = THIN_RESIZE_MIN_INCREMENT;
+	} else if (quantum > THIN_RESIZE_MAX_INCREMENT) {
+		s->alloc_quantum = THIN_RESIZE_MAX_INCREMENT;
+	} else {
+		if (quantum == 0)
+			s->alloc_quantum = THIN_RESIZE_DEF_INCREMENT;
+		else		
+			s->alloc_quantum = quantum;
+	}
+
+	s->thin_warn_1 = s->alloc_quantum / 2;
+	s->thin_warn_2 = s->alloc_quantum / 4;
+	return 0;
+}
+
 struct tap_disk tapdisk_vhd = {
 	.disk_type          = "tapdisk_vhd",
 	.flags              = 0,
 	.private_data_size  = sizeof(struct vhd_state),
 	.td_open            = _vhd_open,
 	.td_close           = _vhd_close,
+	.td_set_quantum     = vhd_set_quantum,
 	.td_queue_read      = vhd_queue_read,
 	.td_queue_write     = vhd_queue_write,
 	.td_get_parent_id   = vhd_get_parent_id,

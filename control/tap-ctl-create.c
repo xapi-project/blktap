@@ -30,7 +30,7 @@
 
 int
 tap_ctl_create(const char *params, char **devname, int flags, int parent_minor,
-		char *secondary, int timeout)
+		char *secondary, int timeout, int alloc_quantum)
 {
 	int err, id, minor;
 
@@ -49,7 +49,7 @@ tap_ctl_create(const char *params, char **devname, int flags, int parent_minor,
 		goto destroy;
 
 	err = tap_ctl_open(id, minor, params, flags, parent_minor, secondary,
-			timeout);
+			timeout, alloc_quantum);
 	if (err)
 		goto detach;
 

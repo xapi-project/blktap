@@ -186,6 +186,7 @@ int tapdisk_vbd_close(td_vbd_t *);
  */
 int tapdisk_vbd_open_vdi(td_vbd_t * vbd, const char *params, td_flag_t flags,
         int prt_devnum);
+int tapdisk_vbd_set_quantum(td_vbd_t *vbd, int alloc_quantum);
 void tapdisk_vbd_close_vdi(td_vbd_t *);
 
 int tapdisk_vbd_attach(td_vbd_t *, const char *, int);

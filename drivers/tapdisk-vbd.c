@@ -633,6 +633,12 @@ fail:
 	return err;
 }
 
+int
+tapdisk_vbd_set_quantum(td_vbd_t *vbd, int alloc_quantum)
+{
+	return td_set_quantum(tapdisk_vbd_first_image(vbd), alloc_quantum);
+}
+
 void
 tapdisk_vbd_detach(td_vbd_t *vbd)
 {
