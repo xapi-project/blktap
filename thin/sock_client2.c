@@ -36,14 +36,14 @@ int thin_sync_send_and_receive(struct thin_conn_handle *ch,
 	return 0;
 }
 
-static int timeout = 10;
-
 struct thin_conn_handle *
 thin_connection_create(void)
 {
 	struct sockaddr_un svaddr, claddr;
 	struct thin_conn_handle *ch;
 	char client_sock_name[64];
+	struct timeval timeout;
+	int ret;
 
 	ch = malloc(sizeof(struct thin_conn_handle));
 	if (ch == NULL)
@@ -55,8 +55,14 @@ thin_connection_create(void)
 		goto out1;
 	}
 
-	setsockopt(ch->sfd, SOL_SOCKET, SO_RCVTIMEO, (char *)&timeout,
-			sizeof(timeout));
+	timeout.tv_sec = 10;
+	timeout.tv_usec = 0;
+	ret = setsockopt(ch->sfd, SOL_SOCKET, SO_RCVTIMEO, &timeout,
+			 sizeof(struct timeval));
+	if (ret < 0) {
+		EPRINTF("Socket set timeout failed");
+		goto out1;
+	}
 
 	sprintf(client_sock_name, "td_thin_client_%d", getpid());
 
