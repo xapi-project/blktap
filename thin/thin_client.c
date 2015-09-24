@@ -20,17 +20,26 @@ int thin_sync_send_and_receive(struct thin_conn_handle *ch,
 		struct payload *message)
 {
 	size_t len = sizeof(struct payload);
+	int ret;
 
 	if (ch == NULL) {
 		return -1;
 	}
 
 	/* Send messages to server */
-	if (write(ch->sfd, message, len) != len)
+write:
+	ret = write(ch->sfd, message, len);
+	if (ret == -1 && errno == EINTR)
+		goto write;
+	if (ret != len)
 		return -errno;
 
 	/* Wait for ACK packet */
-	if (read(ch->sfd, message, len) != len)
+read:
+	ret = read(ch->sfd, message, len);
+	if (ret == -1 && errno == EINTR)
+		goto read;
+	if (ret != len)
 		return -errno;
 
 	return 0;

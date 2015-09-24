@@ -327,24 +327,29 @@ main(int argc, char *argv[]) {
 		}
 
 		if (fds[1].revents) {
+recv:
 			len = sizeof(struct sockaddr_un);
 			/* read from the control socket */
 			ret = recvfrom(sfd, &buf, sizeof(buf), 0, 
 					&cl_addr, &len);
+			if (ret == -1 && errno == EINTR)
+				goto recv;
 			if (ret != sizeof(buf)) {
-				thin_log_info("recvfrom returned %ld, %s\n",
-					      (long)ret, strerror(errno));
+				thin_log_err("recvfrom returned %ld, %s\n",
+					     (long)ret, strerror(errno));
 				continue;
 			}
 			/* Packet of expected len arrived, process it*/
 			process_payload(&buf);
 
 			/* Send the acknowledge packet */
+send:
 			ret = sendto(sfd, &buf, ret, 0, &cl_addr, len);
+			if (ret == -1 && errno == EINTR)
+				goto send;
 			if(ret != sizeof(buf)) {
-
-				thin_log_info("sendto returned %ld, %s\n",
-					      (long)ret, strerror(errno));
+				thin_log_err("sendto returned %ld, %s\n",
+					     (long)ret, strerror(errno));
 			}
 		}
 	}
