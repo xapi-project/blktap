@@ -107,6 +107,15 @@ out:
 	return NULL;
 }
 
+static void
+free_queue(struct kpr_queue *sqp)
+{
+	if (sqp) {
+		close(sqp->efd);
+		free(sqp);
+	}
+}
+
 static inline struct sq_entry *
 get_req_from_queue(struct kpr_queue *q)
 {
@@ -730,7 +739,7 @@ del_vg(char *vg)
 	/* By design the queue must be empty but we check */
 	if (!SIMPLEQ_EMPTY(&p_vg->r_queue->qhead))
 		fprintf(stderr, "queue not empty, memory leak! FIXME\n");
-	free(p_vg->r_queue);
+	free_queue(p_vg->r_queue);
 	free(p_vg);
 
 	return 0;
