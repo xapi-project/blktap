@@ -236,6 +236,7 @@ main(int argc, char *argv[]) {
 	}
 
 	signal_set(SIGINT, clean_handler);
+	signal_set(SIGTERM, clean_handler);
 
 	fds[0].fd = out_queue->efd;
 	fds[0].events = POLLIN;
