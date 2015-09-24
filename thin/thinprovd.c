@@ -18,6 +18,7 @@
 #include <signal.h>
 #include "blktap.h"
 #include "payload.h"
+#include "thin_log.h"
 #include "kpr_util.h"
 
 #define BACKLOG 5
@@ -195,8 +196,8 @@ signal_set(int signo, void (*func) (int))
 
 	r = sigaction(signo, &new_act, &old_act);
 	if (r < 0)
-		fprintf(stderr, "Signal %d: handler registration failed",
-			signo);
+		thin_log_err("Signal %d: handler registration failed",
+			     signo);
 	return r;
 }
 
@@ -215,10 +216,10 @@ add_previously_added_vgs(void)
 		 */
 		while ((ent = readdir(dir)) != NULL) {
 			if (ent->d_name[0] != '.') {
-				fprintf(stderr, "adding VG %s\n", ent->d_name);
+				thin_log_info("adding VG %s\n", ent->d_name);
 				ret = add_vg(ent->d_name);
 				if (ret != 0) {
-					fprintf(stderr, "failed to add VG %s\n",
+					thin_log_info("failed to add VG %s\n",
 						ent->d_name);
 				}
 			}
@@ -226,7 +227,7 @@ add_previously_added_vgs(void)
 		closedir(dir);
 	} else {
 		/* could not open directory */
-		fprintf(stderr, "could not open %s\n", THINPROVD_DIR);
+		thin_log_err("could not open %s\n", THINPROVD_DIR);
 		return errno;
 	}
 	return 0;
@@ -244,6 +245,9 @@ main(int argc, char *argv[]) {
 	int poll_ret;
 	struct payload buf;
 	mode_t mode = S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH;
+
+	thin_openlog("THINPROVD");
+	thin_log_upto(THIN_LOG_INFO);
 
 	/* Init pool */
 	LIST_INIT(&vg_pool.head);
@@ -275,15 +279,15 @@ main(int argc, char *argv[]) {
 			 * going to do an other "add" to the newly
 			 * started thinprovd.
 			 */
-			fprintf(stderr, "adding previously added vgs\n");
+			thin_log_info("adding previously added vgs\n");
 			ret = add_previously_added_vgs();
 			if (ret != 0) {
-				fprintf(stderr,
+				thin_log_info(
 					"failed to add previously added vgs\n");
 			}
 		} else {
-			fprintf(stderr, "failed to create %s errno=%d\n", 
-				THINPROVD_DIR, errno);
+			thin_log_err("failed to create %s errno=%d\n", 
+				     THINPROVD_DIR, errno);
 			return errno;
 		}
 	}
@@ -297,7 +301,7 @@ main(int argc, char *argv[]) {
 	strncpy(sv_addr.sun_path, THIN_CONTROL_SOCKET, sizeof(sv_addr.sun_path) - 1);
 
 	if (bind(sfd, (struct sockaddr *) &sv_addr, sizeof(struct sockaddr_un)) == -1) {
-		perror("bind failed");
+		thin_log_err("bind failed, %s", strerror(errno));
 		return -errno;
 	}
 
@@ -312,8 +316,8 @@ main(int argc, char *argv[]) {
 	for(;;) {
 		poll_ret = poll(fds, maxfds, -1); /* wait for ever */
 		if ( poll_ret < 1 ) { /* 0 not expected */
-			fprintf(stderr, "poll returned %d, %s\n", 
-					poll_ret, strerror(errno));
+			thin_log_info("poll returned %d, %s\n", 
+				      poll_ret, strerror(errno));
 			continue;
 		}
 
@@ -328,8 +332,8 @@ main(int argc, char *argv[]) {
 			ret = recvfrom(sfd, &buf, sizeof(buf), 0, 
 					&cl_addr, &len);
 			if (ret != sizeof(buf)) {
-				fprintf(stderr, "recvfrom returned %ld, %s\n",
-						(long)ret, strerror(errno));
+				thin_log_info("recvfrom returned %ld, %s\n",
+					      (long)ret, strerror(errno));
 				continue;
 			}
 			/* Packet of expected len arrived, process it*/
@@ -339,8 +343,8 @@ main(int argc, char *argv[]) {
 			ret = sendto(sfd, &buf, ret, 0, &cl_addr, len);
 			if(ret != sizeof(buf)) {
 
-				fprintf(stderr, "sendto returned %ld, %s\n",
-						(long)ret, strerror(errno));
+				thin_log_info("sendto returned %ld, %s\n",
+					      (long)ret, strerror(errno));
 			}
 		}
 	}
@@ -363,16 +367,16 @@ process_out_queue(void)
 		case PAYLOAD_CB_NONE:
 			/* Just free the req, no async response 
 			 * was needed */
-			fprintf(stderr, "Processed CB_NONE req\n");
+			thin_log_info("Processed CB_NONE req\n");
 			break;
 		case PAYLOAD_CB_SOCK:
 			/* FIXME:
 			 * We do not expect somebody to use this 
 			 * for now */
-			fprintf(stderr, "CB_SOCK not implemented yet\n");
+			thin_log_err("CB_SOCK not implemented yet\n");
 			break;
 		default:
-			fprintf(stderr, "cb_type unknown\n");
+			thin_log_err("cb_type unknown\n");
 		}
 		free(req);
 	}
@@ -386,7 +390,7 @@ process_payload(struct payload * buf)
 	print_payload(buf);
 	err = req_reply(buf);
 	print_payload(buf);
-	printf("EOM\n\n");
+	thin_log_info("EOM\n\n");
 
 	return err;
 }
@@ -523,8 +527,8 @@ worker_thread(void * ap)
 				/* wait for ever */
 				poll_ret = poll(fds, maxfds, -1);
 				if ( poll_ret < 1 ) { /* 0 not expected */
-					fprintf(stderr, "poll returned %d, %s\n", 
-						poll_ret, strerror(errno));
+					thin_log_info("poll returned %d, %s\n", 
+						      poll_ret, strerror(errno));
 					continue;
 				}
 				if (fds[0].revents)
@@ -540,7 +544,7 @@ worker_thread(void * ap)
 		*/
 		if (data->type == PAYLOAD_UNDEF) {
 			free(req);
-			fprintf(stderr, "Thread cancellation received\n");
+			thin_log_info("Thread cancellation received\n");
 			return NULL;
 		}
 
@@ -564,7 +568,7 @@ slave_worker_hook(struct payload *data)
 		data->err_code = THIN_ERR_CODE_SUCCESS;
 	else
 		data->err_code = THIN_ERR_CODE_FAILURE;
-	printf("worker_thread: completed %s (%d)\n\n",
+	thin_log_info("worker_thread: completed %s (%d)\n\n",
 	       data->path, ret);
 	/* FIXME:
 	 * Probably we do not need to call refresh_lvm, leaving the
@@ -699,18 +703,18 @@ add_vg(char *vg)
 {
 	struct vg_entry *p_vg;
 
-	printf("CLI: add_vg for %s\n",vg);
+	thin_log_info("CLI: add_vg for %s\n",vg);
 
 	/* check we already have it */
 	if(vg_pool_find(vg, true)) {
-		printf("%s already added\n", vg);
+		thin_log_info("%s already added\n", vg);
 		return 0;
 	}
 
 	/* allocate and init vg_entry */
 	p_vg = malloc(sizeof(*p_vg));
 	if (!p_vg) {
-		fprintf(stderr, "Failed to allocate vg_entry struct\n");
+		thin_log_err("Failed to allocate vg_entry struct\n");
 		return 1;
 	}
 
@@ -721,8 +725,8 @@ add_vg(char *vg)
 	/* VG and thread specific thread allocated */
 	p_vg->r_queue = alloc_init_queue();
 	if(!p_vg->r_queue) {
-		fprintf(stderr, "Failed worker queue creation for %s\n",
-			p_vg->name);
+		thin_log_err("Failed worker queue creation for %s\n",
+			     p_vg->name);
 		goto out;
 	}
 
@@ -731,15 +735,15 @@ add_vg(char *vg)
 	p_vg->thr.hook = slave_worker_hook;
 	p_vg->thr.net_hook = NULL;
 	if (pthread_create(&p_vg->thr.thr_id, NULL, worker_thread, &p_vg->thr)) {
-		fprintf(stderr, "Failed worker thread creation for %s\n",
-			p_vg->name);
+		thin_log_err("Failed worker thread creation for %s\n",
+			     p_vg->name);
 		goto out2;
 	}
 
 	/* Everything ok. Add vg to pool */
 	LIST_INSERT_HEAD(&vg_pool.head, p_vg, entries);
 
-	printf("Successfully registered VG %s\n", p_vg->name);
+	thin_log_info("Successfully registered VG %s\n", p_vg->name);
 	return 0;
 out2:
 	free(p_vg->r_queue);
@@ -756,14 +760,14 @@ del_vg(char *vg)
 	struct sq_entry *req;
 	int ret;
 
-	printf("CLI: del_vg\n");
+	thin_log_info("CLI: del_vg\n");
 
 	/* Once removed from the pool no new requests can be served
 	   any more
 	*/
 	p_vg = vg_pool_find_and_remove(vg);
 	if(!p_vg) {
-		fprintf(stderr, "Nothing removed\n");
+		thin_log_info("Nothing removed\n");
 		return 0;
 	}
 
@@ -777,8 +781,8 @@ del_vg(char *vg)
 		 We are returning with a runnig thread, not able to receive new
 		 requests and 2 memory leaks..
 		*/
-		fprintf(stderr, "Error with malloc!! Thread still running\n"
-			"and memory leaked\n");
+		thin_log_err("Error with malloc!! Thread still running\n"
+			     "and memory leaked\n");
 		return 1;
 	}
 	init_payload(&req->data);
@@ -789,14 +793,14 @@ del_vg(char *vg)
 	/* Wait for thread to complete */
 	ret = pthread_join(p_vg->thr.thr_id, NULL);
 	if (ret != 0)
-		fprintf(stderr, "Problem joining thread..FIXME\n");
+		thin_log_err("Problem joining thread..FIXME\n");
 
 	/*
 	 * Thread is dead, let's free resources
 	 */
 	/* By design the queue must be empty but we check */
 	if (!SIMPLEQ_EMPTY(&p_vg->r_queue->qhead))
-		fprintf(stderr, "queue not empty, memory leak! FIXME\n");
+		thin_log_err("queue not empty, memory leak! FIXME\n");
 	free_queue(p_vg->r_queue);
 	free(p_vg);
 
