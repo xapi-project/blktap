@@ -57,7 +57,7 @@ stop() {
 	echo -n $"Stopping $PROG daemon: "
 	test -e $PID_FILE || exit 5
 	PID=`cat $PID_FILE`
-	kill -SIGINT $PID
+	kill $PID
 	RETVAL=$?
 	[ $RETVAL -eq 0 ] && rm -f $PID_FILE
 	[ $RETVAL -eq 0 ] && success || failure 
