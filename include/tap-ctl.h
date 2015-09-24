@@ -92,7 +92,8 @@ int tap_ctl_allocate(int *minor, char **devname);
 int tap_ctl_free(const int minor);
 
 int tap_ctl_create(const char *params, char **devname, int flags, 
-		int prt_minor, char *secondary, int timeout);
+		int prt_minor, char *secondary, int timeout,
+		int alloc_quantum);
 int tap_ctl_destroy(const int id, const int minor, int force,
 		    struct timeval *timeout);
 
@@ -103,7 +104,8 @@ int tap_ctl_attach(const int id, const int minor);
 int tap_ctl_detach(const int id, const int minor);
 
 int tap_ctl_open(const int id, const int minor, const char *params, int flags,
-		const int prt_minor, const char *secondary, int timeout);
+		const int prt_minor, const char *secondary, int timeout,
+		int alloc_quantum);
 int tap_ctl_close(const int id, const int minor, const int force,
 		  struct timeval *timeout);
 

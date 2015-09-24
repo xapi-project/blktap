@@ -731,6 +731,8 @@ tapdisk_control_open_image(struct tapdisk_ctl_conn *conn,
 		flags |= TD_OPEN_REUSE_PARENT;
 	if (request->u.params.flags & TAPDISK_MESSAGE_FLAG_STANDBY)
 		flags |= TD_OPEN_STANDBY;
+	if (request->u.params.flags & TAPDISK_MESSAGE_FLAG_THIN)
+		flags |= TD_OPEN_THIN;
 	if (request->u.params.flags & TAPDISK_MESSAGE_FLAG_SECONDARY) {
 		char *name = strdup(request->u.params.secondary);
 		if (!name) {
@@ -745,6 +747,13 @@ tapdisk_control_open_image(struct tapdisk_ctl_conn *conn,
 				   request->u.params.prt_devnum);
 	if (err)
 		goto out;
+
+	if (request->u.params.flags & TAPDISK_MESSAGE_FLAG_THIN) {
+		/* Save parameters in vbd for unpause */
+		vbd->xlvhd_alloc_quantum = request->u.params.alloc_quantum;
+		/* Set allocation Quantum only to the leaf */
+		tapdisk_vbd_set_quantum(vbd);
+	}
 
 	err = tapdisk_vbd_get_disk_info(vbd, &vbd->disk_info);
 	if (err) {

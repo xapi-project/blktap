@@ -18,6 +18,9 @@ blktap_HEADERS += tapdisk-message.h
 blktap_HEADERS += tap-ctl.h
 blktap_HEADERS += debug.h
 blktap_HEADERS += util.h
+blktap_HEADERS += payload.h
+blktap_HEADERS += kpr_util.h
+blktap_HEADERS += thin_log.h
 
 noinst_HEADERS  = blktap.h
 noinst_HEADERS += compiler.h
