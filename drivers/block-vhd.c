@@ -143,7 +143,7 @@ unsigned int SPB;
 #define VHD_FLAG_TX_LIVE             1
 #define VHD_FLAG_TX_UPDATE_BAT       2
 
-typedef uint8_t vhd_flag_t;
+typedef uint16_t vhd_flag_t;
 
 struct vhd_state;
 struct vhd_request;
