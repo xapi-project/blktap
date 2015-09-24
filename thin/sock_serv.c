@@ -154,12 +154,12 @@ put_req_into_queue(struct kpr_queue *q, struct sq_entry *req )
  * is created, so no checks.
  * FIXME: did not give much thought to its behaviour in multi-threaded env
  *
- * @param signo the signal to hanlder (SIGINT)
+ * @param[in] signo the signal to handle
  */
 static void clean_handler(int signo)
 {
-	if ( unlink(THIN_CONTROL_SOCKET) )
-		_exit(1);
+	unlink(THIN_CONTROL_SOCKET);
+	_exit(0);
 }
 
 int
