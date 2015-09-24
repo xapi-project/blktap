@@ -21,54 +21,39 @@
 #define BACKLOG 5
 #define PORT_NO 7777
 
-static inline int process_payload(int, struct payload *);
-static inline int req_reply(int, struct payload *);
-static int handle_request(struct payload * buf);
-static int handle_query(struct payload * buf);
+static inline int process_payload(struct payload *);
+static void process_out_queue(void);
+static inline int req_reply(struct payload *);
+static int handle_resize(struct payload * buf);
+static int handle_status(struct payload * buf);
+static int handle_cli(struct payload *);
 static void * worker_thread(void *);
-static void * worker_thread_net(void *);
 static int slave_worker_hook(struct payload *);
-static int reject_hook(struct payload *);
-static int dispatch_hook(struct payload *);
-static int slave_net_hook(struct payload *);
-static int master_net_hook(struct payload *);
 static int increase_size(off64_t size, const char * path);
-static int refresh_lvm(const char * path);
 static void parse_cmdline(int, char **);
 static int do_daemon(void);
-static int handle_cli(struct payload *);
 static void split_command(char *, char **);
 static int add_vg(char *vg);
 static int del_vg(char *vg);
-static int slave_mode(char *ip);
-static int master_mode(void);
+
+#ifdef THIN_REFRESH_LVM
+static int refresh_lvm(const char * path);
+#endif /* THIN_REFRESH_LVM */
 
 bool master; /* no need to be mutex-ed: main writes, workers read */
-char master_ip[IP_MAX_LEN]; /*
-			      Used only in slave mode, ensure it is
-			      NULL terminated. This variable is used
-			      only in handle_request but, as long as
-			      this function is used in the network thread,
-			      it must be mutex protected
-			    */
 pthread_mutex_t ip_mtx = PTHREAD_MUTEX_INITIALIZER; /* see above */
-
 
 /* queue structures */
 SIMPLEQ_HEAD(sqhead, sq_entry);
 struct kpr_queue {
 	struct sqhead qhead;
 	pthread_mutex_t mtx;
-	pthread_cond_t cnd;
 	int efd; /* some queues are notified by eventfd */
-} *net_queue, *out_queue;
+} *out_queue;
 struct sq_entry {
 	struct payload data;
 	SIMPLEQ_ENTRY(sq_entry) entries;
 };
-
-static struct sq_entry * find_and_remove(struct sqhead *, pid_t);
-static struct kpr_queue * get_out_queue(struct payload *);
 
 /* thread structures */
 struct kpr_thread_info {
@@ -109,17 +94,57 @@ alloc_init_queue(void)
 		SIMPLEQ_INIT(&sqp->qhead);
 		if (pthread_mutex_init(&sqp->mtx, NULL) != 0)
 			goto out;
-		if (pthread_cond_init(&sqp->cnd, NULL) != 0)
-			goto out;
 		if ( (sqp->efd = eventfd(0, EFD_CLOEXEC|EFD_NONBLOCK|
 				    EFD_SEMAPHORE)) == -1 )
 			goto out;
 	}
 	return sqp;
 
-	out:
-		free(sqp);
-		return NULL;
+out:
+	free(sqp);
+	return NULL;
+}
+
+static inline struct sq_entry *
+get_req_from_queue(struct kpr_queue *q)
+{
+	struct sq_entry *req = NULL;
+	uint64_t ebuf;
+
+	pthread_mutex_lock(&q->mtx);
+	if (!SIMPLEQ_EMPTY(&q->qhead)) {
+		/* pop from requests queue */
+		req = SIMPLEQ_FIRST(&q->qhead);
+		SIMPLEQ_REMOVE_HEAD(&q->qhead, entries);
+
+	} else {
+		/* clear the fd so we can go back to poll */
+		eventfd_read(q->efd, &ebuf);
+	}
+	pthread_mutex_unlock(&q->mtx);
+	return req;
+}
+
+static inline void
+put_req_into_queue(struct kpr_queue *q, struct sq_entry *req )
+{
+	bool notify_consumer;
+
+	pthread_mutex_lock(&q->mtx);
+	if (SIMPLEQ_EMPTY(&q->qhead)) {
+		notify_consumer = true;
+	} else {
+		notify_consumer = false;
+	}
+	SIMPLEQ_INSERT_TAIL(&q->qhead, req, entries);
+	pthread_mutex_unlock(&q->mtx);
+
+	/* Notify after releasing the mutex, since the receiver 
+	 * is probably in a poll, so when he gets notified the mutex
+	 * is probably available */
+	if (notify_consumer == true) {
+		eventfd_write(q->efd, 1);
+	}
 }
 
 /**
@@ -146,9 +171,8 @@ main(int argc, char *argv[]) {
 	new_act.sa_handler = clean_handler;
 	sigemptyset(&new_act.sa_mask);
 	new_act.sa_flags = 0;
-
-	/* default is master mode */
-	master = true;
+	struct pollfd fds[2];
+	nfds_t maxfds = 2;
 
 	/* Init pool */
 	LIST_INIT(&vg_pool.head);
@@ -156,9 +180,6 @@ main(int argc, char *argv[]) {
 		return 1;	
 
 	/* Init default queues */
-	net_queue = alloc_init_queue();
-	if(!net_queue)
-		return 1; /*no free: return from main */
 	out_queue = alloc_init_queue();
 	if(!out_queue)
 		return 1; /*no free: return from main */
@@ -172,39 +193,22 @@ main(int argc, char *argv[]) {
 	if (do_daemon() == -1)
 		return 1; /* can do better */
 
-	/* prepare and spawn default thread: use vg_entry even if not VG */
-	struct vg_entry net_thr;
-	net_thr.thr.r_queue = net_queue;
-	net_thr.thr.hook = dispatch_hook;
-	if (master)
-		net_thr.thr.net_hook = master_net_hook;
-	else {
-		printf("Starting daemon in slave mode with master at: %s\n",
-		       master_ip);
-		net_thr.thr.net_hook = slave_net_hook;
-	}
-	net_thr.thr.net = true;
-	if (pthread_create(&net_thr.thr.thr_id, NULL, worker_thread_net,
-			   &net_thr.thr)) {
-		printf("failed worker thread creation\n");
-		return 1;
-	}
-
-
-	struct sockaddr_un addr;
-	int sfd, cfd;
-	ssize_t numRead;
+	struct sockaddr_un sv_addr, cl_addr;
+	int sfd;
+	socklen_t len;
+	ssize_t ret;
+	int poll_ret;
 	struct payload buf;
 
-	sfd = socket(AF_UNIX, SOCK_STREAM|SOCK_CLOEXEC, 0);
+	sfd = socket(AF_UNIX, SOCK_DGRAM|SOCK_CLOEXEC, 0);
 	if (sfd == -1)
 		return -errno;
 
-	memset(&addr, 0, sizeof(struct sockaddr_un));
-	addr.sun_family = AF_UNIX;
-	strncpy(addr.sun_path, THIN_CONTROL_SOCKET, sizeof(addr.sun_path) - 1);
+	memset(&sv_addr, 0, sizeof(struct sockaddr_un));
+	sv_addr.sun_family = AF_UNIX;
+	strncpy(sv_addr.sun_path, THIN_CONTROL_SOCKET, sizeof(sv_addr.sun_path) - 1);
 
-	if (bind(sfd, (struct sockaddr *) &addr, sizeof(struct sockaddr_un)) == -1) {
+	if (bind(sfd, (struct sockaddr *) &sv_addr, sizeof(struct sockaddr_un)) == -1) {
 		perror("bind failed");
 		return -errno;
 	}
@@ -214,40 +218,87 @@ main(int argc, char *argv[]) {
 		printf("Signal handler registration failed: expect manual"
 		       " clean-up\n");
 	}
+	
+	fds[0].fd = out_queue->efd;
+	fds[0].events = POLLIN;
+	fds[1].fd = sfd;
+	fds[1].events = POLLIN;
 
-	if (listen(sfd, BACKLOG) == -1)
-		return -errno;
-
-	for (;;) {
-
-		cfd = accept4(sfd, NULL, NULL, SOCK_CLOEXEC);
-		if (cfd == -1)
-			return -errno;
-
-		while ((numRead = read(cfd, &buf, sizeof(buf))) > 0) {
-			/* temporary: ensure ipaddr is NULL if coming from
-			   socket. Remove if network thread is sending packets
-			   through the socket
-			*/
-			buf.ipaddr[0] = '\0';
-			process_payload(cfd, &buf);
+	for(;;) {
+		poll_ret = poll(fds, maxfds, -1); /* wait for ever */
+		if ( poll_ret < 1 ) { /* 0 not expected */
+			fprintf(stderr, "poll returned %d, %s\n", 
+					poll_ret, strerror(errno));
+			continue;
 		}
 
-		if (numRead == -1)
-			return -errno;
+		if (fds[0].revents) {
+			/* process out_queue until empty*/
+			process_out_queue();
+		}
 
-		if (close(cfd) == -1)
-			return -errno;
+		if (fds[1].revents) {
+			/* read from the control socket */
+			ret = recvfrom(sfd, &buf, sizeof(buf), 0, 
+					&cl_addr, &len);
+			if (ret != sizeof(buf)) {
+				fprintf(stderr, "recvfrom returned %ld, %s\n",
+						(long)ret, strerror(errno));
+				continue;
+			}
+			/* Packet of expected len arrived, process it*/
+			process_payload(&buf);
+
+			/* Send the acknowledge packet */
+			ret = sendto(sfd, &buf, ret, 0, &cl_addr, len);
+			if(ret != sizeof(buf)) {
+
+				fprintf(stderr, "sendto returned %ld, %s\n",
+						(long)ret, strerror(errno));
+			}
+		}
+	}
+}
+
+static void
+process_out_queue(void)
+{
+	struct payload buf;
+	struct sq_entry *req;
+
+	for (;;) {
+		req = get_req_from_queue(out_queue);
+		if (req == NULL)
+			break;
+
+		/* Process the req */
+		buf = req->data;
+		switch (buf.cb_type) {
+		case PAYLOAD_CB_NONE:
+			/* Just free the req, no async response 
+			 * was needed */
+			fprintf(stderr, "Processed CB_NONE req\n");
+			break;
+		case PAYLOAD_CB_SOCK:
+			/* FIXME:
+			 * We do not expect somebody to use this 
+			 * for now */
+			fprintf(stderr, "CB_SOCK not implemented yet\n");
+			break;
+		default:
+			fprintf(stderr, "cb_type unknown\n");
+		}
+		free(req);
 	}
 }
 
 static inline int
-process_payload(int fd, struct payload * buf)
+process_payload(struct payload * buf)
 {
 	int err;
 
 	print_payload(buf);
-	err = req_reply(fd, buf);
+	err = req_reply(buf);
 	print_payload(buf);
 	printf("EOM\n\n");
 
@@ -255,32 +306,27 @@ process_payload(int fd, struct payload * buf)
 }
 
 static int
-req_reply(int fd, struct payload * buf)
+req_reply(struct payload * buf)
 {
-	switch (buf->reply) {
-	case PAYLOAD_REQUEST:
-		handle_request(buf);
-		break;
-	case PAYLOAD_QUERY:
-		handle_query(buf);
+	switch (buf->type) {
+	case PAYLOAD_RESIZE:
+		handle_resize(buf);
 		break;
 	case PAYLOAD_CLI:
 		handle_cli(buf);
 		break;
+	case PAYLOAD_STATUS:
+		handle_status(buf);
+		break;
 	default:
-		buf->reply = PAYLOAD_UNDEF;
+		buf->type = PAYLOAD_UNDEF;
 		print_payload(buf);
 	}
-
-	/* TBD: very basic write, need a while loop */
-	if (write(fd, buf, sizeof(*buf)) != sizeof(*buf))
-		return -errno;
-
 	return 0;
 }
 
 static int
-handle_request(struct payload * buf)
+handle_resize(struct payload * buf)
 {
 	struct sq_entry *req;
 	struct vg_entry *vgentry;
@@ -288,29 +334,20 @@ handle_request(struct payload * buf)
 	char vgname[PAYLOAD_MAX_PATH_LENGTH];
 	char lvname[PAYLOAD_MAX_PATH_LENGTH];
 
-	if( kpr_split_lvm_path(buf->path, vgname, lvname) )
+	if( kpr_split_lvm_path(buf->path, vgname, lvname) ) {
+		/* Fail request, malformed path */
+		buf->err_code = THIN_ERR_CODE_FAILURE;
 		return 1;
+	}
 
 	/* search we have a queue for it */
 	vgentry = vg_pool_find(vgname, true);
 	if (vgentry) /* we do */
 		in_queue = vgentry->r_queue; /* no lock (sure?) */
 	else {
-		/* In master mode this means rejected */
-		if (master) {
-			/* hack to reuse it in net_thread */
-			if (buf->ipaddr[0] != '\0')
-				return 1;
-			in_queue = out_queue;
-			buf->reply = PAYLOAD_REJECTED;
-		}
-		else {
-			/* write master address */
-			pthread_mutex_lock(&ip_mtx);
-			strncpy(buf->ipaddr, master_ip, IP_MAX_LEN);
-			pthread_mutex_unlock(&ip_mtx);
-			in_queue = net_queue;
-		}
+		/* Fail request, vg unknown */ 
+		buf->err_code = THIN_ERR_CODE_FAILURE;
+		return 1;
 	}
 
 	req = malloc(sizeof(struct sq_entry));
@@ -318,51 +355,19 @@ handle_request(struct payload * buf)
 		return 1;
 
 	req->data = *buf;
-	buf->reply = PAYLOAD_ACCEPTED;
-	pthread_mutex_lock(&in_queue->mtx);
-	
-	SIMPLEQ_INSERT_TAIL(&in_queue->qhead, req, entries);
+	buf->err_code = THIN_ERR_CODE_SUCCESS;
 
-	/* Temporary hack for the new event mechanism used by default queue */
-	if ( in_queue == net_queue )
-		eventfd_write(in_queue->efd, 1);
-	else if ( in_queue == out_queue )
-		/* no need to signal for out_queue */
-		;
-	else
-		pthread_cond_signal(&in_queue->cnd);
-	pthread_mutex_unlock(&in_queue->mtx);
-
+	put_req_into_queue(in_queue, req);
 	return 0;
 }
 
 static int
-handle_query(struct payload * buf)
+handle_status(struct payload * buf)
 {
-	struct sq_entry * req;
-
-	/* Check we have something ready */
-	pthread_mutex_lock(&out_queue->mtx);
-	if (SIMPLEQ_EMPTY(&out_queue->qhead)) {
-		pthread_mutex_unlock(&out_queue->mtx);
-		buf->reply = PAYLOAD_WAIT;
-		return 0;
-	}
-
-	/* check if we have a served request for this query */
-	req = find_and_remove(&out_queue->qhead, buf->id);
-	if (req) {
-		pthread_mutex_unlock(&out_queue->mtx);
-		buf->reply = req->data.reply;
-		free(req);
-	} else { /* wait */
-		pthread_mutex_unlock(&out_queue->mtx);
-		buf->reply = PAYLOAD_WAIT;		
-	}
-
+	/* This is just returning SUCCESS for now */
+	buf->err_code = THIN_ERR_CODE_SUCCESS;
 	return 0;
 }
-
 
 static int
 handle_cli(struct payload * buf)
@@ -389,14 +394,6 @@ handle_cli(struct payload * buf)
 			return 1;
 		ret = del_vg(cmd[1]);
 	}
-	else if (!strcmp("slave", cmd[0])) {
-		if(!cmd[1])
-			return 1;
-		ret = slave_mode(cmd[1]);
-	}
-	else if (!strcmp("master", cmd[0])) {
-		ret = master_mode();
-	}
 	else
 		ret = 1;
 
@@ -408,30 +405,16 @@ handle_cli(struct payload * buf)
 	return 0;
 }
 
-
-/* This function must be invoked with the corresponding mutex locked */
-static struct sq_entry *
-find_and_remove(struct sqhead * head, pid_t id)
-{
-	struct sq_entry * entry;
-	SIMPLEQ_FOREACH(entry, head, entries) {
-		if (entry->data.id == id) {
-			SIMPLEQ_REMOVE(head, entry, sq_entry, entries);
-			return entry;
-		}
-	}
-	/* No matches */
-	return NULL;
-}
-
-
 static void *
 worker_thread(void * ap)
 {
 	struct sq_entry * req;
 	struct payload * data;
 	struct kpr_thread_info *thr_arg;
-	struct kpr_queue *r_queue, *o_queue;
+	struct kpr_queue *r_queue;
+	struct pollfd fds[1];
+	int maxfds = 1;
+	int poll_ret;
 	int (*hook)(struct payload *);
 
 	/* We must guarantee this structure is properly polulated or
@@ -442,23 +425,34 @@ worker_thread(void * ap)
 	r_queue = thr_arg->r_queue;
 	hook = thr_arg->hook;
 
+	/* Register events for poll */
+	fds[0].fd = r_queue->efd;
+	fds[0].events = POLLIN;
+
 	for(;;) {
-		pthread_mutex_lock(&r_queue->mtx);
-
-		while (SIMPLEQ_EMPTY(&r_queue->qhead)) {
-			pthread_cond_wait(&r_queue->cnd, &r_queue->mtx);
+		req = get_req_from_queue(r_queue);
+		if (req == NULL) {
+			/* wait until there is something in the queue */
+			for (;;) {
+				/* wait for ever */
+				poll_ret = poll(fds, maxfds, -1);
+				if ( poll_ret < 1 ) { /* 0 not expected */
+					fprintf(stderr, "poll returned %d, %s\n", 
+						poll_ret, strerror(errno));
+					continue;
+				}
+				if (fds[0].revents)
+					break;
+			}
+			/* try again to get a req after the poll */
+			continue;
 		}
-
-		/* pop from requests queue and unlock */
-		req = SIMPLEQ_FIRST(&r_queue->qhead);
-		SIMPLEQ_REMOVE_HEAD(&r_queue->qhead, entries);
-		pthread_mutex_unlock(&r_queue->mtx);
 
 		data = &req->data;
 		/* For the time being we use PAYLOAD_UNDEF as a way
 		   to notify threads to exit
 		*/
-		if (data->reply == PAYLOAD_UNDEF) {
+		if (data->type == PAYLOAD_UNDEF) {
 			free(req);
 			fprintf(stderr, "Thread cancellation received\n");
 			return NULL;
@@ -468,173 +462,10 @@ worker_thread(void * ap)
 		hook(data);
 
 		/* push to out queue */
-		o_queue = get_out_queue(data);
-		pthread_mutex_lock(&o_queue->mtx);
-		SIMPLEQ_INSERT_TAIL(&o_queue->qhead, req, entries);
-		/* net queue needs to notify through eventfd */
-		if (o_queue == net_queue)
-			eventfd_write(o_queue->efd, 1);
-		pthread_mutex_unlock(&o_queue->mtx);
+		put_req_into_queue(out_queue, req);
 	}
 	return NULL;
 }
-
-
-static void *
-worker_thread_net(void * ap)
-{
-	struct sq_entry * req;
-	struct payload * data;
-	struct kpr_thread_info *thr_arg;
-	struct kpr_queue *r_queue;
-
-	struct pollfd fds[2];
-	int maxfds = 2;
-	int i;
-	int (*hook)(struct payload *);
-	int (*net_hook)(struct payload *);
-
-	int sfd, cfd;
-	struct payload buf;
-	static int len = sizeof(buf);
-	struct sockaddr_in c_addr;
-	socklen_t c_len;
-	char *c;
-
-	uint64_t ebuf;
-	int ret;
-
-	/* We must guarantee this structure is properly polulated or
-	   check it and fail in case it is not. In the latter case
-	   we need to check if the thread has returned.
-	*/
-	thr_arg = (struct kpr_thread_info *) ap;
-	r_queue = thr_arg->r_queue;
-	hook = thr_arg->hook;
-	net_hook = thr_arg->net_hook;
-
-	/*
-	 * Network specific block
-	 */
-	if (thr_arg->net) {
-		/* create tcp socket and listen */
-		sfd = kpr_tcp_create(PORT_NO);
-		if (sfd < 0)
-			return NULL;
-	} else {
-		sfd = -1;
-		maxfds = 1; /* no need to loop more */
-	}
-
-	/* register events for poll */
-	fds[0].fd = r_queue->efd;
-	fds[0].events = POLLIN;
-	fds[1].fd = sfd; /* if net=false it is ok to be negative */
-	fds[1].events = POLLIN;
-
-	for(;;) {
-		ret = poll(fds, maxfds, -1); /* wait for ever */
-		if ( ret < 1 ) { /* 0 not expected */
-			fprintf(stderr, "poll returned %d\n", ret);
-			continue;
-		}
-
-		for( i = 0; i < maxfds; ++i) {
-			if ( !fds[i].revents )
-				continue;
-			switch(i) {
-			case 0: /* queue request */
-				pthread_mutex_lock(&r_queue->mtx);
-				/* others using this queue..? */
-				if (SIMPLEQ_EMPTY(&r_queue->qhead)) {
-					pthread_mutex_unlock(&r_queue->mtx);
-					continue;
-				}
-
-				/* pop from requests queue and unlock */
-				req = SIMPLEQ_FIRST(&r_queue->qhead);
-				SIMPLEQ_REMOVE_HEAD(&r_queue->qhead, entries);
-				/* notify back we read one el of the queue */
-				eventfd_read(r_queue->efd, &ebuf);
-				pthread_mutex_unlock(&r_queue->mtx);
-
-				data = &req->data;
-				printf("Request dequeued in dispatch queue\n");
-				/* For the time being we use PAYLOAD_UNDEF as a way
-				   to notify threads to exit
-				*/
-				if (data->reply == PAYLOAD_UNDEF) {
-					fprintf(stderr, "Thread cancellation received\n");
-					free(req);
-					if(sfd >= 0)
-						close(sfd);
-					return NULL;
-				}
-
-				/* Execute worker-thread specific hook */
-				if ( hook(data) ) {
-					free(req);
-					continue;
-				}
-
-				/* push to served queue */
-				pthread_mutex_lock(&out_queue->mtx);
-				SIMPLEQ_INSERT_TAIL(&out_queue->qhead, req, entries);
-				pthread_mutex_unlock(&out_queue->mtx);
-				break;
-			case 1: /* TCP socket */
-				c_len = sizeof(c_addr);
-				cfd = accept4(sfd, &c_addr, &c_len, SOCK_CLOEXEC);
-				if (cfd == -1) {
-					fprintf(stderr, "Accept error\n");
-					continue;
-				}
-				if ( read(cfd, &buf, len) != len ) {
-					fprintf(stderr, "TCP read error\n");
-					continue;
-				}
-
-				req = malloc(sizeof(struct sq_entry));
-				if(!req) {
-					fprintf(stderr, "Cannot allocate"
-						"for TCP packet\n");
-					continue;
-				}
-
-				req->data = buf;
-				buf.reply = PAYLOAD_ACCEPTED;
-
-				printf("Payload received on netsocket accepted\n");
-
-				/* Always acknowledge we got it */
-				/* TBD: very basic write, need a while loop */
-				if (write(cfd, &buf, len) != len)
-					fprintf(stderr, "TCP not "
-						"acknowledged\n");
-
-				/* store sender ipaddr */
-				c = inet_ntoa(c_addr.sin_addr);
-				strncpy(req->data.ipaddr, c, IP_MAX_LEN);
-
-				/* process payload */
-				if ( net_hook(&req->data) ) {
-					free(req);
-					continue;
-				}
-
-				/* push to served queue */
-				pthread_mutex_lock(&out_queue->mtx);
-				SIMPLEQ_INSERT_TAIL(&out_queue->qhead, req, entries);
-				pthread_mutex_unlock(&out_queue->mtx);
-				break;
-			default: /* it should not happen */
-				fprintf(stderr, "what?!?!\n");
-			}
-		}
-	}
-	return NULL;
-}
-
 
 static int
 slave_worker_hook(struct payload *data)
@@ -642,113 +473,23 @@ slave_worker_hook(struct payload *data)
 	int ret;
 
 	/* Fulfil request */
-	ret = increase_size(data->curr, data->path);
+	ret = increase_size(data->req_size, data->path);
 	if (ret == 0 || ret == 3) /* 3 means big enough */
-		data->reply = PAYLOAD_DONE;
+		data->err_code = THIN_ERR_CODE_SUCCESS;
 	else
-		data->reply = PAYLOAD_REJECTED;
-	printf("worker_thread: completed %u %s (%d)\n\n",
-	       (unsigned)data->id, data->path, ret);
-
+		data->err_code = THIN_ERR_CODE_FAILURE;
+	printf("worker_thread: completed %s (%d)\n\n",
+	       data->path, ret);
+	/* FIXME:
+	 * Probably we do not need to call refresh_lvm, leaving the
+	 * code here commented so we do not forget that before it was
+	 * called from the slave as a result of a resize from the 
+	 * done from master */
+#ifdef THIN_REFRESH_LVM
+	refresh_lvm(data->path);
+#endif /* THIN_REFRESH_LVM */
 	return 0;
 }
-
-
-static int
-reject_hook(struct payload *data)
-{
-	/* Reject request */
-	data->reply = PAYLOAD_REJECTED;
-	printf("default_thread: No registered VG!\n\n");
-
-	return 0;
-}
-
-/**
- * Send packet to specified destination. If send is successful and
- * packet is accepted it returns 1 because there is nothing more
- * to be done. Reply will come on the TCP socket.
- * In master mode packets not sent are discarded, while in slave
- * mode they are queued as rejected.
- *
- * @param[in,out] data to be processed
- * @return 0 if packet is not sent and marked rejected.
- *   1 if sent or to be discarded anyway
- */
-static int
-dispatch_hook(struct payload *data)
-{
-	/* Send */
-	if ( !kpr_tcp_conn_tx_rx(data->ipaddr, PORT_NO, data ) ) {
-		fprintf(stderr, "Dispatch failed\n");
-		goto fail;
-	}
-	/* Check reply */
-	if ( data->reply != PAYLOAD_ACCEPTED ) {
-		fprintf(stderr, "Payload rejected\n");
-		goto fail;
-	}
-	else {
-		printf("Payload dispatched\n");
-	}
-
-	return 1;
-fail:
-	return master ? 1 : reject_hook(data);
-}
-
-
-/**
- * Packet can be either DONE or REJECTED, in any other case packet
- * is discarded.
- *
- * @param[in,out] data to be processed
- * @return 0 if packet can be pushed in the "served" queue, 1 otherwise
- */
-static int
-slave_net_hook(struct payload *data)
-{
-	switch(data->reply) {
-	case PAYLOAD_REJECTED:
-		break;
-	case PAYLOAD_DONE:
-		if ( refresh_lvm(data->path) ) {
-			printf("*** Refresh failed ***\n");
-		}
-		break;
-	default:
-		fprintf(stderr, "Spurious payload in slave_net_hook\n");
-		return 1;
-	}
-
-	return 0;
-}
-
-
-/**
- * Packet can be only a REQUEST, in any other case packet
- * is discarded. If it is a request, we always return 1 because
- * it is either pushed in the proper queue here or discarded.
- *
- * @param[in,out] data to be processed
- * @return 1
- */
-static int
-master_net_hook(struct payload *data)
-{
-	/* Check reply */
-	if ( data->reply != PAYLOAD_REQUEST ) {
-		fprintf(stderr, "Spurious payload in master_net_hook\n");
-		print_payload(data);
-		return 1;
-	}
-
-	/* Either way we need to return 1 to avoid further push in queue */
-	if ( handle_request(data) )
-		fprintf(stderr, "Packet discarded\n");
-	return 1;
-}
-
 
 /**
  * @param size: current size to increase in bytes
@@ -762,7 +503,6 @@ increase_size(off64_t size, const char * path)
 	pid_t pid;
 	int status, num_read;
 	char ssize[NCHARS]; /* enough for G bytes */
-	size += 104857600; /* add 100 MB */
 
 	/* prepare size for command line */
 	num_read = snprintf(ssize, NCHARS, "-L""%"PRIu64"b", size);
@@ -787,7 +527,7 @@ increase_size(off64_t size, const char * path)
 	}
 }
 
-
+#ifdef THIN_REFRESH_LVM
 /**
  * @param path: device full path
  * @return command return code if command returned properly, -1 otherwise
@@ -815,7 +555,7 @@ refresh_lvm(const char * path)
 		return status;
 	}
 }
-
+#endif /* THIN_REFRESH_LVM */
 
 static void
 parse_cmdline(int argc, char ** argv)
@@ -829,11 +569,6 @@ parse_cmdline(int argc, char ** argv)
 			break;
 		case 'f': /* if daemonized leave fd open */
 			fd_open = 1;
-			break;
-		case 's':  /* start daemon in slave mode */
-			printf("Master Ip address passed as: %s\n", optarg);
-			strncpy(master_ip, optarg, IP_MAX_LEN);
-			master = false;
 			break;
 		default:
 			break;
@@ -961,12 +696,9 @@ del_vg(char *vg)
 		return 1;
 	}
 	init_payload(&req->data);
-	req->data.reply = PAYLOAD_UNDEF;
+	req->data.type = PAYLOAD_UNDEF;
 	/* Insert in queue */
-	pthread_mutex_lock(&p_vg->r_queue->mtx);
-	SIMPLEQ_INSERT_TAIL(&p_vg->r_queue->qhead, req, entries);
-	pthread_cond_signal(&p_vg->r_queue->cnd); /* Wake thread if needed */
-	pthread_mutex_unlock(&p_vg->r_queue->mtx);
+	put_req_into_queue(p_vg->r_queue, req);
 
 	/* Wait for thread to complete */
 	ret = pthread_join(p_vg->thr.thr_id, NULL);
@@ -984,39 +716,6 @@ del_vg(char *vg)
 
 	return 0;
 }
-
-
-int
-slave_mode(char *ipaddr)
-{
-	fprintf(stderr, "CLI slave %s received\n", ipaddr);
-	if (master) {
-		fprintf(stderr, "Fake: switching master to slave\n");
-	} else {
-		fprintf(stderr, "Already in slave mode: checking ip addr\n");
-		pthread_mutex_lock(&ip_mtx); /* not really needed.. */
-		if ( !strcmp(master_ip, ipaddr) ) {
-			fprintf(stderr, "nothing to be done\n");
-			goto done;
-		}
-		strncpy(master_ip, ipaddr, IP_MAX_LEN);
-		pthread_mutex_unlock(&ip_mtx);
-	}
-
-	return 0;
-done:
-	pthread_mutex_unlock(&ip_mtx);
-	return 0;
-}
-
-
-int
-master_mode(void)
-{
-	fprintf(stderr, "CLI master received\n");
-	return 0;
-}
-
 
 /**
  * This function searches the vg_pool for an entry with a given VG name.
@@ -1063,20 +762,29 @@ vg_pool_find_and_remove(char *vg_name)
 
 	pthread_mutex_lock(&vg_pool.mtx);
 	entry = vg_pool_find(vg_name, false);
-	if(!entry)
+	if(!entry) {
+		pthread_mutex_unlock(&vg_pool.mtx);
 		return NULL;
+	}
 	LIST_REMOVE(entry, entries);
 	pthread_mutex_unlock(&vg_pool.mtx);
 
 	return entry;
 }
 
-
-static struct kpr_queue *
-get_out_queue(struct payload *data)
+#if 0
+/* Leaving this here in case will be usefull later */
+static struct sq_entry *
+find_and_remove(struct sqhead * head, pid_t id) 
 {
-	if ( master && (data->ipaddr[0] != '\0') )
-		return net_queue;
-
-	return out_queue;
+	struct sq_entry * entry;
+	SIMPLEQ_FOREACH(entry, head, entries) {
+		if (entry->data.id == id) {
+			SIMPLEQ_REMOVE(head, entry, sq_entry, entries);
+			return entry;
+		}
+	}
+	/* No matches */
+	return NULL;
 }
+#endif

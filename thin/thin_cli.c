@@ -8,6 +8,7 @@ static void usage(char *);
 int
 main(int argc, char *argv[]) {
 	struct payload message;
+	struct thin_conn_handle *ch;
 	int arg;
 	int opt_idx = 0, flag = 1;
 	int ret;
@@ -15,10 +16,11 @@ main(int argc, char *argv[]) {
 	const struct option longopts[] = {
 		{ "add", required_argument, NULL, 0 },
 		{ "del", required_argument, NULL, 0 },
-		{ "master", no_argument, NULL, 0 },
-		{ "slave", required_argument, NULL, 's' },
 		{ 0, 0, 0, 0 }
 	};
+
+	init_payload(&message);
+	message.type = PAYLOAD_CLI;
 
 	/* We expect at least one valid option and, if more, the others
 	   are discarded
@@ -60,14 +62,17 @@ main(int argc, char *argv[]) {
 		return 1;
 	}
 
-	init_payload(&message);
-	message.reply = PAYLOAD_CLI;
-
-	ret = thin_sock_comm(&message);
+	ch = thin_connection_create();
+	if (ch == NULL) {
+		fprintf(stderr, "connection initialization failed");
+		return 1;
+	}	
+	ret = thin_sync_send_and_receive(ch, &message);
 	if(ret) {
-	  fprintf(stderr, "socket error (%d)\n", ret);
-	  return 1;
+		fprintf(stderr, "socket error (%d)\n", ret);
+		return 1;
 	}
+	thin_connection_destroy(ch);
 	printf("message: %s\n", message.path);
 
 	return 0;
@@ -79,6 +84,4 @@ usage(char *prog_name)
 	printf("usage: %s -h\n", prog_name);
 	printf("usage: %s --add <volume group name>\n", prog_name);
 	printf("usage: %s --del <volume group name>\n", prog_name);
-	printf("usage: %s --master\n", prog_name);
-	printf("usage: %s --slave <master ip addr>\n", prog_name);
 }

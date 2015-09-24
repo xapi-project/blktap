@@ -244,6 +244,7 @@ struct vhd_state {
 	/* thin provisioning data */
 	off64_t                   eof_bytes;
 	uint64_t                  req_bytes;
+	struct thin_conn_handle   *ch;
 
 	/* for redundant bitmap writes */
 	int                       padbm_size;
@@ -674,7 +675,11 @@ vhd_thin_prepare(struct vhd_state *s)
 	if ((s->eof_bytes = lseek64(s->vhd.fd, 0, SEEK_END)) == -1)
 		return -errno;
 	s->req_bytes = 0;
-
+	s->ch = thin_connection_create();
+	if (s->ch == NULL) {
+		EPRINTF("thin connection creation has failed");
+		return -1;
+	}
 	return 0;
 }
 
@@ -869,6 +874,14 @@ _vhd_close(td_driver_t *driver)
 		err = vhd_write_batmap(&s->vhd, &s->bat.batmap);
 		if (err)
 			EPRINTF("writing %s batmap: %d\n", s->vhd.file, err);
+	}
+
+	if (test_vhd_flag(s->flags, VHD_FLAG_OPEN_THIN)) {
+		if (s->ch) {
+			thin_connection_destroy(s->ch);
+			/* Let's set ch to NULL just in case */
+			s->ch = NULL;
+		}
 	}
 
  free:
@@ -1412,9 +1425,9 @@ static inline void
 check_resize_request_progress(struct vhd_state *s, struct payload *message,
 		              int64_t available_bytes)
 {
+#ifdef THIN_OLD_PROTOCOL
 	int err;
 	uint64_t phy_bytes;
-
 	message->reply = PAYLOAD_QUERY;
 	err = thin_sock_comm(message);
 	if (err) {
@@ -1438,23 +1451,25 @@ check_resize_request_progress(struct vhd_state *s, struct payload *message,
 			s->req_bytes = 0;
 		}
 	}
+#else
+	return;
+#endif /* THIN_OLD_PROTOCOL */
 }
 
 static inline void
 send_resize_request(struct vhd_state *s, struct payload *message)
 {
 	int err;
-
-	message->reply = PAYLOAD_REQUEST;
-	err = thin_sock_comm(message);
+	message->type = PAYLOAD_RESIZE;
+	err = thin_sync_send_and_receive(s->ch, message);
 	if (err) {
 		DBG(TLOG_WARN, "socket returned: %d\n", err);
-	} else if (message->reply == PAYLOAD_ACCEPTED) {
+	} else if (message->err_code == THIN_ERR_CODE_SUCCESS) {
 		/* record that req_bytes request has been submitted*/
-		s->req_bytes = message->req;
+		s->req_bytes = message->req_size;
 	} else {
 		/* we will try to send the request again next time */
-		DBG(TLOG_WARN, "failed reply: %d\n", message->reply);
+		DBG(TLOG_WARN, "failed reply: %d\n", message->err_code);
 	}
 }
 
@@ -1482,9 +1497,7 @@ thin_provisioning_checks(struct vhd_state *s, uint64_t needed_sectors)
 		/* prepare common part of the message */
 		init_payload(&message);
 		strncpy(message.path, s->vhd.file, PAYLOAD_MAX_PATH_LENGTH);
-		message.curr = s->eof_bytes;
-		message.req = s->eof_bytes + THIN_RESIZE_INCREMENT;
-		message.vhd_size = vhd_sectors_to_bytes(s->driver->info.size);
+		message.req_size = s->eof_bytes + THIN_RESIZE_INCREMENT;
 
 		/* s->req_bytes is indicating our state */
 		if (s->req_bytes != 0) {

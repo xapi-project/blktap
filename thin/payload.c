@@ -1,26 +1,20 @@
 #include <stdio.h>
+#include <string.h>
 #include "payload.h"
 
 int init_payload(struct payload *pload)
 {
-	pload->id = -1;
-	pload->curr = 0;
-	pload->req = 0;
-	pload->vhd_size = 0;
-	pload->reply = PAYLOAD_UNDEF;
-	pload->ipaddr[0] = '\0';
+	memset(pload, 0, sizeof(struct payload));
 	return 0;
 }
 
 void print_payload(struct payload *pload)
 {
 	printf("payload data:\n");
-	printf("id = %d\n", pload->id);
+	printf("type = %d\n", pload->type);
 	printf("path = %s\n", pload->path);
-	printf("current size = %"PRIu64"\n", pload->curr);
-	printf("requested size = %"PRIu64"\n", pload->req);
-	printf("virtual size = %"PRIu64"\n", pload->vhd_size);
-	printf("request type = %d\n", pload->reply);
-	printf("dest ipaddr = %s\n", pload->ipaddr);
+	printf("requested size = %"PRIu64"\n", pload->req_size);
+	printf("cb_type = %d\n", pload->cb_type);
+	printf("err_code = %d\n", pload->err_code);
 	return;
 }
