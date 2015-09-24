@@ -33,6 +33,7 @@
 #include "td-stats.h"
 #include "tapdisk-vbd.h"
 #include "tapdisk-utils.h"
+#include "tapdisk-metrics.h"
 
 struct td_xenio_ctx;
 struct td_vbd_handle;
@@ -124,6 +125,8 @@ struct td_xenblkif {
      * stats
      */
     struct td_xenblkif_stats stats;
+
+    stats_t vbd_stats;
 
     struct {
         /**

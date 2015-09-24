@@ -146,6 +146,7 @@ struct td_vbd_handle {
 	td_disk_info_t              disk_info;
 
     struct td_vbd_rrd           rrd;
+    stats_t vdi_stats;
 };
 
 #define tapdisk_vbd_for_each_request(vreq, tmp, list)	                \
