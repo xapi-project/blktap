@@ -97,18 +97,49 @@ lvm_parse_pv(struct vg *vg, const char *name, int pvs, uint64_t start)
 }
 
 static int
+lvm_create_cmd(char *out, const char *command)
+{
+	char *sr_alloc;
+	int   thin_flag;
+
+	if (!(sr_alloc = getenv("SR_ALLOC"))) {                                     
+		return -EINVAL;                                                         
+	}
+
+	if (!strcmp(sr_alloc, "thin")) {
+		thin_flag = 1;
+	} else if (!strcmp(sr_alloc, "thick")) {
+		thin_flag = 0;
+	} else {
+		return -EINVAL;
+	}
+
+	strcpy(out, thin_flag ? "/bin/xenvm " : "");
+	strcat(out, command);
+	strcat(out, " 2> /dev/null");
+
+	return 0;
+}
+
+static int
 lvm_open_vg(const char *vgname, struct vg *vg)
 {
 	FILE *scan;
 	int i, err, pvs, lvs;
 	char *cmd, pvname[256];
 	uint64_t size, pv_start;
+	char buf[MAX_NAME_SIZE + 256];
+
+	if ((err = lvm_create_cmd(buf, "vgs %s --noheadings --nosuffix --units=b "
+				  "--options=vg_name,vg_extent_size,lv_count,pv_count,"
+				  "pv_name,pe_start"))) {
+		return err;
+	}
 
 	memset(vg, 0, sizeof(*vg));
 
-	err = asprintf(&cmd, "/bin/xenvm vgs %s --noheadings --nosuffix --units=b "
-		       "--options=vg_name,vg_extent_size,lv_count,pv_count,"
-		       "pv_name,pe_start 2> /dev/null", vgname);
+	err = asprintf(&cmd, buf, vgname);
+
 	if (err == -1)
 		return -ENOMEM;
 
@@ -210,10 +241,16 @@ lvm_scan_lvs(struct vg *vg)
 	char *cmd;
 	FILE *scan;
 	int i, err;
+	char buf[MAX_NAME_SIZE + 256];
 
-	err = asprintf(&cmd, "/bin/xenvm lvs %s --noheadings --nosuffix --units=b "
-		       "--options=lv_name,lv_size,segtype,seg_count,seg_start,"
-		       "seg_size,devices 2> /dev/null", vg->name);
+	if ((err = lvm_create_cmd(buf, "lvs %s --noheadings --nosuffix --units=b "
+				  "--options=lv_name,lv_size,segtype,seg_count,seg_start,"
+				  "seg_size,devices"))) {
+		return err;
+	}
+
+	err = asprintf(&cmd, buf, vg->name);
+
 	if (err == -1)
 		return -ENOMEM;
 
