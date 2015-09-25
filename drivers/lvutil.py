@@ -81,21 +81,56 @@ class LVInfo:
                 (self.name, self.size, self.active, self.open, self.hidden, \
                 self.readonly)
 
-def setvginfo(vg,devices):
-    cmd = ["/sbin/xenvm", "set-vg-info", "--pvpath", devices[0], "--uri", "http://127.0.0.1:4000", vg]
+def setvginfo(vg,devices,uri, local_allocator=None):
+    cmd = ["/sbin/xenvm", "set-vg-info", "--pvpath", devices[0], "--uri", uri, vg]
+    if local_allocator is not None:
+      cmd = cmd + [ "--local-allocator-path", local_allocator ]
     util.pread2(cmd)    
 
+config_dir = "/etc/xenvm.d/"
+
 def runxenvmd(vg,devices):
-    dir = "/etc/xenvm.d/"
-    configfile = "%s/%s.xenvmd.config" % (dir, vg)
+    global config_dir
+    configfile = "%s/%s.xenvmd.config" % (config_dir, vg)
     config = "((listenPort 4000) (host_allocation_quantum 128) (host_low_water_mark 8) (vg %s) (devices (%s)) )\n" % (vg," ".join(devices))
-    if not os.path.exists(dir):
+    if not os.path.exists(config_dir):
       util.makedirs("/etc/xenvm.d")
     with open(configfile,'w') as f:
         f.write(config)
     cmd = ["/sbin/xenvmd", "--daemon", "--config", configfile]
     util.pread2(cmd)
-    setvginfo(vg,devices)
+
+def runxenvm_local_allocator(vg, devices, uri):
+    global config_dir
+    configfile = "%s/%s.xenvm-local-allocator.config" % (config_dir, vg)
+    uuid = util.get_this_host ()
+    socket_dir = "/var/run/sm/allocator"
+    journal_dir = "/tmp/sm/allocator-journal"
+    for d in [ socket_dir, journal_dir ]:
+        if not os.path.exists(d):
+            util.makedirs(d)
+    local_allocator = "%s/%s" % (socket_dir, vg)
+    config = """
+(
+ (socket %s)
+ (allocation_quantum 16)
+ (localJournal %s/%s)
+ (devices (%s))
+ (toLVM %s-toLVM)
+ (fromLVM %s-fromLVM)
+)
+""" % (local_allocator, journal_dir, vg, "".join(devices), uuid, uuid)
+    if not os.path.exists(config_dir):
+      util.makedirs("/etc/xenvm.d")
+    with open(configfile, 'w') as f:
+        f.write(config)
+    cmd = [ "/sbin/xenvm", "host-create", uuid ]
+    util.pread2(cmd)
+    cmd = [ "/sbin/xenvm-local-allocator", "--daemon", "--config", configfile ]
+    util.pread2(cmd) 
+    cmd = [ "/sbin/xenvm", "host-connect", uuid ]
+    util.pread2(cmd)
+    setvginfo(vg,devices,uri,local_allocator)
 
 def _checkVG(vgname):
     try:
