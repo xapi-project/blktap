@@ -34,7 +34,6 @@ def attach(session, args):
         os.environ['LVM_SYSTEM_DIR'] = lvutil.MASTER_LVM_CONF
     srUuid = args["srUuid"]
     vdiUuid = args["vdiUuid"]
-    os.environ['SR_ALLOC'] = args['sr_alloc']
     vgName = "%s%s" % (lvhdutil.VG_PREFIX, srUuid)
     lvmCache = LVMCache(vgName)
     journaler = Journaler(lvmCache)
@@ -50,7 +49,6 @@ def detach(session, args):
         os.environ['LVM_SYSTEM_DIR'] = lvutil.MASTER_LVM_CONF
     srUuid = args["srUuid"]
     vdiUuid = args["vdiUuid"]
-    os.environ['SR_ALLOC'] = args['sr_alloc']
     vgName = "%s%s" % (lvhdutil.VG_PREFIX, srUuid)
     lvmCache = LVMCache(vgName)
     try:

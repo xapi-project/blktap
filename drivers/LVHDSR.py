@@ -2134,8 +2134,7 @@ class LVHDVDI(VDI.VDI):
             master = self.session.xenapi.pool.get_master(pools[0])
             rv = self.session.xenapi.host.call_plugin(
                     master, self.sr.THIN_PLUGIN, fn,
-                    {"srUuid": self.sr.uuid, "vdiUuid": self.uuid,
-                     'sr_alloc': os.environ['SR_ALLOC']})
+                    {"srUuid": self.sr.uuid, "vdiUuid": self.uuid})
             util.SMlog("call-plugin returned: %s" % rv)
             if not rv:
                 raise Exception('plugin %s failed' % self.sr.THIN_PLUGIN)
