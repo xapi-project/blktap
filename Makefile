@@ -184,7 +184,6 @@ install: precheck
 	$(MAKE) -C mpathroot install DESTDIR=$(SM_STAGING)
 	ln -sf $(SM_DEST)blktap2.py $(SM_STAGING)$(BIN_DEST)/blktap2
 	ln -sf $(SM_DEST)lcache.py $(SM_STAGING)$(BIN_DEST)tapdisk-cache-stats
-	ln -sf /dev/null $(SM_STAGING)$(UDEV_RULES_DIR)/62-multipath.rules
 	ln -sf /dev/null $(SM_STAGING)$(UDEV_RULES_DIR)/69-dm-lvm-metad.rules
 	install -m 755 scripts/xs-mpath-scsidev.sh $(SM_STAGING)$(UDEV_SCRIPTS_DIR)
 	install -m 755 scripts/xe-get-arrayid-lunnum $(SM_STAGING)$(BIN_DEST)

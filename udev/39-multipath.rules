@@ -1,4 +1,0 @@
-SUBSYSTEM!="block", GOTO="end_mpath_link"
-KERNEL!="dm-*", GOTO="end_mpath_link"
-ENV{DM_UUID}=="mpath-?*|part[0-9]*-mpath-?*", OPTIONS+="link_priority=10"
-LABEL="end_mpath_link"
