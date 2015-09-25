@@ -1379,8 +1379,8 @@ class LVHDVDI(VDI.VDI):
             elif self.sr.provision == "thick":
                 lvSize = lvhdutil.calcSizeVHDLV(long(size))
             elif self.sr.provision == "dynamic":
-                dynamic_sz = max(lvhdutil.calcSizeVHDLV(long(size)) * \
-                                        self.DYNAMIC_PROVISIONING_FACTOR,  
+                dynamic_sz = max(long(lvhdutil.calcSizeVHDLV(long(size)) *
+                                      self.DYNAMIC_PROVISIONING_FACTOR),
                                  self.DYNAMIC_PROVISIONING_MIN)
                 lvSize = util.roundup(lvutil.LVM_SIZE_INCREMENT, dynamic_sz)
 
