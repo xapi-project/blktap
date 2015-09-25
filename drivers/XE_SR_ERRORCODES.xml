@@ -805,9 +805,15 @@
         </code>
 
         <code>
+                <name>VGReg</name>
+                <description>VG Registration failure</description>
+                <value>455</value>
+        </code>
+
+        <code>
             <name>TapdiskDriveEmpty</name>
             <description>Unable to attach empty optical drive to VM.</description>
-            <value>455</value>
+            <value>456</value>
         </code>
 
 </SM-errorcodes>

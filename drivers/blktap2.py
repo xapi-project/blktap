@@ -1531,10 +1531,10 @@ class VDI(object):
         if hasattr(self.target.vdi.sr, "provision") and \
                 self.target.vdi.sr.provision == "dynamic":
             # Flag error if daemon not running, and provisioning set to dynamic
-            if not util.is_daemon_running(lvutil.DYNAMIC_LV_DAEMON):
-                raise util.SMException("Error: Provisioning for %s set to dynamic, " \
-                                        "but %s not running" % \
-                                        (sr_uuid, lvutil.DYNAMIC_LV_DAEMON))
+            if not util.is_daemon_running(lvutil.DYNAMIC_DAEMON):
+                raise util.SMException("Error: Provisioning for %s set to dynamic, " 
+                                           "but %s not running" % \
+                                       (sr_uuid, lvutil.DYNAMIC_DAEMON))
             options["dynamic"] = True
 
         timeout = util.get_nfs_timeout(self.target.vdi.session, sr_uuid)

@@ -608,6 +608,20 @@ class LVHDSR(SR.SR):
         # Set the block scheduler
         for dev in self.root.split(','): self.block_setscheduler(dev)
 
+        if self.provision == "dynamic":
+            # Register VG name with thin-tapdisk daemon if the VG is local or 
+            # if the host if Master. 
+            srRef = self.session.xenapi.SR.get_by_uuid(uuid)
+            srRecord = self.session.xenapi.SR.get_record(srRef)
+            # Pass the info on new VG to thin provision daemon
+            if self.isMaster or srRecord["type"] == "lvm":
+                try:
+                    cmd = [lvutil.DYNAMIC_DAEMON_CLI, "--add", lvhdutil.VG_PREFIX + uuid]
+                    util.pread2(cmd)
+                except util.CommandException, inst:
+                    raise xs_errors.XenError('VGReg', \
+                            opterr='failed for %s with %d' % (uuid, inst.code))
+
     def detach(self, uuid):
         util.SMlog("LVHDSR.detach for %s" % self.uuid)
         cleanup.abort(self.uuid)
@@ -662,6 +676,20 @@ class LVHDSR(SR.SR):
         # However, we should still delete lock files on slaves as it is the 
         # only place to do so.
         self._cleanup(self.isMaster)
+
+        # De-Register VG name with thin-tapdisk daemon if the VG is local or 
+        # if the host if Master. Error could be ignored at this point
+        if self.provision == "dynamic":
+            srRef = self.session.xenapi.SR.get_by_uuid(uuid)
+            srRecord = self.session.xenapi.SR.get_record(srRef)
+            # Pass the info on new VG to thin provision daemon
+            if self.isMaster or srRecord["type"] == "lvm":
+                try:
+                    cmd = [lvutil.DYNAMIC_DAEMON_CLI, "--del", lvhdutil.VG_PREFIX + uuid]
+                    util.pread2(cmd)
+                except util.CommandException, inst:
+                    util.SMlog("VG de-registration failed for %s with %d" % \
+                               (uuid, inst.code))
 
     def forget_vdi(self, uuid):
         if not self.legacyMode:
@@ -1429,7 +1457,7 @@ class LVHDVDI(VDI.VDI):
             needInflate = False
         else:
             self._loadThis()
-            # Todo, skip the check if dynamic
+            # TODO, skip the check if dynamic
             if self.utilisation >= lvhdutil.calcSizeVHDLV(self.size) or self.sr.provision == "dynamic":
                 needInflate = False
 

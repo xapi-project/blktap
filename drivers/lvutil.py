@@ -62,8 +62,8 @@ LVM_FAIL_RETRIES = 10
 MASTER_LVM_CONF = '/etc/lvm/master'
 DEF_LVM_CONF = '/etc/lvm'
 
-DYNAMIC_LV_DAEMON = "/usr/sbin/thin-tapdisk"
-DYNAMIC_LV_CLI = "/usr/sbin/thin-cli"
+DYNAMIC_DAEMON = "/usr/sbin/thin-tapdisk"
+DYNAMIC_DAEMON_CLI = "/usr/sbin/thin-cli"
 
 class LVInfo:
     name = ""
