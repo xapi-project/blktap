@@ -856,6 +856,11 @@ class LVHDSR(SR.SR):
         self._db_update()
 
     def probe(self):
+        if self.srcmd.params['sr_sm_config'].has_key('allocation') and \
+           self.srcmd.params['sr_sm_config']['allocation'] == 'dynamic':
+            os.environ['SR_ALLOC']='thin'
+            util.SMlog('SR_ALLOC = thin')
+
         return lvutil.srlist_toxml(
                 lvutil.scan_srlist(lvhdutil.VG_PREFIX, self.root),
                 lvhdutil.VG_PREFIX,

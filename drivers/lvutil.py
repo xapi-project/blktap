@@ -346,7 +346,7 @@ def scan_srlist(prefix, root):
     VGs = {}
     for dev in root.split(','):
         try:
-            sr_uuid = _get_sr_uuid(dev, [prefix]).strip('\n')
+            sr_uuid = _get_sr_uuid(dev, [prefix]).strip(' \n')
             if len(sr_uuid):
                 if VGs.has_key(sr_uuid):
                     VGs[sr_uuid] += ",%s" % dev
@@ -355,6 +355,11 @@ def scan_srlist(prefix, root):
         except Exception, e:
             util.logException("exception (ignored): %s" % e)
             continue
+    if os.environ['SR_ALLOC']=='thin':
+        for vg in VGs.keys():
+            if not os.path.isfile('/etc/xenvm.d/%s' % (VG_PREFIX+vg)):
+                util.SMlog('vg=%s VGs[vg]=%s' % (vg,VGs[vg]))
+	        setvginfo(vg,VG_PREFIX+vg,VGs[vg].split(','),"file://local/dev/null", local_allocator=None)
     return VGs
 
 # Converts an SR list to an XML document with the following structure:
