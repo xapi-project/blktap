@@ -1,3 +1,7 @@
+Version 1.12.0 - 25th Sep 2015
+===============================
+Enabled xlvhd (SAN thin-provisioning) support
+
 Version 1.11.3 - 25th Sep 2015
 ===============================
   CA-174715: Update CIFS SecurityFlags for new kernels
