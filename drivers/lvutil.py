@@ -141,7 +141,7 @@ def sockpath_of_sr_uuid(uuid):
 
 def setvginfo(uuid,vg,devices,uri, local_allocator=None):
     sockpath = sockpath_of_sr_uuid(uuid)
-    cmd = ["/bin/xenvm", "set-vg-info", "--pvpath", devices[0], "--uri", uri, vg]
+    cmd = ["/bin/xenvm", "set-vg-info", "--pvpath", devices[0], "--uri", uri, "-S", "/var/lib/xcp/xapi", vg]
     if local_allocator is not None:
       cmd = cmd + [ "--local-allocator-path", local_allocator ]
     util.pread2(cmd)    

@@ -583,11 +583,9 @@ class LVHDSR(SR.SR):
         sr_alloc = os.getenv('SR_ALLOC')
         if sr_alloc == "thin":
             if self.isMaster:
-                uri = "http://127.0.0.1:4000"
                 lvutil.runxenvmd(uuid, vg, devices)
-            else:
-                pool_master_ip = util.get_pool_master_info("address")
-                uri = "http://%s:4000" % pool_master_ip
+
+            uri = "file://local/services/xenvmd/%s" % uuid
             lvutil.setvginfo(uuid, vg, devices, uri)
             lvutil.runxenvm_local_allocator(uuid, vg, devices, uri)
 
