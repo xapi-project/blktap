@@ -1713,3 +1713,15 @@ def is_daemon_running(path):
     (rc,stdout,stderr) = doexec(cmd)
     return (rc==0)
 
+# Funtion could be used to retrite master record info. e.g. IP address
+def get_pool_master_info(attrib):
+    try:
+        session = get_localAPI_session()
+        master_ref = session.xenapi.pool.get_all_records().values()[0]["master"]
+        master_rec = session.xenapi.host.get_record(master_ref)
+    
+        if master_rec.has_key(attrib):
+            return master_rec[attrib]
+    finally:
+        session.xenapi.logout()
+

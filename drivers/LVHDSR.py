@@ -609,6 +609,17 @@ class LVHDSR(SR.SR):
         for dev in self.root.split(','): self.block_setscheduler(dev)
 
         if self.provision == "dynamic":
+            # Update slave thin provision daemon with the pool master IP
+            # TODO: This needs to be done only for the very first LVHD SR attach
+            if not self.isMaster:
+                try:
+                    pool_master_ip = util.get_pool_master_info("address")
+                    cmd = [lvutil.DYNAMIC_DAEMON_CLI, "--slave", pool_master_ip]
+                    util.pread2(cmd)
+                except util.CommandException, inst:
+                    raise xs_errors.XenError('VGReg', \
+                            opterr='failed for %s with %d' % (uuid, inst.code))
+
             # Register VG name with thin-tapdisk daemon if the VG is local or 
             # if the host if Master. 
             srRef = self.session.xenapi.SR.get_by_uuid(uuid)
