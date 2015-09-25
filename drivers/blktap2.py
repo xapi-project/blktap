@@ -25,6 +25,7 @@ import time
 import copy
 from lock import Lock
 import util
+import lvutil
 import xmlrpclib
 import httplib
 import errno
@@ -396,6 +397,8 @@ class TapCtl(object):
         if options.get("timeout"):
             args.append("-t")
             args.append(str(options["timeout"]))
+        if options.get("dynamic"):
+            args.append("-T")
         if not options.get("o_direct", True):
             args.append("-D")
         cls._pread(args)
@@ -1523,6 +1526,17 @@ class VDI(object):
         util.SMlog("blktap2.activate")
         options = {"rdonly": not writable}
         options.update(caching_params)
+
+        # Check whether tapdisk needs to be in dynamic allocation mode
+        if hasattr(self.target.vdi.sr, "provision") and \
+                self.target.vdi.sr.provision == "dynamic":
+            # Flag error if daemon not running, and provisioning set to dynamic
+            if not util.is_daemon_running(lvutil.DYNAMIC_LV_DAEMON):
+                raise util.SMException("Error: Provisioning for %s set to dynamic, " \
+                                        "but %s not running" % \
+                                        (sr_uuid, lvutil.DYNAMIC_LV_DAEMON))
+            options["dynamic"] = True
+
         timeout = util.get_nfs_timeout(self.target.vdi.session, sr_uuid)
         if timeout:
             options["timeout"] = timeout + self.TAPDISK_TIMEOUT_MARGIN

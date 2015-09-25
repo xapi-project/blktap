@@ -52,6 +52,7 @@ CMD_LVREMOVE  = os.path.join(LVM_BIN, "lvremove")
 CMD_LVCHANGE  = os.path.join(LVM_BIN, "lvchange")
 CMD_LVRENAME  = os.path.join(LVM_BIN, "lvrename")
 CMD_LVRESIZE  = os.path.join(LVM_BIN, "lvresize")
+CMD_LVEXTEND  = os.path.join(LVM_BIN, "lvextend")
 CMD_DMSETUP   = "/sbin/dmsetup"
 
 LVM_SIZE_INCREMENT = 4 * 1024 * 1024
@@ -60,6 +61,9 @@ LVM_FAIL_RETRIES = 10
 
 MASTER_LVM_CONF = '/etc/lvm/master'
 DEF_LVM_CONF = '/etc/lvm'
+
+DYNAMIC_LV_DAEMON = "/usr/sbin/thin-tapdisk"
+DYNAMIC_LV_CLI = "/usr/sbin/thin-cli"
 
 class LVInfo:
     name = ""
@@ -432,6 +436,25 @@ def _remove(path, config_param=None):
 def rename(path, newName):
     cmd = [CMD_LVRENAME, path, newName]
     util.pread(cmd)
+
+# extend checks if the LV is active, if active extends the LV
+# ssize: size string, e.g. -L448790528b
+def extend(ssize, path):
+    if not _checkActive(path):
+        raise util.CommandException(-1, "extend", "LV not activated")
+    try:
+        # Override slave mode lvm.conf for this command
+        os.environ['LVM_SYSTEM_DIR'] = MASTER_LVM_CONF
+        cmd = [CMD_LVEXTEND, ssize, path]
+        try:
+            util.pread(cmd)
+            return True
+        except Exception, e:
+            util.SMlog("lvextend failed for %s with error %s." % (path, str(e)))
+            return False
+    finally:
+        # Restore slave mode lvm.conf
+        os.environ['LVM_SYSTEM_DIR'] = DEF_LVM_CONF
 
 def setReadonly(path, readonly):
     val = "r"

@@ -84,7 +84,8 @@ OPS_EXCLUSIVE = [
 class LVHDSR(SR.SR):
     DRIVER_TYPE = 'lvhd'
 
-    THIN_PROVISIONING_DEFAULT = False
+    PROVISIONING_TYPES = ["thin", "thick", "dynamic"]
+    PROVISIONING_DEFAULT = "thick"
     THIN_PLUGIN = "lvhd-thin"
 
     PLUGIN_ON_SLAVE = "on-slave"
@@ -158,7 +159,7 @@ class LVHDSR(SR.SR):
         self.vgname = lvhdutil.VG_PREFIX + self.uuid
         self.path = os.path.join(lvhdutil.VG_LOCATION, self.vgname)
         self.mdpath = os.path.join(self.path, self.MDVOLUME_NAME)
-        self.thinpr = self.THIN_PROVISIONING_DEFAULT
+        self.provision = self.PROVISIONING_DEFAULT
         try:
             self.lvmCache = lvmcache.LVMCache(self.vgname)
         except:
@@ -170,14 +171,11 @@ class LVHDSR(SR.SR):
             return # must be a probe call
         # Test for thick vs thin provisioning conf parameter
         if self.dconf.has_key('allocation'):
-            alloc = self.dconf['allocation']
-            if alloc == 'thin':
-                self.thinpr = True
-            elif alloc == 'thick':
-                self.thinpr = False
+            if self.dconf['allocation'] in self.PROVISIONING_TYPES:
+                self.provision = self.dconf['allocation']
             else:
                 raise xs_errors.XenError('InvalidArg', \
-                        opterr='Allocation parameter must be either thick or thin')
+                        opterr='Allocation parameter must be one of %s' % self.PROVISIONING_TYPES)
 
         self.other_conf = self.session.xenapi.SR.get_other_config(self.sr_ref)
         if self.other_conf.get(self.TEST_MODE_KEY):
@@ -185,11 +183,9 @@ class LVHDSR(SR.SR):
             self._prepareTestMode()
 
         self.sm_config = self.session.xenapi.SR.get_sm_config(self.sr_ref)
-        # sm_config flag overrides PBD
-        if self.sm_config.get('allocation') == "thick":
-            self.thinpr = False
-        elif self.sm_config.get('allocation') == "thin":
-            self.thinpr = True
+        # sm_config flag overrides PBD, if any
+        if self.sm_config.get('allocation') in self.PROVISIONING_TYPES:
+            self.provision = self.sm_config.get('allocation')
 
         if self.sm_config.get(self.FLAG_USE_VHD) == "true":
             self.legacyMode = False
@@ -407,16 +403,11 @@ class LVHDSR(SR.SR):
                 raise Exception("Failed to get SR information from metadata.")
         
             if sr_info.has_key("allocation"):
-		if sr_info.get("allocation") == 'thick':
-                    self.thinpr = False
-                    map['allocation'] = 'thick'
-            	elif sr_info.get("allocation") == 'thin':
-                    self.thinpr = True
-                    map['allocation'] = 'thin'
+                self.provision = sr_info.get("allocation")
+                map['allocation'] = sr_info.get("allocation")
             else:
-		raise Exception("Allocation key not found in SR metadata. " \
-		    "SR info found: %s" % sr_info)
-
+                raise Exception("Allocation key not found in SR metadata. " \
+                                "SR info found: %s" % sr_info)
         except Exception, e:
             raise xs_errors.XenError('MetadataError', \
                          opterr='Error reading SR params from ' \
@@ -437,21 +428,16 @@ class LVHDSR(SR.SR):
             # activate the management volume, will be deactivated at detach time
             self.lvmCache.activateNoRefcount(self.MDVOLUME_NAME)
             
-            if self.thinpr:
-                allocstr = "thin"
-            else:
-                allocstr = "thick"
-
             name_label = util.to_plain_string(\
                             self.session.xenapi.SR.get_name_label(self.sr_ref))
             name_description = util.to_plain_string(\
                     self.session.xenapi.SR.get_name_description(self.sr_ref))
             map[self.FLAG_USE_VHD] = "true"
-            map['allocation'] = allocstr
+            map['allocation'] = self.provision
             self.session.xenapi.SR.set_sm_config(self.sr_ref, map)
 
             # Add the SR metadata
-            self.updateSRMetadata(allocstr)
+            self.updateSRMetadata(self.provision)
         except Exception, e:
             raise xs_errors.XenError('MetadataError', \
                         opterr='Error introducing Metadata Volume: %s' % str(e))
@@ -745,11 +731,12 @@ class LVHDSR(SR.SR):
                                 sm_config['vhd-parent'] = parent[len( \
                                     lvhdutil.LV_PREFIX[vhdutil.VDI_TYPE_VHD]):]
                             size = vhdutil.getSizeVirt(lvPath)
-                            if self.thinpr:
+                            if self.provision == "thin":
                                 utilisation = \
                                     util.roundup(lvutil.LVM_SIZE_INCREMENT,
                                       vhdutil.calcOverheadEmpty(lvhdutil.MSIZE))
                             else:
+                                # We show the VHD size for both dynamic and thick.
                                 utilisation = lvhdutil.calcSizeVHDLV(long(size))
                         
                         vdi_ref = self.session.xenapi.VDI.db_introduce(
@@ -1283,6 +1270,9 @@ class LVHDVDI(VDI.VDI):
 
     JRN_CLONE = "clone" # journal entry type for the clone operation
 
+    DYNAMIC_PROVISIONING_FACTOR = .2
+    DYNAMIC_PROVISIONING_MIN = 200 * 1024 * 1024
+
     def load(self, vdi_uuid):
         self.lock = self.sr.lock
         self.lvActivator = self.sr.lvActivator
@@ -1344,11 +1334,16 @@ class LVHDVDI(VDI.VDI):
         if self.vdi_type == vhdutil.VDI_TYPE_RAW:
             lvSize = util.roundup(lvutil.LVM_SIZE_INCREMENT, long(size))
         else:
-            if self.sr.thinpr:
+            if self.sr.provision == "thin":
                 lvSize = util.roundup(lvutil.LVM_SIZE_INCREMENT, 
                         vhdutil.calcOverheadEmpty(lvhdutil.MSIZE))
-            else:
+            elif self.sr.provision == "thick":
                 lvSize = lvhdutil.calcSizeVHDLV(long(size))
+            elif self.sr.provision == "dynamic":
+                dynamic_sz = max(lvhdutil.calcSizeVHDLV(long(size)) * \
+                                        self.DYNAMIC_PROVISIONING_FACTOR,  
+                                 self.DYNAMIC_PROVISIONING_MIN)
+                lvSize = util.roundup(lvutil.LVM_SIZE_INCREMENT, dynamic_sz)
 
         self.sm_config = self.sr.srcmd.params["vdi_sm_config"]
         self.sr._ensureSpaceAvailable(lvSize)
@@ -1434,7 +1429,8 @@ class LVHDVDI(VDI.VDI):
             needInflate = False
         else:
             self._loadThis()
-            if self.utilisation >= lvhdutil.calcSizeVHDLV(self.size):
+            # Todo, skip the check if dynamic
+            if self.utilisation >= lvhdutil.calcSizeVHDLV(self.size) or self.sr.provision == "dynamic":
                 needInflate = False
 
         if needInflate:
@@ -1459,7 +1455,7 @@ class LVHDVDI(VDI.VDI):
         needDeflate = True
         if self.vdi_type == vhdutil.VDI_TYPE_RAW or already_deflated:
             needDeflate = False
-        elif not self.sr.thinpr:
+        elif self.sr.provision == "thick" or self.sr.provision == "dynamic":
             needDeflate = False
             # except for snapshots, which are always deflated
             vdi_ref = self.sr.srcmd.params['vdi_ref']
@@ -1510,7 +1506,7 @@ class LVHDVDI(VDI.VDI):
         else:
             lvSizeOld = self.utilisation
             lvSizeNew = lvhdutil.calcSizeVHDLV(size)
-            if self.sr.thinpr:
+            if self.sr.provision == "thin":
                 # VDI is currently deflated, so keep it deflated
                 lvSizeNew = lvSizeOld
         assert(lvSizeNew >= lvSizeOld)
@@ -1684,7 +1680,7 @@ class LVHDVDI(VDI.VDI):
             hostRefs = util.get_hosts_attached_on(self.session, [self.uuid])
             if hostRefs:
                 lvSizeOrig = fullpr
-        if not self.sr.thinpr:
+        if self.sr.provision == "thick" or self.sr.provision == "dynamic":
             if not self.issnap:
                 lvSizeOrig = fullpr
             if self.sr.cmd != "vdi_snapshot":
