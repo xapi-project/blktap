@@ -339,6 +339,30 @@ def run(driver, driver_info):
     cmd = SRCommand(driver_info)
     try:
         cmd.parse()
+
+        # hacky part start
+        try:
+            session = util.get_localAPI_session()
+
+            sr_oref = session.xenapi.SR.get_by_uuid(cmd.sr_uuid)
+            sm_conf = session.xenapi.SR.get_sm_config(sr_oref)
+
+            if 'allocation' in sm_conf and sm_conf['allocation'] == 'dynamic':
+                os.environ['SR_ALLOC'] = 'thin'
+            else:
+                os.environ['SR_ALLOC'] = 'thick'
+            session.xenapi.logout()
+
+            del session
+            del sr_oref
+            del sm_conf
+        except:
+            os.environ['SR_ALLOC'] = 'thick'
+            util.SMlog("ERROR: Could not connect to XAPI; SR_ALLOC=thick")
+        else:
+            util.SMlog("XAPI CONNECT SUCCESS; SR_ALLOC=%s" % os.environ['SR_ALLOC'])
+        # hacky part end
+
         cmd.run_statics()
         sr = driver(cmd, cmd.sr_uuid)
         sr.direct = True
