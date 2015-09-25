@@ -1341,8 +1341,9 @@ class LVHDSR(SR.SR):
             vg = self.vgname
             devices = self.root.split(',')
             # move the "if" up!
+            lvutil.write_xenvmd_config(uuid, vg, devices)
             if self.isMaster:
-                lvutil.runxenvmd(uuid, vg, devices)
+                lvutil.run_xenvmd(vg)
 
 
     def _start_local_allocator(self, uuid):

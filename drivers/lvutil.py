@@ -264,7 +264,7 @@ def setvginfo(uuid,vg,devices,uri, local_allocator=None):
 
 config_dir = "/etc/xenvm.d/"
 
-def runxenvmd(uuid,vg,devices):
+def write_xenvmd_config(uuid,vg,devices):
     global config_dir
     configfile = "%s/%s.xenvmd.config" % (config_dir, vg)
     sockpath = sockpath_of_sr_uuid(uuid)
@@ -284,6 +284,10 @@ def runxenvmd(uuid,vg,devices):
       util.makedirs(os.path.dirname(sockpath))
     with open(configfile,'w') as f:
         f.write(config)
+
+def run_xenvmd(vg):
+    global config_dir
+    configfile = "%s/%s.xenvmd.config" % (config_dir, vg)
     cmd = ["/sbin/xenvmd", "--daemon", "--config", configfile]
     util.pread2(cmd)
 
