@@ -1,3 +1,20 @@
+Version 1.11.2 - 25th Sep 2015
+===============================
+CA-171359: mount.cifs - Domain needs to be specified separately
+CA-181447: Fix checking of node minor
+CA-176801: [UnitTest] Fix assert after changes to nfs.py
+CA-176801: Work around rpcinfo intricacies to determine nfs versions
+CA-172263: Hide base-vdi post SXM between FileSR's and LVHDSR's
+CA-174892: scsiutil.getSCSIid() fails if multipath device is given
+CA-174104: Setting LVM_SYSTEM_DIR to the correct value for trim
+CA-173498: Fix match_targetIQN in iscsilib
+CP-12200: Files beloging to SM moved from dom0
+CP-9913: Added originator for xapi login_with_password
+CA-171849: Symlink in /dev/disk/by-scsid failed for dm devices
+CA-162918: DM-MP - dev_loss_tmo not set without setting no_path_retry
+CA-165611: DM Multipath mishandles blacklisted devices if some paths down
+CP-12403: Set backend-kind to vbd for all VDIs in LUNperVDI SRs
+
 Version 1.11.1 - 7th Sep 2015
 ===============================
   CA-92675: Change ISCSI SR scheduler to NOOP
