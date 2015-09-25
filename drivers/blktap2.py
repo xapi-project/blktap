@@ -811,7 +811,12 @@ class Tapdisk(object):
 
         except TapCtl.CommandFailure, ctl:
             util.logException(ctl)
-            raise TapdiskFailed(cls.Arg(_type, path), ctl)
+            if ('/dev/xapi/cd/' in path and
+                    'status' in ctl.info and
+                    ctl.info['status'] == 123): # ENOMEDIUM (No medium found)
+                raise xs_errors.XenError('TapdiskDriveEmpty')
+            else:
+                raise TapdiskFailed(cls.Arg(_type, path), ctl)
 
     @classmethod
     def launch(cls, path, _type, rdonly):

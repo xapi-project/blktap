@@ -804,4 +804,10 @@
             <value>454</value>
         </code>
 
+        <code>
+            <name>TapdiskDriveEmpty</name>
+            <description>Unable to attach empty optical drive to VM.</description>
+            <value>455</value>
+        </code>
+
 </SM-errorcodes>
