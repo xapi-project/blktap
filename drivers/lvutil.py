@@ -152,7 +152,7 @@ def runxenvmd(uuid,vg,devices):
     global config_dir
     configfile = "%s/%s.xenvmd.config" % (config_dir, vg)
     sockpath = sockpath_of_sr_uuid(uuid)
-    config = "((listenPort 4000) (listenPath (Some %s)) (host_allocation_quantum 128) (host_low_water_mark 8) (vg %s) (devices (%s)) )\n" % (sockpath,vg," ".join(devices))
+    config = "((listenPort 4000) (listenPath (Some %s)) (host_allocation_quantum 2048) (host_low_water_mark 1024) (vg %s) (devices (%s)) )\n" % (sockpath,vg," ".join(devices))
     if not os.path.exists(config_dir):
       util.makedirs("/etc/xenvm.d")
     if not os.path.exists(os.path.dirname(sockpath)):
