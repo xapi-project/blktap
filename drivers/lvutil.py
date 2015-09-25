@@ -186,21 +186,21 @@ def runxenvm_local_allocator(uuid, vg, devices, uri):
       util.makedirs("/etc/xenvm.d")
     with open(configfile, 'w') as f:
         f.write(config)
-    cmd = [ "/bin/xenvm", "host-create", uuid ]
+    cmd = [ "/bin/xenvm", "host-create", vg, uuid ]
     util.pread2(cmd)
     cmd = [ "/bin/xenvm-local-allocator", "--daemon", "--config", configfile ]
     util.pread2(cmd) 
-    cmd = [ "/bin/xenvm", "host-connect", uuid ]
+    cmd = [ "/bin/xenvm", "host-connect", vg, uuid ]
     util.pread2(cmd)
     setvginfo(uuid,vg,devices,uri,local_allocator)
 
 def stopxenvm_local_allocator(vg):
     uuid = util.get_this_host ()
-    cmd = [ "/bin/xenvm", "host-disconnect", uuid ]
+    cmd = [ "/bin/xenvm", "host-disconnect", vg, uuid ]
     util.pread2(cmd)
 
 def stopxenvmd(vg):
-    cmd = [ "/bin/xenvm", "shutdown" ]
+    cmd = [ "/bin/xenvm", "shutdown", vg ]
     util.pread2(cmd)
 
 def _checkVG(vgname):
