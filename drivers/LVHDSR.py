@@ -624,29 +624,17 @@ class LVHDSR(SR.SR):
         for dev in self.root.split(','): self.block_setscheduler(dev)
 
         if self.provision == "dynamic":
-            # Update slave thin provision daemon with the pool master IP
-            # TODO: This needs to be done only for the very first LVHD SR attach
-            if not self.isMaster:
-                try:
-                    pool_master_ip = util.get_pool_master_info("address")
-                    cmd = [lvutil.DYNAMIC_DAEMON_CLI, "--slave", pool_master_ip]
-                    util.pread2(cmd)
-                except util.CommandException, inst:
-                    raise xs_errors.XenError('VGReg', \
-                            opterr='failed for %s with %d' % (uuid, inst.code))
-
             # Register VG name with thin-tapdisk daemon if the VG is local or 
             # if the host if Master. 
             srRef = self.session.xenapi.SR.get_by_uuid(uuid)
             srRecord = self.session.xenapi.SR.get_record(srRef)
             # Pass the info on new VG to thin provision daemon
-            if self.isMaster or srRecord["type"] == "lvm":
-                try:
-                    cmd = [lvutil.DYNAMIC_DAEMON_CLI, "--add", lvhdutil.VG_PREFIX + uuid]
-                    util.pread2(cmd)
-                except util.CommandException, inst:
-                    raise xs_errors.XenError('VGReg', \
-                            opterr='failed for %s with %d' % (uuid, inst.code))
+            try:
+                cmd = [lvutil.DYNAMIC_DAEMON_CLI, "--add", lvhdutil.VG_PREFIX + uuid]
+                util.pread2(cmd)
+            except util.CommandException, inst:
+                raise xs_errors.XenError('VGReg', \
+                        opterr='failed for %s with %d' % (uuid, inst.code))
 
     def detach(self, uuid):
         util.SMlog("LVHDSR.detach for %s" % self.uuid)
@@ -716,13 +704,12 @@ class LVHDSR(SR.SR):
             srRef = self.session.xenapi.SR.get_by_uuid(uuid)
             srRecord = self.session.xenapi.SR.get_record(srRef)
             # Pass the info on new VG to thin provision daemon
-            if self.isMaster or srRecord["type"] == "lvm":
-                try:
-                    cmd = [lvutil.DYNAMIC_DAEMON_CLI, "--del", lvhdutil.VG_PREFIX + uuid]
-                    util.pread2(cmd)
-                except util.CommandException, inst:
-                    util.SMlog("VG de-registration failed for %s with %d" % \
-                               (uuid, inst.code))
+            try:
+                cmd = [lvutil.DYNAMIC_DAEMON_CLI, "--del", lvhdutil.VG_PREFIX + uuid]
+                util.pread2(cmd)
+            except util.CommandException, inst:
+                util.SMlog("VG de-registration failed for %s with %d" % \
+                           (uuid, inst.code))
 
     def forget_vdi(self, uuid):
         if not self.legacyMode:
