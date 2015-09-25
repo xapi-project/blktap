@@ -86,8 +86,11 @@ def setvginfo(vg,devices):
     util.pread2(cmd)    
 
 def runxenvmd(vg,devices):
-    configfile = "/etc/xenvm.d/%s.xenvmd.config" % vg
+    dir = "/etc/xenvm.d/"
+    configfile = "%s/%s.xenvmd.config" % (dir, vg)
     config = "((listenPort 4000) (host_allocation_quantum 128) (host_low_water_mark 8) (vg %s) (devices (%s)) )\n" % (vg," ".join(devices))
+    if not os.path.exists(dir):
+      util.makedirs("/etc/xenvm.d")
     with open(configfile,'w') as f:
         f.write(config)
     cmd = ["/sbin/xenvmd", "--daemon", "--config", configfile]
