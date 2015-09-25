@@ -577,6 +577,35 @@ class LVHDSR(SR.SR):
 
     def attach(self, uuid):
         util.SMlog("LVHDSR.attach for %s" % self.uuid)
+
+        path_to_file = '/var/run/nonpersistent/sr_alloc_' + uuid
+
+        # If 'allocation' exists in sm_config, overwrite whatever
+        # existed (if anything) in "'sr_alloc_' + uuid".
+        if 'allocation' in self.sm_config:
+            if self.sm_config['allocation'] == 'dynamic':
+                sr_alloc = 'dnmc'
+            elif self.sm_config['allocation'] == 'thick':
+                sr_alloc = 'thck'
+            else:
+                raise Exception("Unknown sm_config['allocation'] value: '{}'."
+                        .format(self.sm_config['allocation']))
+
+            with open(path_to_file, 'w') as f:
+                f.write(sr_alloc)
+
+        # If not, check if the file exists. If it doesn't,
+        # create it and fallback to 'thick'.
+        else:
+            try:
+                f = open(path_to_file, 'r')
+                f.close()
+            except IOError:
+                util.SMlog("File 'sr_alloc_{}' does not exist; Creating it"
+                           " and falling back to 'thick'.".format(uuid))
+                with open(path_to_file, 'w') as f:
+                    f.write('thck')
+
         vg = self.vgname
         devices = self.root.split(',')
 
