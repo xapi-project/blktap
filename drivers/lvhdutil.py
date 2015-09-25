@@ -25,7 +25,6 @@ import time
 
 import util
 import vhdutil
-import lvutil
 import xs_errors
 from lock import Lock
 from refcounter import RefCounter
@@ -342,6 +341,7 @@ def setInnerNodeRefcounts(lvmCache, srUuid):
     return pathsNotInUse
 
 if __name__ == "__main__":
+    import lvutil
     # used by the master changeover script
     cmd = sys.argv[1]
     if cmd == "fixrefcounts":
