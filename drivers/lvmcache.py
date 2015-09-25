@@ -71,9 +71,11 @@ class LVMCache:
     def refresh(self):
         """Get the LV information for the VG using "lvs" """
         util.SMlog("LVMCache: refreshing")
-        cmd = lvutil.cmd_lvm([lvutil.CMD_LVS, "--noheadings", "--units",
-                            "b", "-o", "+lv_tags", self.vgPath])
-        text = util.pread2(cmd)
+        #cmd = lvutil.cmd_lvm([lvutil.CMD_LVS, "--noheadings", "--units",
+        #                    "b", "-o", "+lv_tags", self.vgPath])
+        #text = util.pread2(cmd)
+        text = lvutil.cmd_lvm([lvutil.CMD_LVS, "--noheadings", "--units",
+                               "b", "-o", "+lv_tags", self.vgPath])
         self.lvs.clear()
         self.tags.clear()
         for line in text.split('\n'):
