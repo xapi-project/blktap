@@ -539,7 +539,14 @@ class LVHDSR(SR.SR):
             if util.test_scsiserial(self.session, dev):
                 raise xs_errors.XenError('SRInUse')
 
-        lvutil.createVG(self.root, self.vgname)
+        if ((hasattr(self, 'iscsiSRs') or hasattr(self, 'hbasr')) and
+                'allocation' in self.sm_config and
+                self.sm_config['allocation'] == 'dynamic'):
+            sr_alloc = 'dynamic'
+        else:
+            sr_alloc = 'thick'
+
+        lvutil.createVG(self.root, self.vgname, sr_alloc)
 
         #Update serial number string
         scsiutil.add_serial_record(self.session, self.sr_ref, \
@@ -705,12 +712,13 @@ class LVHDSR(SR.SR):
         # only place to do so.
         self._cleanup(self.isMaster)
 
-        sr_alloc = os.getenv('SR_ALLOC')
-        if sr_alloc == "thin":
+        if lvutil.get_sr_alloc(self.vgname) == 'dynamic':
             lvutil.stopxenvm_local_allocator(self.vgname)
 
             if self.isMaster:
                 lvutil.stopxenvmd(self.vgname)
+
+            self._rm_xenvm_conf()
 
         # De-Register VG name with thin-tapdisk daemon if the VG is local or 
         # if the host if Master. Error could be ignored at this point
@@ -883,13 +891,19 @@ class LVHDSR(SR.SR):
         self._db_update()
 
     def probe(self):
-        if self.srcmd.params['sr_sm_config'].has_key('allocation') and \
-           self.srcmd.params['sr_sm_config']['allocation'] == 'dynamic':
-            os.environ['SR_ALLOC']='thin'
-            util.SMlog('SR_ALLOC = thin')
+        if 'allocation' in self.srcmd.params['sr_sm_config']:
+            if (self.srcmd.params['sr_sm_config']['allocation'] in
+                    self.PROVISIONING_TYPES):
+                sr_alloc = self.srcmd.params['sr_sm_config']['allocation']
+            else:
+                raise xs_errors.XenError('InvalidArg',
+                        opterr="Allocation parameter must be one of {}"
+                        .format(self.PROVISIONING_TYPES))
+        else:
+            sr_alloc = self.PROVISIONING_DEFAULT
 
         return lvutil.srlist_toxml(
-                lvutil.scan_srlist(lvhdutil.VG_PREFIX, self.root),
+                lvutil.scan_srlist(lvhdutil.VG_PREFIX, self.root, sr_alloc),
                 lvhdutil.VG_PREFIX,
                 (self.srcmd.params['sr_sm_config'].has_key('metadata') and \
                  self.srcmd.params['sr_sm_config']['metadata'] == 'true'))
@@ -1322,39 +1336,8 @@ class LVHDSR(SR.SR):
         cleanup.gc(self.session, self.uuid, True)
 
 
-    def _write_allocation(self, uuid):
-        path_to_file = '/var/run/nonpersistent/sr_alloc_' + uuid
-
-        # If 'allocation' exists in sm_config, overwrite whatever
-        # existed (if anything) in "'sr_alloc_' + uuid".
-        if 'allocation' in self.sm_config:
-            if self.sm_config['allocation'] == 'dynamic':
-                sr_alloc = 'dnmc'
-            elif self.sm_config['allocation'] == 'thick':
-                sr_alloc = 'thck'
-            else:
-                raise Exception("Unknown sm_config['allocation'] value: '{}'."
-                        .format(self.sm_config['allocation']))
-
-            with open(path_to_file, 'w') as f:
-                f.write(sr_alloc)
-
-        # If not, check if the file exists. If it doesn't,
-        # create it and fallback to 'thick'.
-        else:
-            try:
-                f = open(path_to_file, 'r')
-                f.close()
-            except IOError:
-                util.SMlog("File 'sr_alloc_{}' does not exist; Creating it"
-                           " and falling back to 'thick'.".format(uuid))
-                with open(path_to_file, 'w') as f:
-                    f.write('thck')
-
-
     def _start_xenvmd(self, uuid):
-        sr_alloc = os.getenv('SR_ALLOC')
-        if sr_alloc == "thin":
+        if lvutil.get_sr_alloc(self.vgname) == 'dynamic':
             vg = self.vgname
             devices = self.root.split(',')
             # move the "if" up!
@@ -1363,8 +1346,7 @@ class LVHDSR(SR.SR):
 
 
     def _start_local_allocator(self, uuid):
-        sr_alloc = os.getenv('SR_ALLOC')
-        if sr_alloc == "thin":
+        if lvutil.get_sr_alloc(self.vgname) == 'dynamic':
             vg = self.vgname
             devices = self.root.split(',')
             uri = "file://local/services/xenvmd/%s" % uuid
@@ -1372,13 +1354,84 @@ class LVHDSR(SR.SR):
 
 
     def _write_vginfo(self, uuid):
-        sr_alloc = os.getenv('SR_ALLOC')
-        if sr_alloc == "thin":
+        if ('allocation' in self.sm_config and
+                self.sm_config['allocation'] == 'dynamic'):
             vg = self.vgname
             devices = self.root.split(',')
             uri = "file://local/services/xenvmd/%s" % uuid
             lvutil.setvginfo(uuid, vg, devices, uri)
 
+
+    def _rm_xenvm_conf(self):
+        """ Remove xenvm config files
+
+            Remove files written by:
+                _write_vginfo()
+                _symlink_xenvm_conf()
+
+            for the specified SR.
+
+            Raise:
+                IOError 
+                util.CommandException
+                subprocess.Popen() exceptions
+        """
+
+        vginfo_path = lvutil.config_dir + self.vgname
+
+        if not os.path.isfile(vginfo_path):
+            return
+
+        with open(vginfo_path + '.xenvmd.config', 'r') as f:
+            # Device path is in the 2nd to last line
+            line = f.readlines()[-2]
+
+            # Strip 11 chars from start and 3 from end.
+            # Will break if formatting changes.
+            # TODO: Replace with regex that matches path
+            scsi_id = scsiutil.getSCSIid(line[11:-3])
+
+        # Force remove the 3 VG_XenStorage-<UUID> files and the symlink
+        util.pread2([
+            'rm', '-f',
+            vginfo_path,
+            vginfo_path + '.xenvmd.config',
+            vginfo_path + '.xenvm-local-allocator.config',
+            lvutil.config_dir + scsi_id 
+        ])
+
+
+    def _symlink_xenvm_conf(self):
+        """ Create a symlink of '/etc/xenvm.d/<VG_name>'
+
+            The symlink's name is the respective Volume Group's device
+            SCSI id. The symlink is created in '/etc/xenvm.d/' LVM PV
+            commands take a device path as input. This way we can easily
+            find out the VG name given a device path.
+
+            Raise:
+                IOError
+                util.CommandException
+                subprocess.Popen() exceptions
+        """
+
+        vginfo_path = lvutil.config_dir + self.vgname
+
+        if not os.path.isfile(vginfo_path):
+            return
+
+        with open(vginfo_path + '.xenvmd.config', 'r') as f:
+            line = f.readlines()[-2]
+            scsi_id = scsiutil.getSCSIid(line[11:-3])
+
+        # Remove symlink if it exists            
+        util.pread2(['rm', '-f', lvutil.config_dir + scsi_id])
+
+        util.pread2([
+            'ln', '-s',
+            vginfo_path,
+            lvutil.config_dir + scsi_id
+        ])
 
 class LVHDVDI(VDI.VDI):
 

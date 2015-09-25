@@ -116,8 +116,6 @@ class LVHDoHBASR(LVHDSR.LVHDSR):
                                              self.sr_ref, self.SCSIid)
 
     def attach(self, sr_uuid):
-        # Write the allocation type on file as soon as we can
-        self._write_allocation(sr_uuid)
         self._write_vginfo(sr_uuid)
 
         self.hbasr.attach(sr_uuid)
@@ -138,6 +136,7 @@ class LVHDoHBASR(LVHDSR.LVHDSR):
             if self.mpath == "true":
                 self.mpathmodule.refresh(self.SCSIid,0)
         LVHDSR.LVHDSR.attach(self, sr_uuid)
+        self._symlink_xenvm_conf()
         self._setMultipathableFlag(SCSIid=self.SCSIid)
         self._start_local_allocator(sr_uuid)
 

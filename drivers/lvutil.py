@@ -29,9 +29,11 @@ import util
 import xs_errors
 import xml.dom.minidom
 from lvhdutil import VG_LOCATION,VG_PREFIX
+from EXTSR import EXT_PREFIX
 import lvmcache
 import srmetadata
 import vhdutil
+from scsiutil import getSCSIid
 
 MDVOLUME_NAME = 'MGT'
 VDI_UUID_TAG_PREFIX = 'vdi_'
@@ -65,70 +67,170 @@ DEF_LVM_CONF = '/etc/lvm'
 DYNAMIC_DAEMON = "/usr/sbin/thinprovd"
 DYNAMIC_DAEMON_CLI = "/usr/sbin/thin-cli"
 
-LVM_COMMANDS = {CMD_VGCREATE, CMD_VGS, CMD_VGREMOVE, CMD_VGCHANGE,
-                CMD_VGEXTEND, CMD_PVS, CMD_PVCREATE, CMD_PVREMOVE,
-                CMD_PVRESIZE, CMD_LVS, CMD_LVDISPLAY, CMD_LVCREATE,
-                CMD_LVREMOVE, CMD_LVCHANGE, CMD_LVRENAME, CMD_LVRESIZE,
-                CMD_LVEXTEND}
+VG_COMMANDS = frozenset({CMD_VGS, CMD_VGCREATE, CMD_VGREMOVE, CMD_VGCHANGE,
+                         CMD_VGEXTEND})
+PV_COMMANDS = frozenset({CMD_PVS, CMD_PVCREATE, CMD_PVREMOVE, CMD_PVRESIZE})
+LV_COMMANDS = frozenset({CMD_LVS, CMD_LVDISPLAY, CMD_LVCREATE, CMD_LVREMOVE,
+                         CMD_LVCHANGE, CMD_LVRENAME, CMD_LVRESIZE,
+                         CMD_LVEXTEND})
 
+LVM_COMMANDS = VG_COMMANDS.union(PV_COMMANDS, LV_COMMANDS)
 
-def cmd_lvm(cmd, pread_func=util.pread2, *args, **kwargs):
-    """ Construct and run the appropriate lvm command.
+def get_sr_alloc(filename):
+    """Return the SR allocation type
 
-        The function checks the environment variable SR_ALLOC and
-        runs the appropriate lvm command depending on its value.
-        If SR_ALLOC is 'thick', the regular lvm command is used.
-        If SR_ALLOC is 'thin', the whole command is passed as an
-        argument to '/bin/xenvm'.
+        Check for the existence of 'filename' in '/etc/xenvm.d/'. If the
+        file exists, the SR is 'dynamic'. If not, it is 'thick'. The
+        filename can be either 'VG_XenStorage-<UUID>' or the device's
+        SCSI id.
 
         Input:
-            cmd -- lvm command in list format
-                cmd[0]  -- lvm command name
-                cmd[1:] -- lvm command parameters
+            filename -- (str) Name of file to look for
 
         Return:
-            stdout -- the stdout after running the lvm command.
+            sr_alloc -- (str) SR allocation type
+
+        Raise:
+            TypeError 
+    """
+
+    if not util.is_string(filename):
+        raise TypeError("'filename' is not of type 'str'.")
+
+    global config_dir
+    path = config_dir + filename
+
+    if os.path.isfile(path):
+        sr_alloc = 'dynamic'
+    else:
+        sr_alloc = 'thick'
+
+    return sr_alloc
+
+
+def extract_vgname(str_in):
+    """Search for and return a VG name
+
+        Search 'str_in' for a substring in the form of 'VG_XenStorage-<UUID>'. 
+        If there are more than one VG names, the first is returned.
+
+        Input:
+            str_in -- (str) string to search for a VG name
+                            in the format specified above.
+
+        Return:
+            vgname -- if found     -> (str)
+                      if not found -> None
 
         Raise:
             TypeError
-            OtherException
+    """
+
+    if not util.is_string(str_in):
+        raise TypeError("'str_in' not of type 'str'.")
+
+    i = str_in.find(VG_PREFIX)
+    prefix = VG_PREFIX
+
+    if i == -1:
+        i = str_in.find(EXT_PREFIX)
+        prefix = EXT_PREFIX
+
+    uuid_start = i + len(prefix)
+    re_obj = util.match_uuid(str_in[uuid_start:])
+
+    if i != -1 and re_obj:
+        return prefix + re_obj.group(0) # vgname
+
+    return None
+
+def cmd_lvm(cmd, sr_alloc=None, pread_func=util.pread2, *args):
+    """ Construct and run the appropriate lvm command
+
+        depending on the SR's allocation type; 'thick' or 'dynamic'. For
+        PV commands, the full path to the device is required.
+
+        Input:
+            cmd -- (list) lvm command
+                cmd[0]  -- (str) lvm command name
+                cmd[1:] -- (str) lvm command parameters
+
+            sr_alloc -- (str) SR's allocation type; 'thick' or 'dynamic'
+                              if it's not supplied, the function will
+                              figure it out
+                Default: None
+
+            pread_func -- (function) the flavor of util.pread to use
+                                     to execute the lvm command
+                Default: util.pread2()
+
+            *args -- extra arguments passed to cmd_lvm will be passed
+                     to 'pread_func'
+
+        Return:
+            stdout -- (str) stdout after running the lvm command.
+
+        Raise:
+            util.CommandException
     """
 
     if type(cmd) is not list:
-        raise TypeError("CMD_LVM: Argument 'cmd' not of type 'list'.")
+        util.SMlog("CMD_LVM: Argument 'cmd' not of type 'list'")
+        return None
     if not len(cmd):
-        raise Exception("CMD_LVM: 'cmd' list is empty")
-    if cmd[0] not in LVM_COMMANDS:
-        raise Exception("CMD_LVM: '{}' is not a valid "
-                        "lvm command".format(cmd[0]))
-
-    sr_alloc = os.getenv('SR_ALLOC')
+        util.SMlog("CMD_LVM: 'cmd' list is empty")
+        return None
 
     lvm_cmd, lvm_args = cmd[0], cmd[1:]
 
-    stdout = None
+    if lvm_cmd not in LVM_COMMANDS:
+        util.SMlog("CMD_LVM: '{}' is not a valid lvm command".format(lvm_cmd))
+        return None
 
-    if sr_alloc == 'thin':
-        stdout = pread_func(['/bin/xenvm', lvm_cmd] + lvm_args, *args, **kwargs)
+    for arg in lvm_args:
+        if not util.is_string(arg):
+            util.SMlog("CMD_LVM: Not all lvm arguments are of type 'str'")
+            return None
+
+    if sr_alloc is None:
+        if lvm_cmd not in PV_COMMANDS:
+            for arg in lvm_args:
+                try:
+                    filename = extract_vgname(arg)
+                except:
+                    util.logException('CMD_LVM')
+                    return None
+                if filename:
+                    break
+            else: # if for loop doesn't break
+                util.SMlog("CMD_LVM: Could not find VG "
+                           "name in lvm argument list")
+                util.SMlog([lvm_cmd] + lvm_args)
+                return None
+        else:
+            for arg in lvm_args:
+                if os.path.exists(arg):
+                    try:
+                        filename = getSCSIid(arg)
+                    except:
+                        util.logException('CMD_LVM')
+                        return None
+                    break
+            else: # if for loop doesn't break
+                util.SMlog("CMD_LVM: Could not find PV "
+                           "name in lvm argument list")
+                util.SMlog([lvm_cmd] + lvm_args)
+                return None
+
+        sr_alloc = get_sr_alloc(filename)
+
+    if sr_alloc == 'dynamic':
+        stdout = pread_func(['/bin/xenvm', lvm_cmd] + lvm_args, *args)
     elif sr_alloc == 'thick':
-        stdout = pread_func([os.path.join(LVM_BIN, lvm_cmd)] + lvm_args, *args, **kwargs)
+        stdout = pread_func([os.path.join(LVM_BIN, lvm_cmd)] + lvm_args, *args)
     else:
-        util.SMlog("SR_ALLOC environment variable not set."
-                   " Try both and see which one succeeds.")
-        try:
-            stdout = pread_func(['/bin/xenvm', lvm_cmd] + lvm_args, *args, **kwargs)
-            os.environ['SR_ALLOC'] = 'thin'
-            util.SMlog("'/bin/xenvm {}' succeeded - SR_ALLOC = thin".format(lvm_cmd))
-        except util.CommandException:
-            util.logException('dynamic lvm command failed')
-            try:
-                stdout = pread_func([os.path.join(LVM_BIN, lvm_cmd)] + lvm_args, *args, **kwargs)
-                os.environ['SR_ALLOC'] = 'thick'
-                util.SMlog("'{}' succeeded - SR_ALLOC = thick".format(lvm_cmd))
-            except util.CommandException:
-                util.logException('thick lvm command failed')
-                util.SMlog("Both options failed. Something"
-                           " went terribly wrong.")
+        util.SMlog("CMD_LVM: ERROR: 'sr_alloc' neither 'dynamic' nor 'thick'")
+        return None
 
     return stdout
 
@@ -268,7 +370,8 @@ def _getVGstats(vgname):
         #               "--units", "b", vgname])
         #text = util.pread(cmd).split()
         text = cmd_lvm([CMD_VGS, "--noheadings", "--nosuffix",
-                        "--units", "b", vgname], util.pread).split()
+                        "--units", "b", vgname],
+                        pread_func=util.pread).split()
         size = long(text[5])
         freespace = long(text[6])
         utilisation = size - freespace
@@ -289,7 +392,8 @@ def _getPVstats(dev):
         #               "--units", "b", dev])
         #text = util.pread(cmd).split()
         text = cmd_lvm([CMD_PVS, "--noheadings", "--nosuffix",
-                        "--units", "b", dev], util.pread).split()
+                        "--units", "b", dev],
+                        pread_func=util.pread).split()
         size = long(text[4])
         freespace = long(text[5])
         utilisation = size - freespace
@@ -342,7 +446,7 @@ def match_VG(s, prefix_list):
 # Retrieves the devices an SR is composed of. A dictionary is returned, indexed
 # by the SR UUID, where each SR UUID is mapped to a comma-separated list of
 # devices. Exceptions are ignored.
-def scan_srlist(prefix, root):
+def scan_srlist(prefix, root, sr_alloc=None):
     VGs = {}
     for dev in root.split(','):
         try:
@@ -355,7 +459,7 @@ def scan_srlist(prefix, root):
         except Exception, e:
             util.logException("exception (ignored): %s" % e)
             continue
-    if os.environ['SR_ALLOC']=='thin':
+    if sr_alloc == 'dynamic':
         for vg in VGs.keys():
             if not os.path.isfile('/etc/xenvm.d/%s' % (VG_PREFIX+vg)):
                 util.SMlog('vg=%s VGs[vg]=%s' % (vg,VGs[vg]))
@@ -452,7 +556,7 @@ def srlist_toxml(VGs, prefix, includeMetadata = False):
                 
     return dom.toprettyxml()
 
-def createVG(root, vgname):
+def createVG(root, vgname, sr_alloc='thick'):
     systemroot = util.getrootdev()
     rootdev = root.split(',')[0]
 
@@ -493,16 +597,12 @@ def createVG(root, vgname):
                       opterr='device %s' % dev)
 
         # This block is only needed for thick provisioning
-        sr_alloc = os.getenv('SR_ALLOC')
-
-        if sr_alloc is None or sr_alloc == '':
-            raise Exception("CMD_LVM: SR_ALLOC environment parameter not set.")
-
         if sr_alloc == 'thick':
             try:
                 #cmd = cmd_lvm([CMD_PVCREATE, "-ff", "-y", "--metadatasize", "10M", dev])
                 #util.pread2(cmd)
-                cmd_lvm([CMD_PVCREATE, "-ff", "-y", "--metadatasize", "10M", dev])
+                cmd_lvm([CMD_PVCREATE, "-ff", "-y", "--metadatasize", "10M",
+                         dev], sr_alloc)
             except util.CommandException, inst:
                 raise xs_errors.XenError('LVMPartCreate',
                       opterr='error is %d' % inst.code)
@@ -513,7 +613,7 @@ def createVG(root, vgname):
     try:
         #cmd = cmd_lvm([CMD_VGCREATE, vgname, rootdev])
         #util.pread2(cmd)
-        cmd_lvm([CMD_VGCREATE, vgname, rootdev])
+        cmd_lvm([CMD_VGCREATE, vgname, rootdev], sr_alloc)
     except :
         raise xs_errors.XenError('LVMGroupCreate')
 
@@ -522,28 +622,23 @@ def createVG(root, vgname):
         try:
             #cmd = cmd_lvm([CMD_VGEXTEND, vgname, dev])
             #util.pread2(cmd)
-            cmd_lvm([CMD_VGEXTEND, vgname, dev])
+            cmd_lvm([CMD_VGEXTEND, vgname, dev], sr_alloc)
         except util.CommandException, inst:
             # One of the PV args failed, delete SR
             try:
                 #cmd = cmd_lvm([CMD_VGREMOVE, vgname])
                 #util.pread2(cmd)
-                cmd_lvm([CMD_VGREMOVE, vgname])
+                cmd_lvm([CMD_VGREMOVE, vgname], sr_alloc)
             except:
                 pass
             raise xs_errors.XenError('LVMGroupCreate')
 
     # This block is needed only for thick provisioning
-    sr_alloc = os.getenv('SR_ALLOC')
-
-    if sr_alloc is None or sr_alloc == '':
-        raise Exception("CMD_LVM: SR_ALLOC environment parameter not set.")
-
     if sr_alloc == 'thick':
         try:
             #cmd = cmd_lvm([CMD_VGCHANGE, "-an", vgname])
             #util.pread2(cmd)
-            cmd_lvm([CMD_VGCHANGE, "-an", vgname])
+            cmd_lvm([CMD_VGCHANGE, "-an", vgname], sr_alloc)
         except util.CommandException, inst:
             raise xs_errors.XenError('LVMUnMount', \
                   opterr='errno is %d' % inst.code)
@@ -632,7 +727,7 @@ def _remove(path, config_param=None):
 def rename(path, newName):
     #cmd = cmd_lvm([CMD_LVRENAME, path, newName])
     #util.pread(cmd)
-    cmd_lvm([CMD_LVRENAME, path, newName], util.pread)
+    cmd_lvm([CMD_LVRENAME, path, newName], pread_func=util.pread)
 
 # extend checks if the LV is active, if active extends the LV
 # ssize: size string, e.g. -L448790528b
@@ -645,7 +740,7 @@ def extend(ssize, path):
         #cmd = cmd_lvm([CMD_LVEXTEND, ssize, path])
         try:
             #util.pread(cmd)
-            cmd_lvm([CMD_LVEXTEND, ssize, path], util.pread)
+            cmd_lvm([CMD_LVEXTEND, ssize, path], pread_func=util.pread)
             return True
         except Exception, e:
             util.SMlog("lvextend failed for %s with error %s." % (path, str(e)))
@@ -660,7 +755,7 @@ def setReadonly(path, readonly):
         val += "w"
     #cmd = cmd_lvm([CMD_LVCHANGE, path, "-p", val])
     #ret = util.pread(cmd)
-    ret = cmd_lvm([CMD_LVCHANGE, path, "-p", val], util.pread)
+    ret = cmd_lvm([CMD_LVCHANGE, path, "-p", val], pread_func=util.pread)
 
 def exists(path):
     #cmd = cmd_lvm([CMD_LVS, "--noheadings", path])
@@ -684,10 +779,11 @@ def setSize(path, size, confirm):
     #cmd = cmd_lvm([CMD_LVRESIZE, "-L", str(sizeMB), path])
     if confirm:
         #util.pread3(cmd, "y\n")
-        cmd_lvm([CMD_LVRESIZE, "-L", str(sizeMB), path], util.pread3, "y\n")
+        cmd_lvm([CMD_LVRESIZE, "-L", str(sizeMB), path],
+                None, util.pread3, "y\n")
     else:
         #util.pread(cmd)
-        cmd_lvm([CMD_LVRESIZE, "-L", str(sizeMB), path], util.pread)
+        cmd_lvm([CMD_LVRESIZE, "-L", str(sizeMB), path], pread_func=util.pread)
 
 #def getTagged(path, tag):
 #    """Return LV names of all LVs that have tag 'tag'; 'path' is either a VG

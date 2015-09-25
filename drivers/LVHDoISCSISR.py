@@ -472,8 +472,6 @@ class LVHDoISCSISR(LVHDSR.LVHDSR):
             i.detach(sr_uuid)
 
     def attach(self, sr_uuid):
-        # Write the allocation type on file as soon as we can
-        self._write_allocation(sr_uuid)
         self._write_vginfo(sr_uuid)
 
         try:
@@ -506,6 +504,7 @@ class LVHDoISCSISR(LVHDSR.LVHDSR):
 
             self._pathrefresh(LVHDoISCSISR)
             LVHDSR.LVHDSR.attach(self, sr_uuid)
+            self._symlink_xenvm_conf()
         except Exception, inst:
             for i in self.iscsiSRs:
                 i.detach(sr_uuid)
