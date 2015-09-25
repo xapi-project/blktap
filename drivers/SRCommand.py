@@ -239,7 +239,7 @@ class SRCommand:
         elif self.cmd == 'vdi_attach':
             target = blktap2.VDI(self.vdi_uuid, target, self.driver_info)
             writable = self.params['args'][0] == 'true'
-            return target.attach(self.params['sr_uuid'], self.vdi_uuid, writable)
+            return target.attach(self.params['sr_uuid'], self.vdi_uuid, writable, caching_params = caching_params)
 
         elif self.cmd == 'vdi_detach':
             target = blktap2.VDI(self.vdi_uuid, target, self.driver_info)

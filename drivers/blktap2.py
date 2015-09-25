@@ -979,27 +979,33 @@ class VDI(object):
         self._session    = target.session
         self.xenstore_data = scsiutil.update_XS_SCSIdata(uuid,scsiutil.gen_synthetic_page_data(uuid))
         self.__o_direct  = None
+        self.__o_direct_reason = None
         self.lock        = Lock("vdi", uuid)
 
-    def get_o_direct_capability(self, options = {}):
+    def get_o_direct_capability(self, options):
         """Returns True/False based on licensing and caching_params"""
         if self.__o_direct is not None:
-            return self.__o_direct
+            return self.__o_direct, self.__o_direct_reason
 
-        if not util.read_caching_is_restricted(self._session):
-            self.__o_direct = options.get(self.CONF_KEY_O_DIRECT)
-            if self.__o_direct is not None:
-                return self.__o_direct
-            if (self.target.vdi.sr.handles("nfs") or
-                self.target.vdi.sr.handles("ext")):
-                from FileSR import FileVDI
-                if vhdutil.getParent(self.target.vdi.path, FileVDI.extractUuid):
-                    self.__o_direct = False
+        if util.read_caching_is_restricted(self._session):
+            self.__o_direct = True
+            self.__o_direct_reason = "LICENSE_RESTRICTION"
+        elif not ((self.target.vdi.sr.handles("nfs") or self.target.vdi.sr.handles("ext"))):
+            self.__o_direct = True
+            self.__o_direct_reason = "SR_NOT_SUPPORTED"
+        elif not (options.get("rdonly") or self.target.vdi.parent):
+            util.SMlog(self.target.vdi)
+            self.__o_direct = True
+            self.__o_direct_reason = "NO_RO_IMAGE"
+        elif options.get(self.CONF_KEY_O_DIRECT):
+            self.__o_direct = True
+            self.__o_direct_reason = "SR_OVERRIDE"
 
         if self.__o_direct is None:
-            self.__o_direct = True
+            self.__o_direct = False
+            self.__o_direct_reason = ""
 
-        return self.__o_direct
+        return self.__o_direct, self.__o_direct_reason
 
     @classmethod
     def from_cli(cls, uuid):
@@ -1478,7 +1484,7 @@ class VDI(object):
         session.xenapi.session.logout()
         return pool_info
 
-    def attach(self, sr_uuid, vdi_uuid, writable, activate = False):
+    def attach(self, sr_uuid, vdi_uuid, writable, activate = False, caching_params = {}):
         """Return/dev/sm/backend symlink path"""
         self.xenstore_data.update(self._get_pool_config(sr_uuid))
         if not self.target.has_cap("ATOMIC_PAUSE") or activate:
@@ -1490,8 +1496,12 @@ class VDI(object):
 
         # Return backend/ link
         back_path = self.BackendLink.from_uuid(sr_uuid, vdi_uuid).path()
+        options = {"rdonly": not writable}
+        options.update(caching_params)
+        o_direct, o_direct_reason = self.get_o_direct_capability(options)
         struct = { 'params': back_path,
-                   'o_direct': self.get_o_direct_capability(),
+                   'o_direct': o_direct,
+                   'o_direct_reason': o_direct_reason,
                    'xenstore_data': self.xenstore_data}
         util.SMlog('result: %s' % struct)
 
@@ -1613,7 +1623,7 @@ class VDI(object):
             # Maybe launch a tapdisk on the physical link
             if self.tap_wanted():
                 vdi_type = self.target.get_vdi_type()
-                options["o_direct"] = self.get_o_direct_capability(options)
+                options["o_direct"] = self.get_o_direct_capability(options)[0]
                 dev_path = self._tap_activate(phy_path, vdi_type, sr_uuid,
                         options,
                         self._get_pool_config(sr_uuid).get("mem-pool-size"))
