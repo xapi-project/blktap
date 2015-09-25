@@ -584,12 +584,12 @@ class LVHDSR(SR.SR):
         if sr_alloc == "thin":
             if self.isMaster:
                 uri = "http://127.0.0.1:4000"
-                lvutil.runxenvmd(vg, devices)
+                lvutil.runxenvmd(uuid, vg, devices)
             else:
                 pool_master_ip = util.get_pool_master_info("address")
                 uri = "http://%s:4000" % pool_master_ip
-            lvutil.setvginfo(vg, devices, uri)
-            lvutil.runxenvm_local_allocator(vg, devices, uri)
+            lvutil.setvginfo(uuid, vg, devices, uri)
+            lvutil.runxenvm_local_allocator(uuid, vg, devices, uri)
 
         self._cleanup(True) # in case of host crashes, if detach wasn't called
 

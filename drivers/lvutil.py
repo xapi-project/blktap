@@ -135,7 +135,12 @@ class LVInfo:
                 (self.name, self.size, self.active, self.open, self.hidden, \
                 self.readonly)
 
-def setvginfo(vg,devices,uri, local_allocator=None):
+    # Note, xapi knows about this path
+def sockpath_of_sr_uuid(uuid):
+    return "/var/lib/xenvmd/%s" % uuid
+
+def setvginfo(uuid,vg,devices,uri, local_allocator=None):
+    sockpath = sockpath_of_sr_uuid(uuid)
     cmd = ["/bin/xenvm", "set-vg-info", "--pvpath", devices[0], "--uri", uri, vg]
     if local_allocator is not None:
       cmd = cmd + [ "--local-allocator-path", local_allocator ]
@@ -143,18 +148,21 @@ def setvginfo(vg,devices,uri, local_allocator=None):
 
 config_dir = "/etc/xenvm.d/"
 
-def runxenvmd(vg,devices):
+def runxenvmd(uuid,vg,devices):
     global config_dir
     configfile = "%s/%s.xenvmd.config" % (config_dir, vg)
-    config = "((listenPort 4000) (host_allocation_quantum 128) (host_low_water_mark 8) (vg %s) (devices (%s)) )\n" % (vg," ".join(devices))
+    sockpath = sockpath_of_sr_uuid(uuid)
+    config = "((listenPort 4000) (listenPath (Some %s)) (host_allocation_quantum 128) (host_low_water_mark 8) (vg %s) (devices (%s)) )\n" % (sockpath,vg," ".join(devices))
     if not os.path.exists(config_dir):
       util.makedirs("/etc/xenvm.d")
+    if not os.path.exists(os.path.dirname(sockpath)):
+      util.makedirs(os.path.dirname(sockpath))
     with open(configfile,'w') as f:
         f.write(config)
     cmd = ["/sbin/xenvmd", "--daemon", "--config", configfile]
     util.pread2(cmd)
 
-def runxenvm_local_allocator(vg, devices, uri):
+def runxenvm_local_allocator(uuid, vg, devices, uri):
     global config_dir
     configfile = "%s/%s.xenvm-local-allocator.config" % (config_dir, vg)
     uuid = util.get_this_host ()
@@ -184,7 +192,7 @@ def runxenvm_local_allocator(vg, devices, uri):
     util.pread2(cmd) 
     cmd = [ "/bin/xenvm", "host-connect", uuid ]
     util.pread2(cmd)
-    setvginfo(vg,devices,uri,local_allocator)
+    setvginfo(uuid,vg,devices,uri,local_allocator)
 
 def stopxenvm_local_allocator(vg):
     uuid = util.get_this_host ()
