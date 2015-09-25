@@ -700,6 +700,11 @@ class LVHDSR(SR.SR):
         # only place to do so.
         self._cleanup(self.isMaster)
 
+        lvutil.stopxenvm_local_allocator(self.vgname)
+
+        if self.isMaster:
+            lvutil.stopxenvmd(self.vgname)
+
         # De-Register VG name with thin-tapdisk daemon if the VG is local or 
         # if the host if Master. Error could be ignored at this point
         if self.provision == "dynamic":

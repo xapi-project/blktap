@@ -132,6 +132,15 @@ def runxenvm_local_allocator(vg, devices, uri):
     util.pread2(cmd)
     setvginfo(vg,devices,uri,local_allocator)
 
+def stopxenvm_local_allocator(vg):
+    uuid = util.get_this_host ()
+    cmd = [ "/bin/xenvm", "host-disconnect", uuid ]
+    util.pread2(cmd)
+
+def stopxenvmd(vg):
+    cmd = [ "/bin/xenvm", "shutdown" ]
+    util.pread2(cmd)
+
 def _checkVG(vgname):
     try:
         cmd = ["/bin/xenvm", "vgs", vgname]
