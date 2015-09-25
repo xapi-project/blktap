@@ -62,7 +62,7 @@ LVM_FAIL_RETRIES = 10
 MASTER_LVM_CONF = '/etc/lvm/master'
 DEF_LVM_CONF = '/etc/lvm'
 
-DYNAMIC_DAEMON = "/usr/sbin/thin-tapdisk"
+DYNAMIC_DAEMON = "/usr/sbin/thinprovd"
 DYNAMIC_DAEMON_CLI = "/usr/sbin/thin-cli"
 
 LVM_COMMANDS = {CMD_VGCREATE, CMD_VGS, CMD_VGREMOVE, CMD_VGCHANGE,
