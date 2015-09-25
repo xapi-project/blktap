@@ -317,6 +317,7 @@ def runxenvm_local_allocator(uuid, vg, devices, uri):
     util.pread2(cmd) 
     cmd = [ "/bin/xenvm", "host-connect", vg, uuid ]
     util.pread2(cmd)
+    setvginfo(uuid,vg,devices,uri,local_allocator)
 
 def stopxenvm_local_allocator(vg):
     uuid = util.get_this_host ()
