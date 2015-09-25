@@ -113,11 +113,19 @@ def do_trim(session, args):
             if lvutil.exists(lv_path):
                 lvutil.remove(lv_path)
 
-            # Perform a lvcreate and lvremove to trigger trim on the array
+            # Perform a lvcreate, blkdiscard and lvremove to trigger trim on the array
             lvutil.create(lv_name, 0, vg_name, size_in_percentage="100%F")
-            lvutil.remove(lv_path,  config_param="issue_discards=1")
+            cmd = ["/usr/sbin/blkdiscard", "-v", lv_path]
+            stdout = util.pread2(cmd)
+            util.SMlog("Stdout is %s" % stdout)
             util.SMlog("Trim on SR: %s complete. " % sr_uuid)
             result = str(True)
+        except util.CommandException, e:
+            err_msg = {
+                ERROR_CODE_KEY: 'TrimException',
+                ERROR_MSG_KEY: e.reason
+            }
+            result = to_xml(err_msg)
         except:
             err_msg = {
                 ERROR_CODE_KEY: 'UnknownTrimException',
@@ -125,6 +133,9 @@ def do_trim(session, args):
                 % sr_uuid
             }
             result = to_xml(err_msg)
+        finally:
+            if lvutil.exists(lv_path):
+                lvutil.remove(lv_path)
 
         _log_last_triggered(session, sr_uuid)
 

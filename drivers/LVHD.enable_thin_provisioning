@@ -1,0 +1,112 @@
+#!/usr/bin/env python
+
+import xmlrpclib
+import sys
+import XenAPI
+import os
+
+sys.path.insert(0, '/opt/xensource/sm')
+import LVHDSR
+import SRCommand
+import SR
+import util
+
+LOCK_RETRY_ATTEMPTS = 3
+LOCK_RETRY_INTERVAL = 1
+
+def success_message(result):
+    rpcparams = { 'Status': 'Success', 'Value': result }
+    return xmlrpclib.dumps((rpcparams, ), '', True)
+
+def failure_message(code, params):
+    rpcparams = { 'Status': 'Failure', 'ErrorDescription': [ code ] + params }
+    return xmlrpclib.dumps((rpcparams, ), '', True)
+
+if __name__ == "__main__":
+    txt = sys.stdin.read()
+    params, methodname = xmlrpclib.loads(txt)
+    acquired = False
+    
+    try:
+        session = util.get_localAPI_session()
+        if not util.is_master(session):
+            print (failure_message("Unsupported", ["Extension can only be"
+                   " invoked on a master host."]))
+        srRecord = session.xenapi.SR.get_record(params[1])
+        sr_uuid = srRecord["uuid"]
+        hosts_ref = session.xenapi.host.get_all()
+        master_ref = util.get_this_host_ref(session)
+        sr_type = srRecord["type"]
+
+        if (sr_type == 'lvmoiscsi' or sr_type == 'lvmohba'):
+            util.SMlog("Upgrading sr %s of type %s to be thin provisioned."
+                       % (sr_uuid, sr_type))
+        else: 
+            print (failure_message("Unsupported", ["Enabling "
+                   "thin provisioning not supported for SR of type:", 
+                   sr_type]))
+
+        driver_info = LVHDSR.DRIVER_INFO    
+        cmd = SRCommand.SRCommand(driver_info)
+     
+        input_params = {}
+        input_params['session_ref'] = session._session
+        input_params['host_ref'] = master_ref
+        input_params['sr_ref'] = params[1]
+        input_params['initial_allocation'] = params[2]
+        input_params['allocation_quantum'] = params[3]
+        input_params['command'] = methodname
+        input_params['sr_uuid'] = sr_uuid
+ 
+        pbd_ref = util.find_my_pbd(session, master_ref, params[1])
+        pbd = session.xenapi.PBD
+        device_config = pbd.get_device_config(pbd_ref)
+        input_params['device_config'] = device_config
+        cmd.dconf = input_params['device_config']
+        device_path = "/dev/disk/mpInuse/" + device_config['SCSIid']
+        if not os.path.exists(device_path):
+            device_path = "/dev/disk/by-id/scsi-" + device_config['SCSIid']
+        cmd.dconf['device'] = device_path
+        cmd.dconf['SRmaster'] = "true"
+        cmd.params = input_params
+        sr = LVHDSR.LVHDSR(cmd, sr_uuid)
+
+        for i in range(LOCK_RETRY_ATTEMPTS):
+            acquired = sr.lock.acquireNoblock()
+            if acquired:
+                break
+            time.sleep(LOCK_RETRY_INTERVAL)
+        if acquired:
+            #refresh sr record and check sm_config
+            srRecord = session.xenapi.SR.get_record(params[1])
+            sm_config = srRecord["sm_config"]
+            if sm_config.has_key('allocation'): 
+                if sm_config['allocation'] != 'thick':
+                    print (failure_message("EnableThinProvisionException", 
+                    ["Cannot upgrade non-thick SR:", sr_uuid]))
+            sr.upgrade(sr_uuid)
+            for host_ref in hosts_ref:
+                if host_ref == master_ref:
+                    continue
+                util.SMlog("Calling plugin for host with ref = %s" %host_ref)
+                slave_params = {}
+                slave_params['host_ref'] = host_ref
+                slave_params['sr_ref'] = params[1]
+                result = session.xenapi.host.call_plugin(host_ref, 
+                         "enable_thin_lvhd_on_slave", "enable_thin_lvhd", 
+                         slave_params)
+            msg = "Enabling thin provisioning was successful for SR: " + sr_uuid
+            print (success_message(msg))
+        else:
+            util.SMlog("Could not enable thin provision on %s,"
+                       "Lock unavailable" % sr_uuid)
+            print (failure_message("SRUnavailable", 
+                   ["Unable to get SR lock for SR:", sr_uuid]))
+
+    except:
+        print (failure_message("EnableThinProvisionException", 
+               ["Enabling thin provision failed on SR:", sr_uuid]))
+    finally:
+        if acquired:
+            sr.lock.release()
+        session.xenapi.session.logout() 

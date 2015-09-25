@@ -1,0 +1,2 @@
+#!/bin/bash
+/sbin/lvchange --refresh ${1} --config global{metadata_read_only=0}

@@ -341,17 +341,29 @@ def setInnerNodeRefcounts(lvmCache, srUuid):
     return pathsNotInUse
 
 if __name__ == "__main__":
+    import lvutil
     # used by the master changeover script
-    from lvmcache import LVMCache
-    try:
-        cmd = sys.argv[1]
+    cmd = sys.argv[1]
+    if cmd == "fixrefcounts":
+        from lvmcache import LVMCache
         srUuid = sys.argv[2]
-        if cmd == "fixrefcounts":
+        try:
             vgName = VG_PREFIX + srUuid
             lvmCache = LVMCache(vgName)
             setInnerNodeRefcounts(lvmCache, srUuid)
-        else:
-            util.SMlog("Invalid usage")
-            print "Usage: %s fixrefcounts <sr_uuid>" % sys.argv[0]
-    except:
-        util.logException("setInnerNodeRefcounts")
+        except:
+            util.logException("setInnerNodeRefcounts")
+    elif cmd == "extend":
+        ssize = sys.argv[2]
+        path = sys.argv[3]
+        vgName = path.split('/')[-2].replace('VG_XenStorage', 'lvm')
+        lvUuid = path.split('/')[-1].lstrip('VHD-')
+        lock = Lock(vgName, lvUuid)
+        util.SMlog("LV Extending %s to %s" % (path, ssize))
+        _tryAcquire(lock)
+        if not lvutil.extend(ssize, path):
+            sys.exit(1)
+        lock.release()
+    else:
+        util.SMlog("Invalid usage")
+        print "Usage: %s <fixrefcounts|extend> ..." % sys.argv[0]

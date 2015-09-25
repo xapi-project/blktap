@@ -28,7 +28,7 @@ import xml.sax.saxutils
 
 SECTOR_SIZE = 512
 XML_HEADER = "<?xml version=\"1.0\" ?>"
-SECTOR2_FMT= "%s%s%s" 
+SECTOR2_FMT= "%s%s%s%s%s" 
 MAX_METADATA_LENGTH_SIZE = 10
 LEN_FMT = "%" + "-%ds" % MAX_METADATA_LENGTH_SIZE
 SECTOR_STRUCT = "%-512s" 
@@ -36,6 +36,8 @@ OFFSET_TAG = 'offset'
 
 # define xml tags for metadata 
 ALLOCATION_TAG = 'allocation'
+INIT_ALLOCATION_TAG = 'initial_allocation'
+ALLOCATION_QUANTUM_TAG= 'allocation_quantum'
 NAME_LABEL_TAG = 'name_label'
 NAME_DESCRIPTION_TAG = 'name_description'
 VDI_TAG = 'vdi'
@@ -777,8 +779,13 @@ class LVMMetadataHandler(MetadataHandler):
             if 1 in range:
                 uuid = getXMLTag(UUID_TAG) % sr_info[UUID_TAG]
                 allocation = getXMLTag(ALLOCATION_TAG) % sr_info[ALLOCATION_TAG]
+                init_allocation = getXMLTag(INIT_ALLOCATION_TAG) % \
+                                  sr_info[INIT_ALLOCATION_TAG]
+                allocation_quantum = getXMLTag(ALLOCATION_QUANTUM_TAG) % \
+                                     sr_info[ALLOCATION_QUANTUM_TAG]
                 
-                second = SECTOR2_FMT % (XML_HEADER, uuid, allocation)
+                second = SECTOR2_FMT % (XML_HEADER, uuid, allocation, \
+                         init_allocation, allocation_quantum)
                 srinfo += getSector(second)
            
             if 2 in range:

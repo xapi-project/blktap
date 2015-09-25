@@ -81,6 +81,8 @@ cp -f /etc/lvm/lvm.conf.orig /etc/lvm/lvm.conf || exit $?
 /etc/xapi.d/plugins/vss_control
 /etc/xapi.d/plugins/intellicache-clean
 /etc/xapi.d/plugins/trim
+/etc/xapi.d/plugins/enable_thin_lvhd_on_slave
+/etc/xapi.d/extensions/LVHD.enable_thin_provisioning
 /etc/xensource/master.d/02-vhdcleanup
 /opt/xensource/bin/blktap2
 /opt/xensource/bin/tapdisk-cache-stats
@@ -281,6 +283,9 @@ cp -f /etc/lvm/lvm.conf.orig /etc/lvm/lvm.conf || exit $?
 /opt/xensource/sm/wwid_conf.py
 /opt/xensource/sm/wwid_conf.pyc
 /opt/xensource/sm/wwid_conf.pyo
+/opt/xensource/sm/pluginutil.py
+/opt/xensource/sm/pluginutil.pyc
+/opt/xensource/sm/pluginutil.pyo
 /sbin/mpathutil
 /etc/rc.d/init.d/sm-multipath
 %{_unitdir}/make-dummy-sr.service

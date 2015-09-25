@@ -472,6 +472,10 @@ class LVHDoISCSISR(LVHDSR.LVHDSR):
             i.detach(sr_uuid)
 
     def attach(self, sr_uuid):
+        if ('allocation' in self.sm_config and
+                self.sm_config['allocation'] == 'xlvhd'):
+            self._write_vginfo(sr_uuid)
+
         try:
             connected = False
             for i in self.iscsiSRs:
@@ -497,13 +501,18 @@ class LVHDoISCSISR(LVHDSR.LVHDSR):
                 # Force a manual bus refresh
                 for a in self.iscsi.adapter:
                     scsiutil.rescan([self.iscsi.adapter[a]])
+
+            self._start_xenvmd(sr_uuid)
+
             self._pathrefresh(LVHDoISCSISR)
             LVHDSR.LVHDSR.attach(self, sr_uuid)
+            self._symlink_xenvm_conf()
         except Exception, inst:
             for i in self.iscsiSRs:
                 i.detach(sr_uuid)
             raise xs_errors.XenError("SRUnavailable", opterr=inst)
         self._setMultipathableFlag(SCSIid=self.SCSIid)
+        self._start_local_allocator(sr_uuid)
         
     def detach(self, sr_uuid):
         LVHDSR.LVHDSR.detach(self, sr_uuid)
@@ -552,6 +561,8 @@ class LVHDoISCSIVDI(LVHDSR.LVHDVDI):
         util.SMlog("LVHDoISCSIVDI.generate_config")
         if not lvutil._checkLV(self.path):
                 raise xs_errors.XenError('VDIUnavailable')
+        if self.sr.sm_config['allocation'] == "xlvhd":
+            lvutil.flushLV(self.path)
         dict = {}
         self.sr.dconf['localIQN'] = self.sr.iscsi.localIQN
         self.sr.dconf['multipathing'] = self.sr.mpath
@@ -563,6 +574,7 @@ class LVHDoISCSIVDI(LVHDSR.LVHDVDI):
             dict['device_config']['chappassword'] = s
         dict['sr_uuid'] = sr_uuid
         dict['vdi_uuid'] = vdi_uuid
+        dict['allocation'] =  self.sr.sm_config['allocation']
         dict['command'] = 'vdi_attach_from_config'
         # Return the 'config' encoded within a normal XMLRPC response so that
         # we can use the regular response/error parsing code.

@@ -1066,6 +1066,9 @@ class LVHDVDI(VDI):
         self._sizeVHD = -1
 
     def inflateFully(self):
+        sm_config = self.sr.xapi.srRecord['sm_config']
+        if sm_config['allocation'] == "xlvhd":
+            return
         self.inflate(lvhdutil.calcSizeVHDLV(self.sizeVirt))
 
     def inflateParentForCoalesce(self):

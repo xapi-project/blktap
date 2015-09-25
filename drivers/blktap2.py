@@ -25,6 +25,7 @@ import time
 import copy
 from lock import Lock
 import util
+import lvutil
 import xmlrpclib
 import httplib
 import errno
@@ -56,6 +57,7 @@ SOCKPATH = "/var/xapi/xcp-rrdd"
 
 NUM_PAGES_PER_RING = 32 * 11
 MAX_FULL_RINGS = 8
+DYN_AQ_MIN = 16
 POOL_NAME_KEY = "mem-pool"
 POOL_SIZE_KEY = "mem-pool-size-rings"
 
@@ -396,6 +398,10 @@ class TapCtl(object):
         if options.get("timeout"):
             args.append("-t")
             args.append(str(options["timeout"]))
+        if options.get("xlvhd"):
+            args.append("-T")
+        if options.get("allocation_quantum"):
+            args.extend(("-q", options["allocation_quantum"]))
         if not options.get("o_direct", True):
             args.append("-D")
         cls._pread(args)
@@ -1523,6 +1529,25 @@ class VDI(object):
         util.SMlog("blktap2.activate")
         options = {"rdonly": not writable}
         options.update(caching_params)
+
+        # Check whether tapdisk needs to be in xlvhd allocation mode
+        if hasattr(self.target.vdi.sr, "provision") and \
+                self.target.vdi.sr.provision == "xlvhd":
+            # Flag error if daemon not running, and provisioning set to xlvhd
+            if not util.is_daemon_running(lvutil.THINPROV_DAEMON):
+                raise util.SMException("Error: Provisioning for %s set to xlvhd, " 
+                                           "but %s not running" % \
+                                       (sr_uuid, lvutil.THINPROV_DAEMON))
+            options["xlvhd"] = True
+            sm_config = self.target.vdi.sm_config_override
+            aq = None
+            if "allocation_quantum" in sm_config:
+                aq = long (sm_config["allocation_quantum"])
+            elif "allocation_quantum" in self.target.vdi.sr.sm_config:
+                aq = long (self.target.vdi.sr.sm_config["allocation_quantum"])
+            # Tapdisk needs the allocation_quantum to be in MB
+            options["allocation_quantum"] = int(aq / (1024*1024))
+
         timeout = util.get_nfs_timeout(self.target.vdi.session, sr_uuid)
         if timeout:
             options["timeout"] = timeout + self.TAPDISK_TIMEOUT_MARGIN

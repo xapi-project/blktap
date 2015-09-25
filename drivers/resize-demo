@@ -1,0 +1,2 @@
+#!/bin/bash
+/opt/xensource/sm/lvhdutil.py extend ${1} ${2}
