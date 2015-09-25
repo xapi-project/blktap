@@ -578,46 +578,6 @@ class LVHDSR(SR.SR):
     def attach(self, uuid):
         util.SMlog("LVHDSR.attach for %s" % self.uuid)
 
-        path_to_file = '/var/run/nonpersistent/sr_alloc_' + uuid
-
-        # If 'allocation' exists in sm_config, overwrite whatever
-        # existed (if anything) in "'sr_alloc_' + uuid".
-        if 'allocation' in self.sm_config:
-            if self.sm_config['allocation'] == 'dynamic':
-                sr_alloc = 'dnmc'
-            elif self.sm_config['allocation'] == 'thick':
-                sr_alloc = 'thck'
-            else:
-                raise Exception("Unknown sm_config['allocation'] value: '{}'."
-                        .format(self.sm_config['allocation']))
-
-            with open(path_to_file, 'w') as f:
-                f.write(sr_alloc)
-
-        # If not, check if the file exists. If it doesn't,
-        # create it and fallback to 'thick'.
-        else:
-            try:
-                f = open(path_to_file, 'r')
-                f.close()
-            except IOError:
-                util.SMlog("File 'sr_alloc_{}' does not exist; Creating it"
-                           " and falling back to 'thick'.".format(uuid))
-                with open(path_to_file, 'w') as f:
-                    f.write('thck')
-
-        vg = self.vgname
-        devices = self.root.split(',')
-
-        sr_alloc = os.getenv('SR_ALLOC')
-        if sr_alloc == "thin":
-            if self.isMaster:
-                lvutil.runxenvmd(uuid, vg, devices)
-
-            uri = "file://local/services/xenvmd/%s" % uuid
-            lvutil.setvginfo(uuid, vg, devices, uri)
-            lvutil.runxenvm_local_allocator(uuid, vg, devices, uri)
-
         self._cleanup(True) # in case of host crashes, if detach wasn't called
 
         if not util.match_uuid(self.uuid) or not lvutil._checkVG(self.vgname):
@@ -1328,6 +1288,64 @@ class LVHDSR(SR.SR):
 
         util.SMlog("Kicking GC")
         cleanup.gc(self.session, self.uuid, True)
+
+
+    def _write_allocation(self, uuid):
+        path_to_file = '/var/run/nonpersistent/sr_alloc_' + uuid
+
+        # If 'allocation' exists in sm_config, overwrite whatever
+        # existed (if anything) in "'sr_alloc_' + uuid".
+        if 'allocation' in self.sm_config:
+            if self.sm_config['allocation'] == 'dynamic':
+                sr_alloc = 'dnmc'
+            elif self.sm_config['allocation'] == 'thick':
+                sr_alloc = 'thck'
+            else:
+                raise Exception("Unknown sm_config['allocation'] value: '{}'."
+                        .format(self.sm_config['allocation']))
+
+            with open(path_to_file, 'w') as f:
+                f.write(sr_alloc)
+
+        # If not, check if the file exists. If it doesn't,
+        # create it and fallback to 'thick'.
+        else:
+            try:
+                f = open(path_to_file, 'r')
+                f.close()
+            except IOError:
+                util.SMlog("File 'sr_alloc_{}' does not exist; Creating it"
+                           " and falling back to 'thick'.".format(uuid))
+                with open(path_to_file, 'w') as f:
+                    f.write('thck')
+
+
+    def _start_xenvmd(self, uuid):
+        sr_alloc = os.getenv('SR_ALLOC')
+        if sr_alloc == "thin":
+            vg = self.vgname
+            devices = self.root.split(',')
+            # move the "if" up!
+            if self.isMaster:
+                lvutil.runxenvmd(uuid, vg, devices)
+
+
+    def _start_local_allocator(self, uuid):
+        sr_alloc = os.getenv('SR_ALLOC')
+        if sr_alloc == "thin":
+            vg = self.vgname
+            devices = self.root.split(',')
+            uri = "file://local/services/xenvmd/%s" % uuid
+            lvutil.runxenvm_local_allocator(uuid, vg, devices, uri)
+
+
+    def _write_vginfo(self, uuid):
+        sr_alloc = os.getenv('SR_ALLOC')
+        if sr_alloc == "thin":
+            vg = self.vgname
+            devices = self.root.split(',')
+            uri = "file://local/services/xenvmd/%s" % uuid
+            lvutil.setvginfo(uuid, vg, devices, uri)
 
 
 class LVHDVDI(VDI.VDI):

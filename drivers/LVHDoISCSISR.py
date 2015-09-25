@@ -472,6 +472,10 @@ class LVHDoISCSISR(LVHDSR.LVHDSR):
             i.detach(sr_uuid)
 
     def attach(self, sr_uuid):
+        # Write the allocation type on file as soon as we can
+        self._write_allocation(sr_uuid)
+        self._write_vginfo(sr_uuid)
+
         try:
             connected = False
             for i in self.iscsiSRs:
@@ -497,6 +501,9 @@ class LVHDoISCSISR(LVHDSR.LVHDSR):
                 # Force a manual bus refresh
                 for a in self.iscsi.adapter:
                     scsiutil.rescan([self.iscsi.adapter[a]])
+
+            self._start_xenvmd(sr_uuid)
+
             self._pathrefresh(LVHDoISCSISR)
             LVHDSR.LVHDSR.attach(self, sr_uuid)
         except Exception, inst:
@@ -504,6 +511,7 @@ class LVHDoISCSISR(LVHDSR.LVHDSR):
                 i.detach(sr_uuid)
             raise xs_errors.XenError("SRUnavailable", opterr=inst)
         self._setMultipathableFlag(SCSIid=self.SCSIid)
+        self._start_local_allocator(sr_uuid)
         
     def detach(self, sr_uuid):
         LVHDSR.LVHDSR.detach(self, sr_uuid)

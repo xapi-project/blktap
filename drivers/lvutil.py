@@ -166,7 +166,16 @@ def runxenvmd(uuid,vg,devices):
     global config_dir
     configfile = "%s/%s.xenvmd.config" % (config_dir, vg)
     sockpath = sockpath_of_sr_uuid(uuid)
-    config = "((listenPort None) (listenPath (Some %s)) (host_allocation_quantum 2048) (host_low_water_mark 1024) (vg %s) (devices (%s)) )\n" % (sockpath,vg," ".join(devices))
+    config = """
+(
+ (listenPort ())
+ (listenPath (Some %s))
+ (host_allocation_quantum 2048)
+ (host_low_water_mark 1024)
+ (vg %s)
+ (devices (%s))
+)
+""" % (sockpath,vg," ".join(devices))
     if not os.path.exists(config_dir):
       util.makedirs("/etc/xenvm.d")
     if not os.path.exists(os.path.dirname(sockpath)):
@@ -206,7 +215,6 @@ def runxenvm_local_allocator(uuid, vg, devices, uri):
     util.pread2(cmd) 
     cmd = [ "/bin/xenvm", "host-connect", vg, uuid ]
     util.pread2(cmd)
-    setvginfo(uuid,vg,devices,uri,local_allocator)
 
 def stopxenvm_local_allocator(vg):
     uuid = util.get_this_host ()

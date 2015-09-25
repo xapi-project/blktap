@@ -116,6 +116,10 @@ class LVHDoHBASR(LVHDSR.LVHDSR):
                                              self.sr_ref, self.SCSIid)
 
     def attach(self, sr_uuid):
+        # Write the allocation type on file as soon as we can
+        self._write_allocation(sr_uuid)
+        self._write_vginfo(sr_uuid)
+
         self.hbasr.attach(sr_uuid)
         if self.mpath == "true":
             self.mpathmodule.refresh(self.SCSIid,0)
@@ -123,6 +127,8 @@ class LVHDoHBASR(LVHDSR.LVHDSR):
             path = '/dev/disk/by-scsid/%s' % self.dconf['SCSIid']
             for file in os.listdir(path):
                 self.block_setscheduler('%s/%s' % (path,file))
+
+        self._start_xenvmd(sr_uuid)
 
         self._pathrefresh(LVHDoHBASR)
         if not os.path.exists(self.dconf['device']):
@@ -133,6 +139,7 @@ class LVHDoHBASR(LVHDSR.LVHDSR):
                 self.mpathmodule.refresh(self.SCSIid,0)
         LVHDSR.LVHDSR.attach(self, sr_uuid)
         self._setMultipathableFlag(SCSIid=self.SCSIid)
+        self._start_local_allocator(sr_uuid)
 
     def scan(self, sr_uuid):
         # During a reboot, scan is called ahead of attach, which causes the MGT
