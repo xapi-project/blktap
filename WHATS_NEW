@@ -1,3 +1,15 @@
+Version 1.11.1 - 7th Sep 2015
+===============================
+  CA-92675: Change ISCSI SR scheduler to NOOP
+  CA-155766 Fix race between lvchange and tap-ctl open
+  Improving readcache check for file based SRs
+  CA-165487: Fix typo in SymLink.symlink
+  CA-161436: Fix mount options for NFS ISO SRs.
+  CA-161436: Disable caching for CIFS ISO SRs
+  CA-170671: Cleanup xen-ringwatch cron from SM
+  CA-136790: Ensure consistent behaviour of get_devices_by_SCSIid
+  CP-13187: Disable usage of OCFS SRs
+
 Version 1.11.0 - 24th July 2015
 ===============================
   New feature supporting CIFS as a first class SR
