@@ -577,6 +577,9 @@ class LVHDSR(SR.SR):
 
     def attach(self, uuid):
         util.SMlog("LVHDSR.attach for %s" % self.uuid)
+        if self.isMaster:
+            lvutil.runxenvmd(self.vgname, self.root.split(','))
+
         self._cleanup(True) # in case of host crashes, if detach wasn't called
 
         if not util.match_uuid(self.uuid) or not lvutil._checkVG(self.vgname):
@@ -587,6 +590,7 @@ class LVHDSR(SR.SR):
         self._checkMetadataVolume()
 
         refreshsizeok = self._refresh_size()
+
         if self.isMaster:
             if refreshsizeok:
                 self._expand_size()
