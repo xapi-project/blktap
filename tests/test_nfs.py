@@ -10,15 +10,13 @@ class Test_nfs(unittest.TestCase):
     def test_check_server_tcp(self, pread):
         nfs.check_server_tcp('aServer')
 
-        pread.assert_called_once_with(['/usr/sbin/rpcinfo', '-t', 'aServer',
-                                      'nfs', '3'])
+        pread.assert_called_once_with(['/usr/sbin/rpcinfo', '-p', 'aServer'], quiet=False)
 
     @mock.patch('util.pread')
     def test_check_server_tcp_nfsversion(self, pread):
         nfs.check_server_tcp('aServer', 'aNfsversion')
 
-        pread.assert_called_once_with(['/usr/sbin/rpcinfo', '-t', 'aServer',
-                                      'nfs', 'aNfsversion'])
+        pread.assert_called_once_with(['/usr/sbin/rpcinfo', '-p', 'aServer'], quiet=False)
 
     def get_soft_mount_pread(self, binary, vers):
         return ([binary, 'remoteserver:remotepath', 'mountpoint', '-o',
