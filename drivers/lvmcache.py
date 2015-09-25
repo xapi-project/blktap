@@ -71,7 +71,7 @@ class LVMCache:
     def refresh(self):
         """Get the LV information for the VG using "lvs" """
         util.SMlog("LVMCache: refreshing")
-        cmd = ["/sbin/xenvm","lvs",
+        cmd = ["/bin/xenvm","lvs",
                 "--noheadings", "--units", "b", "-o", "+lv_tags", self.vgPath]
         text = util.pread2(cmd)
         self.lvs.clear()
