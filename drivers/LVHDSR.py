@@ -93,6 +93,12 @@ class LVHDSR(SR.SR):
     FLAG_USE_VHD = "use_vhd"
     MDVOLUME_NAME = "MGT"
 
+    ALLOCATION_QUANTUM = "allocation_quantum"
+    INITIAL_ALLOCATION = "initial_allocation"
+
+    DYNAMIC_PROVISIONING_FACTOR = .2
+    DYNAMIC_ALLOCATION_QUANTUM = .01
+
     LOCK_RETRY_INTERVAL = 3
     LOCK_RETRY_ATTEMPTS = 10
 
@@ -434,6 +440,27 @@ class LVHDSR(SR.SR):
                     self.session.xenapi.SR.get_name_description(self.sr_ref))
             map[self.FLAG_USE_VHD] = "true"
             map['allocation'] = self.provision
+            if self.provision == "dynamic":
+                if self.ALLOCATION_QUANTUM in self.sm_config:
+                    aq = float (self.sm_config[self.ALLOCATION_QUANTUM])
+                    if aq > 0.0 and aq <= 1.0:
+                        map['allocation_quantum'] = str (aq)
+                    else:
+                        raise xs_errors.XenError('InvalidArg',
+                                opterr='Allocation quantum must be between [0.0-1.0]')
+                else:
+                    util.SMlog("Using defaults for allocation quantum")
+                    map['allocation_quantum'] = str (self.DYNAMIC_ALLOCATION_QUANTUM)
+                if self.INITIAL_ALLOCATION in self.sm_config:
+                    ia = float (self.sm_config[self.INITIAL_ALLOCATION])
+                    if ia > 0.0 and ia <= 1.0:
+                        map['initial_allocation'] = str (ia)
+                    else:
+                        raise xs_errors.XenError('InvalidArg',
+                                opterr='Initial allocation must be between [0.0-1.0]')
+                else:
+                    util.SMlog("Using defaults for initial allocation")
+                    map['initial_allocation'] = str (self.DYNAMIC_PROVISIONING_FACTOR)
             self.session.xenapi.SR.set_sm_config(self.sr_ref, map)
 
             # Add the SR metadata
@@ -1368,7 +1395,6 @@ class LVHDVDI(VDI.VDI):
 
     JRN_CLONE = "clone" # journal entry type for the clone operation
 
-    DYNAMIC_PROVISIONING_FACTOR = .2
     DYNAMIC_PROVISIONING_MIN = 200 * 1024 * 1024
 
     def load(self, vdi_uuid):
@@ -1438,9 +1464,14 @@ class LVHDVDI(VDI.VDI):
             elif self.sr.provision == "thick":
                 lvSize = lvhdutil.calcSizeVHDLV(long(size))
             elif self.sr.provision == "dynamic":
+                if 'initial_allocation' in self.sr.sm_config:
+                    ia = float (self.sr.sm_config['initial_allocation'])
+                else:
+                    # Should never reach here
+                    raise xs_errors.XenError('InvalidArg',
+                            opterr='Initial allocation must be between [0.0-1.0]')
                 thick_sz = lvhdutil.calcSizeVHDLV(long(size))
-                dynamic_sz = max(long(thick_sz *
-                                      self.DYNAMIC_PROVISIONING_FACTOR),
+                dynamic_sz = max(long(thick_sz * ia),
                                  self.DYNAMIC_PROVISIONING_MIN)
                 dynamic_sz = min(dynamic_sz, thick_sz)
                 lvSize = util.roundup(lvutil.LVM_SIZE_INCREMENT, dynamic_sz)

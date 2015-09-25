@@ -1725,3 +1725,13 @@ def get_pool_master_info(attrib):
     finally:
         session.xenapi.logout()
 
+def get_vdi_virtual_size(vdi_uuid):
+    session = get_localAPI_session()
+    vdi_sz = 0
+    try:
+        vdi_ref = session.xenapi.VDI.get_by_uuid(vdi_uuid)
+        vdi_sz  = session.xenapi.VDI.get_virtual_size(vdi_ref)
+    except:
+        SMlog("error: while attempting to get VDI.virtual_size")
+    finally:
+        return vdi_sz
