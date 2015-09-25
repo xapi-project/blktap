@@ -579,14 +579,17 @@ class LVHDSR(SR.SR):
         util.SMlog("LVHDSR.attach for %s" % self.uuid)
         vg = self.vgname
         devices = self.root.split(',')
-        if self.isMaster:
-            uri = "http://127.0.0.1:4000"
-            lvutil.runxenvmd(vg, devices)
-        else:
-            pool_master_ip = util.get_pool_master_info("address")
-            uri = "http://%s:4000" % pool_master_ip
-        lvutil.setvginfo(vg, devices, uri)
-        lvutil.runxenvm_local_allocator(vg, devices, uri)
+
+        sr_alloc = os.getenv('SR_ALLOC')
+        if sr_alloc == "thin":
+            if self.isMaster:
+                uri = "http://127.0.0.1:4000"
+                lvutil.runxenvmd(vg, devices)
+            else:
+                pool_master_ip = util.get_pool_master_info("address")
+                uri = "http://%s:4000" % pool_master_ip
+            lvutil.setvginfo(vg, devices, uri)
+            lvutil.runxenvm_local_allocator(vg, devices, uri)
 
         self._cleanup(True) # in case of host crashes, if detach wasn't called
 
@@ -700,10 +703,12 @@ class LVHDSR(SR.SR):
         # only place to do so.
         self._cleanup(self.isMaster)
 
-        lvutil.stopxenvm_local_allocator(self.vgname)
+        sr_alloc = os.getenv('SR_ALLOC')
+        if sr_alloc == "thin":
+            lvutil.stopxenvm_local_allocator(self.vgname)
 
-        if self.isMaster:
-            lvutil.stopxenvmd(self.vgname)
+            if self.isMaster:
+                lvutil.stopxenvmd(self.vgname)
 
         # De-Register VG name with thin-tapdisk daemon if the VG is local or 
         # if the host if Master. Error could be ignored at this point
