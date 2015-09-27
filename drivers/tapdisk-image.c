@@ -94,15 +94,17 @@ tapdisk_image_check_td_request(td_image_t *image, td_request_t treq)
 	info   = &image->info;
 	rdonly = td_flag_test(image->flags, TD_OPEN_RDONLY);
 
-	if (treq.op != TD_OP_READ && treq.op != TD_OP_WRITE)
+	if (treq.op != TD_OP_READ && treq.op != TD_OP_WRITE &&
+	    treq.op != TD_OP_DISCARD)
 		goto fail;
 
-	if (treq.op == TD_OP_WRITE && rdonly) {
+	if ((treq.op == TD_OP_WRITE || treq.op == TD_OP_DISCARD) && rdonly) {
 		err = -EPERM;
 		goto fail;
 	}
 
-	if (treq.secs <= 0 || treq.sec + treq.secs > info->size)
+	if ((treq.secs <= 0 || treq.sec + treq.secs > info->size) &&
+	    treq.op != TD_OP_DISCARD)
 		goto fail;
 
 	return 0;
@@ -140,6 +142,9 @@ tapdisk_image_check_request(td_image_t *image, td_vbd_request_t *vreq)
 		secs += vreq->iov[i].secs;
 
 	switch (vreq->op) {
+	case TD_OP_DISCARD:
+                secs = vreq->discard_nr_sectors;
+		/* fall through */
 	case TD_OP_WRITE:
 		if (rdonly) {
 			err = -EPERM;

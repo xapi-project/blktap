@@ -49,6 +49,7 @@
 
 #include <time.h>
 #include <stdint.h>
+#include <stdbool.h>
 
 #include "list.h"
 #include "compiler.h"
@@ -74,6 +75,7 @@ extern unsigned int PAGE_SHIFT;
 
 #define TD_OP_READ                   0
 #define TD_OP_WRITE                  1
+#define TD_OP_DISCARD                2
 
 #define TD_OPEN_QUIET                0x00001
 #define TD_OPEN_QUERY                0x00002
@@ -126,6 +128,7 @@ struct td_disk_info {
 	td_sector_t                  size;
         long                         sector_size;
 	uint32_t                     info;
+	bool                         discard_supported;
 };
 
 struct td_iovec {
@@ -155,6 +158,8 @@ struct td_vbd_request {
 	td_vbd_t                   *vbd;
 	struct list_head            next;
 	struct list_head           *list_head;
+
+	uint64_t                    discard_nr_sectors;
 };
 
 struct td_request {
@@ -188,6 +193,7 @@ struct tap_disk {
 	int (*td_validate_parent)    (td_driver_t *, td_driver_t *, td_flag_t);
 	void (*td_queue_read)        (td_driver_t *, td_request_t);
 	void (*td_queue_write)       (td_driver_t *, td_request_t);
+	void (*td_queue_discard)     (td_driver_t *, td_request_t);
 	void (*td_debug)             (td_driver_t *);
 	void (*td_stats)             (td_driver_t *, td_stats_t *);
 

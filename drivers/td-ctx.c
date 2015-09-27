@@ -125,6 +125,17 @@ xenio_pending_blkif(struct td_xenio_ctx * const ctx)
         dst->seg[i] = src->seg[i];              \
 }
 
+#define blkif_get_req_discard(dst, discard_src)                              \
+{                                                                            \
+    /* assert(sizeof(blkif_request_discard_t)<sizeof(blkif_request_t)) */    \
+    blkif_request_discard_t *discard_dst = (blkif_request_discard_t *) dst;  \
+    discard_dst->operation = src->operation;                                 \
+    discard_dst->flag = discard_src->flag;                                   \
+    discard_dst->id = discard_src->id;                                       \
+    discard_dst->sector_number = discard_src->sector_number;                 \
+    discard_dst->nr_sectors = discard_src->nr_sectors;                       \
+}
+
 /**
  * Utility function that retrieves a request using @idx as the ring index,
  * copying it to the @dst in a H/W independent way.
@@ -149,6 +160,7 @@ xenio_blkif_get_request(struct td_xenblkif * const blkif,
             {
                 blkif_request_t *src;
                 src = RING_GET_REQUEST(&rings->native, idx);
+                // sizeof(blkif_request_t)>sizeof(blkif_request_discard_t)
                 memcpy(dst, src, sizeof(blkif_request_t));
                 break;
             }
@@ -157,7 +169,13 @@ xenio_blkif_get_request(struct td_xenblkif * const blkif,
             {
                 blkif_x86_32_request_t *src;
                 src = RING_GET_REQUEST(&rings->x86_32, idx);
-                blkif_get_req(dst, src);
+                if (src->operation==BLKIF_OP_DISCARD) {
+                    blkif_x86_32_request_discard_t * discard_src;
+                    discard_src = (blkif_x86_32_request_discard_t *) src;
+                    blkif_get_req_discard(dst, discard_src);
+                } else {
+                    blkif_get_req(dst, src);
+                }
                 break;
             }
 
@@ -165,7 +183,13 @@ xenio_blkif_get_request(struct td_xenblkif * const blkif,
             {
                 blkif_x86_64_request_t *src;
                 src = RING_GET_REQUEST(&rings->x86_64, idx);
-                blkif_get_req(dst, src);
+                if (src->operation==BLKIF_OP_DISCARD) {
+                    blkif_x86_64_request_discard_t * discard_src;
+                    discard_src = (blkif_x86_64_request_discard_t *) src;
+                    blkif_get_req_discard(dst, discard_src);
+                } else {
+                    blkif_get_req(dst, src);
+                }
                 break;
             }
 

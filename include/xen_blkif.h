@@ -26,12 +26,21 @@ struct blkif_x86_32_request {
 	blkif_sector_t sector_number;/* start sector idx on disk (r/w only)  */
 	struct blkif_request_segment seg[BLKIF_MAX_SEGMENTS_PER_REQUEST];
 };
+struct blkif_x86_32_request_discard {
+	uint8_t        operation;    /* BLKIF_OP_DISCARD                     */
+	uint8_t        flag;         /* BLKIF_DISCARD_SECURE or zero         */
+	blkif_vdev_t   handle;       /* was "handle" for read/write requests */
+	uint64_t       id;           /* private guest value, echoed in resp  */
+	blkif_sector_t sector_number;/* start sector idx on disk (r/w only)  */
+	uint64_t       nr_sectors;
+};
 struct blkif_x86_32_response {
 	uint64_t        id;              /* copied from request */
 	uint8_t         operation;       /* copied from request */
 	int16_t         status;          /* BLKIF_RSP_???       */
 };
 typedef struct blkif_x86_32_request blkif_x86_32_request_t;
+typedef struct blkif_x86_32_request_discard blkif_x86_32_request_discard_t;
 typedef struct blkif_x86_32_response blkif_x86_32_response_t;
 #pragma pack(pop)
 
@@ -44,12 +53,22 @@ struct blkif_x86_64_request {
 	blkif_sector_t sector_number;/* start sector idx on disk (r/w only)  */
 	struct blkif_request_segment seg[BLKIF_MAX_SEGMENTS_PER_REQUEST];
 };
+struct blkif_x86_64_request_discard {
+	uint8_t        operation;    /* BLKIF_OP_DISCARD                     */
+	uint8_t        flag;         /* BLKIF_DISCARD_SECURE or zero         */
+	blkif_vdev_t   _pad1;        /* was "handle" for read/write requests */
+	uint32_t       _pad2;
+	uint64_t       id;           /* private guest value, echoed in resp  */
+	blkif_sector_t sector_number;/* start sector idx on disk (r/w only)  */
+	uint64_t       nr_sectors;
+};
 struct blkif_x86_64_response {
 	uint64_t       __attribute__((__aligned__(8))) id;
 	uint8_t         operation;       /* copied from request */
 	int16_t         status;          /* BLKIF_RSP_???       */
 };
 typedef struct blkif_x86_64_request blkif_x86_64_request_t;
+typedef struct blkif_x86_64_request_discard blkif_x86_64_request_discard_t;
 typedef struct blkif_x86_64_response blkif_x86_64_response_t;
 
 DEFINE_RING_TYPES(blkif_common, struct blkif_common_request, struct blkif_common_response);

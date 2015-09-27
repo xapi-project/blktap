@@ -1363,6 +1363,10 @@ __tapdisk_vbd_reissue_td_request(td_vbd_t *vbd,
 	case TD_OP_READ:
 		td_queue_read(parent, treq);
 		break;
+
+	case TD_OP_DISCARD:
+		td_queue_discard(parent, treq);
+		break;
 	}
 
 done:
@@ -1485,6 +1489,19 @@ tapdisk_vbd_issue_request(td_vbd_t *vbd, td_vbd_request_t *vreq)
 		goto fail;
 	}
 
+	if(vreq->op==TD_OP_DISCARD) {
+		treq.sidx           = 1;
+		treq.sec            = sec;
+		treq.image          = image;
+		treq.cb             = tapdisk_vbd_complete_td_request;
+		treq.cb_data        = NULL;
+		treq.vreq           = vreq;
+		treq.op             = TD_OP_DISCARD;
+		td_queue_discard(treq.image, treq);
+		err = 0;
+		goto out;
+	}
+
 	for (i = 0; i < vreq->iovcnt; i++) {
 		struct td_iovec *iov = &vreq->iov[i];
 
@@ -1528,6 +1545,11 @@ tapdisk_vbd_issue_request(td_vbd_t *vbd, td_vbd_request_t *vreq)
 			treq.op = TD_OP_READ;
                         vbd->vdi_stats.stats->read_reqs_submitted++;
 			td_queue_read(treq.image, treq);
+			break;
+
+		case TD_OP_DISCARD:
+			treq.op = TD_OP_DISCARD;
+			td_queue_discard(treq.image, treq);
 			break;
 		}
 
