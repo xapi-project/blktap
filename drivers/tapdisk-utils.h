@@ -19,6 +19,7 @@
 #define _TAPDISK_UTILS_H_
 
 #include <inttypes.h>
+#include <stdbool.h>
 #include <sys/time.h>
 #include <sys/types.h>
 #include <sys/stat.h>
@@ -88,5 +89,11 @@ int
 shm_destroy(struct shm *shm);
 
 inline long long timeval_to_us(struct timeval *tv);
+
+/**
+ * Returns true if the filesystem that hosts the specified path is known to
+ * allow hole punching and thereby discard.
+ */
+bool is_hole_punching_supported_for_fd(int fd);
 
 #endif

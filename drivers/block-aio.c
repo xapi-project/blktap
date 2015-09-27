@@ -28,6 +28,7 @@
 #include <sys/stat.h>
 #include <sys/ioctl.h>
 #include <linux/fs.h>
+#include <linux/falloc.h>
 
 #include "tapdisk.h"
 #include "tapdisk-driver.h"
@@ -82,6 +83,11 @@ static int tdaio_get_image_info(int fd, td_disk_info_t *info)
 		/*Local file? try fstat instead*/
 		info->size = (stat.st_size >> SECTOR_SHIFT);
 		info->sector_size = DEFAULT_SECTOR_SIZE;
+
+		if(is_hole_punching_supported_for_fd(fd)) {
+			info->discard_supported = true;
+		}
+
 		DPRINTF("Image size: \n\tpre sector_shift  [%llu]\n\tpost "
 			"sector_shift [%llu]\n",
 			(long long unsigned)(info->size << SECTOR_SHIFT),
@@ -212,6 +218,33 @@ fail:
 	td_complete_request(treq, -EBUSY);
 }
 
+void tdaio_discard(td_driver_t *driver, td_request_t treq)
+{
+        int rc;
+        off64_t size;
+        off64_t offset;
+        struct tdaio_state *prv;
+
+        if (driver->info.discard_supported != true) {
+                td_complete_request(treq, -EOPNOTSUPP);
+                return;
+        }
+
+        prv     = (struct tdaio_state *)driver->data;
+        size    = treq.vreq->discard_nr_sectors * driver->info.sector_size;
+        offset  = treq.vreq->sec * driver->info.sector_size;
+
+        rc = fallocate64(prv->fd, (FALLOC_FL_PUNCH_HOLE|FALLOC_FL_KEEP_SIZE), offset, size);
+        // Upper layers will retry on EINTR
+
+        // ToDo: Remove the following debug statement after feeling confident
+        DPRINTF("fallocate64(%d, %d, %" PRIu64 ", %" PRIu64 ") returned %d", prv->fd,
+                (FALLOC_FL_PUNCH_HOLE|FALLOC_FL_KEEP_SIZE), offset, size, rc);
+
+        td_complete_request(treq, rc);
+        return;
+}
+
 int tdaio_close(td_driver_t *driver)
 {
 	struct tdaio_state *prv = (struct tdaio_state *)driver->data;
@@ -253,6 +286,7 @@ struct tap_disk tapdisk_aio = {
 	.td_close           = tdaio_close,
 	.td_queue_read      = tdaio_queue_read,
 	.td_queue_write     = tdaio_queue_write,
+	.td_queue_discard   = tdaio_discard,
 	.td_get_parent_id   = tdaio_get_parent_id,
 	.td_validate_parent = tdaio_validate_parent,
 	.td_debug           = NULL,
