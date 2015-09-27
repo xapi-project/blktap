@@ -19,6 +19,7 @@
 #define _TAPDISK_MESSAGE_H_
 
 #include <inttypes.h>
+#include <stdbool.h>
 #include <sys/types.h>
 
 /*
@@ -70,6 +71,7 @@ struct tapdisk_message_image {
 	uint64_t                         sectors;
 	uint32_t                         sector_size;
 	uint32_t                         info;
+	bool                             discard_supported;
 };
 
 struct tapdisk_message_string {

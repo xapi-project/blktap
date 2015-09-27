@@ -219,7 +219,8 @@ tapback_write_pid(const char *pidfile)
  */
 static inline backend_t *
 tapback_backend_create(const char *name, const char *pidfile,
-        const domid_t domid, const bool barrier)
+                       const domid_t domid, const bool barrier,
+                       const bool discard)
 {
     int err;
     int len;
@@ -254,7 +255,8 @@ tapback_backend_create(const char *name, const char *pidfile,
         goto out;
     }
 
-	backend->barrier = barrier;
+    backend->barrier = barrier;
+    backend->discard = discard;
 
     backend->path = NULL;
 
@@ -501,7 +503,8 @@ usage(FILE * const stream, const char * const prog)
             "\t[-d|--debug]\n"
 			"\t[-h|--help]\n"
             "\t[-v|--verbose]\n"
-			"\t[-b]--nobarrier]\n"
+            "\t[-b]--nobarrier]\n"
+            "\t[-s]--nodiscard]\n"
             "\t[-n|--name]\n", prog);
 }
 
@@ -567,7 +570,8 @@ int main(int argc, char **argv)
     int err = 0;
 	backend_t *backend = NULL;
     domid_t opt_domid = 0;
-	bool opt_barrier = true;
+    bool opt_barrier = true;
+    bool opt_discard = true;
 
 	if (access("/dev/xen/gntdev", F_OK ) == -1) {
 		WARN(NULL, "grant device does not exist\n");
@@ -594,12 +598,13 @@ int main(int argc, char **argv)
             {"name", 0, NULL, 'n'},
             {"pidfile", 0, NULL, 'p'},
             {"domain", 0, NULL, 'x'},
-			{"nobarrier", 0, NULL, 'b'},
+            {"nobarrier", 0, NULL, 'b'},
+            {"nodiscard", 0, NULL, 's'},
 
         };
         int c;
 
-        c = getopt_long(argc, argv, "hdvn:p:x:b", longopts, NULL);
+        c = getopt_long(argc, argv, "hdvn:p:x:b:s", longopts, NULL);
         if (c < 0)
             break;
 
@@ -636,9 +641,14 @@ int main(int argc, char **argv)
             }
             INFO(NULL, "only serving domain %d\n", opt_domid);
             break;
-		case 'b':
-			opt_barrier = false;
-			break;
+        case 'b':
+            /* nobarrier */
+	    opt_barrier = false;
+	    break;
+        case 's':
+            /* nodiscard */
+            opt_discard = false;
+            break;
         case '?':
             goto usage;
         }
@@ -673,7 +683,7 @@ int main(int argc, char **argv)
     }
 
 	backend = tapback_backend_create(opt_name, opt_pidfile, opt_domid,
-			opt_barrier);
+                                         opt_barrier, opt_discard);
 	if (!backend) {
 		err = errno;
         WARN(NULL, "error creating back-end: %s\n", strerror(err));
