@@ -1008,6 +1008,9 @@ class VDI(object):
             util.SMlog(self.target.vdi)
             self.__o_direct = True
             self.__o_direct_reason = "NO_RO_IMAGE"
+        elif options.get("rdonly") and not self.target.vdi.parent:
+            self.__o_direct = True
+            self.__o_direct_reason = "RO_WITH_NO_PARENT"
         elif options.get(self.CONF_KEY_O_DIRECT):
             self.__o_direct = True
             self.__o_direct_reason = "SR_OVERRIDE"
