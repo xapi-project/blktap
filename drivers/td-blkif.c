@@ -30,6 +30,7 @@
 #include "tapdisk-log.h"
 #include "util.h"
 #include "tapdisk-server.h"
+#include "tapdisk-metrics.h"
 
 #include "td-blkif.h"
 #include "td-ctx.h"
@@ -151,6 +152,10 @@ tapdisk_xenblkif_stats_create(struct td_xenblkif *blkif)
 
 	blkif->stats.xenvbd = blkif->xenvbd_stats.stats.mem;
 
+    if (tapdisk_server_mem_mode()) {
+        td_flag_set(blkif->stats.xenvbd->flags, BT3_LOW_MEMORY_MODE);
+    }
+
     err = tapdisk_xenblkif_ring_stats_update(blkif);
     if (unlikely(err)) {
         EPRINTF("failed to generate shared I/O ring stats: %s\n",
@@ -221,6 +226,9 @@ tapdisk_xenblkif_destroy(struct td_xenblkif * blkif)
         list_del(&blkif->entry);
         tapdisk_xenio_ctx_put(blkif->ctx);
     }
+    err = td_metrics_vbd_stop(&blkif->vbd_stats);
+    if (unlikely(err))
+        EPRINTF("failed to destroy blkfront stats file: %s\n", strerror(-err));
 
     err = tapdisk_xenblkif_stats_destroy(blkif);
     if (unlikely(err)) {
@@ -457,6 +465,10 @@ tapdisk_xenblkif_connect(domid_t domid, int devid, const grant_ref_t * grefs,
         RING_ERR(td_blkif, "failed to register event: %s\n", strerror(-err));
         goto fail;
     }
+
+    err = td_metrics_vbd_start(td_blkif->domid, td_blkif->devid, &td_blkif->vbd_stats);
+    if (unlikely(err))
+        goto fail;
 
     err = tapdisk_xenblkif_stats_create(td_blkif);
     if (unlikely(err))

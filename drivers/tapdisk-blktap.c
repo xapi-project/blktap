@@ -33,6 +33,7 @@
 #include "blktap.h"
 #include "tapdisk-vbd.h"
 #include "tapdisk-blktap.h"
+#include "tapdisk-metrics.h"
 #include "tapdisk-server.h"
 #include "linux-blktap.h"
 
@@ -67,6 +68,7 @@ struct td_blktap_req {
 	unsigned int            id;
 	char                    name[16];
 	struct td_iovec         iov[BLKTAP_SEGMENT_MAX];
+        struct timeval          ts;
 };
 
 td_blktap_req_t *
@@ -197,18 +199,26 @@ tapdisk_blktap_put_response(td_blktap_t *tap,
 {
 	blktap_ring_rsp_t *rsp;
 	int op = 0;
+        unsigned long long interval;
+        struct timeval now;
 
 	BUG_ON(!tap->vma);
 
 	rsp = BLKTAP_GET_RESPONSE(tap, tap->rsp_prod_pvt);
 
+        gettimeofday(&now, NULL);
+        interval = timeval_to_us(&now) - timeval_to_us(&req->ts);
 	switch (req->vreq.op) {
 	case TD_OP_READ:
 		op = BLKTAP_OP_READ;
+                tap->blktap_stats.stats->read_reqs_completed++;
+                tap->blktap_stats.stats->read_total_ticks += interval;
 		break;
 	case TD_OP_WRITE:
 		op = BLKTAP_OP_WRITE;
-		break;
+                tap->blktap_stats.stats->write_reqs_completed++;
+                tap->blktap_stats.stats->write_total_ticks += interval;
+                break;
 	default:
 		BUG();
 	}
@@ -252,6 +262,7 @@ tapdisk_blktap_vector_request(td_blktap_t *tap,
 	void *page, *next, *last;
 	size_t size;
 	int i;
+        unsigned nr_sect = 0;
 
 	iov   = req->iov - 1;
 	last  = NULL;
@@ -274,8 +285,17 @@ tapdisk_blktap_vector_request(td_blktap_t *tap,
 
 		last  = iov->base + (iov->secs << SECTOR_SHIFT);
 		page += BLKTAP_PAGE_SIZE;
+                nr_sect += size;
 	}
 
+        switch(msg->operation){
+        case BLKTAP_OP_READ:
+            tap->blktap_stats.stats->read_sectors += nr_sect;
+            break;
+        case BLKTAP_OP_WRITE:
+            tap->blktap_stats.stats->write_sectors += nr_sect;
+            break;
+        }
 	vreq->iov    = req->iov;
 	vreq->iovcnt = iov - req->iov + 1;
 	vreq->sec    = msg->sector_number;
@@ -290,11 +310,15 @@ tapdisk_blktap_parse_request(td_blktap_t *tap,
 
 	memset(req, 0, sizeof(*req));
 
+        gettimeofday(&req->ts, NULL);
+
 	switch (msg->operation) {
 	case BLKTAP_OP_READ:
-		op = TD_OP_READ;
+                tap->blktap_stats.stats->read_reqs_submitted++;
+                op = TD_OP_READ;
 		break;
 	case BLKTAP_OP_WRITE:
+                tap->blktap_stats.stats->write_reqs_submitted++;
 		op = TD_OP_WRITE;
 		break;
 	default:
@@ -500,7 +524,7 @@ __tapdisk_blktap_close(td_blktap_t *tap)
 	 * -EFAULT. vreq completion just backs off once fd/vma are
 	 * gone, so we'll drain, then idle until close().
 	 */
-
+        int err;
 	if (tap->event_id >= 0) {
 		tapdisk_server_unregister_event(tap->event_id);
 		tap->event_id = -1;
@@ -512,6 +536,10 @@ __tapdisk_blktap_close(td_blktap_t *tap)
 		close(tap->fd);
 		tap->fd = -1;
 	}
+        err = td_metrics_blktap_stop(&tap->blktap_stats);
+        if (err) {
+            EPRINTF("failed to destroy blktap stats file: %s\n", strerror(-err));
+        }
 }
 
 void
@@ -557,6 +585,10 @@ tapdisk_blktap_open(const char *devname, td_vbd_t *vbd, td_blktap_t **_tap)
 	err = tapdisk_blktap_map(tap);
 	if (err)
 		goto fail;
+
+        err = td_metrics_blktap_start(tap->minor, &tap->blktap_stats);
+        if (err)
+            goto fail;
 
 	tap->event_id =
 		tapdisk_server_register_event(SCHEDULER_POLL_READ_FD,

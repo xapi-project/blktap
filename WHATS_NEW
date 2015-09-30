@@ -1,3 +1,19 @@
+Version 3.2.0 - 24th Sep 2015
+================================
+Added code to ask lvm blocks on demand (xlvhd thin-provisioning)
+
+Version 3.1.1 - 24th Sep 2015
+================================
+CA-148438: Expose mem_mode flag in statistics file
+CA-161450: Stats between tapdisk and NBD
+CA-161451: Stats between tapdisk and blktap
+CA-165117: Stats between tapdisk and blkfront
+CA-161449: Stats between tapdisk and vdi traffic
+CA-170614: Harden the nbdserver code in tapdisk3
+CP-12399: Prevent tapback from plugging non-blktap2 devices
+CA-169052: Work arounds for NULL uuid in VHD header
+CA-153279: don't complain if there's no tapdisk to signal
+
 Version 3.1.0 - 23th Sep 2015
 ================================
   Coverity integration

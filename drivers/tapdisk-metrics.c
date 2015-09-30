@@ -24,9 +24,13 @@
 #include <stdlib.h>
 #include <errno.h>
 #include <string.h>
+
 #include "tapdisk-metrics.h"
 #include "lock.h"
 #include "tapdisk-log.h"
+#include "debug.h"
+#include "tapdisk-queue.h"
+#include "td-req.h"
 
 /* make a static metrics struct, so it only exists in the context of this file */
 static td_metrics_t td_metrics;
@@ -55,7 +59,8 @@ empty_folder(char *path)
         err = asprintf(&file, "%s/%s", path, direntry->d_name);
         if (unlikely(err == -1)) {
             err = errno;
-            EPRINTF("failed to allocate file path name in memory to delete: %s\n", strerror(err));
+            EPRINTF("failed to allocate file path name in memory to delete: %s\n",
+                strerror(err));
             goto out;
         }
         stat(file, &statbuf);
@@ -83,7 +88,8 @@ td_metrics_start()
     err = asprintf(&td_metrics.path, TAPDISK_METRICS_PATHF, getpid());
     if (unlikely(err == -1)) {
         err = errno;
-        EPRINTF("failed to allocate metric's folder path name in memory: %s\n", strerror(err));
+        EPRINTF("failed to allocate metric's folder path name in memory: %s\n",
+            strerror(err));
         td_metrics.path = NULL;
         goto out;
     }
@@ -91,7 +97,9 @@ td_metrics_start()
     err = mkdir(td_metrics.path, S_IRWXU);
     if (unlikely(err == -1)) {
         if (errno == EEXIST) {
-            //In case there is a previous folder with the same pid, we empty it and use it for the new tapdisk instance.
+            /* In case there is a previous folder with the same pid,
+             * we empty it and use it for the new tapdisk instance.
+             */
             err = 0;
             empty_folder(td_metrics.path);
         }else{
@@ -121,4 +129,220 @@ td_metrics_stop()
 
 out:
     return;
+}
+
+int
+td_metrics_vdi_start(int minor, stats_t *vdi_stats)
+{
+    int err = 0;
+
+    if(!td_metrics.path)
+        goto out;
+
+    shm_init(&vdi_stats->shm);
+
+    err = asprintf(&vdi_stats->shm.path, TAPDISK_METRICS_VDI_PATHF,
+            td_metrics.path, minor);
+
+    if(unlikely(err == -1)){
+        err = errno;
+        EPRINTF("failed to allocate memory to store vdi metrics path: %s\n",
+            strerror(err));
+        vdi_stats->shm.path = NULL;
+        goto out;
+    }
+
+    vdi_stats->shm.size = PAGE_SIZE;
+
+    err = shm_create(&vdi_stats->shm);
+    if (unlikely(err)) {
+        err = errno;
+        EPRINTF("failed to create shm ring stats file: %s\n", strerror(err));
+        goto out;
+   }
+
+    vdi_stats->stats = vdi_stats->shm.mem;
+
+out:
+    return err;
+}
+
+int
+td_metrics_vdi_stop(stats_t *vdi_stats)
+{
+    int err = 0;
+
+    if(!vdi_stats->shm.path)
+        goto end;
+
+    err = shm_destroy(&vdi_stats->shm);
+    if (unlikely(err)) {
+        err = errno;
+        EPRINTF("failed to destroy vdi metrics file: %s\n", strerror(err));
+    }
+
+    free(vdi_stats->shm.path);
+    vdi_stats->shm.path = NULL;
+
+end:
+    return err;
+}
+int
+td_metrics_vbd_start(int domain, int id, stats_t *vbd_stats)
+{
+    int err = 0;
+
+    if(!td_metrics.path)
+        goto out;
+
+    shm_init(&vbd_stats->shm);
+
+    err = asprintf(&vbd_stats->shm.path, TAPDISK_METRICS_VBD_PATHF,
+            td_metrics.path, domain, id);
+    if(unlikely(err == -1)){
+        err = errno;
+        EPRINTF("failed to allocate memory to store vbd metrics path: %s\n",
+            strerror(err));
+        vbd_stats->shm.path = NULL;
+        goto out;
+    }
+
+    vbd_stats->shm.size = PAGE_SIZE;
+
+    err = shm_create(&vbd_stats->shm);
+    if (unlikely(err)) {
+        err = errno;
+        EPRINTF("failed to create shm ring stats file: %s\n", strerror(err));
+        goto out;
+   }
+    vbd_stats->stats = vbd_stats->shm.mem;
+out:
+    return err;
+
+}
+
+int
+td_metrics_vbd_stop(stats_t *vbd_stats)
+{
+    int err = 0;
+
+    if(!vbd_stats->shm.path)
+        goto end;
+
+    err = shm_destroy(&vbd_stats->shm);
+    if (unlikely(err)) {
+        err = errno;
+        EPRINTF("failed to destroy vbd metrics file: %s\n", strerror(err));
+    }
+
+    free(vbd_stats->shm.path);
+    vbd_stats->shm.path = NULL;
+
+end:
+    return err;
+}
+
+int
+td_metrics_blktap_start(int minor, stats_t *blktap_stats)
+{
+
+    int err = 0;
+
+    if(!td_metrics.path)
+        goto out;
+
+    shm_init(&blktap_stats->shm);
+
+    err = asprintf(&blktap_stats->shm.path, TAPDISK_METRICS_BLKTAP_PATHF, td_metrics.path, minor);
+    if(unlikely(err == -1)){
+        err = errno;
+        EPRINTF("failed to allocate memory to store blktap metrics path: %s\n",strerror(err));
+        blktap_stats->shm.path = NULL;
+        goto out;
+    }
+
+    blktap_stats->shm.size = PAGE_SIZE;
+
+    err = shm_create(&blktap_stats->shm);
+    if (unlikely(err)) {
+        err = errno;
+        EPRINTF("failed to create blktap shm ring stats file: %s\n", strerror(err));
+        goto out;
+    }
+    blktap_stats->stats = blktap_stats->shm.mem;
+out:
+    return err;
+}
+
+int
+td_metrics_blktap_stop(stats_t *blktap_stats)
+{
+    int err = 0;
+
+    if(!blktap_stats->shm.path)
+        goto end;
+
+    err = shm_destroy(&blktap_stats->shm);
+    if (unlikely(err)) {
+        err = errno;
+        EPRINTF("failed to destroy blktap metrics file: %s\n", strerror(err));
+    }
+
+    free(blktap_stats->shm.path);
+    blktap_stats->shm.path = NULL;
+
+end:
+    return err;
+
+}
+
+int
+td_metrics_nbd_start(stats_t *nbd_stats, int minor)
+{
+    int err = 0;
+
+    if(!td_metrics.path || nbd_stats->shm.path != NULL)
+        goto out;
+
+    shm_init(&nbd_stats->shm);
+
+    err = asprintf(&nbd_stats->shm.path, TAPDISK_METRICS_NBD_PATHF, td_metrics.path, minor);
+    if(unlikely(err == -1)){
+        err = errno;
+        EPRINTF("failed to allocate memory to store NBD metrics path: %s\n",strerror(err));
+        nbd_stats->shm.path = NULL;
+        goto out;
+    }
+
+    nbd_stats->shm.size = PAGE_SIZE;
+
+    err = shm_create(&nbd_stats->shm);
+    if (unlikely(err)) {
+        err = errno;
+        EPRINTF("failed to create NBD shm ring stats file: %s\n", strerror(err));
+        goto out;
+   }
+    nbd_stats->stats = nbd_stats->shm.mem;
+out:
+    return err;
+}
+
+int
+td_metrics_nbd_stop(stats_t *nbd_stats)
+{
+    int err = 0;
+
+    if(!nbd_stats->shm.path)
+        goto end;
+    err = shm_destroy(&nbd_stats->shm);
+    if (unlikely(err)) {
+        err = errno;
+        EPRINTF("failed to destroy NBD metrics file: %s\n", strerror(err));
+    }
+
+    free(nbd_stats->shm.path);
+    nbd_stats->shm.path = NULL;
+
+end:
+    return err;
 }

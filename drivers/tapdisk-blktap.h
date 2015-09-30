@@ -24,6 +24,7 @@ typedef struct td_blktap_req td_blktap_req_t;
 #include "blktap.h"
 #include "tapdisk-vbd.h"
 #include "list.h"
+#include "tapdisk-metrics.h"
 
 struct td_blktap_stats {
 	struct {
@@ -60,6 +61,8 @@ struct td_blktap {
 	struct list_head        entry;
 
 	struct td_blktap_stats  stats;
+
+        stats_t blktap_stats;
 };
 
 int tapdisk_blktap_open(const char *, td_vbd_t *, td_blktap_t **);

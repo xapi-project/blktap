@@ -38,6 +38,7 @@
 #include "tapdisk-driver.h"
 #include "tapdisk-server.h"
 #include "tapdisk-vbd.h"
+#include "tapdisk-metrics.h"
 #include "tapdisk-disktype.h"
 #include "tapdisk-interface.h"
 #include "tapdisk-stats.h"
@@ -236,6 +237,11 @@ tapdisk_vbd_close_vdi(td_vbd_t *vbd)
     if (err) {
         EPRINTF("failed to destroy RRD stats file: %s (error ignored)\n",
                 strerror(-err));
+    }
+
+    err = td_metrics_vdi_stop(&vbd->vdi_stats);
+    if (err) {
+        EPRINTF("failed to destroy stats file: %s\n", strerror(-err));
     }
 
 	tapdisk_image_close_chain(&vbd->images);
@@ -605,6 +611,9 @@ tapdisk_vbd_open_vdi(td_vbd_t *vbd, const char *name, td_flag_t flags, int prt_d
     if (err)
         goto fail;
 
+    err = td_metrics_vdi_start(vbd->tap->minor, &vbd->vdi_stats);
+    if (err)
+        goto fail;
 	if (tmp != vbd->name)
 		free(tmp);
 
@@ -622,6 +631,13 @@ fail:
 	vbd->flags = 0;
 
 	return err;
+}
+
+int
+tapdisk_vbd_set_quantum(td_vbd_t *vbd)
+{
+	return td_set_quantum(tapdisk_vbd_first_image(vbd),
+			      vbd->xlvhd_alloc_quantum);
 }
 
 void
@@ -927,6 +943,10 @@ tapdisk_vbd_resume(td_vbd_t *vbd, const char *name)
 
 	for (i = 0; i < TD_VBD_EIO_RETRIES; i++) {
 		err = tapdisk_vbd_open_vdi(vbd, name, vbd->flags | TD_OPEN_STRICT, -1);
+		if (vbd->flags & TD_OPEN_THIN) {
+			/* Set allocation Quantum only to the leaf */
+			tapdisk_vbd_set_quantum(vbd);
+		}
 		if (!err)
 			break;
 
@@ -1249,6 +1269,8 @@ __tapdisk_vbd_complete_td_request(td_vbd_t *vbd, td_vbd_request_t *vreq,
 	td_image_t *image = treq.image;
 	int err;
 
+        long long interval;
+
 	err = (res <= 0 ? res : -res);
 	vbd->secs_pending  -= treq.secs;
 	vreq->secs_pending -= treq.secs;
@@ -1276,6 +1298,18 @@ __tapdisk_vbd_complete_td_request(td_vbd_t *vbd, td_vbd_request_t *vreq,
 		}
 		vreq->error = (vreq->error ? : err);
 	}
+
+        interval = timeval_to_us(&vbd->ts) - timeval_to_us(&vreq->ts);
+
+        if(treq.op == TD_OP_READ){
+            vbd->vdi_stats.stats->read_reqs_completed++;
+            vbd->vdi_stats.stats->read_sectors += treq.secs;
+            vbd->vdi_stats.stats->read_total_ticks += interval;
+        }else{
+            vbd->vdi_stats.stats->write_reqs_completed++;
+            vbd->vdi_stats.stats->write_sectors += treq.secs;
+            vbd->vdi_stats.stats->write_total_ticks += interval;
+        }
 
 	tapdisk_vbd_complete_vbd_request(vbd, vreq);
 }
@@ -1475,6 +1509,7 @@ tapdisk_vbd_issue_request(td_vbd_t *vbd, td_vbd_request_t *vreq)
 		switch (vreq->op) {
 		case TD_OP_WRITE:
 			treq.op = TD_OP_WRITE;
+                        vbd->vdi_stats.stats->write_reqs_submitted++;
 			/*
 			 * it's important to queue the mirror request before 
 			 * queuing the main one. If the main image runs into 
@@ -1491,6 +1526,7 @@ tapdisk_vbd_issue_request(td_vbd_t *vbd, td_vbd_request_t *vreq)
 
 		case TD_OP_READ:
 			treq.op = TD_OP_READ;
+                        vbd->vdi_stats.stats->read_reqs_submitted++;
 			td_queue_read(treq.image, treq);
 			break;
 		}

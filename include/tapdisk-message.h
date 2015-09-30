@@ -42,6 +42,7 @@
 #define TAPDISK_MESSAGE_FLAG_SECONDARY   0x080
 #define TAPDISK_MESSAGE_FLAG_STANDBY     0x100
 #define TAPDISK_MESSAGE_FLAG_NO_O_DIRECT 0x200
+#define TAPDISK_MESSAGE_FLAG_THIN        0x400
 
 typedef struct tapdisk_message           tapdisk_message_t;
 typedef uint32_t                         tapdisk_message_flag_t;
@@ -61,6 +62,7 @@ struct tapdisk_message_params {
 	char                             path[TAPDISK_MESSAGE_MAX_PATH_LENGTH];
 	uint32_t                         prt_devnum;
 	uint16_t                         req_timeout;
+	uint32_t                         alloc_quantum;
 	char                             secondary[TAPDISK_MESSAGE_MAX_PATH_LENGTH];
 };
 

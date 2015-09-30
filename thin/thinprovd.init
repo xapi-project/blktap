@@ -1,0 +1,91 @@
+#!/bin/bash
+#
+# Copyright (C) Citrix Systems Inc.
+#
+# This program is free software; you can redistribute it and/or modify 
+# it under the terms of the GNU Lesser General Public License as published 
+# by the Free Software Foundation; version 2.1 only.
+#
+# This program is distributed in the hope that it will be useful, 
+# but WITHOUT ANY WARRANTY; without even the implied warranty of 
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the 
+# GNU Lesser General Public License for more details.
+#
+# You should have received a copy of the GNU Lesser General Public License
+# along with this program; if not, write to the Free Software Foundation, Inc.,
+# 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
+#
+#	/etc/rc.d/init.d/thinprovd
+#
+# Starts the thin provisioning daemon
+#
+# chkconfig: 2345 22 76
+# description: Manage the thin-provisioning daemon
+# processname: thinprovd
+# PID_FILE: /var/run/thinprovd.pid
+
+declare -r DAEMON=/usr/sbin/thinprovd
+declare -r PROG=`basename $DAEMON`
+declare -r PID_FILE=/var/run/${PROG}.pid
+
+# Source function library.
+. /etc/init.d/functions
+
+RETVAL=0
+
+start() {
+	test -x $DAEMON || exit 5
+	if [ -f $PID_FILE ]; then
+		pid=`cat $PID_FILE` 
+		echo "$PROG already running with pid $pid"
+		return 0
+	fi
+	echo -n $"Starting $PROG daemon: "
+	$DAEMON -d
+	RETVAL=$?
+	if [ $RETVAL -eq 0 ]; then
+		i=`pidof $PROG`
+		echo $i > $PID_FILE
+		success 
+	else
+		failure 
+	fi
+	return $RETVAL
+}
+
+stop() {
+	echo -n $"Stopping $PROG daemon: "
+	test -e $PID_FILE || exit 5
+	PID=`cat $PID_FILE`
+	kill $PID
+	RETVAL=$?
+	[ $RETVAL -eq 0 ] && rm -f $PID_FILE
+	[ $RETVAL -eq 0 ] && success || failure 
+	return $RETVAL
+}
+
+restart() {
+	stop
+	start
+}	
+
+case "$1" in
+start)
+	start
+	;;
+stop)
+	stop
+	;;
+restart)
+	restart
+	;;
+status)
+	status $PROG
+	RETVAL=$?
+	;;
+*)
+	echo $"Usage: $0 {start|stop|status|restart}"
+	RETVAL=3
+esac
+
+exit $RETVAL

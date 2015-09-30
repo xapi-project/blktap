@@ -146,6 +146,8 @@ struct td_vbd_handle {
 	td_disk_info_t              disk_info;
 
     struct td_vbd_rrd           rrd;
+    stats_t vdi_stats;
+	int                         xlvhd_alloc_quantum;
 };
 
 #define tapdisk_vbd_for_each_request(vreq, tmp, list)	                \
@@ -153,6 +155,9 @@ struct td_vbd_handle {
 
 #define tapdisk_vbd_for_each_image(vbd, image, tmp)	\
 	tapdisk_for_each_image_safe(image, tmp, &vbd->images)
+
+#define tapdisk_vbd_for_each_blkif(vbd, blkif, tmp)	\
+	list_for_each_entry_safe((blkif), (tmp), (&vbd->rings), entry)
 
 static inline void
 tapdisk_vbd_move_request(td_vbd_request_t *vreq, struct list_head *dest)
@@ -182,6 +187,7 @@ int tapdisk_vbd_close(td_vbd_t *);
  */
 int tapdisk_vbd_open_vdi(td_vbd_t * vbd, const char *params, td_flag_t flags,
         int prt_devnum);
+int tapdisk_vbd_set_quantum(td_vbd_t *vbd);
 void tapdisk_vbd_close_vdi(td_vbd_t *);
 
 int tapdisk_vbd_attach(td_vbd_t *, const char *, int);
