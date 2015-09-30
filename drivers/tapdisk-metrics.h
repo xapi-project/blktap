@@ -31,6 +31,7 @@
 #include "tapdisk.h"
 
 struct stats {
+    int version;
     unsigned long long read_reqs_submitted;
     unsigned long long read_reqs_completed;
     unsigned long long read_sectors;
