@@ -1963,14 +1963,10 @@ class VDI(object):
             util.SMlog("ERROR: Local cache SR not specified, ignore")
             return
 
-        session = XenAPI.xapi_local()
-        session.xenapi.login_with_password('root', '', '', 'SM')
-
         if caching:
-            self._remove_cache(session, local_sr_uuid)
+            self._remove_cache(self._session, local_sr_uuid)
 
-        self._updateCacheRecord(session, self.target.vdi.uuid, None, None)
-        session.xenapi.session.logout()
+        self._updateCacheRecord(self._session, self.target.vdi.uuid, None, None)
 
     def _is_tapdisk_in_use(self, minor):
         (retVal, links) = util.findRunningProcessOrOpenFile("tapdisk")
