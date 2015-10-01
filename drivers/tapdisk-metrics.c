@@ -216,6 +216,7 @@ td_metrics_vbd_start(int domain, int id, stats_t *vbd_stats)
         goto out;
    }
     vbd_stats->stats = vbd_stats->shm.mem;
+    vbd_stats->stats->version = 1;
 out:
     return err;
 
