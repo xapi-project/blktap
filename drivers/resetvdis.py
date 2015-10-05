@@ -20,6 +20,7 @@
 
 import util
 import lock
+import XenAPI
 
 def reset_sr(session, host_uuid, sr_uuid, is_sr_master):
     from vhdutil import LOCK_TYPE_SR
@@ -62,6 +63,7 @@ def reset_vdi(session, vdi_uuid, force, term_output=True, writable=True):
         if key.startswith("host_"):
             host_ref = key[len("host_"):]
             host_uuid = None
+            host_invalid = False
             host_str = host_ref
             try:
                 host_rec = session.xenapi.host.get_record(host_ref)
@@ -72,9 +74,16 @@ def reset_vdi(session, vdi_uuid, force, term_output=True, writable=True):
                 util.SMlog(msg)
                 if term_output:
                     print msg
-                if not force:
-                    clean = False
-                    continue
+                host_invalid=True
+
+            if host_invalid:
+                session.xenapi.VDI.remove_from_sm_config(vdi_ref, key)
+                msg = "Invalid host: Force-cleared %s for %s on host %s" % \
+                        (val, vdi_uuid, host_str)
+                util.SMlog(msg)
+                if term_output:
+                    print msg
+                continue
 
             if force:
                 session.xenapi.VDI.remove_from_sm_config(vdi_ref, key)
@@ -127,7 +136,6 @@ def usage():
 
 if __name__ == '__main__':
     import sys
-    import XenAPI
 
     if len(sys.argv) not in [3, 4, 5]:
         usage()
