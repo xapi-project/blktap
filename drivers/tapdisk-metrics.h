@@ -39,6 +39,7 @@ struct stats {
     unsigned long long write_reqs_completed;
     unsigned long long write_sectors;
     unsigned long long write_total_ticks;
+    uint64_t io_errors;
 };
 
 typedef struct {
