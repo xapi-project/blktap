@@ -223,6 +223,9 @@ tapdisk_blktap_put_response(td_blktap_t *tap,
 		BUG();
 	}
 
+	if (error)
+		tap->blktap_stats.stats->io_errors++;
+
 	rsp->id        = req->id;
 	rsp->operation = op;
 	rsp->status    = tapdisk_blktap_error_status(tap, error);
