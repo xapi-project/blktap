@@ -335,9 +335,9 @@ def runxenvm_local_allocator(uuid, vg, devices, uri):
         f.write(config)
     cmd = [ "/bin/xenvm", "host-create", vg, uuid ]
     util.pread2(cmd)
-    cmd = [ "/bin/xenvm-local-allocator", "--daemon", "--config", configfile ]
-    util.pread2(cmd) 
     cmd = [ "/bin/xenvm", "host-connect", vg, uuid ]
+    util.pread2(cmd)
+    cmd = [ "/bin/xenvm-local-allocator", "--daemon", "--config", configfile ]
     util.pread2(cmd)
     setvginfo(uuid,vg,devices,uri,local_allocator)
 
