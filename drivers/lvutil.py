@@ -972,7 +972,15 @@ def _lvmBugCleanup(path):
             except util.CommandException, e:
                 if i < LVM_FAIL_RETRIES - 1:
                     util.SMlog("Failed on try %d, retrying" % i)
-                    time.sleep(1)
+                    cmd = [CMD_DMSETUP, "status", mapperDevice]
+                    try:
+                        util.pread(cmd, expect_rc=1)
+                        util.SMlog("_lvmBugCleanup: dm device {}"
+                                   " removed".format(mapperDevice)
+                                   )
+                        break
+                    except:
+                        time.sleep(1)
                 else:
                     # make sure the symlink is still there for consistency
                     if not os.path.lexists(path):
