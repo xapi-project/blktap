@@ -21,7 +21,7 @@
 
 #define TAPDISK_METRICS_PATHF        "/dev/shm/td3-%d"
 #define TAPDISK_METRICS_VDI_PATHF    "%s/vdi-%hu"
-#define TAPDISK_METRICS_VBD_PATHF    "%s/vbd-%d-%d"
+#define TAPDISK_METRICS_VBD_PATHF    "%s/vbd3-%d-%d"
 #define TAPDISK_METRICS_BLKTAP_PATHF "%s/blktap-%d"
 #define TAPDISK_METRICS_NBD_PATHF "%s/nbd-%d"
 
@@ -31,6 +31,7 @@
 #include "tapdisk.h"
 
 struct stats {
+    uint32_t version; //Used to check version of this struct in xentop.
     unsigned long long read_reqs_submitted;
     unsigned long long read_reqs_completed;
     unsigned long long read_sectors;
