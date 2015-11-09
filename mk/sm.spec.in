@@ -299,6 +299,7 @@ fi
 %config /etc/multipath.xenserver/multipath.conf
 %config /etc/udev/rules.d/69-dm-lvm-metad.rules
 %config /etc/modprobe.d/cifs.conf
+%config /etc/logrotate.d/SMlog
 
 %changelog
 

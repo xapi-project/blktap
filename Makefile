@@ -64,6 +64,7 @@ UDEV_RULES = 39-multipath 40-multipath 55-xs-mpath-scsidev 58-xapi
 MPATH_DAEMON = sm-multipath
 MPATH_CONF = multipath.conf
 CIFS_CONF = cifs.conf
+SMLOG_CONF = SMlog
 
 SM_XML := XE_SR_ERRORCODES
 
@@ -80,6 +81,7 @@ INIT_DIR := /etc/rc.d/init.d/
 MPATH_CONF_DIR := /etc/multipath.xenserver/
 MODPROBE_DIR := /etc/modprobe.d/
 EXTENSION_SCRIPT_DEST := /etc/xapi.d/extensions/
+LOGROTATE_DIR := /etc/logrotate.d/
 
 SM_STAGING := $(DESTDIR)
 SM_STAMP := $(MY_OBJ_DIR)/.staging_stamp
@@ -130,6 +132,7 @@ install: precheck
 	mkdir -p $(SM_STAGING)$(SYSTEMD_SERVICE_DIR)
 	mkdir -p $(SM_STAGING)$(MPATH_CONF_DIR)
 	mkdir -p $(SM_STAGING)$(MODPROBE_DIR)
+	mkdir -p $(SM_STAGING)$(LOGROTATE_DIR)
 	mkdir -p $(SM_STAGING)$(DEBUG_DEST)
 	mkdir -p $(SM_STAGING)$(BIN_DEST)
 	mkdir -p $(SM_STAGING)$(MASTER_SCRIPT_DEST)
@@ -145,6 +148,8 @@ install: precheck
 	  $(SM_STAGING)/$(INIT_DIR)
 	install -m 644 etc/modprobe.d/$(CIFS_CONF) \
 	  $(SM_STAGING)/$(MODPROBE_DIR)
+	install -m 644 etc/logrotate.d/$(SMLOG_CONF) \
+	  $(SM_STAGING)/$(LOGROTATE_DIR)
 	install -m 755 drivers/updatempppathd.init \
 	  $(SM_STAGING)/$(INIT_DIR)/updatempppathd
 	install -m 644 etc/make-dummy-sr.service \
