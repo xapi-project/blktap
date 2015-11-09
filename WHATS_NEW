@@ -1,3 +1,16 @@
+Version 1.12.1 - 9th Nov 2015
+===============================
+  CA-180727: Handle SMlog rotation
+  CA-184394: Check dm device status before attempting to remove it
+  CP-14504: Change all user visible CIFS references to SMB
+  CA-184022: Exception happening in _deactivate_locked cause backend link not to be removed
+  CA-167972: Do not enable read cache on Suspend VDI when resuming
+  CA-180792: Enable ALUA autodetection and group_by_prio for VPLEX
+  CA-182713: lvm.conf file is wrong in some systems
+  CA-125111: mpathutil does not work with latest multipathd
+  CP-11227: Unit tests for SMB SR
+  CA-174964: VM.start failed, global name 'XenAPI' is not defined
+
 Version 1.12.0 - 25th Sep 2015
 ===============================
 Enabled xlvhd (SAN thin-provisioning) support
