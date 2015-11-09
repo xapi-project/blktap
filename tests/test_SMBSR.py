@@ -1,13 +1,13 @@
 import unittest
 import mock
-import CIFSSR
+import SMBSR
 import xs_errors
 import XenAPI
 import vhdutil
 import util
 import errno
 
-class FakeCIFSSR(CIFSSR.CIFSSR):
+class FakeSMBSR(SMBSR.SMBSR):
     uuid = None
     sr_ref = None
     mountpoint = None
@@ -26,9 +26,9 @@ class FakeCIFSSR(CIFSSR.CIFSSR):
         self.path = 'aPath'
         self.remoteserver = 'aRemoteserver'
 
-class Test_CIFSSR(unittest.TestCase):
+class Test_SMBSR(unittest.TestCase):
 
-    def create_cifssr(self, sr_uuid='asr_uuid', server='\\aServer', serverpath = '/aServerpath', username = 'aUsername', password = 'aPassword'):
+    def create_smbsr(self, sr_uuid='asr_uuid', server='\\aServer', serverpath = '/aServerpath', username = 'aUsername', password = 'aPassword'):
         srcmd = mock.Mock()
         srcmd.dconf = {
             'server': server,
@@ -40,57 +40,57 @@ class Test_CIFSSR(unittest.TestCase):
             'command': 'some_command',
             'device_config': {}
         }
-        cifssr = FakeCIFSSR(srcmd, None)
-        cifssr.load(sr_uuid)
-        return cifssr
+        smbsr = FakeSMBSR(srcmd, None)
+        smbsr.load(sr_uuid)
+        return smbsr
 
     #Attach
-    @mock.patch('CIFSSR.CIFSSR.checkmount')
-    @mock.patch('CIFSSR.CIFSSR.mount')
-    def test_attach_cifsexception_raises_xenerror(self, mock_mount, mock_checkmount):
-        cifssr = self.create_cifssr()
-        mock_mount = mock.Mock(side_effect=CIFSSR.CifsException("mount raised CifsException"))
+    @mock.patch('SMBSR.SMBSR.checkmount')
+    @mock.patch('SMBSR.SMBSR.mount')
+    def test_attach_smbexception_raises_xenerror(self, mock_mount, mock_checkmount):
+        smbsr = self.create_smbsr()
+        mock_mount = mock.Mock(side_effect=SMBSR.SMBException("mount raised SMBException"))
         mock_checkmount = mock.Mock(return_value=False)
         try:
-            cifssr.attach('asr_uuid')
+            smbsr.attach('asr_uuid')
         except Exception, exc:
             self.assertTrue(isinstance(exc,xs_errors.XenError))
 
-    @mock.patch('CIFSSR.CIFSSR.checkmount')
+    @mock.patch('SMBSR.SMBSR.checkmount')
     def test_attach_if_mounted_then_attached(self, mock_checkmount):
-        cifssr = self.create_cifssr()
+        smbsr = self.create_smbsr()
         mock_checkmount = mock.Mock(return_value=True)
-        cifssr.attach('asr_uuid')
-        self.assertTrue(cifssr.attached)
+        smbsr.attach('asr_uuid')
+        self.assertTrue(smbsr.attached)
 
     #Detach
-    @mock.patch('CIFSSR.CIFSSR.unmount')
-    def test_detach_cifsexception_raises_xenerror(self,mock_unmount):
-        cifssr = self.create_cifssr()
-        mock_unmount = mock.Mock(side_effect=CIFSSR.CifsException("unmount raised CifsException"))
+    @mock.patch('SMBSR.SMBSR.unmount')
+    def test_detach_smbexception_raises_xenerror(self,mock_unmount):
+        smbsr = self.create_smbsr()
+        mock_unmount = mock.Mock(side_effect=SMBSR.SMBException("unmount raised SMBException"))
         try:
-            cifssr.detach('asr_uuid')
+            smbsr.detach('asr_uuid')
         except Exception, exc:
             self.assertTrue(isinstance(exc,xs_errors.XenError))
 
-    @mock.patch('CIFSSR.CIFSSR.checkmount',return_value=False)
+    @mock.patch('SMBSR.SMBSR.checkmount',return_value=False)
     def test_detach_not_detached_if_not_mounted(self, mock_checkmount):
-        cifssr = self.create_cifssr()
-        cifssr.attached = True
+        smbsr = self.create_smbsr()
+        smbsr.attached = True
         mock_checkmount = mock.Mock(return_value=False)
-        cifssr.detach('asr_uuid')
-        self.assertTrue(cifssr.attached)
+        smbsr.detach('asr_uuid')
+        self.assertTrue(smbsr.attached)
 
     #Mount
     @mock.patch('util.isdir')
     def test_mount_mountpoint_isdir(self, mock_isdir):
         mock_isdir = mock.Mock(side_effect=util.CommandException(errno.EIO, "Not a directory"))
-        cifssr = self.create_cifssr()
+        smbsr = self.create_smbsr()
         try:
-            cifssr.mount()
+            smbsr.mount()
         except Exception, exc:
-            self.assertTrue(isinstance(exc,CIFSSR.CifsException))
+            self.assertTrue(isinstance(exc,SMBSR.SMBException))
 
     def test_mount_mountpoint_empty_string(self):
-        cifssr = self.create_cifssr()
-        self.assertRaises(CIFSSR.CifsException, cifssr.mount, "")
+        smbsr = self.create_smbsr()
+        self.assertRaises(SMBSR.SMBException, smbsr.mount, "")

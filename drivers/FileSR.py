@@ -207,9 +207,9 @@ class FileSR(SR.SR):
         # CA-15607: make sure we are robust to the directory being unmounted beneath
         # us (eg by a confused user). Without this we might forget all our VDI references
         # which would be a shame.
-        # For CIFS SRs, this path is mountpoint
+        # For SMB SRs, this path is mountpoint
         mount_path = self.path
-        if self.handles("cifs"):
+        if self.handles("smb"):
             mount_path = self.mountpoint
 
         if not self.handles("file") and not os.path.ismount(mount_path):
@@ -305,7 +305,7 @@ class FileSR(SR.SR):
 
     def _getsize(self):
         path = self.path
-        if self.handles("cifs"):
+        if self.handles("smb"):
             path = self.linkpath
         return util.get_fs_size(path)
     
@@ -392,7 +392,7 @@ class FileSR(SR.SR):
 
     def _checkmount(self):
         mount_path = self.path
-        if self.handles("cifs"):
+        if self.handles("smb"):
             mount_path = self.mountpoint
 
         return util.ioretry(lambda: util.pathexists(mount_path) and \

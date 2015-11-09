@@ -41,7 +41,7 @@ Version 1.11.1 - 7th Sep 2015
 
 Version 1.11.0 - 24th July 2015
 ===============================
-  New feature supporting CIFS as a first class SR
+  New feature supporting SMB as a first class SR
 
 Version 1.10.0 - 20th July 2015
 ===============================

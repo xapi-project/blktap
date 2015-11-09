@@ -15,7 +15,7 @@
 # along with this program; if not, write to the Free Software Foundation, Inc.,
 # 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
 #
-# CIFSSR: CIFS filesystem based storage repository
+# SMBSR: SMB filesystem based storage repository
 
 import SR, VDI, SRCommand, FileSR, util
 import errno
@@ -33,13 +33,13 @@ CAPABILITIES = ["SR_PROBE","SR_UPDATE", "SR_CACHING",
                 "VDI_GENERATE_CONFIG",
                 "VDI_RESET_ON_BOOT/2", "ATOMIC_PAUSE"]
 
-CONFIGURATION = [ [ 'server', 'Full path to share root on CIFS server (required)' ], \
-                  [ 'username', 'The username to be used during CIFS authentication' ], \
-                  [ 'password', 'The password to be used during CIFS authentication' ] ]
+CONFIGURATION = [ [ 'server', 'Full path to share root on SMB server (required)' ], \
+                  [ 'username', 'The username to be used during SMB authentication' ], \
+                  [ 'password', 'The password to be used during SMB authentication' ] ]
 
 DRIVER_INFO = {
-    'name': 'CIFS VHD',
-    'description': 'SR plugin which stores disks as VHD files on a remote CIFS filesystem',
+    'name': 'SMB VHD',
+    'description': 'SR plugin which stores disks as VHD files on a remote SMB filesystem',
     'vendor': 'Citrix Systems Inc',
     'copyright': '(C) 2015 Citrix Systems Inc',
     'driver_version': '1.0',
@@ -54,18 +54,18 @@ DRIVER_CONFIG = {"ATTACH_FROM_CONFIG_WITH_TAPDISK": True}
 # are guaranteed to be serialised by xapi, so this single mountpoint is fine.
 PROBE_MOUNTPOINT = os.path.join(SR.MOUNT_BASE, "probe")
 
-class CifsException(Exception):
+class SMBException(Exception):
     def __init__(self, errstr):
         self.errstr = errstr
 
-# server = //cifs-server/vol1 - ie the export path on the CIFS server 
-# mountpoint = /var/run/sr-mount/CIFS/<cifs_server_name>/<share_name>/uuid
+# server = //smb-server/vol1 - ie the export path on the SMB server
+# mountpoint = /var/run/sr-mount/SMB/<smb_server_name>/<share_name>/uuid
 # linkpath = mountpoint/uuid - path to SR directory on share
 # path = /var/run/sr-mount/uuid - symlink to SR directory on share
-class CIFSSR(FileSR.FileSR):
-    """CIFS file-based storage repository"""
+class SMBSR(FileSR.FileSR):
+    """SMB file-based storage repository"""
     def handles(type):
-        return type == 'cifs'
+        return type == 'smb'
     handles = staticmethod(handles)
 
     def load(self, sr_uuid):
@@ -81,11 +81,11 @@ class CIFSSR(FileSR.FileSR):
         else:
             self.sm_config = self.srcmd.params.get('sr_sm_config') or {}
         self.credentials = None
-        self.mountpoint = os.path.join(SR.MOUNT_BASE, 'CIFS', self.__extract_server(), sr_uuid)
-        self.linkpath = os.path.join(self.mountpoint, 
+        self.mountpoint = os.path.join(SR.MOUNT_BASE, 'SMB', self.__extract_server(), sr_uuid)
+        self.linkpath = os.path.join(self.mountpoint,
                                            sr_uuid or "")
         # Remotepath is the absolute path inside a share that is to be mounted
-        # For a CIFS SR, only the root can be mounted.
+        # For a SMB SR, only the root can be mounted.
         self.remotepath = ''
         self.path = os.path.join(SR.MOUNT_BASE, sr_uuid)
         self._check_o_direct()
@@ -96,11 +96,11 @@ class CIFSSR(FileSR.FileSR):
                                 util.pathexists(self.linkpath)))
 
     def mount(self, mountpoint=None):
-        """Mount the remote CIFS export at 'mountpoint'"""
+        """Mount the remote SMB export at 'mountpoint'"""
         if mountpoint == None:
             mountpoint = self.mountpoint
         elif not util.is_string(mountpoint) or mountpoint == "":
-            raise CifsException("mountpoint not a string object")
+            raise SMBException("mountpoint not a string object")
 
         missing_params = set()
 
@@ -120,7 +120,7 @@ class CIFSSR(FileSR.FileSR):
             if not util.ioretry(lambda: util.isdir(mountpoint)):
                 util.ioretry(lambda: util.makedirs(mountpoint))
         except util.CommandException, inst:
-            raise CifsException("Failed to make directory: code is %d" %
+            raise SMBException("Failed to make directory: code is %d" %
                                 inst.code)
 
         self.credentials = os.path.join("/tmp", util.gen_uuid())
@@ -141,7 +141,7 @@ class CIFSSR(FileSR.FileSR):
             domain = dom_username[0]
             username = dom_username[1]
         else:
-            raise CifsException("A maximum of 2 tokens are expected "
+            raise SMBException("A maximum of 2 tokens are expected "
                                 "(<domain>\<username>). {} were given."
                                 .format(len(dom_username)))
 
@@ -168,7 +168,7 @@ class CIFSSR(FileSR.FileSR):
             with open(self.credentials, 'w') as f:
                 f.write(cred_str)
         except IOError, e:
-            raise CifsException("Failed to create credentials file")
+            raise SMBException("Failed to create credentials file")
 
         try:
             util.ioretry(lambda:
@@ -177,7 +177,7 @@ class CIFSSR(FileSR.FileSR):
                 errlist=[errno.EPIPE, errno.EIO],
                 maxretry=2, nofail=True)
         except util.CommandException, inst:
-            raise CifsException("mount failed with return code %d" % inst.code)
+            raise SMBException("mount failed with return code %d" % inst.code)
         finally:
             try:
                 os.unlink(self.credentials)
@@ -192,55 +192,55 @@ class CIFSSR(FileSR.FileSR):
         except util.CommandException:
             try:
                 self.unmount(mountpoint, True)
-            except CifsException:
-                util.logException('CIFSSR.unmount()')
-            raise CifsException("Permission denied. "
+            except SMBException:
+                util.logException('SMBSR.unmount()')
+            raise SMBException("Permission denied. "
                                 "Please check user privileges.")
- 
+
     def unmount(self, mountpoint, rmmountpoint):
-        """Unmount the remote CIFS export at 'mountpoint'"""
+        """Unmount the remote SMB export at 'mountpoint'"""
         try:
             util.pread(["umount", mountpoint])
         except util.CommandException, inst:
-            raise CifsException("umount failed with return code %d" % inst.code)
+            raise SMBException("umount failed with return code %d" % inst.code)
 
         if rmmountpoint:
             try:
                 os.rmdir(mountpoint)
             except OSError, inst:
-                raise CifsException("rmdir failed with error '%s'" % inst.strerror)
+                raise SMBException("rmdir failed with error '%s'" % inst.strerror)
 
     def __extract_server(self):
         return self.remoteserver[2:]
 
     def __check_license(self):
-        """Raises an exception if CIFS is not licensed."""
+        """Raises an exception if SMB is not licensed."""
         if self.session is None or (isinstance(self.session, str) and \
                 self.session == ""):
-            raise xs_errors.XenError('NoCifsLicense',
+            raise xs_errors.XenError('NoSMBLicense',
                     'No session object to talk to XAPI')
         restrictions = util.get_pool_restrictions(self.session)
         if 'restrict_cifs' in restrictions and \
                 restrictions['restrict_cifs'] == "true":
-            raise xs_errors.XenError('NoCifsLicense')
+            raise xs_errors.XenError('NoSMBLicense')
 
     def attach(self, sr_uuid):
         if not self.checkmount():
-            try: 
+            try:
                 self.mount()
                 os.symlink(self.linkpath, self.path)
-            except CifsException, exc:
-                raise xs_errors.XenError('CIFSMount', opterr=exc.errstr)
+            except SMBException, exc:
+                raise xs_errors.XenError('SMBMount', opterr=exc.errstr)
         self.attached = True
 
     def probe(self):
         try:
-            err = "CIFSMount"
+            err = "SMBMount"
             self.mount(PROBE_MOUNTPOINT)
             sr_list = filter(util.match_uuid, util.listdir(PROBE_MOUNTPOINT))
-            err = "CIFSUnMount"
+            err = "SMBUnMount"
             self.unmount(PROBE_MOUNTPOINT, True)
-        except CifsException, inst:
+        except SMBException, inst:
             raise xs_errors.XenError(err, opterr=inst.errstr)
         except (util.CommandException, xs_errors.XenError):
             raise
@@ -263,25 +263,25 @@ class CIFSSR(FileSR.FileSR):
         try:
             self.unmount(self.mountpoint, True)
             os.unlink(self.path)
-        except CifsException, exc:
-            raise xs_errors.XenError('CIFSUnMount', opterr=exc.errstr)
+        except SMBException, exc:
+            raise xs_errors.XenError('SMBUnMount', opterr=exc.errstr)
 
         self.attached = False
-        
+
     def create(self, sr_uuid, size):
         self.__check_license()
 
         if self.checkmount():
-            raise xs_errors.XenError('CIFSAttached')
+            raise xs_errors.XenError('SMBAttached')
 
         try:
             self.mount()
-        except CifsException, exc:
+        except SMBException, exc:
             try:
                 os.rmdir(self.mountpoint)
             except:
                 pass
-            raise xs_errors.XenError('CIFSMount', opterr=exc.errstr)
+            raise xs_errors.XenError('SMBMount', opterr=exc.errstr)
 
         if util.ioretry(lambda: util.pathexists(self.linkpath)):
             if len(util.ioretry(lambda: util.listdir(self.linkpath))) != 0:
@@ -295,10 +295,10 @@ class CIFSSR(FileSR.FileSR):
                 if inst.code != errno.EEXIST:
                     try:
                         self.unmount(self.mountpoint, True)
-                    except CifsException:
-                        util.logException('CIFSSR.unmount()')
+                    except SMBException:
+                        util.logException('SMBSR.unmount()')
                     raise xs_errors.XenError(
-                            'CIFSCreate',
+                            'SMBCreate',
                             opterr="remote directory creation error: {}"
                                     .format(os.strerror(inst.code))
                     )
@@ -306,7 +306,7 @@ class CIFSSR(FileSR.FileSR):
 
     def delete(self, sr_uuid):
         # try to remove/delete non VDI contents first
-        super(CIFSSR, self).delete(sr_uuid)
+        super(SMBSR, self).delete(sr_uuid)
         try:
             if self.checkmount():
                 self.detach(sr_uuid)
@@ -318,24 +318,24 @@ class CIFSSR(FileSR.FileSR):
         except util.CommandException, inst:
             self.detach(sr_uuid)
             if inst.code != errno.ENOENT:
-                raise xs_errors.XenError('CIFSDelete')
+                raise xs_errors.XenError('SMBDelete')
 
     def vdi(self, uuid, loadLocked = False):
         if not loadLocked:
-            return CIFSFileVDI(self, uuid)
-        return CIFSFileVDI(self, uuid)
-    
-class CIFSFileVDI(FileSR.FileVDI):
+            return SMBFileVDI(self, uuid)
+        return SMBFileVDI(self, uuid)
+
+class SMBFileVDI(FileSR.FileVDI):
     def attach(self, sr_uuid, vdi_uuid):
         if not hasattr(self,'xenstore_data'):
             self.xenstore_data = {}
             
-        self.xenstore_data["storage-type"]="cifs"
+        self.xenstore_data["storage-type"]="smb"
 
-        return super(CIFSFileVDI, self).attach(sr_uuid, vdi_uuid)
+        return super(SMBFileVDI, self).attach(sr_uuid, vdi_uuid)
 
     def generate_config(self, sr_uuid, vdi_uuid):
-        util.SMlog("CIFSFileVDI.generate_config")
+        util.SMlog("SMBFileVDI.generate_config")
         if not util.pathexists(self.path):
                 raise xs_errors.XenError('VDIUnavailable')
         resp = {}
@@ -352,18 +352,18 @@ class CIFSFileVDI(FileSR.FileVDI):
     def attach_from_config(self, sr_uuid, vdi_uuid):
         """Used for HA State-file only. Will not just attach the VDI but
         also start a tapdisk on the file"""
-        util.SMlog("CIFSFileVDI.attach_from_config")
+        util.SMlog("SMBFileVDI.attach_from_config")
         try:
             if not util.pathexists(self.sr.path):
                 self.sr.attach(sr_uuid)
         except:
-            util.logException("CIFSFileVDI.attach_from_config")
+            util.logException("SMBFileVDI.attach_from_config")
             raise xs_errors.XenError('SRUnavailable', \
                         opterr='Unable to attach from config')
 
 
 if __name__ == '__main__':
-    SRCommand.run(CIFSSR, DRIVER_INFO)
+    SRCommand.run(SMBSR, DRIVER_INFO)
 else:
-    SR.registerSR(CIFSSR)
+    SR.registerSR(SMBSR)
 #

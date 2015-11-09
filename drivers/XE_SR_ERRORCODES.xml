@@ -461,23 +461,23 @@
                 <value>110</value>
         </code>
         <code>
-                <name>CIFSMount</name>
-                <description>CIFS mount error</description>
+                <name>SMBMount</name>
+                <description>SMB mount error</description>
                 <value>111</value>
         </code>
         <code>
-                <name>CIFSUnMount</name>
-                <description>CIFS unmount error</description>
+                <name>SMBUnMount</name>
+                <description>SMB unmount error</description>
                 <value>112</value>
         </code>
         <code>
-                <name>CIFSAttached</name>
-                <description>CIFS mount point already attached</description>
+                <name>SMBAttached</name>
+                <description>SMB mount point already attached</description>
                 <value>113</value>
         </code>
         <code>
-                <name>CIFSDelete</name>
-                <description>Failed to remove CIFS mount point</description>
+                <name>SMBDelete</name>
+                <description>Failed to remove SMB mount point</description>
                 <value>114</value>
         </code>
         <code>
@@ -486,8 +486,8 @@
                 <value>115</value>
         </code>
         <code>
-                <name>CIFSCreate</name>
-                <description>Failed to create CIFS SR.</description>
+                <name>SMBCreate</name>
+                <description>Failed to create SMB SR.</description>
                 <value>116</value>
         </code>
 
@@ -799,8 +799,8 @@
         </code>
 
         <code>
-            <name>NoCifsLicense</name>
-            <description>CIFS SR is not licensed on this host</description>
+            <name>NoSMBLicense</name>
+            <description>SMB SR is not licensed on this host</description>
             <value>454</value>
         </code>
 
