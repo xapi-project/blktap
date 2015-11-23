@@ -924,6 +924,8 @@ class LVHDSR(SR.SR):
     def _updateStats(self, uuid, virtAllocDelta):
         valloc = int(self.session.xenapi.SR.get_virtual_allocation(self.sr_ref))
         self.virtual_allocation = valloc + virtAllocDelta
+        util.SMlog("Setting virtual_allocation of SR %s to %d" % 
+                   (uuid, self.virtual_allocation))
         stats = lvutil._getVGstats(self.vgname)
         self.physical_size = stats['physical_size']
         self.physical_utilisation = stats['physical_utilisation']
