@@ -312,7 +312,7 @@ class LVHDoISCSISR(LVHDSR.LVHDSR):
                 except:
                     raise xs_errors.XenError('ISCSILogout')
 
-        self._pathrefresh(LVHDoISCSISR)
+        self._pathrefresh(LVHDoISCSISR, load = False)
 
         LVHDSR.LVHDSR.load(self, sr_uuid)
 
