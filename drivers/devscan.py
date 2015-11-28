@@ -20,6 +20,7 @@ import scsiutil, util
 import xml.dom.minidom
 import xs_errors, time
 import glob
+import fcoelib
 
 DEVPATH='/dev/disk/by-id'
 DMDEVPATH='/dev/mapper'
@@ -47,6 +48,11 @@ def adapters(filterstr="any"):
     dict = {}
     devs = {}
     adt = {}
+    fcoe_eth_info = {}
+
+    if filterstr == "fcoe":
+        fcoe_eth_info = fcoelib.parse_fcoe_eth_info()
+
     for a in os.listdir(SYSFS_PATH1):
         proc = match_hbadevs(a, filterstr)
         if not proc:
@@ -63,6 +69,7 @@ def adapters(filterstr="any"):
             for p in [os.path.join(SYSFS_PATH1,a,"device","session*"),os.path.join(SYSFS_PATH1,a,"device"),\
                           os.path.join(SYSFS_PATH2,"%s:*"%id)]:
                 paths += glob.glob(p)
+
         if not len(paths):
             continue
         for path in paths:
@@ -90,8 +97,12 @@ def adapters(filterstr="any"):
                     for lun in os.listdir(sysfs):
                         if not match_LUNs(lun,tgt):
                             continue
+                        #Special casing for fcoe, populating eth information
+                        eth = ""
+                        if i in fcoe_eth_info.keys():
+                            eth = fcoe_eth_info[i]
                         dir = os.path.join(sysfs,lun,"device")
-                        (dev, entry) = _extract_dev(dir, proc, id, lun)
+                        (dev, entry) = _extract_dev(dir, proc, id, lun, eth)
                         update_devs_dict(devs, dev, entry)
 
             # for new mptsas sysfs entries, check for phy* node
@@ -185,8 +196,10 @@ def _genMPPHBA(id):
 def match_hbadevs(s, filterstr):
     driver_name = _get_driver_name(s)
     if match_host(s) and not match_blacklist(driver_name) \
-        and ( filterstr == "any" or match_filterstr(filterstr, driver_name) ):
-            return driver_name
+                and ( (filterstr == "any" \
+                and not match_filterstr("fcoe", driver_name))\
+                or match_filterstr(filterstr, driver_name) ):
+        return driver_name
     else:
         return ""
 
@@ -244,13 +257,14 @@ def _get_block_device_name_with_kernel_3x(device_dir):
     else:
         return INVALID_DEVICE_NAME
 
-def _extract_dev(device_dir, procname, host, target):
+def _extract_dev(device_dir, procname, host, target, eths=""):
     """Returns device name and creates dictionary entry for it"""
     dev = _extract_dev_name(device_dir)
     entry = {}
     entry['procname'] = procname
     entry['host'] = host
     entry['target'] = target
+    entry['eth'] = eths
     return (dev, entry)
 
 def _add_host_parameters_to_adapter(dom, adapter, host_class, host_id,
@@ -314,6 +328,8 @@ def scan(srobj):
         obj.id = ids[3]
         obj.lun = ids[4]
         obj.hba = hba['procname']
+        if hba['eth']:
+            obj.eth = hba['eth']
         obj.numpaths = 1
         if vdis.has_key(obj.SCSIid):
             vdis[obj.SCSIid].numpaths += 1
@@ -339,11 +355,11 @@ def scan(srobj):
         d = dom.createElement("BlockDevice")
         e.appendChild(d)
 
-        for attr in ['path','numpaths','SCSIid','vendor','serial','size','adapter','channel','id','lun','hba','mpp']:
+        for attr in ['path','numpaths','SCSIid','vendor','serial','size','adapter','channel','id','lun','hba','mpp','eth']:
             try:
                 aval = getattr(obj, attr)
             except AttributeError:
-                if attr in ['mpp']:
+                if attr in ['mpp'] or attr in ['eth']:
                     continue
                 raise xs_errors.XenError('InvalidArg', \
                       opterr='Missing required field [%s]' % attr)

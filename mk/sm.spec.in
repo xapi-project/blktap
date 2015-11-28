@@ -147,9 +147,13 @@ fi
 /opt/xensource/sm/LVHDoISCSISR.py
 /opt/xensource/sm/LVHDoISCSISR.pyc
 /opt/xensource/sm/LVHDoISCSISR.pyo
+/opt/xensource/sm/LVHDoFCoESR.py
+/opt/xensource/sm/LVHDoFCoESR.pyc
+/opt/xensource/sm/LVHDoFCoESR.pyo
 /opt/xensource/sm/LVMSR
 /opt/xensource/sm/LVMoHBASR
 /opt/xensource/sm/LVMoISCSISR
+/opt/xensource/sm/LVMoFCoESR
 /opt/xensource/sm/NFSSR
 /opt/xensource/sm/NFSSR.py
 /opt/xensource/sm/NFSSR.pyc
@@ -192,6 +196,9 @@ fi
 /opt/xensource/sm/iscsilib.py
 /opt/xensource/sm/iscsilib.pyc
 /opt/xensource/sm/iscsilib.pyo
+/opt/xensource/sm/fcoelib.py
+/opt/xensource/sm/fcoelib.pyc
+/opt/xensource/sm/fcoelib.pyo
 /opt/xensource/sm/journaler.py
 /opt/xensource/sm/journaler.pyc
 /opt/xensource/sm/journaler.pyo
