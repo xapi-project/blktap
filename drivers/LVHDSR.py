@@ -1974,6 +1974,20 @@ class LVHDVDI(VDI.VDI):
 
         vhdutil.killData(self.path)
 
+        if self.sr.provision == "xlvhd":
+            fullpr = lvhdutil.calcSizeVHDLV(vhdutil.getSizeVirt(self.path))
+            thinpr = util.roundup(lvutil.LVM_SIZE_INCREMENT, \
+                                      vhdutil.calcOverheadEmpty(lvhdutil.MSIZE))
+            # By design on reset-on-boot we will set the leaf to the
+            # SR initial_allocation.
+            ia = long (self.sr.sm_config['initial_allocation'])
+            util.SMlog("LVHDSR.reset_leaf ia=%d fullpr=%d thinpr=%d" % 
+                       (ia, fullpr, thinpr))
+            dynamic_sz = max(ia, thinpr)
+            dynamic_sz = min(dynamic_sz, fullpr)
+            thinpr = util.roundup(lvutil.LVM_SIZE_INCREMENT, dynamic_sz)
+            lvhdutil.deflate(self.sr.lvmCache, self.lvname, thinpr)
+
     def _attach(self):
         self._chainSetActive(True, True, True)
         if not util.pathexists(self.path):
