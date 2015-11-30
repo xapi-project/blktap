@@ -2086,17 +2086,6 @@ class LVHDVDI(VDI.VDI):
         lvSizeOrig = thinpr
         lvSizeClon = thinpr
 
-        hostRefs = []
-        if self.sr.cmd == "vdi_snapshot":
-            hostRefs = util.get_hosts_attached_on(self.session, [self.uuid])
-            if hostRefs:
-                lvSizeOrig = fullpr
-        if self.sr.provision == "thick":
-            if not self.issnap:
-                lvSizeOrig = fullpr
-            if self.sr.cmd != "vdi_snapshot":
-                lvSizeClon = fullpr
-
         if self.sr.provision == "xlvhd":
             # By design on clone and snapshot operation instead of
             # using the original VDI parameters we would use the SR ones.
@@ -2108,12 +2097,24 @@ class LVHDVDI(VDI.VDI):
                 # Should never reach here
                 raise xs_errors.XenError('InvalidArg',
                         opterr='initial_allocation not in sm-config')
-            thick_sz = fullpr
             dynamic_sz = max(ia, thinpr)
-            dynamic_sz = min(dynamic_sz, thick_sz)
-            thinpr = util.roundup(lvutil.LVM_SIZE_INCREMENT, dynamic_sz)
-            lvSizeOrig = thinpr
-            lvSizeClon = thinpr
+            dynamic_sz = min(dynamic_sz, fullpr)
+            # Here we are just lowering the fullpr variable to be in line
+            # with the SR initial_allocation, so later we can use the
+            # same checks of 'thick' to differentiate between snapshot and 
+            # clone. The sm_config will be updated during _createSnap 
+            fullpr = util.roundup(lvutil.LVM_SIZE_INCREMENT, dynamic_sz)
+
+        hostRefs = []
+        if self.sr.cmd == "vdi_snapshot":
+            hostRefs = util.get_hosts_attached_on(self.session, [self.uuid])
+            if hostRefs:
+                lvSizeOrig = fullpr
+        if self.sr.provision == "thick" or self.sr.provision == "xlvhd":
+            if not self.issnap:
+                lvSizeOrig = fullpr
+            if self.sr.cmd != "vdi_snapshot":
+                lvSizeClon = fullpr
 
         if (snapType == self.SNAPSHOT_SINGLE or
                 snapType == self.SNAPSHOT_INTERNAL):
@@ -2219,6 +2220,10 @@ class LVHDVDI(VDI.VDI):
                 snapVDI.sm_config[key] = val
         snapVDI.sm_config["vdi_type"] = vhdutil.VDI_TYPE_VHD
         snapVDI.sm_config["vhd-parent"] = snapParent
+        if self.sr.provision == "xlvhd":
+            # we do this at the end so we overwrite the parent sm_config
+            # initial_allocation
+            snapVDI.sm_config["initial_allocation"] = str (snapSizeLV)
         snapVDI.lvname = snapLV
         return snapVDI
 
