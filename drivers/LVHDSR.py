@@ -1470,6 +1470,14 @@ class LVHDSR(SR.SR):
             self._start_xenvmd(uuid)
             self._symlink_xenvm_conf()
 
+            # Pass the info on new VG to thin provision daemon
+            try:
+                cmd = [lvutil.THINPROV_DAEMON_CLI, "--add", lvhdutil.VG_PREFIX + uuid]
+                util.pread2(cmd)
+            except util.CommandException, inst:
+                raise xs_errors.XenError('VGReg', \
+                        opterr='failed for %s with %d' % (uuid, inst.code))
+
             for retrycount in range(0, 10):
                 try:
                     # Start local allocator
@@ -1488,6 +1496,13 @@ class LVHDSR(SR.SR):
 
     def rollback(self, uuid):
         util.SMlog("Rolling back thin-prov upgrade for SR: %s" % uuid)
+        # Shut threads down
+        try:
+            cmd = [lvutil.THINPROV_DAEMON_CLI, "--del", lvhdutil.VG_PREFIX + uuid]
+            util.pread2(cmd)
+        except util.CommandException, inst:
+            util.SMlog("VG de-registration failed for %s with %d" % \
+                       (uuid, inst.code))
         try:
             lvutil.stopxenvm_local_allocator(self.vgname)
         except:
