@@ -1,3 +1,15 @@
+Version 1.12.2 - 30th Nov 2015
+===============================
+  CA-186487: Normalize SMB mount paths
+  CA-184517: Added temporary log to track SR virtual allocation
+  CA-183814: Upgrade code writes config files also for slave
+  CP-14242: Advertise SR_STATS capability for lvmoiscsi and lvmohba
+  CA-178380: Fix xlvhd reset on boot
+  CA-184025: Add/Rem VGs to thinprovd on upgrade
+  CA-184700: Refine initial_allocation for clone and snapshot
+  CA-179190: Decrease min host pool to 10 times min aq
+  CP-14360: tell xenvmd to connect before starting local allocator
+
 Version 1.12.1 - 9th Nov 2015
 ===============================
   CA-180727: Handle SMlog rotation
