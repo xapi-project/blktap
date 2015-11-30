@@ -1459,16 +1459,16 @@ class LVHDSR(SR.SR):
                     vsmc['allocation_quantum'] = aq_str
                     self.session.xenapi.VDI.set_sm_config(vref, vsmc)
 
-                self._write_vginfo(uuid)
+            self._write_vginfo(uuid)
+
+            if self.isMaster:
                 self.updateSRMetadata(self.provision, \
                                       map['initial_allocation'], \
                                       map['allocation_quantum'])
 
-                # Write config file and start xenvmd
-                self._start_xenvmd(uuid)
-                self._symlink_xenvm_conf()
-            else:
-                self._write_vginfo(uuid)
+            # Write config file and start xenvmd on master
+            self._start_xenvmd(uuid)
+            self._symlink_xenvm_conf()
 
             for retrycount in range(0, 10):
                 try:
