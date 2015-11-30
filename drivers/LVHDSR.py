@@ -1412,7 +1412,7 @@ class LVHDSR(SR.SR):
                 # Calculate free space in the SR
                 sr_free_space = self.physical_size - self.physical_utilisation
                 num_hosts = len(self.session.xenapi.host.get_all())
-                min_host_pool_size = 1024
+                min_host_pool_size = 160
                 host_pool_size = (self.physical_size * 0.005) / (1024 * 1024)
                 pool_size = max(min_host_pool_size, host_pool_size)
                 # Calculate the space required for upgrade in bytes
