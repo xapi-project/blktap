@@ -31,7 +31,7 @@ import mpath_cli
 import glob
 import mpp_luncheck
 
-CAPABILITIES = ["SR_PROBE", "SR_UPDATE", "SR_METADATA", "SR_TRIM",
+CAPABILITIES = ["SR_PROBE", "SR_UPDATE", "SR_METADATA", "SR_TRIM", "SR_STATS",
                 "VDI_CREATE", "VDI_DELETE", "VDI_ATTACH", "VDI_DETACH",
                 "VDI_GENERATE_CONFIG", "VDI_SNAPSHOT", "VDI_CLONE",
                 "VDI_RESIZE", "ATOMIC_PAUSE", "VDI_RESET_ON_BOOT/2",
