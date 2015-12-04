@@ -32,6 +32,7 @@
 #include "tapdisk-log.h"
 
 #define ERROR(_f, _a...)           tlog_syslog(TLOG_WARN, "td-ctx: " _f, ##_a)
+#define barrier()                  __asm__ __volatile__("": : :"memory")
 
 LIST_HEAD(_td_xenio_ctxs);
 
@@ -175,6 +176,7 @@ xenio_blkif_get_request(struct td_xenblkif * const blkif,
              */
             ASSERT(0);
     }
+    barrier();
 }
 
 /**
