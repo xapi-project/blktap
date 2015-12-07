@@ -454,7 +454,7 @@ class SR(object):
                 self.mpathhandle = "null"
                 
             if not os.path.exists("/opt/xensource/sm/mpath_%s.py" % self.mpathhandle):
-                raise
+                raise IOError("File does not exist = %s" % self.mpathhandle)
         except:
             self.mpath = "false"
             self.mpathhandle = "null"
