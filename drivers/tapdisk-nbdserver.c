@@ -316,6 +316,9 @@ __tapdisk_nbdserver_request_cb(td_vbd_request_t *vreq, int error,
 		break;
 	}
 
+	if (error)
+		server->nbd_stats.stats->io_errors++;
+
 finish:
 	free(vreq->iov->base);
 	tapdisk_nbdserver_free_request(client, req);
