@@ -1,0 +1,10 @@
+[Unit]
+Description=Snapshot manager daemon
+After=syslog.target network.target
+
+[Service]
+Type=simple
+ExecStart=/opt/xensource/sm/snapwatchd/snapwatchd -f
+
+[Install]
+WantedBy=multi-user.target

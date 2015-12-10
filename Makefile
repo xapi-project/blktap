@@ -154,6 +154,8 @@ install: precheck
 	  $(SM_STAGING)/$(INIT_DIR)/updatempppathd
 	install -m 644 etc/make-dummy-sr.service \
 	  $(SM_STAGING)/$(SYSTEMD_SERVICE_DIR)
+	install -m 644 snapwatchd/snapwatchd.service \
+	  $(SM_STAGING)/$(SYSTEMD_SERVICE_DIR)
 	for i in $(UDEV_RULES); do \
 	  install -m 644 udev/$$i.rules \
 	    $(SM_STAGING)$(UDEV_RULES_DIR); done
