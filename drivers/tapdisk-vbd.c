@@ -1192,10 +1192,14 @@ tapdisk_vbd_check_progress(td_vbd_t *vbd)
 	timersub(&now, &vbd->ts, &delta);
 	diff = delta.tv_sec;
 
-	if (diff >= TD_VBD_WATCHDOG_TIMEOUT && tapdisk_vbd_queue_ready(vbd)) {
-		DBG(TLOG_WARN, "%s: watchdog timeout: pending requests "
-		    "idle for %ld seconds\n", vbd->name, diff);
-		tapdisk_vbd_drop_log(vbd);
+	if (diff >= TD_VBD_WATCHDOG_TIMEOUT)
+	{
+		if(tapdisk_vbd_queue_ready(vbd))
+		{
+			DBG(TLOG_WARN, "%s: watchdog timeout: pending requests "
+			"idle for %ld seconds\n", vbd->name, diff);
+			tapdisk_vbd_drop_log(vbd);
+		}
 		return;
 	}
 
