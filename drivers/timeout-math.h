@@ -19,7 +19,7 @@
 #define _TIMEOUT_MATH_H_
 
 #define TV_INF                      (struct timeval) {(time_t) - 1, 0}
-#define TV_IS_INF(a)                ((a).tv_sec == (time_t) - 1)
+#define TV_IS_INF(a)                ((a).tv_sec < 0)
 #define TV_ZERO                     (struct timeval) {0, 0}
 #define TV_BEFORE(a, b)             timercmp(&(a), &(b), <)
 #define TV_AFTER(a, b)              (TV_BEFORE((b), (a)))
