@@ -129,7 +129,8 @@ class SMBSR(FileSR.FileSR):
                 'sec=ntlm',
                 'cache=none',
                 'vers=3.0',
-                'credentials=%s' % self.credentials
+                'credentials=%s' % self.credentials,
+                'guest'
         ])
 
         dom_username = self.dconf['username'].split('\\')
