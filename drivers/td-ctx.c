@@ -55,7 +55,7 @@ tapdisk_xenio_ctx_close(struct td_xenio_ctx * const ctx)
     }
 
     if (ctx->xcg_handle) {
-        xc_evtchn_close(ctx->xcg_handle);
+        xc_gnttab_close(ctx->xcg_handle);
         ctx->xcg_handle = NULL;
     }
 
