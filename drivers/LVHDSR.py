@@ -1365,8 +1365,6 @@ class LVHDSR(SR.SR):
                     if e.code != errno.ETIMEDOUT:
                         raise
                     util.SMlog('failed to abort the GC')
-                finally:
-                    return
             else:
                 util.SMlog("A GC instance already running, not kicking")
                 return
@@ -1805,6 +1803,13 @@ class LVHDVDI(VDI.VDI):
         # step: GC might have removed the LV by then
         if self.sr.lvActivator.get(self.uuid, False):
             self.sr.lvActivator.deactivate(self.uuid, False)
+
+        try:
+            self.sr.lvmCache.remove(self.lvname)
+        except SR.SRException, e:
+            util.SMlog(
+                "Failed to remove the volume (maybe is leaf coalescing) "
+                "for %s err:%d" % (self.uuid, e.errno))
 
         self.sr._updateStats(self.sr.uuid, -self.size)
         self.sr._kickGC()

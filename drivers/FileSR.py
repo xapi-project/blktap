@@ -567,14 +567,7 @@ class FileVDI(VDI.VDI):
         if self.attached:
             raise xs_errors.XenError('VDIInUse')
 
-        if self.vdi_type == vhdutil.VDI_TYPE_VHD:
-            try:
-                util.ioretry(lambda: self._mark_hidden(self.path))
-            except util.CommandException, inst:
-                raise xs_errors.XenError('VDIDelete',
-                        opterr='error %d' % inst.code)
-        else:
-            os.unlink(self.path)
+        os.unlink(self.path)
 
         self.sr.deleted_vdi(vdi_uuid)
         self._db_forget()
