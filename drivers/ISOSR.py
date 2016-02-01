@@ -61,6 +61,14 @@ def is_image_utf8_compatible(s):
             return False
     return True 
 
+def tools_iso_name(filename):
+    # The tools ISO used have a "xs-" prefix in its name.
+    # We recognise both and set the name_label accordingly.
+    if filename[:3] == "xs-":
+        return "xs-tools.iso"
+    else:
+        return "guest-tools.iso"
+
 class ISOSR(SR.SR):
     """Local file storage repository"""
 
@@ -411,10 +419,11 @@ class ISOSR(SR.SR):
             for vdi_ref in all_vdis.keys():
                 vdi = all_vdis[vdi_ref]
                 if vdi['sm_config'].has_key('xs-tools-version'):
+                    name = tools_iso_name(vdi['location'])
                     if vdi['sm_config'].has_key('xs-tools'):
-                        self.session.xenapi.VDI.set_name_label(vdi_ref, "xs-tools.iso")
+                        self.session.xenapi.VDI.set_name_label(vdi_ref, name)
                     else:
-                        self.session.xenapi.VDI.set_name_label(vdi_ref, "Old version of xs-tools.iso")
+                        self.session.xenapi.VDI.set_name_label(vdi_ref, "Old version of " + name)
 
 
             # never forget old VDI records to cope with rolling upgrade
@@ -474,12 +483,12 @@ class ISOVDI(VDI.VDI):
         self.label = filename
         self.sm_config = {}
         if mysr.dconf.has_key("legacy_mode"):
-            if filename.startswith("xs-tools"):
-                self.label = "xs-tools.iso"
+            if filename.startswith("xs-tools") or filename.startswith("guest-tools"):
+                self.label = tools_iso_name(filename)
                 # Mark this as a Tools CD
                 # self.sm_config['xs-tools'] = 'true'
                 # Extract a version string, if present
-                vsn = filename[len("xs-tools"):][:-len(".iso")].strip("-").split("-",1)
+                vsn = filename[filename.find("tools")+len("tools"):][:-len(".iso")].strip("-").split("-",1)
                 # "4.1.0"
                 if len(vsn) == 1:
                     build_number="0" # string
