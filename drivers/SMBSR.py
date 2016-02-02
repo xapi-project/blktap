@@ -102,20 +102,6 @@ class SMBSR(FileSR.FileSR):
         elif not util.is_string(mountpoint) or mountpoint == "":
             raise SMBException("mountpoint not a string object")
 
-        missing_params = set()
-
-        if not self.dconf.has_key('username'):
-            missing_params.add('username')
-
-        if not (self.dconf.has_key('password') or
-                self.dconf.has_key('password_secret')):
-            missing_params.add('password')
-
-        if missing_params:
-            errstr = 'device-config is missing the following parameters: ' + \
-                     ', '.join([param for param in missing_params])
-            raise xs_errors.XenError('ConfigParamsMissing', opterr=errstr)
-
         try:
             if not util.ioretry(lambda: util.isdir(mountpoint)):
                 util.ioretry(lambda: util.makedirs(mountpoint))
@@ -125,51 +111,9 @@ class SMBSR(FileSR.FileSR):
 
         self.credentials = os.path.join("/tmp", util.gen_uuid())
 
-        options = ','.join([
-                'sec=ntlm',
-                'cache=none',
-                'vers=3.0',
-                'credentials=%s' % self.credentials,
-                'guest'
-        ])
-
-        dom_username = self.dconf['username'].split('\\')
-
-        if len(dom_username) == 1:
-            domain = None
-            username = dom_username[0]
-        elif len(dom_username) == 2:
-            domain = dom_username[0]
-            username = dom_username[1]
-        else:
-            raise SMBException("A maximum of 2 tokens are expected "
-                                "(<domain>\<username>). {} were given."
-                                .format(len(dom_username)))
-
-        domain = util.to_plain_string(domain)
-        username = util.to_plain_string(username)
-
-        if self.dconf.has_key('password_secret'):
-            password = util.get_secret(
-                    self.session,
-                    self.dconf['password_secret']
-            )
-        else:
-            password = self.dconf['password']
-
-        password = util.to_plain_string(password)
-
-        cred_str = 'username={}\npassword={}\n'.format(username, password)
-
-        if domain:
-            cred_str += 'domain={}\n'.format(domain)
-
-        # Open credentials file and truncate
-        try:
-            with open(self.credentials, 'w') as f:
-                f.write(cred_str)
-        except IOError, e:
-            raise SMBException("Failed to create credentials file")
+        options = self.getMountOptions()
+        if options:
+            options = ",".join(str(x) for x in options if x)
 
         try:
             util.ioretry(lambda:
@@ -197,6 +141,62 @@ class SMBSR(FileSR.FileSR):
                 util.logException('SMBSR.unmount()')
             raise SMBException("Permission denied. "
                                 "Please check user privileges.")
+
+    def getMountOptions(self):
+        """Creates option string based on parameters provided"""
+        options = ['sec=ntlm',
+                'cache=none',
+                'vers=3.0'
+        ]
+
+        if self.dconf.has_key('username') and \
+                (self.dconf.has_key('password') or
+                self.dconf.has_key('password_secret')):
+
+            dom_username = self.dconf['username'].split('\\')
+
+            if len(dom_username) == 1:
+                domain = None
+                username = dom_username[0]
+            elif len(dom_username) == 2:
+                domain = dom_username[0]
+                username = dom_username[1]
+            else:
+                raise SMBException("A maximum of 2 tokens are expected "
+                                   "(<domain>\<username>). {} were given."
+                                   .format(len(dom_username)))
+
+            domain = util.to_plain_string(domain)
+            username = util.to_plain_string(username)
+
+            if self.dconf.has_key('password_secret'):
+                password = util.get_secret(
+                           self.session,
+                           self.dconf['password_secret']
+            )
+            else:
+                password = self.dconf['password']
+
+            password = util.to_plain_string(password)
+
+            cred_str = 'username={}\npassword={}\n'.format(username, password)
+
+            if domain:
+                cred_str += 'domain={}\n'.format(domain)
+
+            # Open credentials file and truncate
+            try:
+                with open(self.credentials, 'w') as f:
+                    f.write(cred_str)
+            except IOError, e:
+                raise SMBException("Failed to create credentials file")
+
+	    options.append('credentials=%s' % self.credentials)
+	else:
+	    options.append('guest')
+
+        return options
+
 
     def unmount(self, mountpoint, rmmountpoint):
         """Unmount the remote SMB export at 'mountpoint'"""
