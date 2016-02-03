@@ -119,6 +119,7 @@ class TestTrimUtil(unittest.TestCase, testlib.XmlMixIn):
             size_in_percentage='100%F'
         )
 
+    @mock.patch('util.pread2')
     @mock.patch('trim_util.lvutil')
     @mock.patch('lock.Lock')
     @mock.patch('util.sr_get_capability')
@@ -127,7 +128,8 @@ class TestTrimUtil(unittest.TestCase, testlib.XmlMixIn):
                                                      context,
                                                      sr_get_capability,
                                                      MockLock,
-                                                     lvutil):
+                                                     lvutil,
+                                                     pread2):
         lvutil.exists.return_value = False
         MockLock.return_value = AlwaysFreeLock()
         sr_get_capability.return_value = [trim_util.TRIM_CAP]
@@ -135,9 +137,9 @@ class TestTrimUtil(unittest.TestCase, testlib.XmlMixIn):
 
         trim_util.do_trim(None, {'sr_uuid': 'some-uuid'})
 
-        lvutil.remove.assert_called_once_with(
-            '/dev/VG_XenStorage-some-uuid/some-uuid_trim_lv',
-            config_param='issue_discards=1')
+        pread2.assert_called_once_with(
+            ["/usr/sbin/blkdiscard","-v",
+            "/dev/VG_XenStorage-some-uuid/some-uuid_trim_lv"])
 
     @mock.patch('trim_util.lvutil')
     @mock.patch('lock.Lock')
@@ -176,8 +178,7 @@ class TestTrimUtil(unittest.TestCase, testlib.XmlMixIn):
         self.assertEquals([
                 mock.call('/dev/VG_XenStorage-some-uuid/some-uuid_trim_lv'),
                 mock.call(
-                    '/dev/VG_XenStorage-some-uuid/some-uuid_trim_lv',
-                    config_param='issue_discards=1')
+                    '/dev/VG_XenStorage-some-uuid/some-uuid_trim_lv')
             ], lvutil.remove.mock_calls)
 
     @mock.patch('trim_util.lvutil')
@@ -189,7 +190,7 @@ class TestTrimUtil(unittest.TestCase, testlib.XmlMixIn):
                                                             sr_get_capability,
                                                             MockLock,
                                                             lvutil):
-        lvutil.exists.side_effect = Exception('blah')
+        lvutil.create.side_effect = Exception('blah')
         srlock = AlwaysFreeLock()
         MockLock.return_value = srlock
         sr_get_capability.return_value = [trim_util.TRIM_CAP]
@@ -208,7 +209,7 @@ class TestTrimUtil(unittest.TestCase, testlib.XmlMixIn):
                                                              sr_get_capability,
                                                              MockLock,
                                                              lvutil):
-        lvutil.exists.side_effect = Exception('blah')
+        lvutil.create.side_effect = Exception('blah')
         srlock = AlwaysFreeLock()
         MockLock.return_value = srlock
         sr_get_capability.return_value = [trim_util.TRIM_CAP]
@@ -230,6 +231,7 @@ class TestTrimUtil(unittest.TestCase, testlib.XmlMixIn):
         </trim_response>
         """, result)
 
+    @mock.patch('util.pread2')
     @mock.patch('trim_util.lvutil')
     @mock.patch('lock.Lock')
     @mock.patch('util.sr_get_capability')
@@ -238,7 +240,8 @@ class TestTrimUtil(unittest.TestCase, testlib.XmlMixIn):
                                                       context,
                                                       sr_get_capability,
                                                       MockLock,
-                                                      lvutil):
+                                                      lvutil,
+                                                      pread2):
         MockLock.return_value = AlwaysFreeLock()
         sr_get_capability.return_value = [trim_util.TRIM_CAP]
         context.setup_error_codes()

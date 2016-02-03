@@ -749,7 +749,7 @@ class Tapdisk(object):
                 raise cls.InvalidArgument(arg)
 
             if _type not in Tapdisk.TYPES:
-                raise cls.InvalidType(_type, path)
+                raise cls.InvalidType(_type)
 
             return cls(_type, path)
 
@@ -807,13 +807,14 @@ class Tapdisk(object):
                     raise
 
             except:
+                exc_info = sys.exc_info()
                 # FIXME: Should be tap-ctl shutdown.
                 try:
                     import signal
                     os.kill(pid, signal.SIGTERM)
                     os.waitpid(pid, 0)
                 finally:
-                    raise
+                    raise exc_info[0], exc_info[1], exc_info[2]
 
         except TapCtl.CommandFailure, ctl:
             util.logException(ctl)
@@ -2032,13 +2033,14 @@ class VDI(object):
 
         lock.release()
 
+PythonKeyError = KeyError
 
 class UEventHandler(object):
 
     def __init__(self):
         self._action = None
 
-    class KeyError(KeyError):
+    class KeyError(PythonKeyError):
         def __str__(self):
             return \
                 "Key '%s' missing in environment. " % self.args[0] + \

@@ -52,8 +52,8 @@ class udevSR(SR.SR):
         return False
     handles = staticmethod(handles)
 
-    def type(self, sr_uuid):
-        return super(udevSR, self).type(sr_uuid)
+    def content_type(self, sr_uuid):
+        return super(udevSR, self).content_type(sr_uuid)
 
     def vdi(self, uuid):
         util.SMlog("params = %s" % (self.srcmd.params.keys()))

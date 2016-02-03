@@ -356,7 +356,7 @@ def run(driver, driver_info):
         else:
             print ret
 
-    except Exception, e:
+    except (Exception, SR.SRException) as e:
         try:
             util.logException(driver_info['name'])
         except KeyError:

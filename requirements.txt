@@ -1,4 +1,4 @@
 mock
 xenapi
 coveralls
-pylint==1.2
+pylint==1.5

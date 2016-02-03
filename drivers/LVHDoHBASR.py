@@ -80,7 +80,7 @@ class LVHDoHBASR(LVHDSR.LVHDSR):
                 # UPGRADE FROM MIAMI: add SCSIid key to device_config
                 util.SMlog("Performing upgrade from Miami")
                 if not os.path.exists(self.dconf['device']):
-                    raise
+                    raise xs_errors.XenError('InvalidDev')
                 SCSIid = scsiutil.getSCSIid(self.dconf['device'])
                 self.dconf['SCSIid'] = SCSIid
                 del self.dconf['device']
