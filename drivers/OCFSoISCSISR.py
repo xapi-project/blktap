@@ -75,10 +75,9 @@ class OCFSoISCSISR(OCFSSR.OCFSSR):
             # This is a probe call, generate a temp sr_uuid
             sr_uuid = util.gen_uuid()
 
-        driver = SR.driver('iscsi')
         if self.original_srcmd.dconf.has_key('target'):
             self.original_srcmd.dconf['targetlist'] = self.original_srcmd.dconf['target']
-        iscsi = driver(self.original_srcmd, sr_uuid)
+        iscsi = ISCSISR.ISCSISR(self.original_srcmd, sr_uuid)
         self.iscsiSRs = []
         self.iscsiSRs.append(iscsi)
         
@@ -143,7 +142,7 @@ class OCFSoISCSISR(OCFSSR.OCFSSR):
                     srcmd_copy.dconf['targetIQN'] = iqn
                     srcmd_copy.dconf['multiSession'] = IQNstring
                     util.SMlog("Setting targetlist: %s" % srcmd_copy.dconf['targetlist'])
-                    self.iscsiSRs.append(driver(srcmd_copy, sr_uuid))
+                    self.iscsiSRs.append(ISCSISR.ISCSISR(srcmd_copy, sr_uuid))
                 pbd = util.find_my_pbd(self.session, self.host_ref, self.sr_ref)
                 if pbd <> None and not self.dconf.has_key('multiSession'):
                     dconf = self.session.xenapi.PBD.get_device_config(pbd)
