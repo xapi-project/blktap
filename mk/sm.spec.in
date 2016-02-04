@@ -118,10 +118,9 @@ fi
 /opt/xensource/sm/HBASR.py
 /opt/xensource/sm/HBASR.pyc
 /opt/xensource/sm/HBASR.pyo
-/opt/xensource/sm/ISCSISR
-/opt/xensource/sm/ISCSISR.py
-/opt/xensource/sm/ISCSISR.pyc
-/opt/xensource/sm/ISCSISR.pyo
+/opt/xensource/sm/ISCSI_base.py
+/opt/xensource/sm/ISCSI_base.pyc
+/opt/xensource/sm/ISCSI_base.pyo
 /opt/xensource/sm/ISOSR
 /opt/xensource/sm/ISOSR.py
 /opt/xensource/sm/ISOSR.pyc

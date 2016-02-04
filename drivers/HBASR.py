@@ -19,7 +19,7 @@
 # hardware based iSCSI
 #
 
-import SR, VDI, SRCommand, ISCSISR
+import SR, VDI, SRCommand
 import devscan, scsiutil, util, LUNperVDI
 import os, sys, re, time
 import xs_errors
