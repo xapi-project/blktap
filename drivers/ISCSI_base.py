@@ -26,31 +26,6 @@ import shutil, xmlrpclib
 import scsiutil, iscsilib
 import xs_errors, errno
 
-CAPABILITIES = ["SR_PROBE","VDI_CREATE","VDI_DELETE","VDI_ATTACH",
-                "VDI_DETACH", "VDI_INTRODUCE"]
-
-CONFIGURATION = [ [ 'target', 'IP address or hostname of the iSCSI target (required)' ], \
-                  [ 'targetIQN', 'The IQN of the target LUN group to be attached (required)' ], \
-                  [ 'chapuser', 'The username to be used during CHAP authentication (optional)' ], \
-                  [ 'chappassword', 'The password to be used during CHAP authentication (optional)' ], \
-                  [ 'incoming_chapuser', 'The incoming username to be used during bi-directional CHAP authentication (optional)' ], \
-                  [ 'incoming_chappassword', 'The incoming password to be used during bi-directional CHAP authentication (optional)' ], \
-                  [ 'port', 'The network port number on which to query the target (optional)' ], \
-                  [ 'multihomed', 'Enable multi-homing to this target, true or false (optional, defaults to same value as host.other_config:multipathing)' ],
-                  [ 'force_tapdisk', 'Force use of tapdisk, true or false (optional, defaults to false)'],
-]
-
-DRIVER_INFO = {
-    'name': 'iSCSI',
-    'description': 'Base ISCSI SR driver, provides a LUN-per-VDI. Does not support creation of VDIs but accesses existing LUNs on a target.',
-    'vendor': 'Citrix Systems Inc',
-    'copyright': '(C) 2008 Citrix Systems Inc',
-    'driver_version': '1.0',
-    'required_api_version': '1.0',
-    'capabilities': CAPABILITIES,
-    'configuration': CONFIGURATION
-    }
-
 INITIATORNAME_FILE = '/etc/iscsi/initiatorname.iscsi'
 SECTOR_SHIFT = 9
 DEFAULT_PORT = 3260
@@ -60,7 +35,7 @@ MAX_TIMEOUT = 15
 MAX_LUNID_TIMEOUT = 60
 ISCSI_PROCNAME = "iscsi_tcp"
 
-class ISCSISR(SR.SR):
+class BaseISCSISR(SR.SR):
     """ISCSI storage repository"""
 
     @property
@@ -68,8 +43,6 @@ class ISCSISR(SR.SR):
         return self.dconf.get('force_tapdisk', 'false') == 'true'
 
     def handles(type):
-        if type == "iscsi":
-            return True
         return False
     handles = staticmethod(handles)
 
@@ -478,7 +451,7 @@ class ISCSISR(SR.SR):
                 if vdi.managed:
                     self.physical_utilisation += vdi.size
             self.virtual_allocation = self.physical_utilisation
-        return super(ISCSISR, self).scan(sr_uuid)
+        return super(BaseISCSISR, self).scan(sr_uuid)
                 
     def vdi(self, uuid):
         return LUNperVDI.RAWVDI(self, uuid)
@@ -712,9 +685,4 @@ class ISCSISR(SR.SR):
         if regex.search(s,0):
             return False
         regex = re.compile("LUN")
-        return regex.search(s, 0)    
-
-if __name__ == '__main__':
-    SRCommand.run(ISCSISR, DRIVER_INFO)
-else:
-    SR.registerSR(ISCSISR)
+        return regex.search(s, 0)

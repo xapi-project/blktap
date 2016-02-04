@@ -17,7 +17,7 @@ class TestBase(unittest.TestCase):
         xs_errors.XML_DEFS = self._xmldefs
 
 
-class NonLoadingISCSISR(ISCSI_base.ISCSISR):
+class NonLoadingISCSISR(ISCSI_base.BaseISCSISR):
     def load(self, sr_uuid):
         pass
 
@@ -47,7 +47,7 @@ class TestForceTapDiskConfig(TestBase):
         self.assertEquals(True, iscsi_sr.force_tapdisk)
 
 
-class NonInitingISCSISR(ISCSI_base.ISCSISR):
+class NonInitingISCSISR(ISCSI_base.BaseISCSISR):
     def __init__(self, extra_dconf=None):
         self.mpath = "false"
         self.dconf = {
@@ -59,7 +59,7 @@ class NonInitingISCSISR(ISCSI_base.ISCSISR):
         self.dconf.update(extra_dconf or {})
 
 
-class NonInitingMultiLUNISCSISR(ISCSI_base.ISCSISR):
+class NonInitingMultiLUNISCSISR(ISCSI_base.BaseISCSISR):
     def __init__(self, node1, node2):
         self.mpath = "false"
         self.dconf = {

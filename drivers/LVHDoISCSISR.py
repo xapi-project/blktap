@@ -79,7 +79,7 @@ class LVHDoISCSISR(LVHDSR.LVHDSR):
 
         if self.original_srcmd.dconf.has_key('target'):
             self.original_srcmd.dconf['targetlist'] = self.original_srcmd.dconf['target']
-        iscsi = ISCSI_base.ISCSISR(self.original_srcmd, sr_uuid)
+        iscsi = ISCSI_base.BaseISCSISR(self.original_srcmd, sr_uuid)
         self.iscsiSRs = []
         self.iscsiSRs.append(iscsi)
         
@@ -144,7 +144,7 @@ class LVHDoISCSISR(LVHDSR.LVHDSR):
                     srcmd_copy.dconf['targetIQN'] = iqn
                     srcmd_copy.dconf['multiSession'] = IQNstring
                     util.SMlog("Setting targetlist: %s" % srcmd_copy.dconf['targetlist'])
-                    self.iscsiSRs.append(ISCSI_base.ISCSISR(srcmd_copy, sr_uuid))
+                    self.iscsiSRs.append(ISCSI_base.BaseISCSISR(srcmd_copy, sr_uuid))
                 pbd = util.find_my_pbd(self.session, self.host_ref, self.sr_ref)
                 if pbd <> None and not self.dconf.has_key('multiSession'):
                     dconf = self.session.xenapi.PBD.get_device_config(pbd)
