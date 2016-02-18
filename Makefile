@@ -150,8 +150,8 @@ install: precheck
 	  $(SM_STAGING)/$(MODPROBE_DIR)
 	install -m 644 etc/logrotate.d/$(SMLOG_CONF) \
 	  $(SM_STAGING)/$(LOGROTATE_DIR)
-	install -m 755 drivers/updatempppathd.init \
-	  $(SM_STAGING)/$(INIT_DIR)/updatempppathd
+	install -m 644 drivers/updatempppathd.service \
+	  $(SM_STAGING)/$(SYSTEMD_SERVICE_DIR)
 	install -m 644 etc/make-dummy-sr.service \
 	  $(SM_STAGING)/$(SYSTEMD_SERVICE_DIR)
 	install -m 644 snapwatchd/snapwatchd.service \

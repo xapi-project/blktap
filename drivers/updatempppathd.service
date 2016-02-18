@@ -1,0 +1,10 @@
+[Unit]
+Description=Daemon to update all MPP LUN paths
+After=syslog.target network.target
+
+[Service]
+Type=simple
+ExecStart=/opt/xensource/sm/updatempppathd.py -f
+
+[Install]
+WantedBy=multi-user.target
