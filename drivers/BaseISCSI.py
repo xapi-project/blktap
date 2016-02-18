@@ -349,7 +349,7 @@ class BaseISCSISR(SR.SR):
 
         if self.dconf.has_key('SCSIid'):
             if self.mpath == 'true':
-                self.mpathmodule.refresh(self.dconf['SCSIid'],npaths)
+                self.mpathmodule.refresh(self.dconf['SCSIid'], 0)
             devs = os.listdir("/dev/disk/by-scsid/%s" % self.dconf['SCSIid'])
             for dev in devs:
                 realdev = os.path.realpath("/dev/disk/by-scsid/%s/%s" % (self.dconf['SCSIid'], dev))
