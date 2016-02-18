@@ -67,7 +67,7 @@ class OCFSoHBASR(OCFSSR.OCFSSR):
             raise xs_errors.XenError('ConfigSCSIid')
 
         self.SCSIid = self.dconf['SCSIid']
-        self._pathrefresh(OCFSoHBASR)
+        self._pathrefresh(OCFSoHBASR, load = False)
         super(OCFSoHBASR, self).load(sr_uuid)
 
     def create(self, sr_uuid, size):

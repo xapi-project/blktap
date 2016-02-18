@@ -310,7 +310,7 @@ class OCFSoISCSISR(OCFSSR.OCFSSR):
                 except:
                     raise xs_errors.XenError('ISCSILogout')
 
-        self._pathrefresh(OCFSoISCSISR)
+        self._pathrefresh(OCFSoISCSISR, load = False)
         OCFSSR.OCFSSR.load(self, sr_uuid)
 
     def print_LUNs_XML(self):

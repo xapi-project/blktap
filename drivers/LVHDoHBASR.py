@@ -99,7 +99,7 @@ class LVHDoHBASR(LVHDSR.LVHDSR):
             raise xs_errors.XenError('ConfigSCSIid')
 
         self.SCSIid = self.dconf['SCSIid']
-        self._pathrefresh(LVHDoHBASR)
+        self._pathrefresh(LVHDoHBASR, load = False)
         LVHDSR.LVHDSR.load(self, sr_uuid)
 
     def create(self, sr_uuid, size):

@@ -467,10 +467,11 @@ class SR(object):
         else:
             self.mpathmodule.deactivate()
 
-    def _pathrefresh(self, obj):
+    def _pathrefresh(self, obj, load = True):
         SCSIid = getattr(self, 'SCSIid')
         self.dconf['device'] = self.mpathmodule.path(SCSIid)
-        super(obj, self).load(self.uuid)
+        if load:
+            super(obj, self).load(self.uuid)
 
     def _setMultipathableFlag(self, SCSIid=''):
         try:
