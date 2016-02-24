@@ -480,8 +480,10 @@ static void lowmem_timeout(event_id_t id, char mode, void *data)
 	server.mem_state.mem_evid = -1;
 
 	tapdisk_server_for_each_vbd(vbd, tmpv)
-		tapdisk_vbd_for_each_blkif(vbd, blkif, tmpb)
+		tapdisk_vbd_for_each_blkif(vbd, blkif, tmpb) {
 			td_flag_clear(blkif->stats.xenvbd->flags, BT3_LOW_MEMORY_MODE);
+			td_flag_clear(blkif->vbd_stats.stats->flags, BT3_LOW_MEMORY_MODE);
+	}
 
 	if ((ret = tapdisk_server_reset_lowmem_mode()) < 0) {
 		ERR(-ret, "Failed to re-init low memory handler: %s\n",
@@ -544,8 +546,10 @@ static void lowmem_event(event_id_t id, char mode, void *data)
 	server.mem_state.mode = LOW_MEMORY_MODE;
 
 	tapdisk_server_for_each_vbd(vbd, tmpv)
-		tapdisk_vbd_for_each_blkif(vbd, blkif, tmpb)
+		tapdisk_vbd_for_each_blkif(vbd, blkif, tmpb) {
 			td_flag_set(blkif->stats.xenvbd->flags, BT3_LOW_MEMORY_MODE);
+			td_flag_set(blkif->vbd_stats.stats->flags, BT3_LOW_MEMORY_MODE);
+	}
 
 	/* Increment backoff up to a limit */
 	if (server.mem_state.backoff < MAX_BACKOFF)

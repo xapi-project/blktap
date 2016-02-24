@@ -154,6 +154,7 @@ tapdisk_xenblkif_stats_create(struct td_xenblkif *blkif)
 
     if (tapdisk_server_mem_mode()) {
         td_flag_set(blkif->stats.xenvbd->flags, BT3_LOW_MEMORY_MODE);
+        td_flag_set(blkif->vbd_stats.stats->flags, BT3_LOW_MEMORY_MODE);
     }
 
     err = tapdisk_xenblkif_ring_stats_update(blkif);
