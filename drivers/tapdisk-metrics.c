@@ -32,6 +32,8 @@
 #include "tapdisk-queue.h"
 #include "td-req.h"
 
+#define VBD_STATS_VERSION 0x00000001
+
 /* make a static metrics struct, so it only exists in the context of this file */
 static td_metrics_t td_metrics;
 
@@ -216,6 +218,7 @@ td_metrics_vbd_start(int domain, int id, stats_t *vbd_stats)
         goto out;
    }
     vbd_stats->stats = vbd_stats->shm.mem;
+    vbd_stats->stats->version = VBD_STATS_VERSION;
 out:
     return err;
 
