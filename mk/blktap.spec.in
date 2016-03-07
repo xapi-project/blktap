@@ -9,7 +9,11 @@ Source0: %{name}-%{version}.tar.bz2
 Patch1: %{name}-udev-ignore-tapdevs.patch
 BuildRoot: %{_tmppath}/%{name}-%{release}-buildroot
 Obsoletes: xen-blktap
-BuildRequires: e2fsprogs-devel, libaio-devel
+BuildRequires: e2fsprogs-devel, libaio-devel, systemd
+Requires(post): systemd
+Requires(preun): systemd
+Requires(postun): systemd
+
 %description
 Blktap creates kernel block devices which realize I/O requests to
 processes implementing virtual hard disk images entirely in user
@@ -67,12 +71,12 @@ mkdir -p %{buildroot}%{_localstatedir}/log/blktap
 %{_sbindir}/xlvhd-refresh
 %{_libexecdir}/tapdisk
 %{_sysconfdir}/udev/rules.d/blktap.rules
-%{_sysconfdir}/rc.d/init.d/tapback
 %{_sysconfdir}/logrotate.d/blktap
 %{_sysconfdir}/xensource/bugtool/tapdisk-logs.xml
 %{_sysconfdir}/xensource/bugtool/tapdisk-logs/description.xml
 %{_sysconfdir}/rc.d/init.d/thinprovd
 %{_localstatedir}/log/blktap
+%{_unitdir}/tapback.service
 
 %files devel
 %defattr(-,root,root,-)
@@ -83,7 +87,13 @@ mkdir -p %{buildroot}%{_localstatedir}/log/blktap
 %{_includedir}/blktap/*
 
 %post
-[ ! -x /sbin/chkconfig ] || chkconfig --add tapback
+%systemd_post tapback.service
 [ ! -x /sbin/chkconfig ] || chkconfig --add thinprovd
+
+%preun
+%systemd_preun tapback.service
+
+%postun
+%systemd_postun tapback.service
 
 %changelog

@@ -1,0 +1,11 @@
+[Unit]
+Description=Tapback daemon for blktap3
+After=syslog.target network.target
+
+[Service]
+Type=forking
+ExecStart=/usr/bin/tapback -p /var/run/tapback.pid
+PIDFile = /var/run/tapback.pid
+
+[Install]
+WantedBy=multi-user.target
