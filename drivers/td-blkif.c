@@ -520,6 +520,9 @@ tapdisk_xenblkif_ring_stats_update(struct td_xenblkif *blkif)
     if (!blkif)
         return 0;
 
+    if (unlikely(blkif->dead))
+        return 0;
+
     ring = &blkif->rings.common;
 	if (!ring->sring)
         return 0;
