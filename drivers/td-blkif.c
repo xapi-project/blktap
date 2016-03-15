@@ -257,6 +257,7 @@ tapdisk_xenblkif_reqs_pending(const struct td_xenblkif * const blkif)
 int
 tapdisk_xenblkif_disconnect(const domid_t domid, const int devid)
 {
+    int err;
     struct td_xenblkif *blkif;
 
     blkif = tapdisk_xenblkif_find(domid, devid);
@@ -276,6 +277,16 @@ tapdisk_xenblkif_disconnect(const domid_t domid, const int devid)
             xc_evtchn_unbind(blkif->ctx->xce_handle, blkif->port);
             blkif->port = -1;
         }
+
+        err = td_metrics_vbd_stop(&blkif->vbd_stats);
+        if (unlikely(err))
+            EPRINTF("failed to destroy blkfront stats file: %s\n", strerror(-err));
+
+        err = tapdisk_xenblkif_stats_destroy(blkif);
+        if (unlikely(err))
+            EPRINTF("failed to clean up ring stats file: %s (error ignored)\n",
+                    strerror(-err));
+
         /*
          * FIXME shall we unmap the ring or will that lead to some fatal error
          * in tapdisk? IIUC if we don't unmap it we'll get errors during grant
