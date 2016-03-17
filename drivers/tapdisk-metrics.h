@@ -24,27 +24,12 @@
 #define TAPDISK_METRICS_VBD_PATHF    "%s/vbd-%d-%d"
 #define TAPDISK_METRICS_BLKTAP_PATHF "%s/blktap-%d"
 #define TAPDISK_METRICS_NBD_PATHF "%s/nbd-%d"
-#define BT3_LOW_MEMORY_MODE 0x0000000000000001
 
 #include <libaio.h>
 
+#include "tapdisk-metrics-stats.h"
 #include "tapdisk-utils.h"
 #include "tapdisk.h"
-
-struct stats {
-    uint32_t version;
-    unsigned long long oo_reqs;
-    unsigned long long read_reqs_submitted;
-    unsigned long long read_reqs_completed;
-    unsigned long long read_sectors;
-    unsigned long long read_total_ticks;
-    unsigned long long write_reqs_submitted;
-    unsigned long long write_reqs_completed;
-    unsigned long long write_sectors;
-    unsigned long long write_total_ticks;
-    uint64_t io_errors;
-    uint64_t flags;
-};
 
 typedef struct {
     struct shm shm;
