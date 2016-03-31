@@ -182,6 +182,7 @@ struct td_xenblkif {
 
 	bool in_polling;
 	int poll_duration; /* Milliseconds; 0 means no polling. */
+	int poll_idle_threshold;
 };
 
 #define RING_DEBUG(blkif, fmt, args...)                                     \
@@ -207,6 +208,7 @@ struct td_xenblkif {
  * notifications
  * @param proto protocol (native, x86, or x64)
  * @param poll_duration polling duration (milliseconds; 0 means no polling)
+ * @param poll_idle_threshold CPU threshold above which we permit polling
  * @param pool name of the context
  * @param vbd the VBD
  * @returns 0 on success
@@ -214,7 +216,7 @@ struct td_xenblkif {
 int
 tapdisk_xenblkif_connect(domid_t domid, int devid, const grant_ref_t * grefs,
         int order, evtchn_port_t port, int proto, int poll_duration,
-        const char *pool, td_vbd_t * vbd);
+        int poll_idle_threshold, const char *pool, td_vbd_t * vbd);
 
 /**
  * Disconnects the tapdisk from the shared ring.

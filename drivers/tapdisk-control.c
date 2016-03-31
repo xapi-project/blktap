@@ -1119,11 +1119,11 @@ tapdisk_control_xenblkif_connect(
     } else
         pool = blkif->pool;
 
-    DPRINTF("connecting VBD %d domid=%d, devid=%d, pool %s, evt %d, poll duration %d\n",
-            vbd->uuid, blkif->domid, blkif->devid, pool, blkif->port, blkif->poll_duration);
+    DPRINTF("connecting VBD %d domid=%d, devid=%d, pool %s, evt %d, poll duration %d, poll idle threshold %d\n",
+            vbd->uuid, blkif->domid, blkif->devid, pool, blkif->port, blkif->poll_duration, blkif->poll_idle_threshold);
 
     err = tapdisk_xenblkif_connect(blkif->domid, blkif->devid, blkif->gref,
-            blkif->order, blkif->port, blkif->proto, blkif->poll_duration, pool, vbd);
+            blkif->order, blkif->port, blkif->proto, blkif->poll_duration, blkif->poll_idle_threshold, pool, vbd);
 
 out:
 	response->cookie = request->cookie;

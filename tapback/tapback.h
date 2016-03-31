@@ -99,6 +99,7 @@ int pretty_time(char *buf, unsigned char buf_len);
 #define HOTPLUG_STATUS_KEY			"hotplug-status"
 #define MODE_KEY					"mode"
 #define POLLING_DURATION	"polling-duration"
+#define POLLING_IDLE_THRESHOLD	"polling-idle-threshold"
 
 /*
  * TODO Put the rest of the front-end nodes defined in blkif.h here and group
@@ -287,6 +288,11 @@ typedef struct vbd {
 	 * Polling duration in milliseconds. 0 means no polling.
 	 */
 	int polling_duration;
+
+	/**
+	 * Idle CPU threshold above which polling is permitted.
+	 */
+	int polling_idle_threshold;
 
 	/*
 	 * FIXME rename to backend_state
