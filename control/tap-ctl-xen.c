@@ -38,7 +38,7 @@
 #include "compiler.h"
 
 int
-tap_ctl_connect_xenblkif(const pid_t pid, const domid_t domid, const int devid,
+tap_ctl_connect_xenblkif(const pid_t pid, const domid_t domid, const int devid, int poll_duration,
 	   	const grant_ref_t * grefs, const int order, const evtchn_port_t port,
 		int proto, const char *pool, const int minor)
 {
@@ -56,6 +56,7 @@ tap_ctl_connect_xenblkif(const pid_t pid, const domid_t domid, const int devid,
     message.u.blkif.order = order;
     message.u.blkif.port = port;
     message.u.blkif.proto = proto;
+    message.u.blkif.poll_duration = poll_duration;
     if (pool)
         strncpy(message.u.blkif.pool, pool, sizeof(message.u.blkif.pool));
     else
