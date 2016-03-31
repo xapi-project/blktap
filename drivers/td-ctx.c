@@ -30,6 +30,7 @@
 #include "tapdisk-server.h"
 #include "td-ctx.h"
 #include "tapdisk-log.h"
+#include "timeout-math.h"
 
 #define ERROR(_f, _a...)           tlog_syslog(TLOG_WARN, "td-ctx: " _f, ##_a)
 
@@ -438,7 +439,7 @@ tapdisk_xenio_ctx_open(const char *pool)
     }
 
     ctx->ring_event = tapdisk_server_register_event(SCHEDULER_POLL_READ_FD,
-        fd, 0, tapdisk_xenio_ctx_ring_event, ctx);
+        fd, TV_ZERO, tapdisk_xenio_ctx_ring_event, ctx);
     if (ctx->ring_event < 0) {
         err = ctx->ring_event;
         ERROR("failed to register event: %s\n", strerror(-err));

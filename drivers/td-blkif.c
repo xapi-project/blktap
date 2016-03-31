@@ -32,6 +32,7 @@
 #include "util.h"
 #include "tapdisk-server.h"
 #include "tapdisk-metrics.h"
+#include "timeout-math.h"
 
 #include "td-blkif.h"
 #include "td-ctx.h"
@@ -306,7 +307,7 @@ tapdisk_xenblkif_sched_chkrng(const struct td_xenblkif *blkif)
 	ASSERT(blkif);
 
 	err = tapdisk_server_event_set_timeout(
-			tapdisk_xenblkif_chkrng_event_id(blkif), 0);
+			tapdisk_xenblkif_chkrng_event_id(blkif), TV_ZERO);
 	ASSERT(!err);
 }
 
@@ -321,7 +322,7 @@ tapdisk_xenblkif_cb_chkrng(event_id_t id __attribute__((unused)),
     ASSERT(blkif);
 
 	err = tapdisk_server_event_set_timeout(
-			tapdisk_xenblkif_chkrng_event_id(blkif), (time_t) - 1);
+			tapdisk_xenblkif_chkrng_event_id(blkif), TV_INF);
 	ASSERT(!err);
 
     tapdisk_xenio_ctx_process_ring(blkif, blkif->ctx, 1);
@@ -471,7 +472,7 @@ tapdisk_xenblkif_connect(domid_t domid, int devid, const grant_ref_t * grefs,
     }
 
 	td_blkif->chkrng_event = tapdisk_server_register_event(
-			SCHEDULER_POLL_TIMEOUT,	-1, (time_t) - 1,
+			SCHEDULER_POLL_TIMEOUT,	-1, TV_INF,
 			tapdisk_xenblkif_cb_chkrng, td_blkif);
     if (unlikely(td_blkif->chkrng_event < 0)) {
         err = td_blkif->chkrng_event;

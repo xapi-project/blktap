@@ -36,6 +36,7 @@
 #include "tapdisk-utils.h"
 #include "tapdisk-fdreceiver.h"
 #include "tapdisk-nbd.h"
+#include "timeout-math.h"
 
 #ifdef HAVE_CONFIG_H
 #include "config.h"
@@ -348,7 +349,7 @@ enable_write_queue(struct tdnbd_data *prv)
 	prv->writer_event_id = 
 		tapdisk_server_register_event(SCHEDULER_POLL_WRITE_FD,
 				prv->socket,
-				0,
+				TV_ZERO,
 				tdnbd_writer_cb,
 				prv);
 
@@ -392,7 +393,7 @@ tdnbd_queue_request(struct tdnbd_data *prv, int type, uint64_t offset,
 		req->timeout_event = tapdisk_server_register_event(
 				SCHEDULER_POLL_TIMEOUT, 
 				-1, /* dummy */
-				NBD_TIMEOUT,
+				TV_SECS(NBD_TIMEOUT),
 				tdnbd_timeout_cb,
 				prv);
 	} else {
@@ -806,7 +807,7 @@ tdnbd_open(td_driver_t* driver, const char* name, td_flag_t flags)
 
 	prv->reader_event_id =
 		tapdisk_server_register_event(SCHEDULER_POLL_READ_FD,
-				prv->socket, 0,
+				prv->socket, TV_ZERO,
 				tdnbd_reader_cb,
 				(void *)prv);
 

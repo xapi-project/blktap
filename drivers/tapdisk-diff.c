@@ -32,6 +32,7 @@
 #include "tapdisk-vbd.h"
 #include "tapdisk-server.h"
 #include "tapdisk-disktype.h"
+#include "timeout-math.h"
 #include "libvhd.h"
 
 #define POLL_READ                        0
@@ -640,7 +641,7 @@ tapdisk_stream_register_enqueue_event(struct tapdisk_stream *s)
 		goto out;
 
 	err = tapdisk_server_register_event(SCHEDULER_POLL_READ_FD,
-					    p->pipe[POLL_READ], 0,
+					    p->pipe[POLL_READ], TV_ZERO,
 					    tapdisk_stream_enqueue, s);
 	if (err < 0)
 		goto out;

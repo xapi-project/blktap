@@ -30,6 +30,7 @@
 #include "tapdisk-driver.h"
 #include "tapdisk-server.h"
 #include "tapdisk-interface.h"
+#include "timeout-math.h"
 
 #ifdef DEBUG
 #define DBG(_f, _a...) tlog_write(TLOG_DBG, _f, ##_a)
@@ -542,7 +543,7 @@ block_cache_open(td_driver_t *driver, const char *name, td_flag_t flags)
 
 	cache->timeout_id = tapdisk_server_register_event(SCHEDULER_POLL_TIMEOUT,
 							  -1, /* dummy fd */
-							  BLOCK_CACHE_PAGE_IDLETIME << 1,
+							  TV_SECS(BLOCK_CACHE_PAGE_IDLETIME << 1),
 							  block_cache_prune_event,
 							  cache);
 	if (cache->timeout_id < 0)

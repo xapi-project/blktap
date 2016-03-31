@@ -39,6 +39,7 @@
 #include "tapdisk-interface.h"
 #include "tapdisk-log.h"
 #include "td-blkif.h"
+#include "timeout-math.h"
 
 #define DBG(_level, _f, _a...)       tlog_write(_level, _f, ##_a)
 #define ERR(_err, _f, _a...)         tlog_error(_err, _f, ##_a)
@@ -182,7 +183,7 @@ tapdisk_server_mask_event(event_id_t event, int masked)
 void
 tapdisk_server_set_max_timeout(int seconds)
 {
-	scheduler_set_max_timeout(&server.scheduler, seconds);
+	scheduler_set_max_timeout(&server.scheduler, TV_SECS(seconds));
 }
 
 static void
@@ -388,7 +389,7 @@ tapdisk_server_signal_handler(int signal)
 		break;
 
 	case SIGHUP:
-		tapdisk_server_event_set_timeout(server.tlog_reopen_evid, 0);
+		tapdisk_server_event_set_timeout(server.tlog_reopen_evid, TV_ZERO);
 		break;
 	}
 }
@@ -398,7 +399,7 @@ static void
 tlog_reopen_cb(event_id_t id, char mode __attribute__((unused)), void *private)
 {
 	tlog_reopen();
-	tapdisk_server_event_set_timeout(id, (time_t)-1);
+	tapdisk_server_event_set_timeout(id, TV_INF);
 }
 
 
@@ -533,7 +534,7 @@ static void lowmem_event(event_id_t id, char mode, void *data)
 	server.mem_state.mem_evid =
 		tapdisk_server_register_event(SCHEDULER_POLL_TIMEOUT,
                                       -1,
-                                      backoff,
+                                      TV_SECS(backoff),
                                       lowmem_timeout,
                                       NULL);
 	if (server.mem_state.mem_evid < 0) {
@@ -590,7 +591,7 @@ tapdisk_server_reset_lowmem_mode(void)
 	server.mem_state.mem_evid =
 		tapdisk_server_register_event(SCHEDULER_POLL_READ_FD,
                                       server.mem_state.efd,
-                                      0,
+                                      TV_ZERO,
                                       lowmem_event,
                                       NULL);
 	if (server.mem_state.mem_evid < 0)
@@ -601,7 +602,7 @@ tapdisk_server_reset_lowmem_mode(void)
 		server.mem_state.reset_evid =
 			tapdisk_server_register_event(SCHEDULER_POLL_TIMEOUT,
 					-1,
-					RESET_BACKOFF,
+					TV_SECS(RESET_BACKOFF),
 					reset_timeout,
 					NULL);
 		if (server.mem_state.reset_evid < 0)
@@ -714,7 +715,7 @@ tapdisk_server_run()
 	signal(SIGHUP, tapdisk_server_signal_handler);
 	signal(SIGXFSZ, tapdisk_server_signal_handler);
 
-	err = tapdisk_server_register_event(SCHEDULER_POLL_TIMEOUT, -1,	(time_t)-1,
+	err = tapdisk_server_register_event(SCHEDULER_POLL_TIMEOUT, -1,	TV_INF,
 			tlog_reopen_cb,	NULL);
 	if (unlikely(err < 0)) {
 		EPRINTF("failed to register reopen log event: %s\n", strerror(-err));

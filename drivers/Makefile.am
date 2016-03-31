@@ -24,6 +24,7 @@ td_util_LDADD = libtapdisk.la
 noinst_LTLIBRARIES = libtapdisk.la
 
 libtapdisk_la_SOURCES  = tapdisk.h
+libtapdisk_la_SOURCES += timeout-math.h
 libtapdisk_la_SOURCES += scheduler.c
 libtapdisk_la_SOURCES += scheduler.h
 libtapdisk_la_SOURCES += tapdisk-control.c

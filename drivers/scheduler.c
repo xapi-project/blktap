@@ -30,6 +30,7 @@
 #include "tapdisk.h"
 #include "scheduler.h"
 #include "tapdisk-log.h"
+#include "timeout-math.h"
 
 #define DBG(_f, _a...)               if (0) { tlog_syslog(TLOG_DBG, _f, ##_a); }
 #define BUG_ON(_cond)                if (_cond) td_panic()
@@ -94,7 +95,7 @@ scheduler_prepare_events(scheduler_t *s)
 	FD_ZERO(&s->except_fds);
 
 	s->max_fd  = -1;
-	s->timeout = SCHEDULER_MAX_TIMEOUT;
+	s->timeout = TV_SECS(SCHEDULER_MAX_TIMEOUT);
 
 	gettimeofday(&now, NULL);
 
@@ -127,16 +128,16 @@ scheduler_prepare_events(scheduler_t *s)
 		}
 
 		if (event->mode & SCHEDULER_POLL_TIMEOUT
-				&& event->timeout != (time_t) - 1) {
-			diff = event->deadline - now.tv_sec;
-			if (diff > 0)
-				s->timeout = MIN(s->timeout, diff);
+				&& !TV_IS_INF(event->timeout)) {
+			TV_SUB(event->deadline, now, diff);
+			if (TV_AFTER(diff, TV_ZERO))
+				s->timeout = TV_MIN(s->timeout, diff);
 			else
-				s->timeout = 0;
+				s->timeout = TV_ZERO;
 		}
 	}
 
-	s->timeout = MIN(s->timeout, s->max_timeout);
+	s->timeout = TV_MIN(s->timeout, s->max_timeout);
 }
 
 static int
@@ -200,10 +201,10 @@ scheduler_check_timeouts(scheduler_t *s)
 		if (!(event->mode & SCHEDULER_POLL_TIMEOUT))
 			continue;
 
-		if (event->timeout == (time_t) - 1)
+		if (TV_IS_INF(event->timeout))
 			continue;
 
-		if (event->deadline > now.tv_sec)
+		if (TV_BEFORE(now, event->deadline))
 			continue;
 
 		event->pending = SCHEDULER_POLL_TIMEOUT;
@@ -225,10 +226,10 @@ static void
 scheduler_event_callback(event_t *event, char mode)
 {
 	if (event->mode & SCHEDULER_POLL_TIMEOUT
-			&& event->timeout != (time_t) - 1) {
+			&& !TV_IS_INF(event->timeout)) {
 		struct timeval now;
 		gettimeofday(&now, NULL);
-		event->deadline = now.tv_sec + event->timeout;
+		TV_ADD(now, event->timeout, event->deadline);
 	}
 
 	if (!event->masked)
@@ -283,11 +284,11 @@ scheduler_register_event(scheduler_t *s, char mode, int fd,
 	event->mode     = mode;
 	event->fd       = fd;
 	event->timeout  = timeout;
-	if (event->timeout == (time_t) - 1)
+	if (TV_IS_INF(event->timeout))
 		/* initialise it to something meaningful */
-		event->deadline = (time_t) - 1;
+		event->deadline = TV_INF;
 	else
-		event->deadline = now.tv_sec + timeout;
+		TV_ADD(now, timeout, event->deadline);
 	event->cb       = cb;
 	event->private  = private;
 	event->id       = s->uuid++;
@@ -346,8 +347,8 @@ scheduler_gc_events(scheduler_t *s)
 void
 scheduler_set_max_timeout(scheduler_t *s, int timeout)
 {
-	if (timeout >= 0)
-		s->max_timeout = MIN(s->max_timeout, timeout);
+	if (!TV_IS_INF(timeout))
+		s->max_timeout = TV_MIN(s->max_timeout, timeout);
 }
 
 int
@@ -390,8 +391,8 @@ scheduler_wait_for_events(scheduler_t *s)
 	ret = scheduler_check_events(s, ret);
 	BUG_ON(ret);
 
-	s->timeout     = SCHEDULER_MAX_TIMEOUT;
-	s->max_timeout = SCHEDULER_MAX_TIMEOUT;
+	s->timeout     = TV_SECS(SCHEDULER_MAX_TIMEOUT);
+	s->max_timeout = TV_SECS(SCHEDULER_MAX_TIMEOUT);
 
 	scheduler_run_events(s);
 
@@ -434,12 +435,12 @@ scheduler_event_set_timeout(scheduler_t *sched, event_id_t event_id, int timeo)
 			if (!(event->mode & SCHEDULER_POLL_TIMEOUT))
 				return -EINVAL;
 			event->timeout = timeo;
-			if (event->timeout == (time_t) - 1)
-				event->deadline = (time_t) - 1;
+			if (TV_IS_INF(event->timeout))
+				event->deadline = TV_INF;
 			else {
 				struct timeval now;
 				gettimeofday(&now, NULL);
-				event->deadline = now.tv_sec + event->timeout;
+				TV_ADD(now, event->timeout, event->deadline);
 			}
 			return 0;
 		}

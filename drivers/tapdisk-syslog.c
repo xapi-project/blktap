@@ -40,6 +40,7 @@
 #include "tapdisk-server.h"
 #include "tapdisk-syslog.h"
 #include "tapdisk-utils.h"
+#include "timeout-math.h"
 
 #define MIN(a,b) (((a) < (b)) ? (a) : (b))
 
@@ -450,7 +451,7 @@ tapdisk_syslog_sock_open(td_syslog_t *log)
 #endif
 
 	id = tapdisk_server_register_event(SCHEDULER_POLL_WRITE_FD,
-					   s, 0,
+					   s, TV_ZERO,
 					   tapdisk_syslog_sock_event,
 					   log);
 	if (id < 0) {

@@ -36,6 +36,7 @@
 #include "tapdisk-vbd.h"
 #include "tapdisk-log.h"
 #include "tapdisk.h"
+#include "timeout-math.h"
 #include "util.h"
 
 #ifdef DEBUG
@@ -88,7 +89,7 @@ td_xenblkif_bufcache_evt_reg(struct td_xenblkif * const blkif)
     blkif->reqs_bufcache_evtid =
         tapdisk_server_register_event(SCHEDULER_POLL_TIMEOUT,
                                       -1, /* dummy fd */
-                                      TD_REQS_BUFCACHE_EXPIRE,
+                                      TV_SECS(TD_REQS_BUFCACHE_EXPIRE),
                                       td_xenblkif_bufcache_event,
                                       blkif);
 }
