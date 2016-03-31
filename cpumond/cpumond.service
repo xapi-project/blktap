@@ -1,0 +1,11 @@
+[Unit]
+Description=CPU monitoring daemon
+After=syslog.target network.target sys-kernel-config.mount
+
+[Service]
+ExecStart=/usr/bin/cpumond
+KillSignal=SIGINT
+
+[Install]
+WantedBy=multi-user.target
+

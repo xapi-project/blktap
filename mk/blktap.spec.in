@@ -59,6 +59,7 @@ mkdir -p %{buildroot}%{_localstatedir}/log/blktap
 %{_bindir}/vhd-update
 %{_bindir}/vhd-index
 %{_bindir}/tapback
+%{_bindir}/cpumond
 %{_sbindir}/lvm-util
 %{_sbindir}/tap-ctl
 %{_sbindir}/td-util
@@ -77,6 +78,7 @@ mkdir -p %{buildroot}%{_localstatedir}/log/blktap
 %{_sysconfdir}/rc.d/init.d/thinprovd
 %{_localstatedir}/log/blktap
 %{_unitdir}/tapback.service
+%{_unitdir}/cpumond.service
 
 %files devel
 %defattr(-,root,root,-)
@@ -89,11 +91,14 @@ mkdir -p %{buildroot}%{_localstatedir}/log/blktap
 %post
 %systemd_post tapback.service
 [ ! -x /sbin/chkconfig ] || chkconfig --add thinprovd
+%systemd_post cpumond.service
 
 %preun
 %systemd_preun tapback.service
+%systemd_preun cpumond.service
 
 %postun
 %systemd_postun tapback.service
+%systemd_postun cpumond.service
 
 %changelog
