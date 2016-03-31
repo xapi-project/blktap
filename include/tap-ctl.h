@@ -138,7 +138,7 @@ int tap_ctl_blk_major(void);
  * ring
  * @param domid the domain ID of the guest VM
  * @param devid the device ID
- * @param poll_duration polling duration (milliseconds; 0 means no polling)
+ * @param poll_duration polling duration (microseconds; 0 means no polling)
  * @param poll_idle_threshold CPU idle threshold above which we poll
  * @param grefs the grant references
  * @param order number of grant references, expressed as a 2's order

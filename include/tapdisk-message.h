@@ -142,7 +142,7 @@ typedef struct tapdisk_message_blkif {
 	uint32_t port;
 
 	/**
-	 * Polling duration in milliseconds. 0 means no polling.
+	 * Polling duration in microseconds. 0 means no polling.
 	 */
 	uint32_t poll_duration;
 

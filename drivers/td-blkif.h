@@ -181,7 +181,7 @@ struct td_xenblkif {
 	event_id_t stoppolling_event;
 
 	bool in_polling;
-	int poll_duration; /* Milliseconds; 0 means no polling. */
+	int poll_duration; /* microseconds; 0 means no polling. */
 	int poll_idle_threshold;
 };
 
@@ -207,7 +207,7 @@ struct td_xenblkif {
  * @param port event channel port of the guest domain to use for ring
  * notifications
  * @param proto protocol (native, x86, or x64)
- * @param poll_duration polling duration (milliseconds; 0 means no polling)
+ * @param poll_duration polling duration (microseconds; 0 means no polling)
  * @param poll_idle_threshold CPU threshold above which we permit polling
  * @param pool name of the context
  * @param vbd the VBD
