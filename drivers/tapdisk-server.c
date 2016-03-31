@@ -162,7 +162,7 @@ tapdisk_server_check_state(void)
 
 event_id_t
 tapdisk_server_register_event(char mode, int fd,
-			      int timeout, event_cb_t cb, void *data)
+			      struct timeval timeout, event_cb_t cb, void *data)
 {
 	return scheduler_register_event(&server.scheduler,
 					mode, fd, timeout, cb, data);
@@ -729,7 +729,7 @@ out:
 }
 
 int
-tapdisk_server_event_set_timeout(event_id_t event_id, int timeo) {
+tapdisk_server_event_set_timeout(event_id_t event_id, struct timeval timeo) {
 	return scheduler_event_set_timeout(&server.scheduler, event_id, timeo);
 }
 
