@@ -3,7 +3,7 @@ Description=cum daemon
 After=syslog.target network.target sys-kernel-config.mount
 
 [Service]
-ExecStart=/usr/bin/cumd
+ExecStart=/usr/bin/cpumond
 KillSignal=SIGINT
 
 [Install]

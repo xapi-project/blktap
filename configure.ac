@@ -73,7 +73,7 @@ AC_CONFIG_FILES([
 Makefile
 lvm/Makefile
 part/Makefile
-cumd/Makefile
+cpumond/Makefile
 vhd/Makefile
 vhd/lib/Makefile
 vhd/lib/test/Makefile

@@ -55,7 +55,7 @@ mkdir -p %{buildroot}%{_localstatedir}/log/blktap
 %{_bindir}/vhd-update
 %{_bindir}/vhd-index
 %{_bindir}/tapback
-%{_bindir}/cumd
+%{_bindir}/cpumond
 %{_sbindir}/lvm-util
 %{_sbindir}/tap-ctl
 %{_sbindir}/td-util
@@ -74,7 +74,7 @@ mkdir -p %{buildroot}%{_localstatedir}/log/blktap
 %{_sysconfdir}/xensource/bugtool/tapdisk-logs/description.xml
 %{_sysconfdir}/rc.d/init.d/thinprovd
 %{_localstatedir}/log/blktap
-%{_unitdir}/cumd.service
+%{_unitdir}/cpumond.service
 
 %files devel
 %defattr(-,root,root,-)
@@ -87,12 +87,12 @@ mkdir -p %{buildroot}%{_localstatedir}/log/blktap
 %post
 [ ! -x /sbin/chkconfig ] || chkconfig --add tapback
 [ ! -x /sbin/chkconfig ] || chkconfig --add thinprovd
-%systemd_post cumd.service
+%systemd_post cpumond.service
 
 %preun
-%systemd_preun cumd.service
+%systemd_preun cpumond.service
 
 %postun
-%systemd_postun cumd.service
+%systemd_postun cpumond.service
 
 %changelog

@@ -2,14 +2,14 @@
 AM_CFLAGS  = -Wall
 AM_CFLAGS += -Werror
 
-bin_PROGRAMS = cumd
+bin_PROGRAMS = cpumond
 
-cumd_SOURCES  = cumd.c
-cumd_SOURCES += cumd.h
+cpumond_SOURCES  = cpumond.c
+cpumond_SOURCES += cpumond.h
 
-cumd_LDADD  = -lrt
+cpumond_LDADD  = -lrt
 
 # Have "exec" in name to ensure it's done trough the install-exec route
 # (and before install-exec-local)
 exec_init_ddir = /usr/lib/systemd/system
-dist_exec_init_d_SCRIPTS = cumd.service
+dist_exec_init_d_SCRIPTS = cpumond.service

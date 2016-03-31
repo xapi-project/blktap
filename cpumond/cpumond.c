@@ -8,7 +8,7 @@
 #include <fcntl.h>
 #include <unistd.h>
 #include <errno.h>
-#include "cumd.h"
+#include "cpumond.h"
 
 #ifndef DEBUG
 #define NDEBUG

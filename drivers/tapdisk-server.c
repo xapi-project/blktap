@@ -43,7 +43,7 @@
 
 #include <sys/mman.h>
 #include <sys/stat.h>
-#include "../cumd/cumd.h"
+#include "../cpumond/cpumond.h"
 
 #define DBG(_level, _f, _a...)       tlog_write(_level, _f, ##_a)
 #define ERR(_err, _f, _a...)         tlog_error(_err, _f, ##_a)
@@ -712,7 +712,7 @@ tapdisk_server_init(void)
 	}
 
 	if ((ret = tapdisk_server_initialize_cum_client()) < 0) {
-		EPRINTF("Failed to connect to cumd: %s\n",
+		EPRINTF("Failed to connect to cpumond: %s\n",
 			strerror(-ret));
 		cum_cleanup();
 		goto out;
