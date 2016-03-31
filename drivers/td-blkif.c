@@ -298,19 +298,27 @@ tapdisk_xenblkif_sched_chkrng(const struct td_xenblkif *blkif)
 	ASSERT(!err);
 }
 
+void
+tapdisk_xenblkif_unsched_chkrng(const struct td_xenblkif *blkif)
+{
+	int err;
+
+	ASSERT(blkif);
+
+	err = tapdisk_server_event_set_timeout(
+			tapdisk_xenblkif_chkrng_event_id(blkif), TV_INF);
+	ASSERT(!err);
+}
 
 static inline void
 tapdisk_xenblkif_cb_chkrng(event_id_t id __attribute__((unused)),
         char mode __attribute__((unused)), void *private)
 {
     struct td_xenblkif *blkif = private;
-	int err;
 
     ASSERT(blkif);
 
-	err = tapdisk_server_event_set_timeout(
-			tapdisk_xenblkif_chkrng_event_id(blkif), TV_INF);
-	ASSERT(!err);
+    tapdisk_xenblkif_unsched_chkrng(blkif);
 
     tapdisk_xenio_ctx_process_ring(blkif, blkif->ctx, 1);
 }

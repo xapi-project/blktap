@@ -292,6 +292,12 @@ void
 tapdisk_xenblkif_sched_chkrng(const struct td_xenblkif *blkif);
 
 /**
+ * Unschedules the ring check.
+ */
+void
+tapdisk_xenblkif_unsched_chkrng(const struct td_xenblkif *blkif);
+
+/**
  * Tells whether a barrier request can be completed.
  */
 bool
