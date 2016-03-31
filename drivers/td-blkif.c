@@ -335,13 +335,16 @@ tapdisk_start_polling(struct td_xenblkif *blkif)
 {
     ASSERT(blkif);
 
-    blkif->in_polling = true;
+    /* Only enter polling if the CPU utilisation is not high */
+    if (tapdisk_server_system_idle_cpu() > 50) {
+        blkif->in_polling = true;
 
-    /* Start checking the ring immediately */
-    tapdisk_xenblkif_sched_chkrng(blkif);
+        /* Start checking the ring immediately */
+        tapdisk_xenblkif_sched_chkrng(blkif);
 
-    /* Schedule the future 'stop polling' event */
-    tapdisk_xenblkif_sched_stoppolling(blkif);
+        /* Schedule the future 'stop polling' event */
+        tapdisk_xenblkif_sched_stoppolling(blkif);
+    }
 }
 
 static inline void

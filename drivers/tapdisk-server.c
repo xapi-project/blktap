@@ -41,6 +41,10 @@
 #include "td-blkif.h"
 #include "timeout-math.h"
 
+#include <sys/mman.h>
+#include <sys/stat.h>
+#include "../cpumond/cpumond.h"
+
 #define DBG(_level, _f, _a...)       tlog_write(_level, _f, ##_a)
 #define ERR(_err, _f, _a...)         tlog_error(_err, _f, ##_a)
 
@@ -70,6 +74,12 @@ typedef struct tapdisk_server {
 		int                          backoff; /* exponential backoff
 							 factor */
 	} mem_state;
+
+	/* CPU Utilisation Monitor client state */
+	struct {
+		int                         fd; /* shm fd */
+		cpumond_t                  *cpumon; /* mmap pointer */
+	} cpumond_state;
 
 	event_id_t                   tlog_reopen_evid;
 } tapdisk_server_t;
@@ -640,6 +650,48 @@ tapdisk_server_initialize_lowmem_mode(void)
 	return tapdisk_server_reset_lowmem_mode();
 }
 
+static void cpumond_state_init(void)
+{
+	server.cpumond_state.fd = -1;
+	server.cpumond_state.cpumon = (cpumond_t *) 0;
+}
+
+static void cpumond_cleanup(void)
+{
+	if (server.cpumond_state.cpumon)
+		munmap(server.cpumond_state.cpumon, sizeof(cpumond_t));
+	if (server.cpumond_state.fd >= 0)
+		close(server.cpumond_state.fd);
+
+	cpumond_state_init();
+}
+
+float
+tapdisk_server_system_idle_cpu(void)
+{
+	if (server.cpumond_state.cpumon > 0)
+		return server.cpumond_state.cpumon->idle;
+	else
+		return 0.0;
+}
+
+/* Create the CPU Utilisation Monitor client. */
+static int
+tapdisk_server_initialize_cpumond_client(void)
+{
+	server.cpumond_state.fd = shm_open(CPUMOND_PATH, O_RDONLY, 0);
+	if (server.cpumond_state.fd == -1)
+		return -errno;
+
+	server.cpumond_state.cpumon = mmap(NULL, sizeof(cpumond_t), PROT_READ, MAP_PRIVATE, server.cpumond_state.fd, 0);
+	if (server.cpumond_state.cpumon == (cpumond_t *) -1) {
+		server.cpumond_state.cpumon = 0;
+		return -errno;
+	}
+
+	return 0;
+}
+
 int
 tapdisk_server_init(void)
 {
@@ -660,8 +712,17 @@ tapdisk_server_init(void)
 		EPRINTF("Failed to initialize low memory handler: %s\n",
 		        strerror(-ret));
 		lowmem_cleanup();
+		goto out;
 	}
 
+	if ((ret = tapdisk_server_initialize_cpumond_client()) < 0) {
+		EPRINTF("Failed to connect to cpumond: %s\n",
+			strerror(-ret));
+		cpumond_cleanup();
+		goto out;
+	}
+
+out:
 	server.tlog_reopen_evid = -1;
 
 	return 0;
