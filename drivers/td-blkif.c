@@ -313,7 +313,7 @@ tapdisk_xenblkif_sched_stoppolling(const struct td_xenblkif *blkif)
 	ASSERT(blkif);
 
 	err = tapdisk_server_event_set_timeout(
-		tapdisk_xenblkif_stoppolling_event_id(blkif), TV_USECS(blkif->poll_duration * 1000));
+		tapdisk_xenblkif_stoppolling_event_id(blkif), TV_USECS(blkif->poll_duration));
 	ASSERT(!err);
 }
 

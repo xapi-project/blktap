@@ -285,7 +285,7 @@ typedef struct vbd {
 	bool cdrom;
 
 	/**
-	 * Polling duration in milliseconds. 0 means no polling.
+	 * Polling duration in microseconds. 0 means no polling.
 	 */
 	int polling_duration;
 
