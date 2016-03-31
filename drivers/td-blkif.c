@@ -342,16 +342,17 @@ tapdisk_xenblkif_cb_stoppolling(event_id_t id __attribute__((unused)),
 
     ASSERT(blkif);
 
-    blkif->in_polling = false;
-
-    /* Stop obsessively checking the ring */
-    tapdisk_xenblkif_unsched_chkrng(blkif);
-
     /* Process the ring one final time, setting the event counter */
-    tapdisk_xenio_ctx_process_ring(blkif, blkif->ctx, 1);
+    if (!tapdisk_xenio_ctx_process_ring(blkif, blkif->ctx, 1)) {
+        /* If there were no new requests this time, then stop polling */
+        blkif->in_polling = false;
 
-    /* Make the 'stop polling' event not fire again */
-    tapdisk_xenblkif_unsched_stoppolling(blkif);
+        /* Stop obsessively checking the ring */
+        tapdisk_xenblkif_unsched_chkrng(blkif);
+
+        /* Make the 'stop polling' event not fire again */
+        tapdisk_xenblkif_unsched_stoppolling(blkif);
+    }
 }
 
 void

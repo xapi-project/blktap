@@ -274,7 +274,7 @@ xenio_blkif_get_requests(struct td_xenblkif * const blkif,
     return n;
 }
 
-void
+int
 tapdisk_xenio_ctx_process_ring(struct td_xenblkif *blkif,
 		               struct td_xenio_ctx *ctx, int final)
 {
@@ -286,7 +286,7 @@ tapdisk_xenio_ctx_process_ring(struct td_xenblkif *blkif,
     start = blkif->n_reqs_free;
 
 	if (unlikely(blkif->barrier.msg))
-		return;
+		return 0;
 
     /*
      * In each iteration, copy as many request descriptors from the shared ring
@@ -338,7 +338,7 @@ tapdisk_xenio_ctx_process_ring(struct td_xenblkif *blkif,
 		 * notification. This notification is the one we should have consumed,
 		 * and can be ignored.
 		 */
-		return;
+		return 0;
 
     if (blkif->in_polling)
         /* We found at least one request, so keep polling some more */
@@ -354,6 +354,8 @@ tapdisk_xenio_ctx_process_ring(struct td_xenblkif *blkif,
 			sizeof(blkif_request_t*) * n_reqs);
 
 	tapdisk_xenblkif_queue_requests(blkif, reqs, n_reqs);
+
+	return n_reqs;
 }
 
 /**
