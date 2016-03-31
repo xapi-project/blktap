@@ -300,7 +300,7 @@ tapdisk_xenblkif_sched_stoppolling(const struct td_xenblkif *blkif)
 	ASSERT(blkif);
 
 	err = tapdisk_server_event_set_timeout(
-		tapdisk_xenblkif_stoppolling_event_id(blkif), TV_SECS(5)); /* TODO hard-coded 5 seconds for now */
+		tapdisk_xenblkif_stoppolling_event_id(blkif), TV_USECS(blkif->poll_duration * 1000));
 	ASSERT(!err);
 }
 
@@ -398,8 +398,8 @@ tapdisk_xenblkif_cb_chkrng(event_id_t id __attribute__((unused)),
 
 int
 tapdisk_xenblkif_connect(domid_t domid, int devid, const grant_ref_t * grefs,
-        int order, evtchn_port_t port, int proto, const char *pool,
-        td_vbd_t * vbd)
+        int order, evtchn_port_t port, int proto, int poll_duration,
+        const char *pool, td_vbd_t * vbd)
 {
     struct td_xenblkif *td_blkif = NULL; /* TODO rename to blkif */
     struct td_xenio_ctx *td_ctx;
@@ -441,6 +441,7 @@ tapdisk_xenblkif_connect(domid_t domid, int devid, const grant_ref_t * grefs,
 	td_blkif->chkrng_event = -1;
 	td_blkif->stoppolling_event = -1;
 	td_blkif->in_polling = false;
+	td_blkif->poll_duration = poll_duration;
 	td_blkif->barrier.msg = NULL;
 	td_blkif->barrier.io_done = false;
 	td_blkif->barrier.io_err = 0;

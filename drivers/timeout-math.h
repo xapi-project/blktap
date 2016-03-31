@@ -27,5 +27,6 @@
 #define TV_ADD(a, b, res)           timeradd(&(a), &(b), &(res))
 #define TV_SUB(a, b, res)           timersub(&(a), &(b), &(res))
 #define TV_SECS(a)                  (struct timeval) {(a), 0}
+#define TV_USECS(a)                 (struct timeval) {(a) / 1000000, (a) % 1000000}
 
 #endif

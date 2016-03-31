@@ -181,6 +181,7 @@ struct td_xenblkif {
 	event_id_t stoppolling_event;
 
 	bool in_polling;
+	int poll_duration; /* Milliseconds; 0 means no polling. */
 };
 
 #define RING_DEBUG(blkif, fmt, args...)                                     \
@@ -205,14 +206,15 @@ struct td_xenblkif {
  * @param port event channel port of the guest domain to use for ring
  * notifications
  * @param proto protocol (native, x86, or x64)
+ * @param poll_duration polling duration (milliseconds; 0 means no polling)
  * @param pool name of the context
  * @param vbd the VBD
  * @returns 0 on success
  */
 int
 tapdisk_xenblkif_connect(domid_t domid, int devid, const grant_ref_t * grefs,
-        int order, evtchn_port_t port, int proto, const char *pool,
-        td_vbd_t * vbd);
+        int order, evtchn_port_t port, int proto, int poll_duration,
+        const char *pool, td_vbd_t * vbd);
 
 /**
  * Disconnects the tapdisk from the shared ring.
