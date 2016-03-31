@@ -41,6 +41,10 @@
 #include "td-blkif.h"
 #include "timeout-math.h"
 
+#include <sys/mman.h>
+#include <sys/stat.h>
+#include "../cumd/cumd.h"
+
 #define DBG(_level, _f, _a...)       tlog_write(_level, _f, ##_a)
 #define ERR(_err, _f, _a...)         tlog_error(_err, _f, ##_a)
 
@@ -70,6 +74,12 @@ typedef struct tapdisk_server {
 		int                          backoff; /* exponential backoff
 							 factor */
 	} mem_state;
+
+	/* CPU Utilisation Monitor client state */
+	struct {
+		int                         fd; /* shm fd */
+		cum_t                      *cum; /* mmap pointer */
+	} cum_state;
 
 	event_id_t                   tlog_reopen_evid;
 } tapdisk_server_t;
@@ -636,6 +646,48 @@ tapdisk_server_initialize_lowmem_mode(void)
 	return tapdisk_server_reset_lowmem_mode();
 }
 
+static void cum_state_init(void)
+{
+	server.cum_state.fd = -1;
+	server.cum_state.cum = (cum_t *) 0;
+}
+
+static void cum_cleanup(void)
+{
+	if (server.cum_state.cum)
+		munmap(server.cum_state.cum, sizeof(cum_t));
+	if (server.cum_state.fd >= 0)
+		close(server.cum_state.fd);
+
+	cum_state_init();
+}
+
+float
+tapdisk_server_system_idle_cpu(void)
+{
+	if (server.cum_state.cum > 0)
+		return server.cum_state.cum->idle;
+	else
+		return 0.0;
+}
+
+/* Create the CPU Utilisation Monitor client. */
+static int
+tapdisk_server_initialize_cum_client(void)
+{
+	server.cum_state.fd = shm_open(CUM_PATH, O_RDONLY, 0);
+	if (server.cum_state.fd == -1)
+		return -errno;
+
+	server.cum_state.cum = mmap(NULL, sizeof(cum_t), PROT_READ, MAP_PRIVATE, server.cum_state.fd, 0);
+	if (server.cum_state.cum == (cum_t *) -1) {
+		server.cum_state.cum = 0;
+		return -errno;
+	}
+
+	return 0;
+}
+
 int
 tapdisk_server_init(void)
 {
@@ -656,8 +708,17 @@ tapdisk_server_init(void)
 		EPRINTF("Failed to initialize low memory handler: %s\n",
 		        strerror(-ret));
 		lowmem_cleanup();
+		goto out;
 	}
 
+	if ((ret = tapdisk_server_initialize_cum_client()) < 0) {
+		EPRINTF("Failed to connect to cumd: %s\n",
+			strerror(-ret));
+		cum_cleanup();
+		goto out;
+	}
+
+out:
 	server.tlog_reopen_evid = -1;
 
 	return 0;

@@ -70,4 +70,6 @@ void tapdisk_stop_logging(void);
 
 int tapdisk_server_event_set_timeout(event_id_t, struct timeval timeo);
 
+float tapdisk_server_system_idle_cpu(void);
+
 #endif
