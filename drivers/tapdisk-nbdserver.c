@@ -39,6 +39,7 @@
 #include "tapdisk-fdreceiver.h"
 
 #include "tapdisk-nbd.h"
+#include "timeout-math.h"
 
 #ifdef HAVE_CONFIG_H
 #include "config.h"
@@ -168,7 +169,7 @@ tapdisk_nbdserver_enable_client(td_nbdserver_client_t *client)
 
 	client->client_event_id = tapdisk_server_register_event(
 			SCHEDULER_POLL_READ_FD,
-			client->client_fd, 0,
+			client->client_fd, TV_ZERO,
 			tapdisk_nbdserver_clientcb,
 			client);
 
@@ -663,7 +664,7 @@ tapdisk_nbdserver_unpause_fdrecv(td_nbdserver_t *server)
 		INFO("registering for fdrecv_listening_fd");
 		server->fdrecv_listening_event_id =
 			tapdisk_server_register_event(SCHEDULER_POLL_READ_FD,
-					server->fdrecv_listening_fd, 0,
+					server->fdrecv_listening_fd, TV_ZERO,
 					tapdisk_nbdserver_newclient,
 					server);
 		if (server->fdrecv_listening_event_id < 0) {
@@ -687,7 +688,7 @@ tapdisk_nbdserver_unpause_unix(td_nbdserver_t *server)
 		INFO("registering for unix_listening_fd");
 		server->unix_listening_event_id =
 			tapdisk_server_register_event(SCHEDULER_POLL_READ_FD,
-					server->unix_listening_fd, 0,
+					server->unix_listening_fd, TV_ZERO,
 					tapdisk_nbdserver_newclient_unix,
 					server);
 		if (server->unix_listening_event_id < 0) {

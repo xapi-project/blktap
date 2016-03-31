@@ -47,6 +47,7 @@
 #include "tapdisk-control.h"
 #include "tapdisk-nbdserver.h"
 #include "td-blkif.h"
+#include "timeout-math.h"
 
 #define TD_CTL_MAX_CONNECTIONS  10
 #define TD_CTL_SOCK_BACKLOG     32
@@ -326,7 +327,7 @@ tapdisk_ctl_conn_open(int fd)
 
 	conn->out.event_id =
 		tapdisk_server_register_event(SCHEDULER_POLL_WRITE_FD,
-					      fd, TD_CTL_SEND_TIMEOUT,
+					      fd, TV_SECS(TD_CTL_SEND_TIMEOUT),
 					      tapdisk_ctl_conn_send_event,
 					      conn);
 	if (conn->out.event_id < 0)
@@ -1339,7 +1340,7 @@ tapdisk_control_process_request(event_id_t event_id,
 			struct tapdisk_ctl_conn *cur = list_first_entry(
 					&td_control.pending, struct tapdisk_ctl_conn, entry);
 			list_del(&cur->entry);
-			err = tapdisk_server_event_set_timeout(cur->event_id, 0);
+			err = tapdisk_server_event_set_timeout(cur->event_id, TV_ZERO);
 			ASSERT(!err);
 			tapdisk_server_mask_event(cur->event_id, 0);
 		}
@@ -1367,7 +1368,7 @@ tapdisk_control_handle_request(event_id_t id, char mode, void *private)
 	if (!(conn->info->flags & TAPDISK_MSG_REENTER) && td_control.busy) {
 
 		err = tapdisk_server_register_event(SCHEDULER_POLL_TIMEOUT, -1,
-				(time_t) - 1, tapdisk_control_process_request,
+				TV_INF, tapdisk_control_process_request,
 				conn);
 
 		if (err == -1) {
@@ -1413,7 +1414,7 @@ tapdisk_control_accept(event_id_t id, char mode, void *private)
 	}
 
 	err = tapdisk_server_register_event(SCHEDULER_POLL_READ_FD,
-					    conn->fd, TD_CTL_RECV_TIMEOUT,
+					    conn->fd, TV_SECS(TD_CTL_RECV_TIMEOUT),
 					    tapdisk_control_handle_request,
 					    conn);
 	if (err == -1) {
@@ -1520,7 +1521,7 @@ tapdisk_control_create_socket(char **socket_path)
 	}
 
 	err = tapdisk_server_register_event(SCHEDULER_POLL_READ_FD,
-					    td_control.socket, 0,
+					    td_control.socket, TV_ZERO,
 					    tapdisk_control_accept, NULL);
 	if (err < 0) {
 		EPRINTF("failed to add watch: %d\n", err);

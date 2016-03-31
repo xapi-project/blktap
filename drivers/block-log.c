@@ -45,6 +45,7 @@
 #include "tapdisk-server.h"
 #include "tapdisk-driver.h"
 #include "tapdisk-interface.h"
+#include "timeout-math.h"
 
 #define MAX_CONNECTIONS 1
 
@@ -319,7 +320,7 @@ static int ctl_open(struct tdlog_state* s, const char* name)
   }
 
   s->ctl.id = tapdisk_server_register_event(SCHEDULER_POLL_READ_FD,
-					    s->ctl.fd, 0, ctl_accept, s);
+					    s->ctl.fd, TV_ZERO, ctl_accept, s);
   if (s->ctl.id < 0) {
     BWPRINTF("error register event handler: %s", strerror(s->ctl.id));
     goto err_sock;
@@ -408,7 +409,7 @@ static void ctl_accept(event_id_t id, char mode, void *private)
   }
 
   cid = tapdisk_server_register_event(SCHEDULER_POLL_READ_FD,
-				      fd, 0, ctl_request, s);
+				      fd, TV_ZERO, ctl_request, s);
   if (cid < 0) {
     BWPRINTF("error registering connection event handler: %s", strerror(cid));
     close(fd);

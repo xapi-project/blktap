@@ -31,6 +31,7 @@
 #include "tapdisk.h"
 #include "tapdisk-fdreceiver.h"
 #include "tapdisk-server.h"
+#include "timeout-math.h"
 #include "scheduler.h"
 
 #define UNIX_BUFFER_SIZE 16384
@@ -133,7 +134,7 @@ td_fdreceiver_accept_fd(event_id_t id, char mode, void *data)
 
 	fdreceiver->client_event_id =
 		tapdisk_server_register_event(SCHEDULER_POLL_READ_FD,
-				fdreceiver->client_fd, 0,
+				fdreceiver->client_fd, TV_ZERO,
 				td_fdreceiver_recv_fd,
 				fdreceiver);
 
@@ -226,7 +227,7 @@ td_fdreceiver_start(char *path, fd_cb_t callback, void *data)
 
 	fdreceiver->fd_event_id =
 		tapdisk_server_register_event(SCHEDULER_POLL_READ_FD,
-				fdreceiver->fd, 0,
+				fdreceiver->fd, TV_ZERO,
 				td_fdreceiver_accept_fd,
 				fdreceiver);
 

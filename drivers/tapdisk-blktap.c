@@ -35,6 +35,7 @@
 #include "tapdisk-blktap.h"
 #include "tapdisk-metrics.h"
 #include "tapdisk-server.h"
+#include "timeout-math.h"
 #include "linux-blktap.h"
 
 #define BUG(_cond)       td_panic()
@@ -592,7 +593,7 @@ tapdisk_blktap_open(const char *devname, td_vbd_t *vbd, td_blktap_t **_tap)
 
 	tap->event_id =
 		tapdisk_server_register_event(SCHEDULER_POLL_READ_FD,
-					      tap->fd, 0,
+					      tap->fd, TV_ZERO,
 					      tapdisk_blktap_fd_event,
 					      tap);
 	if (tap->event_id < 0) {
