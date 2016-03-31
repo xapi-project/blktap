@@ -204,6 +204,12 @@ tapdisk_xenblkif_destroy(struct td_xenblkif * blkif)
         blkif->chkrng_event = -1;
     }
 
+    if (tapdisk_xenblkif_stoppolling_event_id(blkif) >= 0) {
+        tapdisk_server_unregister_event(
+				tapdisk_xenblkif_stoppolling_event_id(blkif));
+        blkif->stoppolling_event = -1;
+    }
+
     tapdisk_xenblkif_reqs_free(blkif);
 
     if (blkif->ctx) {
@@ -287,6 +293,65 @@ tapdisk_xenblkif_disconnect(const domid_t domid, const int devid)
 
 
 void
+tapdisk_xenblkif_sched_stoppolling(const struct td_xenblkif *blkif)
+{
+	int err;
+
+	ASSERT(blkif);
+
+	err = tapdisk_server_event_set_timeout(
+		tapdisk_xenblkif_stoppolling_event_id(blkif), TV_SECS(5)); /* TODO hard-coded 5 seconds for now */
+	ASSERT(!err);
+}
+
+void
+tapdisk_xenblkif_unsched_stoppolling(const struct td_xenblkif *blkif)
+{
+	int err;
+
+	ASSERT(blkif);
+
+	err = tapdisk_server_event_set_timeout(
+		tapdisk_xenblkif_stoppolling_event_id(blkif), TV_INF);
+	ASSERT(!err);
+}
+
+
+void
+tapdisk_start_polling(struct td_xenblkif *blkif)
+{
+    ASSERT(blkif);
+
+    blkif->in_polling = true;
+
+    /* Start checking the ring immediately */
+    tapdisk_xenblkif_sched_chkrng(blkif);
+
+    /* Schedule the future 'stop polling' event */
+    tapdisk_xenblkif_sched_stoppolling(blkif);
+}
+
+static inline void
+tapdisk_xenblkif_cb_stoppolling(event_id_t id __attribute__((unused)),
+        char mode __attribute__((unused)), void *private)
+{
+    struct td_xenblkif *blkif = private;
+
+    ASSERT(blkif);
+
+    blkif->in_polling = false;
+
+    /* Stop obsessively checking the ring */
+    tapdisk_xenblkif_unsched_chkrng(blkif);
+
+    /* Process the ring one final time, setting the event counter */
+    tapdisk_xenio_ctx_process_ring(blkif, blkif->ctx, 1);
+
+    /* Make the 'stop polling' event not fire again */
+    tapdisk_xenblkif_unsched_stoppolling(blkif);
+}
+
+void
 tapdisk_xenblkif_sched_chkrng(const struct td_xenblkif *blkif)
 {
 	int err;
@@ -318,9 +383,16 @@ tapdisk_xenblkif_cb_chkrng(event_id_t id __attribute__((unused)),
 
     ASSERT(blkif);
 
-    tapdisk_xenblkif_unsched_chkrng(blkif);
+    /*
+     * If we are polling, process the ring without setting the event counter.
+     * If we are not polling, unschedule this event, process the ring and set
+     * the event counter.
+     */
 
-    tapdisk_xenio_ctx_process_ring(blkif, blkif->ctx, 1);
+    if (!blkif->in_polling)
+        tapdisk_xenblkif_unsched_chkrng(blkif);
+
+    tapdisk_xenio_ctx_process_ring(blkif, blkif->ctx, !blkif->in_polling);
 }
 
 
@@ -367,6 +439,8 @@ tapdisk_xenblkif_connect(domid_t domid, int devid, const grant_ref_t * grefs,
     td_blkif->proto = proto;
     td_blkif->dead = false;
 	td_blkif->chkrng_event = -1;
+	td_blkif->stoppolling_event = -1;
+	td_blkif->in_polling = false;
 	td_blkif->barrier.msg = NULL;
 	td_blkif->barrier.io_done = false;
 	td_blkif->barrier.io_err = 0;
@@ -479,6 +553,15 @@ tapdisk_xenblkif_connect(domid_t domid, int devid, const grant_ref_t * grefs,
     if (unlikely(err))
         goto fail;
 
+	td_blkif->stoppolling_event = tapdisk_server_register_event(
+			SCHEDULER_POLL_TIMEOUT,	-1, TV_INF,
+			tapdisk_xenblkif_cb_stoppolling, td_blkif);
+    if (unlikely(td_blkif->stoppolling_event < 0)) {
+        err = td_blkif->stoppolling_event;
+        RING_ERR(td_blkif, "failed to register event: %s\n", strerror(-err));
+        goto fail;
+    }
+
     err = tapdisk_xenblkif_stats_create(td_blkif);
     if (unlikely(err))
         goto fail;
@@ -513,6 +596,13 @@ inline event_id_t
 tapdisk_xenblkif_chkrng_event_id(const struct td_xenblkif *blkif)
 {
 	return blkif->chkrng_event;
+}
+
+
+inline event_id_t
+tapdisk_xenblkif_stoppolling_event_id(const struct td_xenblkif *blkif)
+{
+	return blkif->stoppolling_event;
 }
 
 

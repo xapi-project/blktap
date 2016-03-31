@@ -339,6 +339,11 @@ tapdisk_xenio_ctx_process_ring(struct td_xenblkif *blkif,
 		 * and can be ignored.
 		 */
 		return;
+
+    if (blkif->in_polling)
+        /* We found at least one request, so keep polling some more */
+        tapdisk_xenblkif_sched_stoppolling(blkif);
+
     blkif->stats.reqs.in += n_reqs;
 
 	reqs = alloca(sizeof(blkif_request_t*) * n_reqs);
