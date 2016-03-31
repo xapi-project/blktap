@@ -1123,7 +1123,7 @@ tapdisk_control_xenblkif_connect(
             vbd->uuid, blkif->domid, blkif->devid, pool, blkif->port);
 
     err = tapdisk_xenblkif_connect(blkif->domid, blkif->devid, blkif->gref,
-            blkif->order, blkif->port, blkif->proto, pool, vbd);
+            blkif->order, blkif->port, blkif->proto, 0 /* TODO polling duration */, pool, vbd);
 
 out:
 	response->cookie = request->cookie;

@@ -343,6 +343,9 @@ tapdisk_xenio_ctx_process_ring(struct td_xenblkif *blkif,
     if (blkif->in_polling)
         /* We found at least one request, so keep polling some more */
         tapdisk_xenblkif_sched_stoppolling(blkif);
+    else if (blkif->poll_duration)
+        /* We weren't polling, but polling is enabled, so let's start now */
+        tapdisk_start_polling(blkif);
 
     blkif->stats.reqs.in += n_reqs;
 
