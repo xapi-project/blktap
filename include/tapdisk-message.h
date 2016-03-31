@@ -140,6 +140,11 @@ typedef struct tapdisk_message_blkif {
 	 * The event channel port.
 	 */
 	uint32_t port;
+
+	/**
+	 * Polling duration in milliseconds. 0 means no polling.
+	 */
+	uint32_t poll_duration;
 } tapdisk_message_blkif_t;
 
 /**

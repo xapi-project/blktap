@@ -138,6 +138,7 @@ int tap_ctl_blk_major(void);
  * ring
  * @param domid the domain ID of the guest VM
  * @param devid the device ID
+ * @param poll_duration polling duration (milliseconds; 0 means no polling)
  * @param grefs the grant references
  * @param order number of grant references, expressed as a 2's order
  * @param port event channel port
@@ -150,7 +151,7 @@ int tap_ctl_blk_major(void);
  * @returns 0 on success, a negative error code otherwise
  */
 int tap_ctl_connect_xenblkif(const pid_t pid, const domid_t domid, const int
-		devid, const grant_ref_t * grefs, const int order, const evtchn_port_t
+		devid, int poll_duration, const grant_ref_t * grefs, const int order, const evtchn_port_t
 		port, int proto, const char *pool, const int minor);
 
 /**

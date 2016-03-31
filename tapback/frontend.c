@@ -208,7 +208,7 @@ connect_tap(vbd_t * const device)
      * Create the shared ring and ask the tapdisk to connect to it.
      */
     if ((err = -tap_ctl_connect_xenblkif(device->tap->pid, device->domid,
-                    device->devid, gref, order, port, proto, NULL,
+                    device->devid, device->polling_duration, gref, order, port, proto, NULL,
                     device->minor))) {
         /*
          * This happens if the tapback dameon gets restarted while there are

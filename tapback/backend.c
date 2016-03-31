@@ -191,6 +191,7 @@ tapback_backend_create_device(backend_t *backend,
 	device->mode = false;
 	device->cdrom = false;
 	device->info = 0;
+	device->polling_duration = 0;
 
     /* TODO check for errors */
     device->devid = atoi(name);
@@ -466,7 +467,7 @@ static int
 hotplug_status_changed(vbd_t * const device) {
 
 	int err = 0;
-	char *hotplug_status = NULL, *device_type = NULL, *mode = NULL;
+	char *hotplug_status = NULL, *device_type = NULL, *mode = NULL, *polling_duration = NULL;
 
 	ASSERT(device);
 
@@ -525,6 +526,11 @@ hotplug_status_changed(vbd_t * const device) {
             device->info |= VDISK_CDROM;
         if (!device->mode)
             device->info |= VDISK_READONLY;
+
+        /* Set polling duration if the key exists. Otherwise polling duration remains 0, i.e. polling is disabled. */
+        polling_duration = tapback_device_read(device, XBT_NULL, POLLING_DURATION);
+        if (polling_duration)
+            device->polling_duration = atoi(polling_duration);
 
         /*
          * Attempt to connect as everything may be ready and the only thing the
