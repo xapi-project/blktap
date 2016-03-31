@@ -192,6 +192,7 @@ tapback_backend_create_device(backend_t *backend,
 	device->cdrom = false;
 	device->info = 0;
 	device->polling_duration = 0;
+	device->polling_idle_threshold = 0;
 
     /* TODO check for errors */
     device->devid = atoi(name);
@@ -467,7 +468,7 @@ static int
 hotplug_status_changed(vbd_t * const device) {
 
 	int err = 0;
-	char *hotplug_status = NULL, *device_type = NULL, *mode = NULL, *polling_duration = NULL;
+	char *hotplug_status = NULL, *device_type = NULL, *mode = NULL, *polling_duration = NULL, *polling_idle_threshold = NULL;
 
 	ASSERT(device);
 
@@ -531,6 +532,11 @@ hotplug_status_changed(vbd_t * const device) {
         polling_duration = tapback_device_read(device, XBT_NULL, POLLING_DURATION);
         if (polling_duration)
             device->polling_duration = atoi(polling_duration);
+
+        /* Set polling idle threshold if the key exists. Otherwise threshold remains 0, i.e. always permit polling */
+        polling_idle_threshold = tapback_device_read(device, XBT_NULL, POLLING_IDLE_THRESHOLD);
+        if (polling_idle_threshold)
+            device->polling_idle_threshold = atoi(polling_idle_threshold);
 
         /*
          * Attempt to connect as everything may be ready and the only thing the
