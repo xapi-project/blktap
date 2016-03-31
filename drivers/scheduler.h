@@ -39,8 +39,8 @@ typedef struct scheduler {
 
 	int                          uuid;
 	int                          max_fd;
-	int                          timeout;
-	int                          max_timeout;
+	struct timeval               timeout;
+	struct timeval               max_timeout;
 	int                          depth;
 } scheduler_t;
 
@@ -52,13 +52,13 @@ void scheduler_initialize(scheduler_t *);
  * Returns the event ID (a positive integer) or a negative error code.
  */
 event_id_t scheduler_register_event(scheduler_t *, char mode,
-				    int fd, int timeout,
+				    int fd, struct timeval timeout,
 				    event_cb_t cb, void *private);
 
 void scheduler_unregister_event(scheduler_t *,  event_id_t);
 void scheduler_mask_event(scheduler_t *, event_id_t, int masked);
-void scheduler_set_max_timeout(scheduler_t *, int);
+void scheduler_set_max_timeout(scheduler_t *, struct timeval);
 int scheduler_wait_for_events(scheduler_t *);
 int scheduler_event_set_timeout(scheduler_t *sched, event_id_t event_id,
-		int timeo);
+		struct timeval timeo);
 #endif

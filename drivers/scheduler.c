@@ -63,19 +63,19 @@ typedef struct event {
 	int                          fd;
 
 	/**
-	 * Timeout in number of seconds, relative to the time of the registration
-	 * of the event. Use the special value (time_t)-1 to indicate infinity.
+	 * Timeout relative to the time of the registration
+	 * of the event. Use the special value {(time_t)-1, 0} to indicate infinity.
 	 */
-	int                          timeout;
+	struct timeval               timeout;
 
 	/**
-	 * Expiration date in number of seconds after Epoch. Once current time
+	 * Expiration date in seconds after Epoch. Once current time
 	 * becomes larger than or equal to this value, the event is considered
 	 * expired and can be run. If event.timeout is set to infinity, this member
 	 * should not be used.
 	 *
 	 */
-	int                          deadline;
+	struct timeval               deadline;
 
 	event_cb_t                   cb;
 	void                        *private;
@@ -86,7 +86,7 @@ typedef struct event {
 static void
 scheduler_prepare_events(scheduler_t *s)
 {
-	int diff;
+	struct timeval diff;
 	struct timeval now;
 	event_t *event;
 
@@ -262,7 +262,7 @@ scheduler_run_events(scheduler_t *s)
 
 int
 scheduler_register_event(scheduler_t *s, char mode, int fd,
-			 int timeout, event_cb_t cb, void *private)
+			 struct timeval timeout, event_cb_t cb, void *private)
 {
 	event_t *event;
 	struct timeval now;
@@ -345,7 +345,7 @@ scheduler_gc_events(scheduler_t *s)
 }
 
 void
-scheduler_set_max_timeout(scheduler_t *s, int timeout)
+scheduler_set_max_timeout(scheduler_t *s, struct timeval timeout)
 {
 	if (!TV_IS_INF(timeout))
 		s->max_timeout = TV_MIN(s->max_timeout, timeout);
@@ -368,11 +368,10 @@ scheduler_wait_for_events(scheduler_t *s)
 
 	scheduler_prepare_events(s);
 
-	tv.tv_sec  = s->timeout;
-	tv.tv_usec = 0;
+	tv = s->timeout;
 
-	DBG("timeout: %d, max_timeout: %d\n",
-	    s->timeout, s->max_timeout);
+	DBG("timeout: %ld.%ld, max_timeout: %ld.%ld\n",
+	    s->timeout.tv_sec, s->timeout.tv_usec, s->max_timeout.tv_sec, s->max_timeout.tv_usec);
 
     do {
     	ret = select(s->max_fd + 1, &s->read_fds, &s->write_fds,
@@ -421,7 +420,7 @@ scheduler_initialize(scheduler_t *s)
 }
 
 int
-scheduler_event_set_timeout(scheduler_t *sched, event_id_t event_id, int timeo)
+scheduler_event_set_timeout(scheduler_t *sched, event_id_t event_id, struct timeval timeo)
 {
 	event_t *event;
 
