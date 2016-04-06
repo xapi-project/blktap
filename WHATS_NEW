@@ -1,3 +1,13 @@
+Version 1.13.0 -  6th Apr 2016
+==============================
+  [CA-183960][CA-196882]: GC in batch mode and immediate deletes in SRs
+  Skip unnecessary calls to load in _pathrefresh for constructors
+  Allow _pathrefresh to skip expensive load call
+  CA-184364: Convert snapwatchd init script to systemd unit file
+  CA-189186: Fixed Unit Tests for trim_util.py
+  CA-189186: Fixed Unit Tests for lvutil.py
+  CA-189186: Fixed Pylint errors
+
 Version 1.12.2 - 30th Nov 2015
 ===============================
   CA-186487: Normalize SMB mount paths
