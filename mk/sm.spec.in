@@ -122,9 +122,9 @@ fi
 /opt/xensource/sm/RawISCSISR.py
 /opt/xensource/sm/RawISCSISR.pyc
 /opt/xensource/sm/RawISCSISR.pyo
-/opt/xensource/sm/ISCSI_base.py
-/opt/xensource/sm/ISCSI_base.pyc
-/opt/xensource/sm/ISCSI_base.pyo
+/opt/xensource/sm/BaseISCSI.py
+/opt/xensource/sm/BaseISCSI.pyc
+/opt/xensource/sm/BaseISCSI.pyo
 /opt/xensource/sm/ISOSR
 /opt/xensource/sm/ISOSR.py
 /opt/xensource/sm/ISOSR.pyc

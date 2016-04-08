@@ -18,7 +18,7 @@
 # ISCSISR: ISCSI software initiator SR driver
 #
 
-import SR, SRCommand, ISCSI_base, LUNperVDI
+import SR, SRCommand, BaseISCSI, LUNperVDI
 import util
 
 CAPABILITIES = ["SR_PROBE","VDI_CREATE","VDI_DELETE","VDI_ATTACH",
@@ -46,7 +46,7 @@ DRIVER_INFO = {
     'configuration': CONFIGURATION
     }
 
-class RawISCSISR(ISCSI_base.BaseISCSISR):
+class RawISCSISR(BaseISCSI.BaseISCSISR):
     """Raw ISCSI storage repository"""
 
     def handles(type):
