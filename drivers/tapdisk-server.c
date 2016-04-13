@@ -78,8 +78,8 @@ typedef struct tapdisk_server {
 	/* CPU Utilisation Monitor client state */
 	struct {
 		int                         fd; /* shm fd */
-		cum_t                      *cum; /* mmap pointer */
-	} cum_state;
+		cpumond_t                  *cpumon; /* mmap pointer */
+	} cpumond_state;
 
 	event_id_t                   tlog_reopen_evid;
 } tapdisk_server_t;
@@ -646,42 +646,42 @@ tapdisk_server_initialize_lowmem_mode(void)
 	return tapdisk_server_reset_lowmem_mode();
 }
 
-static void cum_state_init(void)
+static void cpumond_state_init(void)
 {
-	server.cum_state.fd = -1;
-	server.cum_state.cum = (cum_t *) 0;
+	server.cpumond_state.fd = -1;
+	server.cpumond_state.cpumon = (cpumond_t *) 0;
 }
 
-static void cum_cleanup(void)
+static void cpumond_cleanup(void)
 {
-	if (server.cum_state.cum)
-		munmap(server.cum_state.cum, sizeof(cum_t));
-	if (server.cum_state.fd >= 0)
-		close(server.cum_state.fd);
+	if (server.cpumond_state.cpumon)
+		munmap(server.cpumond_state.cpumon, sizeof(cpumond_t));
+	if (server.cpumond_state.fd >= 0)
+		close(server.cpumond_state.fd);
 
-	cum_state_init();
+	cpumond_state_init();
 }
 
 float
 tapdisk_server_system_idle_cpu(void)
 {
-	if (server.cum_state.cum > 0)
-		return server.cum_state.cum->idle;
+	if (server.cpumond_state.cpumon > 0)
+		return server.cpumond_state.cpumon->idle;
 	else
 		return 0.0;
 }
 
 /* Create the CPU Utilisation Monitor client. */
 static int
-tapdisk_server_initialize_cum_client(void)
+tapdisk_server_initialize_cpumond_client(void)
 {
-	server.cum_state.fd = shm_open(CUM_PATH, O_RDONLY, 0);
-	if (server.cum_state.fd == -1)
+	server.cpumond_state.fd = shm_open(CUM_PATH, O_RDONLY, 0);
+	if (server.cpumond_state.fd == -1)
 		return -errno;
 
-	server.cum_state.cum = mmap(NULL, sizeof(cum_t), PROT_READ, MAP_PRIVATE, server.cum_state.fd, 0);
-	if (server.cum_state.cum == (cum_t *) -1) {
-		server.cum_state.cum = 0;
+	server.cpumond_state.cpumon = mmap(NULL, sizeof(cpumond_t), PROT_READ, MAP_PRIVATE, server.cpumond_state.fd, 0);
+	if (server.cpumond_state.cpumon == (cpumond_t *) -1) {
+		server.cpumond_state.cpumon = 0;
 		return -errno;
 	}
 
@@ -711,10 +711,10 @@ tapdisk_server_init(void)
 		goto out;
 	}
 
-	if ((ret = tapdisk_server_initialize_cum_client()) < 0) {
+	if ((ret = tapdisk_server_initialize_cpumond_client()) < 0) {
 		EPRINTF("Failed to connect to cpumond: %s\n",
 			strerror(-ret));
-		cum_cleanup();
+		cpumond_cleanup();
 		goto out;
 	}
 

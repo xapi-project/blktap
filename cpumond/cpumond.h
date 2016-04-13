@@ -3,10 +3,10 @@
 typedef struct {
     float curr;     // total usage
     float idle;     // idle
-} cum_t;
+} cpumond_t;
 
 typedef struct {
     int    fd;
     char  *path;
-    cum_t *mm;
-} cum_entry_t;
+    cpumond_t *mm;
+} cpumond_entry_t;

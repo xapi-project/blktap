@@ -1,5 +1,5 @@
 [Unit]
-Description=cum daemon
+Description=CPU monitoring daemon
 After=syslog.target network.target sys-kernel-config.mount
 
 [Service]

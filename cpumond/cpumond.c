@@ -22,69 +22,69 @@ void sighandler(int signo){
         run = 0;
 }
 
-void cum_destroy(cum_entry_t *cum_entry){
-    assert(cum_entry);
+void cpumond_destroy(cpumond_entry_t *cpumond_entry){
+    assert(cpumond_entry);
 
-    if ((cum_entry->mm != NULL) && (cum_entry->mm != MAP_FAILED))
-        if (munmap(cum_entry->mm, sizeof(cum_t)) == -1)
+    if ((cpumond_entry->mm != NULL) && (cpumond_entry->mm != MAP_FAILED))
+        if (munmap(cpumond_entry->mm, sizeof(cpumond_t)) == -1)
             perror("munmap");
 
-    if (cum_entry->fd >= 0)
-        if (close(cum_entry->fd) == -1)
+    if (cpumond_entry->fd >= 0)
+        if (close(cpumond_entry->fd) == -1)
             perror("close");
 
-    if (cum_entry->path){
-        if (shm_unlink(cum_entry->path) == -1)
+    if (cpumond_entry->path){
+        if (shm_unlink(cpumond_entry->path) == -1)
             perror("shm_unlink");
-        free(cum_entry->path);
+        free(cpumond_entry->path);
     }
 
-    free(cum_entry);
+    free(cpumond_entry);
 
     return;
 }
 
-cum_entry_t *cum_create(char *path){
-    cum_entry_t *cum_entry;
+cpumond_entry_t *cpumond_create(char *path){
+    cpumond_entry_t *cpumond_entry;
 
     assert(path);
 
-    cum_entry = calloc(1, sizeof(cum_entry_t));
-    if (!cum_entry){
+    cpumond_entry = calloc(1, sizeof(cpumond_entry_t));
+    if (!cpumond_entry){
         perror("calloc");
         goto err;
     }
 
-    cum_entry->fd = shm_open(path, O_RDWR|O_CREAT|O_EXCL,
+    cpumond_entry->fd = shm_open(path, O_RDWR|O_CREAT|O_EXCL,
                              S_IRUSR|S_IRGRP|S_IROTH);
-    if (cum_entry->fd == -1){
+    if (cpumond_entry->fd == -1){
         perror("shm_open");
         goto err;
     }
 
-    cum_entry->path = strdup(path);
-    if (!cum_entry->path){
+    cpumond_entry->path = strdup(path);
+    if (!cpumond_entry->path){
         perror("strcpy");
         goto err;
     }
 
-    if (ftruncate(cum_entry->fd, sizeof(cum_t)) == -1){
+    if (ftruncate(cpumond_entry->fd, sizeof(cpumond_t)) == -1){
         perror("ftruncate");
         goto err;
     }
 
-    cum_entry->mm = mmap(NULL, sizeof(cum_t), PROT_READ | PROT_WRITE,
-                         MAP_SHARED, cum_entry->fd, 0);
-    if (cum_entry->mm == MAP_FAILED){
+    cpumond_entry->mm = mmap(NULL, sizeof(cpumond_t), PROT_READ | PROT_WRITE,
+                         MAP_SHARED, cpumond_entry->fd, 0);
+    if (cpumond_entry->mm == MAP_FAILED){
         perror("mmap");
         goto err;
     }
 
-    return cum_entry;
+    return cpumond_entry;
 
 err:
-    if (cum_entry)
-        cum_destroy(cum_entry);
+    if (cpumond_entry)
+        cpumond_destroy(cpumond_entry);
 
     return NULL;
 }
@@ -123,7 +123,7 @@ out:
     return err;
 }
 
-int cum_loop(cum_entry_t *cum_entry){
+int cpumond_loop(cpumond_entry_t *cpumond_entry){
     long long      idle1  = 0, idle2;
     long long      total1 = 0, total2;
     int            statfd = -1;
@@ -140,15 +140,15 @@ int cum_loop(cum_entry_t *cum_entry){
         if (statread(statfd, &total2, &idle2) != 0)
             goto out;
 
-        cum_entry->mm->curr = 100.0 *
+        cpumond_entry->mm->curr = 100.0 *
             ((total2-total1)-(idle2-idle1))/(total2-total1);
 
-        cum_entry->mm->idle = 100 - cum_entry->mm->curr;
+        cpumond_entry->mm->idle = 100 - cpumond_entry->mm->curr;
 
 #ifdef DEBUG
         printf("total2: %lld, total1: %lld, idle2: %lld, idle1: %lld, " \
-               "cum_entry->mm->idle: %f\n", total2, total1, idle2, idle1,
-                cum_entry->mm->idle);
+               "cpumond_entry->mm->idle: %f\n", total2, total1, idle2, idle1,
+                cpumond_entry->mm->idle);
 #endif
 
         total1 = total2;
@@ -157,7 +157,7 @@ int cum_loop(cum_entry_t *cum_entry){
         sleep(1);
     }
 
-    memset(cum_entry->mm, 0, sizeof(*(cum_entry->mm)));
+    memset(cpumond_entry->mm, 0, sizeof(*(cpumond_entry->mm)));
 
 out:
     if (statfd != -1)
@@ -166,24 +166,24 @@ out:
 }
 
 int main(int argc, char **argv){
-    cum_entry_t *cum_entry;
+    cpumond_entry_t *cpumond_entry;
     int err = EXIT_SUCCESS;
 
     signal(SIGINT, sighandler);
 
-    cum_entry = cum_create(CUM_PATH);
-    if (!cum_entry){
+    cpumond_entry = cpumond_create(CUM_PATH);
+    if (!cpumond_entry){
         err = EXIT_FAILURE;
         goto out;
     }
 
     run = 1;
-    if (cum_loop(cum_entry) != 0)
+    if (cpumond_loop(cpumond_entry) != 0)
         err = EXIT_FAILURE;
 
 out:
-    if (cum_entry)
-        cum_destroy(cum_entry);
+    if (cpumond_entry)
+        cpumond_destroy(cpumond_entry);
 
     return err;
 }
