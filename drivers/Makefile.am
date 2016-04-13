@@ -23,6 +23,7 @@ td_util_LDADD = libtapdisk.la
 noinst_LTLIBRARIES = libtapdisk.la
 
 libtapdisk_la_SOURCES  = tapdisk.h
+libtapdisk_la_SOURCES += timeout-math.h
 libtapdisk_la_SOURCES += scheduler.c
 libtapdisk_la_SOURCES += scheduler.h
 libtapdisk_la_SOURCES += tapdisk-control.c
@@ -76,6 +77,7 @@ libtapdisk_la_SOURCES += tapdisk-fdreceiver.c
 libtapdisk_la_SOURCES += tapdisk-fdreceiver.h
 libtapdisk_la_SOURCES += md5.c
 libtapdisk_la_SOURCES += md5.h
+libtapdisk_la_SOURCES += ../cpumond/cpumond.h
 
 libtapdisk_la_SOURCES += block-aio.c
 libtapdisk_la_SOURCES += block-aio.h
@@ -103,6 +105,7 @@ libtapdisk_la_LIBADD  = ../vhd/lib/libvhd.la
 libtapdisk_la_LIBADD += ../thin/libtapdiskthin.la
 libtapdisk_la_LIBADD += -laio
 libtapdisk_la_LIBADD += -lxenctrl
+libtapdisk_la_LIBADD += -lrt
 
 logrotatedir = $(sysconfdir)/logrotate.d
 dist_logrotate_DATA = blktap

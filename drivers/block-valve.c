@@ -31,6 +31,7 @@
 #include "tapdisk-driver.h"
 #include "tapdisk-server.h"
 #include "tapdisk-interface.h"
+#include "timeout-math.h"
 #include "util.h"
 
 #include "block-valve.h"
@@ -226,7 +227,7 @@ valve_sock_open(td_valve_t *valve)
 	}
 
 	id = tapdisk_server_register_event(SCHEDULER_POLL_READ_FD,
-					   valve->sock, 0,
+					   valve->sock, TV_ZERO,
 					   __valve_sock_event,
 					   valve);
 	if (id < 0) {
@@ -237,7 +238,7 @@ valve_sock_open(td_valve_t *valve)
 	valve->sock_id = id;
 
 	id = tapdisk_server_register_event(SCHEDULER_POLL_TIMEOUT,
-					   -1, 0,
+					   -1, TV_ZERO,
 					   __valve_sched_event,
 					   valve);
 	if (id < 0) {
@@ -307,7 +308,7 @@ valve_schedule_retry(td_valve_t *valve)
 	BUG_ON(valve->sock_id >= 0);
 
 	id = tapdisk_server_register_event(SCHEDULER_POLL_TIMEOUT,
-					   -1, TD_VALVE_CONNECT_INTERVAL,
+					   -1, TV_SECS(TD_VALVE_CONNECT_INTERVAL),
 					   __valve_retry_timeout,
 					   valve);
 	BUG_ON(id < 0);

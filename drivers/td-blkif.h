@@ -178,6 +178,11 @@ struct td_xenblkif {
 	} barrier;
 
 	event_id_t chkrng_event;
+	event_id_t stoppolling_event;
+
+	bool in_polling;
+	int poll_duration; /* microseconds; 0 means no polling. */
+	int poll_idle_threshold;
 };
 
 #define RING_DEBUG(blkif, fmt, args...)                                     \
@@ -202,14 +207,16 @@ struct td_xenblkif {
  * @param port event channel port of the guest domain to use for ring
  * notifications
  * @param proto protocol (native, x86, or x64)
+ * @param poll_duration polling duration (microseconds; 0 means no polling)
+ * @param poll_idle_threshold CPU threshold above which we permit polling
  * @param pool name of the context
  * @param vbd the VBD
  * @returns 0 on success
  */
 int
 tapdisk_xenblkif_connect(domid_t domid, int devid, const grant_ref_t * grefs,
-        int order, evtchn_port_t port, int proto, const char *pool,
-        td_vbd_t * vbd);
+        int order, evtchn_port_t port, int proto, int poll_duration,
+        int poll_idle_threshold, const char *pool, td_vbd_t * vbd);
 
 /**
  * Disconnects the tapdisk from the shared ring.
@@ -261,6 +268,13 @@ extern inline event_id_t
 tapdisk_xenblkif_chkrng_event_id(const struct td_xenblkif * const blkif);
 
 /**
+ * Returns the event ID associated with stopping polling. This is a private
+ * event.
+ */
+extern inline event_id_t
+tapdisk_xenblkif_stoppolling_event_id(const struct td_xenblkif * const blkif);
+
+/**
  * Updates ring stats.
  */
 int
@@ -286,10 +300,34 @@ int
 tapdisk_xenblkif_reqs_pending(const struct td_xenblkif * const blkif);
 
 /**
+ * Schedules the cessation of polling.
+ */
+void
+tapdisk_xenblkif_sched_stoppolling(const struct td_xenblkif *blkif);
+
+/**
+ * Unschedules the cessation of polling.
+ */
+void
+tapdisk_xenblkif_unsched_stoppolling(const struct td_xenblkif *blkif);
+
+/**
+ * Start polling now.
+ */
+void
+tapdisk_start_polling(struct td_xenblkif *blkif);
+
+/**
  * Schedules a ring check.
  */
 void
 tapdisk_xenblkif_sched_chkrng(const struct td_xenblkif *blkif);
+
+/**
+ * Unschedules the ring check.
+ */
+void
+tapdisk_xenblkif_unsched_chkrng(const struct td_xenblkif *blkif);
 
 /**
  * Tells whether a barrier request can be completed.

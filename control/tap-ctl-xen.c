@@ -38,8 +38,9 @@
 #include "compiler.h"
 
 int
-tap_ctl_connect_xenblkif(const pid_t pid, const domid_t domid, const int devid,
-	   	const grant_ref_t * grefs, const int order, const evtchn_port_t port,
+tap_ctl_connect_xenblkif(const pid_t pid, const domid_t domid, const int devid, int poll_duration,
+		int poll_idle_threshold,
+		const grant_ref_t * grefs, const int order, const evtchn_port_t port,
 		int proto, const char *pool, const int minor)
 {
     tapdisk_message_t message;
@@ -56,6 +57,8 @@ tap_ctl_connect_xenblkif(const pid_t pid, const domid_t domid, const int devid,
     message.u.blkif.order = order;
     message.u.blkif.port = port;
     message.u.blkif.proto = proto;
+    message.u.blkif.poll_duration = poll_duration;
+    message.u.blkif.poll_idle_threshold = poll_idle_threshold;
     if (pool)
         strncpy(message.u.blkif.pool, pool, sizeof(message.u.blkif.pool));
     else

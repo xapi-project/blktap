@@ -33,6 +33,7 @@
 #include "tapdisk-filter.h"
 #include "tapdisk-server.h"
 #include "tapdisk-utils.h"
+#include "timeout-math.h"
 
 #include "libaio-compat.h"
 #include "atomicio.h"
@@ -477,7 +478,7 @@ tapdisk_lio_setup(struct tqueue *queue, int qlen)
 
 	lio->event_id =
 		tapdisk_server_register_event(SCHEDULER_POLL_READ_FD,
-					      lio->event_fd, 0,
+					      lio->event_fd, TV_ZERO,
 					      tapdisk_lio_event,
 					      queue);
 	err = lio->event_id;
