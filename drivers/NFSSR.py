@@ -92,6 +92,10 @@ class NFSSR(FileSR.FileSR):
         if self.dconf.has_key('useUDP') and self.dconf['useUDP'] == 'true':
             self.transport = "udp"
         self.nfsversion = nfs.validate_nfsversion(self.dconf.get('nfsversion'))
+        if 'options' in self.dconf:
+            self.options = self.dconf['options']
+        else:
+            self.options = ''
 
 
     def validate_remotepath(self, scan):
@@ -122,11 +126,12 @@ class NFSSR(FileSR.FileSR):
             if self.dconf.has_key(PROBEVERSION):
                 nfs.soft_mount(
                     mountpoint, self.remoteserver, remotepath, self.transport,
-                    timeout=timeout)
+                    useroptions=self.options, timeout=timeout)
             else:
                 nfs.soft_mount(
                     mountpoint, self.remoteserver, remotepath, self.transport,
-                    timeout=timeout, nfsversion=self.nfsversion)
+                    useroptions=self.options, timeout=timeout,
+                    nfsversion=self.nfsversion)
         except nfs.NfsException, exc:
             raise xs_errors.XenError('NFSMount', opterr=exc.errstr)
 

@@ -250,14 +250,15 @@ class ISOSR(SR.SR):
 
         self.credentials = os.path.join("/tmp", util.gen_uuid())
         if self.dconf.has_key('type'):
+            # Creation via XC
             if self.dconf['type']=='cifs':
                 # CIFS specific stuff
                 # Check for username and password
                 mountcmd=["mount.cifs", location, self.mountpoint]
                 self.appendCIFSMountOptions(mountcmd)
         else:
-            # Not-so-legacy mode:
-            if self.dconf.has_key('options'):
+            # Creation via command line
+            if 'options' in self.dconf:
                 options = self.dconf['options'].split(' ')
                 options = filter(lambda x: x != "", options)
 

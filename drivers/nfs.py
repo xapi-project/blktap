@@ -85,8 +85,8 @@ def validate_nfsversion(nfsversion):
     return nfsversion
 
 
-def soft_mount(mountpoint, remoteserver, remotepath, transport, timeout=0,
-               nfsversion=DEFAULT_NFSVERSION):
+def soft_mount(mountpoint, remoteserver, remotepath, transport, useroptions='',
+               timeout=0, nfsversion=DEFAULT_NFSVERSION):
     """Mount the remote NFS export at 'mountpoint'.
 
     The 'timeout' param here is in seconds
@@ -111,6 +111,8 @@ def soft_mount(mountpoint, remoteserver, remotepath, transport, timeout=0,
         transport,
         nfsversion)
     options += ',acdirmin=0,acdirmax=0'
+    if useroptions != '':
+        options += ",%s" % useroptions
 
     try:
         util.ioretry(lambda:
