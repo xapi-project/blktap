@@ -560,8 +560,10 @@ __tapdisk_xenblkif_request_cb(struct td_vbd_request * const vreq,
     tapreq = containerof(vreq, struct td_xenblkif_req, vreq);
 
     if (error) {
-        blkif->stats.errors.img++;
-        blkif->vbd_stats.stats->io_errors++;
+        if (likely(!blkif->dead)) {
+            blkif->stats.errors.img++;
+            blkif->vbd_stats.stats->io_errors++;
+        }
     }
 
     tapdisk_xenblkif_complete_request(blkif, tapreq, error, final);
