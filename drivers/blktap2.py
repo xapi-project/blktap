@@ -1002,7 +1002,7 @@ class VDI(object):
         if util.read_caching_is_restricted(self._session):
             self.__o_direct = True
             self.__o_direct_reason = "LICENSE_RESTRICTION"
-        elif not ((self.target.vdi.sr.handles("nfs") or self.target.vdi.sr.handles("ext"))):
+        elif not ((self.target.vdi.sr.handles("nfs") or self.target.vdi.sr.handles("ext") or self.target.vdi.sr.handles("smb"))):
             self.__o_direct = True
             self.__o_direct_reason = "SR_NOT_SUPPORTED"
         elif not (options.get("rdonly") or self.target.vdi.parent):

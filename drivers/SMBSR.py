@@ -145,8 +145,9 @@ class SMBSR(FileSR.FileSR):
     def getMountOptions(self):
         """Creates option string based on parameters provided"""
         options = ['sec=ntlm',
-                'cache=none',
-                'vers=3.0'
+                'cache=loose',
+                'vers=3.0',
+                'actimeo=0'
         ]
 
         if self.dconf.has_key('username') and \
