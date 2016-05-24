@@ -52,7 +52,7 @@ void tapdisk_server_queue_tiocb(struct tiocb *);
 
 void tapdisk_server_check_state(void);
 
-event_id_t tapdisk_server_register_event(char, int, int, event_cb_t, void *);
+event_id_t tapdisk_server_register_event(char, int, struct timeval, event_cb_t, void *);
 void tapdisk_server_unregister_event(event_id_t);
 void tapdisk_server_mask_event(event_id_t, int);
 void tapdisk_server_set_max_timeout(int);
@@ -68,6 +68,8 @@ void tapdisk_server_closelog(void);
 void tapdisk_start_logging(const char *, const char *);
 void tapdisk_stop_logging(void);
 
-int tapdisk_server_event_set_timeout(event_id_t, int timeo);
+int tapdisk_server_event_set_timeout(event_id_t, struct timeval timeo);
+
+float tapdisk_server_system_idle_cpu(void);
 
 #endif

@@ -30,6 +30,7 @@
 #include "tapdisk-server.h"
 #include "td-ctx.h"
 #include "tapdisk-log.h"
+#include "timeout-math.h"
 
 #define ERROR(_f, _a...)           tlog_syslog(TLOG_WARN, "td-ctx: " _f, ##_a)
 
@@ -273,7 +274,7 @@ xenio_blkif_get_requests(struct td_xenblkif * const blkif,
     return n;
 }
 
-void
+int
 tapdisk_xenio_ctx_process_ring(struct td_xenblkif *blkif,
 		               struct td_xenio_ctx *ctx, int final)
 {
@@ -285,7 +286,7 @@ tapdisk_xenio_ctx_process_ring(struct td_xenblkif *blkif,
     start = blkif->n_reqs_free;
 
 	if (unlikely(blkif->barrier.msg))
-		return;
+		return 0;
 
     /*
      * In each iteration, copy as many request descriptors from the shared ring
@@ -337,7 +338,15 @@ tapdisk_xenio_ctx_process_ring(struct td_xenblkif *blkif,
 		 * notification. This notification is the one we should have consumed,
 		 * and can be ignored.
 		 */
-		return;
+		return 0;
+
+    if (blkif->in_polling)
+        /* We found at least one request, so keep polling some more */
+        tapdisk_xenblkif_sched_stoppolling(blkif);
+    else if (blkif->poll_duration)
+        /* We weren't polling, but polling is enabled, so let's start now */
+        tapdisk_start_polling(blkif);
+
     blkif->stats.reqs.in += n_reqs;
 
 	reqs = alloca(sizeof(blkif_request_t*) * n_reqs);
@@ -345,6 +354,8 @@ tapdisk_xenio_ctx_process_ring(struct td_xenblkif *blkif,
 			sizeof(blkif_request_t*) * n_reqs);
 
 	tapdisk_xenblkif_queue_requests(blkif, reqs, n_reqs);
+
+	return n_reqs;
 }
 
 /**
@@ -438,7 +449,7 @@ tapdisk_xenio_ctx_open(const char *pool)
     }
 
     ctx->ring_event = tapdisk_server_register_event(SCHEDULER_POLL_READ_FD,
-        fd, 0, tapdisk_xenio_ctx_ring_event, ctx);
+        fd, TV_ZERO, tapdisk_xenio_ctx_ring_event, ctx);
     if (ctx->ring_event < 0) {
         err = ctx->ring_event;
         ERROR("failed to register event: %s\n", strerror(-err));

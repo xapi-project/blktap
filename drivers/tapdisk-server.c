@@ -39,6 +39,11 @@
 #include "tapdisk-interface.h"
 #include "tapdisk-log.h"
 #include "td-blkif.h"
+#include "timeout-math.h"
+
+#include <sys/mman.h>
+#include <sys/stat.h>
+#include "../cpumond/cpumond.h"
 
 #define DBG(_level, _f, _a...)       tlog_write(_level, _f, ##_a)
 #define ERR(_err, _f, _a...)         tlog_error(_err, _f, ##_a)
@@ -69,6 +74,12 @@ typedef struct tapdisk_server {
 		int                          backoff; /* exponential backoff
 							 factor */
 	} mem_state;
+
+	/* CPU Utilisation Monitor client state */
+	struct {
+		int                         fd; /* shm fd */
+		cpumond_t                  *cpumon; /* mmap pointer */
+	} cpumond_state;
 
 	event_id_t                   tlog_reopen_evid;
 } tapdisk_server_t;
@@ -161,7 +172,7 @@ tapdisk_server_check_state(void)
 
 event_id_t
 tapdisk_server_register_event(char mode, int fd,
-			      int timeout, event_cb_t cb, void *data)
+			      struct timeval timeout, event_cb_t cb, void *data)
 {
 	return scheduler_register_event(&server.scheduler,
 					mode, fd, timeout, cb, data);
@@ -182,7 +193,7 @@ tapdisk_server_mask_event(event_id_t event, int masked)
 void
 tapdisk_server_set_max_timeout(int seconds)
 {
-	scheduler_set_max_timeout(&server.scheduler, seconds);
+	scheduler_set_max_timeout(&server.scheduler, TV_SECS(seconds));
 }
 
 static void
@@ -364,6 +375,7 @@ static void
 tapdisk_server_signal_handler(int signal)
 {
 	td_vbd_t *vbd, *tmp;
+	struct td_xenblkif *blkif;
 	static int xfsz_error_sent = 0;
 
 	switch (signal) {
@@ -387,8 +399,15 @@ tapdisk_server_signal_handler(int signal)
 		tapdisk_server_debug();
 		break;
 
+	case SIGUSR2:
+		DBG(TLOG_INFO, "triggering polling on signal %d\n", signal);
+		tapdisk_server_for_each_vbd(vbd, tmp)
+			list_for_each_entry(blkif, &vbd->rings, entry)
+				tapdisk_start_polling(blkif);
+		break;
+
 	case SIGHUP:
-		tapdisk_server_event_set_timeout(server.tlog_reopen_evid, 0);
+		tapdisk_server_event_set_timeout(server.tlog_reopen_evid, TV_ZERO);
 		break;
 	}
 }
@@ -398,7 +417,7 @@ static void
 tlog_reopen_cb(event_id_t id, char mode __attribute__((unused)), void *private)
 {
 	tlog_reopen();
-	tapdisk_server_event_set_timeout(id, (time_t)-1);
+	tapdisk_server_event_set_timeout(id, TV_INF);
 }
 
 
@@ -533,7 +552,7 @@ static void lowmem_event(event_id_t id, char mode, void *data)
 	server.mem_state.mem_evid =
 		tapdisk_server_register_event(SCHEDULER_POLL_TIMEOUT,
                                       -1,
-                                      backoff,
+                                      TV_SECS(backoff),
                                       lowmem_timeout,
                                       NULL);
 	if (server.mem_state.mem_evid < 0) {
@@ -590,7 +609,7 @@ tapdisk_server_reset_lowmem_mode(void)
 	server.mem_state.mem_evid =
 		tapdisk_server_register_event(SCHEDULER_POLL_READ_FD,
                                       server.mem_state.efd,
-                                      0,
+                                      TV_ZERO,
                                       lowmem_event,
                                       NULL);
 	if (server.mem_state.mem_evid < 0)
@@ -601,7 +620,7 @@ tapdisk_server_reset_lowmem_mode(void)
 		server.mem_state.reset_evid =
 			tapdisk_server_register_event(SCHEDULER_POLL_TIMEOUT,
 					-1,
-					RESET_BACKOFF,
+					TV_SECS(RESET_BACKOFF),
 					reset_timeout,
 					NULL);
 		if (server.mem_state.reset_evid < 0)
@@ -631,6 +650,48 @@ tapdisk_server_initialize_lowmem_mode(void)
 	return tapdisk_server_reset_lowmem_mode();
 }
 
+static void cpumond_state_init(void)
+{
+	server.cpumond_state.fd = -1;
+	server.cpumond_state.cpumon = (cpumond_t *) 0;
+}
+
+static void cpumond_cleanup(void)
+{
+	if (server.cpumond_state.cpumon)
+		munmap(server.cpumond_state.cpumon, sizeof(cpumond_t));
+	if (server.cpumond_state.fd >= 0)
+		close(server.cpumond_state.fd);
+
+	cpumond_state_init();
+}
+
+float
+tapdisk_server_system_idle_cpu(void)
+{
+	if (server.cpumond_state.cpumon > 0)
+		return server.cpumond_state.cpumon->idle;
+	else
+		return 0.0;
+}
+
+/* Create the CPU Utilisation Monitor client. */
+static int
+tapdisk_server_initialize_cpumond_client(void)
+{
+	server.cpumond_state.fd = shm_open(CPUMOND_PATH, O_RDONLY, 0);
+	if (server.cpumond_state.fd == -1)
+		return -errno;
+
+	server.cpumond_state.cpumon = mmap(NULL, sizeof(cpumond_t), PROT_READ, MAP_PRIVATE, server.cpumond_state.fd, 0);
+	if (server.cpumond_state.cpumon == (cpumond_t *) -1) {
+		server.cpumond_state.cpumon = 0;
+		return -errno;
+	}
+
+	return 0;
+}
+
 int
 tapdisk_server_init(void)
 {
@@ -651,8 +712,17 @@ tapdisk_server_init(void)
 		EPRINTF("Failed to initialize low memory handler: %s\n",
 		        strerror(-ret));
 		lowmem_cleanup();
+		goto out;
 	}
 
+	if ((ret = tapdisk_server_initialize_cpumond_client()) < 0) {
+		EPRINTF("Failed to connect to cpumond: %s\n",
+			strerror(-ret));
+		cpumond_cleanup();
+		goto out;
+	}
+
+out:
 	server.tlog_reopen_evid = -1;
 
 	return 0;
@@ -711,10 +781,11 @@ tapdisk_server_run()
 	signal(SIGBUS, tapdisk_server_signal_handler);
 	signal(SIGINT, tapdisk_server_signal_handler);
 	signal(SIGUSR1, tapdisk_server_signal_handler);
+	signal(SIGUSR2, tapdisk_server_signal_handler);
 	signal(SIGHUP, tapdisk_server_signal_handler);
 	signal(SIGXFSZ, tapdisk_server_signal_handler);
 
-	err = tapdisk_server_register_event(SCHEDULER_POLL_TIMEOUT, -1,	(time_t)-1,
+	err = tapdisk_server_register_event(SCHEDULER_POLL_TIMEOUT, -1,	TV_INF,
 			tlog_reopen_cb,	NULL);
 	if (unlikely(err < 0)) {
 		EPRINTF("failed to register reopen log event: %s\n", strerror(-err));
@@ -732,7 +803,7 @@ out:
 }
 
 int
-tapdisk_server_event_set_timeout(event_id_t event_id, int timeo) {
+tapdisk_server_event_set_timeout(event_id_t event_id, struct timeval timeo) {
 	return scheduler_event_set_timeout(&server.scheduler, event_id, timeo);
 }
 
