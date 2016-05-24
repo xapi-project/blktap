@@ -1126,7 +1126,7 @@ tapdisk_vbd_produce_rrds(td_vbd_t *vbd) {
 			"\"description\": \"Number of I/O errors\",\n");
 	err += tapdisk_snprintf(buf, &off, &size, 3, "\"owner\": \"host\",\n");
 	err += tapdisk_snprintf(buf, &off, &size, 3,  "\"type\": "
-			"\"absolute\",\n");
+			"\"gauge\",\n");
 	err += tapdisk_snprintf(buf, &off, &size, 3, "\"units\": \"units\",\n");
 	err += tapdisk_snprintf(buf, &off, &size, 3, "\"min\": \"0.00\",\n");
 	err += tapdisk_snprintf(buf, &off, &size, 3, "\"max\": \"inf\",\n");
