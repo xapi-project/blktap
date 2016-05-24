@@ -1,18 +1,46 @@
+Version 3.3.0 - 24th May 2016
+================================
+  CA-203150: make systemd service file non-executable
+  CA-183670: LVMoISCSI SR fails to come up after a failure.
+  CP-13750: Use microseconds as units for polling duration
+  CP-13260: Continue polling if requests are found on the final ring check
+  CP-13510: Only poll if the CPU is more idle than a threshold specified via xenstore
+  CP-13510: Only poll if CPUs are largely idle
+  CP-13510: Add cpumond to the repository
+  CP-12971: Make polling duration configurable through xenstore
+  CP-12971: Allow variable per-VBD polling duration
+  CP-12971: Make SIGUSR2 trigger polling immediately
+  CP-12971: Add infrastructure to perform blkif ring polling
+  CP-12971: Refactor: extract function tapdisk_xenblkif_unsched_chkrng
+  CP-12972: scheduler: use microsecond granularity
+  CP-12972: scheduler: refactor timeout arithmetic to use macros
+  CA-210989: Update read sectors only for a read operation
+  CA-207760: Skip updating stats if ring is dead
+  CA-204896: destroy stats for a ring marked as dead
+  CA-204896: do not update io_ring stats for dead rings
+  CA-205513: Removing bad fds from the fdset passed to select call.
+  CA-186157: Extract tapdisk stats to separate header
+  CP-15135: Converted tapback init script to systemd unit
+  Fix build against upstream Xen
+  CA-148679: add CRC32 header to ring stats
+  CA-186157: Adding extra fields to vbd3 stats structure.
+  CA-183298: Tapdisk should move I/O errors to its stats struct
+
 Version 3.2.0 - 24th Sep 2015
 ================================
-Added code to ask lvm blocks on demand (xlvhd thin-provisioning)
+  Added code to ask lvm blocks on demand (xlvhd thin-provisioning)
 
 Version 3.1.1 - 24th Sep 2015
 ================================
-CA-148438: Expose mem_mode flag in statistics file
-CA-161450: Stats between tapdisk and NBD
-CA-161451: Stats between tapdisk and blktap
-CA-165117: Stats between tapdisk and blkfront
-CA-161449: Stats between tapdisk and vdi traffic
-CA-170614: Harden the nbdserver code in tapdisk3
-CP-12399: Prevent tapback from plugging non-blktap2 devices
-CA-169052: Work arounds for NULL uuid in VHD header
-CA-153279: don't complain if there's no tapdisk to signal
+  CA-148438: Expose mem_mode flag in statistics file
+  CA-161450: Stats between tapdisk and NBD
+  CA-161451: Stats between tapdisk and blktap
+  CA-165117: Stats between tapdisk and blkfront
+  CA-161449: Stats between tapdisk and vdi traffic
+  CA-170614: Harden the nbdserver code in tapdisk3
+  CP-12399: Prevent tapback from plugging non-blktap2 devices
+  CA-169052: Work arounds for NULL uuid in VHD header
+  CA-153279: don't complain if there's no tapdisk to signal
 
 Version 3.1.0 - 23th Sep 2015
 ================================
