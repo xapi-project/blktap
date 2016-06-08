@@ -18,7 +18,7 @@ class FakeNFSSR(NFSSR.NFSSR):
 class TestNFSSR(unittest.TestCase):
 
     def create_nfssr(self, server='aServer', serverpath='/aServerpath',
-                     sr_uuid='asr_uuid', nfsversion=None):
+                     sr_uuid='asr_uuid', nfsversion=None, useroptions=''):
         srcmd = mock.Mock()
         srcmd.dconf = {
             'server': server,
@@ -26,6 +26,8 @@ class TestNFSSR(unittest.TestCase):
         }
         if nfsversion:
             srcmd.dconf.update({'nfsversion': nfsversion})
+        if useroptions:
+            srcmd.dconf.update({'options': useroptions})
         srcmd.params = {
             'command': 'some_command',
             'device_config': {}
@@ -72,7 +74,7 @@ class TestNFSSR(unittest.TestCase):
                     soft_mount, Lock, makedirs):
         validate_nfsversion.return_value = "aNfsversionChanged"
         nfssr = self.create_nfssr(server='aServer', serverpath='/aServerpath',
-                                  sr_uuid='UUID')
+                                  sr_uuid='UUID', useroptions='options')
 
         nfssr.attach(None)
 
@@ -82,5 +84,6 @@ class TestNFSSR(unittest.TestCase):
                                            'aServer',
                                            '/aServerpath/UUID',
                                            'tcp',
+                                           useroptions='options',
                                            timeout=0,
                                            nfsversion='aNfsversionChanged')
