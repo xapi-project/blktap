@@ -88,6 +88,8 @@ libtapdisk_la_SOURCES += block-vindex.c
 libtapdisk_la_SOURCES += block-lcache.c
 libtapdisk_la_SOURCES += block-llcache.c
 libtapdisk_la_SOURCES += block-nbd.c
+libtapdisk_la_SOURCES += block-ntnx.c
+libtapdisk_la_SOURCES += block-ntnx.h
 
 # shared ring
 libtapdisk_la_SOURCES += td-blkif.c
@@ -104,6 +106,7 @@ libtapdisk_la_LIBADD += -laio
 libtapdisk_la_LIBADD += -lxenctrl
 libtapdisk_la_LIBADD += -lz
 libtapdisk_la_LIBADD += -lrt
+libtapdisk_la_LIBADD += -ldl
 
 logrotatedir = $(sysconfdir)/logrotate.d
 dist_logrotate_DATA = blktap
