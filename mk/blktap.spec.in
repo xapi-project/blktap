@@ -2,7 +2,7 @@ Summary: blktap user space utilities
 Name: @PACKAGE_NAME@
 Version: @PACKAGE_VERSION@
 Release: @BLKTAP_RELEASE@
-License: GPLv2 or BSD
+License: BSD
 Group: System/Hypervisor
 Source0: %{name}-%{version}.tar.bz2
 
