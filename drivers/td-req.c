@@ -418,7 +418,7 @@ tapdisk_xenblkif_complete_request(struct td_xenblkif * const blkif,
     long long *max = NULL, *sum = NULL, *cnt = NULL;
 	static int depth = 0;
 	bool processing_barrier_message;
-        unsigned long long *ticks = NULL;
+    uint64_t *ticks = NULL;
 
     ASSERT(blkif);
     ASSERT(tapreq);

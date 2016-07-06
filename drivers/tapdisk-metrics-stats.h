@@ -25,15 +25,16 @@
 
 struct stats {
     uint32_t version;
-    unsigned long long oo_reqs;
-    unsigned long long read_reqs_submitted;
-    unsigned long long read_reqs_completed;
-    unsigned long long read_sectors;
-    unsigned long long read_total_ticks;
-    unsigned long long write_reqs_submitted;
-    unsigned long long write_reqs_completed;
-    unsigned long long write_sectors;
-    unsigned long long write_total_ticks;
+    uint32_t __pad;
+    uint64_t oo_reqs;
+    uint64_t read_reqs_submitted;
+    uint64_t read_reqs_completed;
+    uint64_t read_sectors;
+    uint64_t read_total_ticks;
+    uint64_t write_reqs_submitted;
+    uint64_t write_reqs_completed;
+    uint64_t write_sectors;
+    uint64_t write_total_ticks;
     uint64_t io_errors;
     uint64_t flags;
 };
