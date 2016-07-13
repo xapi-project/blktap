@@ -174,15 +174,15 @@ __llpcache_write_cb(td_vbd_request_t *vreq, int error,
 	td_llpcache_req_t *req;
 	int mask;
 
-	lvr = containerof(vreq, struct llpcache_vreq, vreq);
-	req = containerof(lvr, td_llpcache_req_t, lvr[lvr->target]);
+	lvr = container_of(vreq, struct llpcache_vreq, vreq);
+	req = container_of(lvr, td_llpcache_req_t, lvr[lvr->target]);
 
 	mask = 1U << lvr->target;
 	BUG_ON(!(req->pending & mask))
 
 	if (lvr->target == LOCAL && error == -ENOSPC) {
 		td_image_t *shared =
-			containerof(req->treq.image->next.next,
+			container_of(req->treq.image->next.next,
 				    td_image_t, next);
 		ll_log_switch(DISK_TYPE_LLPCACHE, error,
 			      s->local, shared);
@@ -286,7 +286,7 @@ llpcache_forward_write(td_llpcache_t *s, td_request_t treq)
 	const td_vbd_request_t *vreq = treq.vreq;
 	struct llpcache_vreq *lvr;
 
-	lvr = containerof(vreq, struct llpcache_vreq, vreq);
+	lvr = container_of(vreq, struct llpcache_vreq, vreq);
 
 	switch (lvr->target) {
 	case SHARED:

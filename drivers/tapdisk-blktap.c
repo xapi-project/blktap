@@ -262,7 +262,7 @@ static void
 __tapdisk_blktap_request_cb(td_vbd_request_t *vreq, int error,
 			    void *token, int final)
 {
-	td_blktap_req_t *req = containerof(vreq, td_blktap_req_t, vreq);
+	td_blktap_req_t *req = container_of(vreq, td_blktap_req_t, vreq);
 	td_blktap_t *tap = token;
 
 	tapdisk_blktap_complete_request(tap, req, error, final);
