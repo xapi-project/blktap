@@ -254,7 +254,7 @@ static void
 __lcache_write_cb(td_vbd_request_t *vreq, int error,
 		  void *token, int final)
 {
-	td_lcache_req_t *req = containerof(vreq, td_lcache_req_t, vreq);
+	td_lcache_req_t *req = container_of(vreq, td_lcache_req_t, vreq);
 	td_lcache_t *cache = token;
 
 	if (error == -ENOSPC)

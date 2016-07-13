@@ -134,7 +134,7 @@ tapback_backend_destroy_device(vbd_t * const device)
 static inline int
 find_tapdisk(const int minor, tap_list_t *tap)
 {
-    LIST_HEAD(list);
+    struct list_head list = LIST_HEAD_INIT(list);
     tap_list_t *_tap;
     int err;
 

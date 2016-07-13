@@ -59,7 +59,7 @@ const char tapback_name[] = "tapback";
 unsigned log_level;
 int tapdev_major;
 
-LIST_HEAD(backends);
+struct list_head backends = LIST_HEAD_INIT(backends);
 
 char *xenbus_strstate(const XenbusState xbs)
 {

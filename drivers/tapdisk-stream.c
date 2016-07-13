@@ -265,7 +265,7 @@ static void
 __tapdisk_stream_request_cb(td_vbd_request_t *vreq, int error,
 			    void *token, int final)
 {
-	td_stream_req_t *req = containerof(vreq, td_stream_req_t, vreq);
+	td_stream_req_t *req = container_of(vreq, td_stream_req_t, vreq);
 	td_stream_t *s = token;
 
 	tapdisk_stream_complete_request(s, req, error, final);

@@ -281,7 +281,7 @@ __tapdisk_nbdserver_request_cb(td_vbd_request_t *vreq, int error,
 {
 	td_nbdserver_client_t *client = token;
 	td_nbdserver_t *server = client->server;
-	td_nbdserver_req_t *req = containerof(vreq, td_nbdserver_req_t, vreq);
+	td_nbdserver_req_t *req = container_of(vreq, td_nbdserver_req_t, vreq);
 	unsigned long long interval;
 	struct timeval now;
 	struct nbd_reply reply;

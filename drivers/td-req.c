@@ -569,7 +569,7 @@ __tapdisk_xenblkif_request_cb(struct td_vbd_request * const vreq,
     ASSERT(vreq);
     ASSERT(blkif);
 
-    tapreq = containerof(vreq, struct td_xenblkif_req, vreq);
+    tapreq = container_of(vreq, struct td_xenblkif_req, vreq);
 
     if (error) {
         if (likely(!blkif->dead)) {

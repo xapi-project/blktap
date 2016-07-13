@@ -45,7 +45,7 @@
 
 #define ERROR(_f, _a...)           tlog_syslog(TLOG_WARN, "td-ctx: " _f, ##_a)
 
-LIST_HEAD(_td_xenio_ctxs);
+struct list_head _td_xenio_ctxs = LIST_HEAD_INIT(_td_xenio_ctxs);
 
 /**
  * TODO releases a pool?
