@@ -66,16 +66,11 @@ mkdir -p %{buildroot}%{_localstatedir}/log/blktap
 %{_sbindir}/td-rated
 %{_sbindir}/part-util
 %{_sbindir}/vhdpartx
-%{_sbindir}/thinprovd
-%{_sbindir}/thin-cli
-%{_sbindir}/xlvhd-resize
-%{_sbindir}/xlvhd-refresh
 %{_libexecdir}/tapdisk
 %{_sysconfdir}/udev/rules.d/blktap.rules
 %{_sysconfdir}/logrotate.d/blktap
 %{_sysconfdir}/xensource/bugtool/tapdisk-logs.xml
 %{_sysconfdir}/xensource/bugtool/tapdisk-logs/description.xml
-%{_sysconfdir}/rc.d/init.d/thinprovd
 %{_localstatedir}/log/blktap
 %{_unitdir}/tapback.service
 %{_unitdir}/cpumond.service
@@ -90,7 +85,6 @@ mkdir -p %{buildroot}%{_localstatedir}/log/blktap
 
 %post
 %systemd_post tapback.service
-[ ! -x /sbin/chkconfig ] || chkconfig --add thinprovd
 %systemd_post cpumond.service
 
 %preun

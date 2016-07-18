@@ -1,3 +1,0 @@
-#!/bin/bash
-logger -t xlvhd-resize ${1} ${2}
-xenvm lvextend -L ${1} ${2} --live

@@ -633,13 +633,6 @@ fail:
 	return err;
 }
 
-int
-tapdisk_vbd_set_quantum(td_vbd_t *vbd)
-{
-	return td_set_quantum(tapdisk_vbd_first_image(vbd),
-			      vbd->xlvhd_alloc_quantum);
-}
-
 void
 tapdisk_vbd_detach(td_vbd_t *vbd)
 {
@@ -943,10 +936,6 @@ tapdisk_vbd_resume(td_vbd_t *vbd, const char *name)
 
 	for (i = 0; i < TD_VBD_EIO_RETRIES; i++) {
 		err = tapdisk_vbd_open_vdi(vbd, name, vbd->flags | TD_OPEN_STRICT, -1);
-		if (vbd->flags & TD_OPEN_THIN) {
-			/* Set allocation Quantum only to the leaf */
-			tapdisk_vbd_set_quantum(vbd);
-		}
 		if (!err)
 			break;
 
