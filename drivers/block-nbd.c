@@ -48,8 +48,8 @@
 #include "tapdisk-interface.h"
 #include "tapdisk-utils.h"
 #include "tapdisk-fdreceiver.h"
-#include "tapdisk-nbd.h"
 #include "timeout-math.h"
+#include "tapdisk-nbdserver.h"
 
 #ifdef HAVE_CONFIG_H
 #include "config.h"
@@ -324,12 +324,12 @@ tdnbd_writer_cb(event_id_t eb, char mode, void *data)
 		if (tdnbd_write_some(prv->socket, &pos->header) > 0)
 			return;
 
-		if (ntohl(pos->nreq.type) == NBD_CMD_WRITE) {
+		if (ntohl(pos->nreq.type) == TAPDISK_NBD_CMD_WRITE) {
 			if (tdnbd_write_some(prv->socket, &pos->body) > 0)
 				return;
 		}
 
-		if (ntohl(pos->nreq.type) == NBD_CMD_DISC) {
+		if (ntohl(pos->nreq.type) == TAPDISK_NBD_CMD_DISC) {
 			INFO("sent close request");
 			/*
 			 * We don't expect a response from a DISC, so move the
@@ -402,7 +402,7 @@ tdnbd_queue_request(struct tdnbd_data *prv, int type, uint64_t offset,
 	snprintf(req->nreq.handle, 8, "td%05x", id % 0xffff);
 
 	/* No response from a disconnect, so no need for a timeout */
-	if (type != NBD_CMD_DISC) { 
+	if (type != TAPDISK_NBD_CMD_DISC) { 
 		req->timeout_event = tapdisk_server_register_event(
 				SCHEDULER_POLL_TIMEOUT, 
 				-1, /* dummy */
@@ -485,7 +485,7 @@ tdnbd_reader_cb(event_id_t eb, char mode, void *data)
 	}
 
 	switch(ntohl(prv->curr_reply_req->nreq.type)) {
-	case NBD_CMD_READ:
+	case TAPDISK_NBD_CMD_READ:
 		rc = tdnbd_read_some(prv->socket,
 				&prv->curr_reply_req->body);
 
@@ -501,7 +501,7 @@ tdnbd_reader_cb(event_id_t eb, char mode, void *data)
 		td_complete_request(prv->curr_reply_req->treq, 0);
 
 		break;
-	case NBD_CMD_WRITE:
+	case TAPDISK_NBD_CMD_WRITE:
 		td_complete_request(prv->curr_reply_req->treq, 0);
 
 		break;
@@ -854,7 +854,7 @@ tdnbd_close(td_driver_t* driver)
 	/* Send a close packet */
 
 	INFO("Sending disconnect request");
-	tdnbd_queue_request(prv, NBD_CMD_DISC, 0, 0, 0, treq, 0);
+	tdnbd_queue_request(prv, TAPDISK_NBD_CMD_DISC, 0, 0, 0, treq, 0);
 
 	INFO("Switching socket to blocking IO mode");
 	fcntl(prv->socket, F_SETFL, fcntl(prv->socket, F_GETFL) & ~O_NONBLOCK);
@@ -891,7 +891,7 @@ tdnbd_queue_read(td_driver_t* driver, td_request_t treq)
 	if (prv->flags & TD_OPEN_SECONDARY)
 		td_forward_request(treq);
 	else
-		tdnbd_queue_request(prv, NBD_CMD_READ, offset, treq.buf, size,
+		tdnbd_queue_request(prv, TAPDISK_NBD_CMD_READ, offset, treq.buf, size,
 				treq, 0);
 }
 
@@ -902,7 +902,7 @@ tdnbd_queue_write(td_driver_t* driver, td_request_t treq)
 	int      size    = treq.secs * driver->info.sector_size;
 	uint64_t offset  = treq.sec * (uint64_t)driver->info.sector_size;
 
-	tdnbd_queue_request(prv, NBD_CMD_WRITE,
+	tdnbd_queue_request(prv, TAPDISK_NBD_CMD_WRITE,
 			offset, treq.buf, size, treq, 0);
 }
 

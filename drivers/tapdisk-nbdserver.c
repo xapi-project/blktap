@@ -51,7 +51,6 @@
 #include "tapdisk-nbdserver.h"
 #include "tapdisk-fdreceiver.h"
 
-#include "tapdisk-nbd.h"
 #include "timeout-math.h"
 
 #ifdef HAVE_CONFIG_H
@@ -468,11 +467,11 @@ tapdisk_nbdserver_clientcb(event_id_t id, char mode, void *data)
 	vreq->vbd = server->vbd;
 
 	switch(request.type) {
-	case NBD_CMD_READ:
+	case TAPDISK_NBD_CMD_READ:
 		vreq->op = TD_OP_READ;
                 server->nbd_stats.stats->read_reqs_submitted++;
 		break;
-	case NBD_CMD_WRITE:
+	case TAPDISK_NBD_CMD_WRITE:
 		vreq->op = TD_OP_WRITE;
 		server->nbd_stats.stats->write_reqs_submitted++;
 		n = 0;
@@ -488,7 +487,7 @@ tapdisk_nbdserver_clientcb(event_id_t id, char mode, void *data)
 		};
 
 		break;
-	case NBD_CMD_DISC:
+	case TAPDISK_NBD_CMD_DISC:
 		INFO("Received close message. Sending reconnect "
 				"header");
 		tapdisk_nbdserver_free_client(client);

@@ -38,9 +38,38 @@ typedef struct td_nbdserver_client td_nbdserver_client_t;
 #include "blktap2.h"
 #include "tapdisk-vbd.h"
 #include "list.h"
-#include "tapdisk-nbd.h"
 #include <sys/un.h>
 #include <stdbool.h>
+
+#define NBD_NEGOTIATION_MAGIC 0x00420281861253LL
+#define NBD_REQUEST_MAGIC 0x25609513
+#define NBD_REPLY_MAGIC 0x67446698
+
+enum {
+	TAPDISK_NBD_CMD_READ = 0,
+	TAPDISK_NBD_CMD_WRITE = 1,
+	TAPDISK_NBD_CMD_DISC = 2
+};
+
+struct nbd_request {
+	uint32_t magic;
+	uint32_t type;	
+	char handle[8];
+	uint64_t from;
+	uint32_t len;
+} __attribute__ ((packed));
+
+struct nbd_reply {
+	uint32_t magic;
+	uint32_t error;		
+	char handle[8];		
+};
+
+
+#define TAPDISK_NBDSERVER_MAX_PATH_LEN 256
+#define TAPDISK_NBDCLIENT_LISTEN_SOCK_PATH BLKTAP2_CONTROL_DIR"/nbdclient"
+#define TAPDISK_NBDSERVER_LISTEN_SOCK_PATH BLKTAP2_CONTROL_DIR"/nbdserver"
+#define TAPDISK_NBDSERVER_SOCK_PATH BLKTAP2_CONTROL_DIR"/nbd"
 
 struct td_nbdserver {
 	td_vbd_t               *vbd;
