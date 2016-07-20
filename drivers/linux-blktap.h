@@ -62,8 +62,8 @@ struct blktap_device_info {
  */
 
 #ifdef __KERNEL__
-#include <asm/page.h>
-#define BLKTAP_PAGE_SIZE PAGE_SIZE
+#include <unistd.h>
+#define BLKTAP_PAGE_SIZE sysconf(_SC_PAGESIZE)
 
 #include <linux/log2.h>
 #define BLKTAP_RD32(_n) rounddown_pow_of_two(_n)
