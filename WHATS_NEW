@@ -1,3 +1,15 @@
+Version 1.14.0 -  8th Jun 2016
+==============================
+  CA-212813: Fix NFS attach unit test
+  CA-207781: NFS SR probe should use one of the supported versions
+  CA-207783: Honour additional options passed to NFS SR creation
+  CA-169953: Enable read caching on SMB SRs
+  CP-11979: Added FCoE driver and fixed sr-probe.
+  CP-15135: Converted updatempppathd init script to systemd unit file
+  CP-15900: Handle new Tools ISO name
+  CA-196244: Username/password made optional for SMBSR
+  CA-195426: Add 'guest' to CIFS mount options to avoid password prompt
+
 Version 1.13.0 -  6th Apr 2016
 ==============================
   [CA-183960][CA-196882]: GC in batch mode and immediate deletes in SRs
