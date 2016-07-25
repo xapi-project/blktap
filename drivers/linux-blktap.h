@@ -65,7 +65,11 @@ struct blktap_device_info {
 #include <unistd.h>
 #define BLKTAP_PAGE_SIZE sysconf(_SC_PAGESIZE)
 
-#include <linux/log2.h>
+static inline unsigned long
+rounddown_pow_of_two(unsigned long x)
+{
+        return (1UL << (flsl(x) - 1));
+}
 #define BLKTAP_RD32(_n) rounddown_pow_of_two(_n)
 #endif
 
