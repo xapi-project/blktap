@@ -2,7 +2,7 @@
 SM_DRIVERS := File
 SM_DRIVERS += NFS
 SM_DRIVERS += EXT
-SM_DRIVERS += ISCSI
+SM_DRIVERS += RawISCSI
 SM_DRIVERS += Dummy
 SM_DRIVERS += udev
 SM_DRIVERS += ISO
@@ -21,6 +21,7 @@ SM_DRIVERS += LVHDoFCoE
 SM_LIBS := SR
 SM_LIBS += SRCommand
 SM_LIBS += VDI
+SM_LIBS += BaseISCSI
 SM_LIBS += cleanup
 SM_LIBS += lvutil
 SM_LIBS += lvmcache
@@ -169,6 +170,7 @@ install: precheck
 	done
 	rm $(SM_STAGING)$(SM_DEST)/SHMSR
 	cd $(SM_STAGING)$(SM_DEST) && rm -f LVHDSR && ln -sf LVHDSR.py LVMSR
+	cd $(SM_STAGING)$(SM_DEST) && rm -f RawISCSISR && ln -sf RawISCSISR.py ISCSISR
 	cd $(SM_STAGING)$(SM_DEST) && rm -f LVHDoISCSISR && ln -sf LVHDoISCSISR.py LVMoISCSISR
 	cd $(SM_STAGING)$(SM_DEST) && rm -f LVHDoHBASR && ln -sf LVHDoHBASR.py LVMoHBASR
 	cd $(SM_STAGING)$(SM_DEST) && rm -f LVHDoFCoESR && ln -sf LVHDoFCoESR.py LVMoFCoESR

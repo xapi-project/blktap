@@ -18,7 +18,7 @@
 # LVHDoISCSISR: LVHD over ISCSI software initiator SR driver
 #
 
-import SR, VDI, LVHDSR, ISCSISR, SRCommand, util, scsiutil, lvutil
+import SR, VDI, LVHDSR, BaseISCSI, SRCommand, util, scsiutil, lvutil
 import statvfs, time
 import os, socket, sys, re
 import xs_errors
@@ -77,10 +77,9 @@ class LVHDoISCSISR(LVHDSR.LVHDSR):
             # This is a probe call, generate a temp sr_uuid
             sr_uuid = util.gen_uuid()
 
-        driver = SR.driver('iscsi')
         if self.original_srcmd.dconf.has_key('target'):
             self.original_srcmd.dconf['targetlist'] = self.original_srcmd.dconf['target']
-        iscsi = driver(self.original_srcmd, sr_uuid)
+        iscsi = BaseISCSI.BaseISCSISR(self.original_srcmd, sr_uuid)
         self.iscsiSRs = []
         self.iscsiSRs.append(iscsi)
         
@@ -145,7 +144,7 @@ class LVHDoISCSISR(LVHDSR.LVHDSR):
                     srcmd_copy.dconf['targetIQN'] = iqn
                     srcmd_copy.dconf['multiSession'] = IQNstring
                     util.SMlog("Setting targetlist: %s" % srcmd_copy.dconf['targetlist'])
-                    self.iscsiSRs.append(driver(srcmd_copy, sr_uuid))
+                    self.iscsiSRs.append(BaseISCSI.BaseISCSISR(srcmd_copy, sr_uuid))
                 pbd = util.find_my_pbd(self.session, self.host_ref, self.sr_ref)
                 if pbd <> None and not self.dconf.has_key('multiSession'):
                     dconf = self.session.xenapi.PBD.get_device_config(pbd)
@@ -243,11 +242,11 @@ class LVHDoISCSISR(LVHDSR.LVHDSR):
                     target_success = True;
                     forced_login = True
                 # A session should be active.
-                if not util.wait_for_path(self.iscsi.path, ISCSISR.MAX_TIMEOUT):
+                if not util.wait_for_path(self.iscsi.path, BaseISCSI.MAX_TIMEOUT):
                     util.SMlog("%s has no associated LUNs" % self.iscsi.targetIQN)
                     continue
                 scsiid_path = "/dev/disk/by-id/scsi-" + self.SCSIid
-                if not util.wait_for_path(scsiid_path, ISCSISR.MAX_TIMEOUT):
+                if not util.wait_for_path(scsiid_path, BaseISCSI.MAX_TIMEOUT):
                     util.SMlog("%s not found" %scsiid_path)
                     continue
                 for file in filter(self.iscsi.match_lun, util.listdir(self.iscsi.path)):
@@ -347,7 +346,7 @@ class LVHDoISCSISR(LVHDSR.LVHDSR):
         if len(dev) > 1:
             raise xs_errors.XenError('LVMOneLUN')
         path = os.path.join(self.iscsi.path,"LUN%s" % dev[0])
-        if not util.wait_for_path(path, ISCSISR.MAX_TIMEOUT):
+        if not util.wait_for_path(path, BaseISCSI.MAX_TIMEOUT):
             util.SMlog("Unable to detect LUN attached to host [%s]" % path)
         try:
             SCSIid = scsiutil.getSCSIid(path)
@@ -365,7 +364,7 @@ class LVHDoISCSISR(LVHDSR.LVHDSR):
         self.iscsi.attach(sr_uuid)
 
         util.SMlog("LUNprint: waiting for path: %s" % self.iscsi.path)
-        if util.wait_for_path("%s/LUN*" % self.iscsi.path, ISCSISR.MAX_TIMEOUT):
+        if util.wait_for_path("%s/LUN*" % self.iscsi.path, BaseISCSI.MAX_TIMEOUT):
             try:
                 adapter=self.iscsi.adapter[self.iscsi.address]
                 util.SMlog("adapter=%s" % adapter)
@@ -426,7 +425,7 @@ class LVHDoISCSISR(LVHDSR.LVHDSR):
                 matchSCSIid = False
                 for file in filter(self.iscsi.match_lun, util.listdir(self.iscsi.path)):
                     path = os.path.join(self.iscsi.path,file)
-                    if not util.wait_for_path(path, ISCSISR.MAX_TIMEOUT):
+                    if not util.wait_for_path(path, BaseISCSI.MAX_TIMEOUT):
                         util.SMlog("Unable to detect LUN attached to host [%s]" % path)
                         continue
                     try:
