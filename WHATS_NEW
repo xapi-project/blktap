@@ -1,3 +1,8 @@
+Version 1.14.1 -  26th Jul 2016
+==============================
+  CA-198593: Do not assume N iscsi connections means N devices
+  CP-6096: Decouple iSCSI baseclass from existing SR types
+
 Version 1.14.0 -  8th Jun 2016
 ==============================
   CA-212813: Fix NFS attach unit test
