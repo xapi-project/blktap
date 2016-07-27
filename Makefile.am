@@ -7,7 +7,6 @@ SUBDIRS  = lvm
 SUBDIRS += $(MAYBE_part)
 SUBDIRS += vhd
 SUBDIRS += cpumond
-SUBDIRS += thin
 SUBDIRS += control
 SUBDIRS += drivers
 SUBDIRS += include
