@@ -1,18 +1,31 @@
 /*
- * Copyright (C) Citrix Systems Inc.
+ * Copyright (c) 2016, Citrix Systems, Inc.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; version 2.1 only
+ * All rights reserved.
  *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions are met:
+ * 
+ *  1. Redistributions of source code must retain the above copyright
+ *     notice, this list of conditions and the following disclaimer.
+ *  2. Redistributions in binary form must reproduce the above copyright
+ *     notice, this list of conditions and the following disclaimer in the
+ *     documentation and/or other materials provided with the distribution.
+ *  3. Neither the name of the copyright holder nor the names of its 
+ *     contributors may be used to endorse or promote products derived from 
+ *     this software without specific prior written permission.
  *
- * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software Foundation, Inc.,
- * 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+ * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+ * "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+ * LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
+ * A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER
+ * OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
+ * EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
+ * PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR
+ * PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF
+ * LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING
+ * NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
+ * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
 #include <stdio.h>
@@ -38,7 +51,6 @@
 #include "tapdisk-nbdserver.h"
 #include "tapdisk-fdreceiver.h"
 
-#include "tapdisk-nbd.h"
 #include "timeout-math.h"
 
 #ifdef HAVE_CONFIG_H
@@ -268,7 +280,7 @@ __tapdisk_nbdserver_request_cb(td_vbd_request_t *vreq, int error,
 {
 	td_nbdserver_client_t *client = token;
 	td_nbdserver_t *server = client->server;
-	td_nbdserver_req_t *req = containerof(vreq, td_nbdserver_req_t, vreq);
+	td_nbdserver_req_t *req = container_of(vreq, td_nbdserver_req_t, vreq);
 	unsigned long long interval;
 	struct timeval now;
 	struct nbd_reply reply;
@@ -455,11 +467,11 @@ tapdisk_nbdserver_clientcb(event_id_t id, char mode, void *data)
 	vreq->vbd = server->vbd;
 
 	switch(request.type) {
-	case NBD_CMD_READ:
+	case TAPDISK_NBD_CMD_READ:
 		vreq->op = TD_OP_READ;
                 server->nbd_stats.stats->read_reqs_submitted++;
 		break;
-	case NBD_CMD_WRITE:
+	case TAPDISK_NBD_CMD_WRITE:
 		vreq->op = TD_OP_WRITE;
 		server->nbd_stats.stats->write_reqs_submitted++;
 		n = 0;
@@ -475,7 +487,7 @@ tapdisk_nbdserver_clientcb(event_id_t id, char mode, void *data)
 		};
 
 		break;
-	case NBD_CMD_DISC:
+	case TAPDISK_NBD_CMD_DISC:
 		INFO("Received close message. Sending reconnect "
 				"header");
 		tapdisk_nbdserver_free_client(client);

@@ -1,163 +1,342 @@
-/*
- * This is a subset of linux's list.h intended to be used in user-space.
- * Copyright (C) Citrix Systems Inc.
+/*  $NetBSD: list.h,v 1.5 2014/08/20 15:26:52 riastradh Exp $   */
+
+/*-
+ * Copyright (c) 2013 The NetBSD Foundation, Inc.
+ * All rights reserved.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; version 2.1 only
+ * This code is derived from software contributed to The NetBSD Foundation
+ * by Taylor R. Campbell.
  *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions
+ * are met:
+ * 1. Redistributions of source code must retain the above copyright
+ *    notice, this list of conditions and the following disclaimer.
+ * 2. Redistributions in binary form must reproduce the above copyright
+ *    notice, this list of conditions and the following disclaimer in the
+ *    documentation and/or other materials provided with the distribution.
  *
- * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software Foundation, Inc.,
- * 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+ * THIS SOFTWARE IS PROVIDED BY THE NETBSD FOUNDATION, INC. AND CONTRIBUTORS
+ * ``AS IS'' AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED
+ * TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
+ * PURPOSE ARE DISCLAIMED.  IN NO EVENT SHALL THE FOUNDATION OR CONTRIBUTORS
+ * BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
+ * CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
+ * SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
+ * INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
+ * CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+ * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+ * POSSIBILITY OF SUCH DAMAGE.
  */
 
+/*
+ * Notes on porting:
+ *
+ * - LIST_HEAD(x) means a declaration `struct list_head x =
+ *   LIST_HEAD_INIT(x)' in Linux, but something else in NetBSD.
+ *   Replace by the expansion.
+ *
+ * - The `_rcu' routines here are not actually pserialize(9)-safe.
+ *   They need dependent read memory barriers added.  Please fix this
+ *   if you need to use them with pserialize(9).
+ */
 
-#ifndef __LIST_H__
-#define __LIST_H__
+#ifndef _LINUX_LIST_H_
+#define _LINUX_LIST_H_
 
+//#include <sys/null.h>
+#include <sys/queue.h>
+#include <linux/kernel.h>
 #include <stddef.h>
+#include <stdbool.h>
 
-#define containerof(_ptr, _type, _memb) \
-	((_type*)((void*)(_ptr) - offsetof(_type, _memb)))
-
-#define LIST_POISON1  ((void *) 0x00100100)
-#define LIST_POISON2  ((void *) 0x00200200)
+/*
+ * Doubly-linked lists.
+ */
 
 struct list_head {
-        struct list_head *next, *prev;
+    struct list_head *prev;
+    struct list_head *next;
 };
- 
-#define LIST_HEAD_INIT(name) { &(name), &(name) }
- 
-#define LIST_HEAD(name) \
-        struct list_head name = LIST_HEAD_INIT(name)
 
-static inline void INIT_LIST_HEAD(struct list_head *list)
+#define LIST_HEAD_INIT(name)    { .prev = &(name), .next = &(name) }
+
+static inline void
+INIT_LIST_HEAD(struct list_head *head)
 {
-	list->next = list;
-	list->prev = list;
+    head->prev = head;
+    head->next = head;
 }
 
-static inline void __list_add(struct list_head *new,
-                              struct list_head *prev,
-                              struct list_head *next)
+static inline struct list_head *
+list_first(const struct list_head *head)
 {
-        next->prev = new;
-        new->next = next;
-        new->prev = prev;
-        prev->next = new;
+    return head->next;
 }
 
-static inline void list_add(struct list_head *new, struct list_head *head)
+static inline struct list_head *
+list_last(const struct list_head *head)
 {
-        __list_add(new, head, head->next);
+    return head->prev;
 }
 
-static inline void list_add_tail(struct list_head *new, struct list_head *head)
+static inline struct list_head *
+list_next(const struct list_head *node)
 {
-	__list_add(new, head->prev, head);
+    return node->next;
 }
 
-static inline void __list_del(struct list_head * prev, struct list_head * next)
+static inline struct list_head *
+list_prev(const struct list_head *node)
 {
-        next->prev = prev;
-        prev->next = next;
+    return node->prev;
 }
 
-static inline void list_del(struct list_head *entry)
-{
-        __list_del(entry->prev, entry->next);
-        entry->next = (struct list_head *)LIST_POISON1;
-        entry->prev = (struct list_head *)LIST_POISON2;
-}
-
-static inline void list_del_init(struct list_head *entry)
-{
-	__list_del(entry->prev, entry->next);
-	INIT_LIST_HEAD(entry);
-}
-
-static inline void list_move(struct list_head *list, struct list_head *head)
-{
-	__list_del(list->prev, list->next);
-	list_add(list, head);
-}
-
-static inline void list_move_tail(struct list_head *list,
-				  struct list_head *head)
-{
-	__list_del(list->prev, list->next);
-	list_add_tail(list, head);
-}
-
-static inline int list_empty(const struct list_head *head)
-{
-	return head->next == head;
-}
-
-static inline int list_is_last(const struct list_head *list,
-			       const struct list_head *head)
+static inline int 
+list_is_last(const struct list_head *list, const struct list_head *head)
 {
 	return list->next == head;
 }
 
-static inline void __list_splice(const struct list_head *list,
-				 struct list_head *prev,
-				 struct list_head *next)
+static inline int
+list_empty(const struct list_head *head)
 {
-	struct list_head *first = list->next;
-	struct list_head *last = list->prev;
-
-	first->prev = prev;
-	prev->next = first;
-
-	last->next = next;
-	next->prev = last;
+    return (head->next == head);
 }
 
-static inline void list_splice(const struct list_head *list,
-			       struct list_head *head)
+static inline int
+list_is_singular(const struct list_head *head)
 {
-	if (!list_empty(list))
-		__list_splice(list, head, head->next);
+
+    if (list_empty(head))
+        return false;
+    if (head->next != head->prev)
+        return false;
+    return true;
 }
 
-static inline void list_splice_tail(struct list_head *list,
-				    struct list_head *head)
+static inline void
+__list_add_between(struct list_head *prev, struct list_head *node,
+    struct list_head *next)
 {
-	if (!list_empty(list))
-		__list_splice(list, head->prev, head);
+    prev->next = node;
+    node->prev = prev;
+    node->next = next;
+    next->prev = node;
 }
 
-#define list_entry(_ptr, _type, _memb) containerof(_ptr, _type, _memb)
+static inline void
+list_add(struct list_head *node, struct list_head *head)
+{
+    __list_add_between(head, node, head->next);
+}
 
-#define list_for_each_entry(pos, head, member)                          \
-        for (pos = list_entry((head)->next, typeof(*pos), member);      \
-             &pos->member != (head);                                    \
-             pos = list_entry(pos->member.next, typeof(*pos), member))
+static inline void
+list_add_tail(struct list_head *node, struct list_head *head)
+{
+    __list_add_between(head->prev, node, head);
+}
 
-#define list_for_each_entry_safe(pos, n, head, member)			\
-	for (pos = list_entry((head)->next, typeof(*pos), member),	\
-	       n = list_entry(pos->member.next, typeof(*pos), member);	\
-	     &pos->member != (head);					\
-	     pos = n, n = list_entry(n->member.next, typeof(*n), member))
+static inline void
+list_del(struct list_head *entry)
+{
+    entry->prev->next = entry->next;
+    entry->next->prev = entry->prev;
+}
 
-#define list_for_each_entry_reverse(pos, head, member)			\
-	for (pos = list_entry((head)->prev, typeof(*pos), member);	\
-	     &pos->member != (head);					\
-	     pos = list_entry(pos->member.prev, typeof(*pos), member))
+static inline void
+__list_splice_between(struct list_head *prev, const struct list_head *list,
+    struct list_head *next)
+{
+    struct list_head *first = list->next;
+    struct list_head *last = list->prev;
 
-#define list_for_each_entry_continue(pos, head, member)		\
-	for (pos = list_entry(pos->member.next, typeof(*pos), member);	\
-	     &pos->member != (head);					\
-	     pos = list_entry(pos->member.next, typeof(*pos), member))
+    first->prev = prev;
+    prev->next = first;
 
-#define list_first_entry(ptr, type, member) \
-	list_entry((ptr)->next, type, member)
+    last->next = next;
+    next->prev = last;
+}
 
-#endif /* __LIST_H__ */
+static inline void
+list_splice(const struct list_head *list, struct list_head *head)
+{
+    if (!list_empty(list))
+        __list_splice_between(head, list, head->next);
+}
+
+static inline void
+list_splice_tail(const struct list_head *list, struct list_head *head)
+{
+    if (!list_empty(list))
+        __list_splice_between(head->prev, list, head);
+}
+
+static inline void
+list_move(struct list_head *node, struct list_head *head)
+{
+    list_del(node);
+    list_add(node, head);
+}
+
+static inline void
+list_move_tail(struct list_head *node, struct list_head *head)
+{
+    list_del(node);
+    list_add_tail(node, head);
+}
+
+static inline void
+list_replace(struct list_head *old, struct list_head *new)
+{
+    new->prev = old->prev;
+    old->prev->next = new;
+    new->next = old->next;
+    old->next->prev = new;
+}
+
+static inline void
+list_del_init(struct list_head *node)
+{
+    list_del(node);
+    INIT_LIST_HEAD(node);
+}
+
+#define check_type(expr, type)			\
+	((typeof(expr) *)0 != (type *)0)
+
+#define check_types_match(expr1, expr2)		\
+	((typeof(expr1) *)0 != (typeof(expr2) *)0)
+
+#define container_off(containing_type, member)	\
+	offsetof(containing_type, member)
+
+#define container_of(member_ptr, containing_type, member)		\
+	 ((containing_type *)						\
+	  ((char *)(member_ptr)						\
+	   - container_off(containing_type, member))			\
+	  + check_types_match(*(member_ptr), ((containing_type *)0)->member))
+
+#define list_entry(PTR, TYPE, FIELD)    container_of(PTR, TYPE, FIELD)
+#define list_first_entry(PTR, TYPE, FIELD)              \
+    list_entry(list_first((PTR)), TYPE, FIELD)
+#define list_last_entry(PTR, TYPE, FIELD)               \
+    list_entry(list_last((PTR)), TYPE, FIELD)
+#define list_next_entry(ENTRY, FIELD)                   \
+    list_entry(list_next(&(ENTRY)->FIELD), typeof(*(ENTRY)), FIELD)
+#define list_prev_entry(ENTRY, FIELD)                   \
+    list_entry(list_prev(&(ENTRY)->FIELD), typeof(*(ENTRY)), FIELD)
+
+#define list_for_each(VAR, HEAD)                    \
+    for ((VAR) = list_first((HEAD));                \
+        (VAR) != (HEAD);                    \
+        (VAR) = list_next((VAR)))
+
+#define list_for_each_safe(VAR, NEXT, HEAD)             \
+    for ((VAR) = list_first((HEAD));                \
+        ((VAR) != (HEAD)) && ((NEXT) = list_next((VAR)), 1);    \
+        (VAR) = (NEXT))
+
+#define list_for_each_entry(VAR, HEAD, FIELD)               \
+    for ((VAR) = list_entry(list_first((HEAD)), typeof(*(VAR)), FIELD); \
+        &(VAR)->FIELD != (HEAD);                \
+        (VAR) = list_entry(list_next(&(VAR)->FIELD), typeof(*(VAR)), \
+            FIELD))
+
+#define list_for_each_entry_reverse(VAR, HEAD, FIELD)           \
+    for ((VAR) = list_entry(list_last((HEAD)), typeof(*(VAR)), FIELD); \
+        &(VAR)->FIELD != (HEAD);                \
+        (VAR) = list_entry(list_prev(&(VAR)->FIELD), typeof(*(VAR)), \
+            FIELD))
+
+#define list_for_each_entry_safe(VAR, NEXT, HEAD, FIELD)        \
+    for ((VAR) = list_entry(list_first((HEAD)), typeof(*(VAR)), FIELD); \
+        (&(VAR)->FIELD != (HEAD)) &&                \
+            ((NEXT) = list_entry(list_next(&(VAR)->FIELD),  \
+            typeof(*(VAR)), FIELD), 1);         \
+        (VAR) = (NEXT))
+
+#define list_for_each_entry_continue(VAR, HEAD, FIELD)          \
+    for ((VAR) = list_next_entry((VAR), FIELD);         \
+        &(VAR)->FIELD != (HEAD);                \
+        (VAR) = list_next_entry((VAR), FIELD))
+
+#define list_for_each_entry_continue_reverse(VAR, HEAD, FIELD)      \
+    for ((VAR) = list_prev_entry((VAR), FIELD);         \
+        &(VAR)->FIELD != (HEAD);                \
+        (VAR) = list_prev_entry((VAR), FIELD))
+
+#define list_for_each_entry_safe_from(VAR, NEXT, HEAD, FIELD)       \
+    for (;                              \
+        (&(VAR)->FIELD != (HEAD)) &&                \
+            ((NEXT) = list_next_entry((VAR), FIELD));       \
+        (VAR) = (NEXT))
+
+/*
+ * `H'ead-only/`H'ash-table doubly-linked lists.
+ */
+
+LIST_HEAD(hlist_head, hlist_node);
+struct hlist_node {
+    LIST_ENTRY(hlist_node) hln_entry;
+};
+
+static inline struct hlist_node *
+hlist_first(struct hlist_head *head)
+{
+    return LIST_FIRST(head);
+}
+
+static inline struct hlist_node *
+hlist_next(struct hlist_node *node)
+{
+    return LIST_NEXT(node, hln_entry);
+}
+
+static inline void
+hlist_add_head(struct hlist_node *node, struct hlist_head *head)
+{
+    LIST_INSERT_HEAD(head, node, hln_entry);
+}
+
+static inline void
+hlist_add_after(struct hlist_node *node, struct hlist_node *next)
+{
+    LIST_INSERT_AFTER(node, next, hln_entry);
+}
+
+static inline void
+hlist_del(struct hlist_node *node)
+{
+    LIST_REMOVE(node, hln_entry);
+}
+
+static inline void
+hlist_del_init(struct hlist_node *node)
+{
+    LIST_REMOVE(node, hln_entry);
+}
+
+#define hlist_entry(PTR, TYPE, FIELD)   container_of(PTR, TYPE, FIELD)
+#define hlist_for_each(VAR, HEAD)   LIST_FOREACH(VAR, HEAD, hln_entry)
+#define hlist_for_each_safe(VAR, NEXT, HEAD)                \
+    LIST_FOREACH_SAFE(VAR, HEAD, hln_entry, NEXT)
+
+#define hlist_for_each_entry(VAR, HEAD, FIELD)              \
+    for ((VAR) = hlist_entry(LIST_FIRST((HEAD)), typeof(*(VAR)), FIELD);  \
+        &(VAR)->FIELD != NULL;                        \
+            (VAR) = hlist_entry(LIST_NEXT(&(VAR)->FIELD, hln_entry),      \
+            typeof(*(VAR)), FIELD))
+
+/*
+ * XXX The nominally RCU-safe APIs below lack dependent read barriers,
+ * so they're not actually RCU-safe...on the alpha, anyway.  Someone^TM
+ * should fix this.
+ */
+
+#define hlist_add_after_rcu     hlist_add_after
+#define hlist_add_head_rcu      hlist_add_head
+#define hlist_del_init_rcu      hlist_del_init
+#define hlist_for_each_entry_rcu    hlist_for_each_entry
+
+#endif  /* _LINUX_LIST_H_ */
