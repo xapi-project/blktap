@@ -1,3 +1,13 @@
+Version 3.4.0 - 2nd Aug 2016
+================================
+  CA-211529: Corrected tapdisk stats definitions
+  CP-18192: Removed code for xlvhd thin-provisioning
+  CP-18025: Change blktap license from GPLv2 to BSD
+  CP-18025: Use BSD compliant list.h
+  CP-18025: Discontinue use of upstream nbd header file
+  CP-18025: Use glibc alternative to PAGE_SIZE macro
+  CP-18025: Remove dependence on linux/log2.h
+
 Version 3.3.0 - 24th May 2016
 ================================
   CA-203150: make systemd service file non-executable
