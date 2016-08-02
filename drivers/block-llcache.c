@@ -1,18 +1,31 @@
-/* 
- * Copyright (C) Citrix Systems Inc.
+/*
+ * Copyright (c) 2016, Citrix Systems, Inc.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; version 2.1 only
+ * All rights reserved.
  *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions are met:
+ * 
+ *  1. Redistributions of source code must retain the above copyright
+ *     notice, this list of conditions and the following disclaimer.
+ *  2. Redistributions in binary form must reproduce the above copyright
+ *     notice, this list of conditions and the following disclaimer in the
+ *     documentation and/or other materials provided with the distribution.
+ *  3. Neither the name of the copyright holder nor the names of its 
+ *     contributors may be used to endorse or promote products derived from 
+ *     this software without specific prior written permission.
  *
- * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software Foundation, Inc.,
- * 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+ * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+ * "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+ * LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
+ * A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER
+ * OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
+ * EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
+ * PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR
+ * PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF
+ * LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING
+ * NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
+ * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
 #ifdef HAVE_CONFIG_H
@@ -161,15 +174,15 @@ __llpcache_write_cb(td_vbd_request_t *vreq, int error,
 	td_llpcache_req_t *req;
 	int mask;
 
-	lvr = containerof(vreq, struct llpcache_vreq, vreq);
-	req = containerof(lvr, td_llpcache_req_t, lvr[lvr->target]);
+	lvr = container_of(vreq, struct llpcache_vreq, vreq);
+	req = container_of(lvr, td_llpcache_req_t, lvr[lvr->target]);
 
 	mask = 1U << lvr->target;
 	BUG_ON(!(req->pending & mask))
 
 	if (lvr->target == LOCAL && error == -ENOSPC) {
 		td_image_t *shared =
-			containerof(req->treq.image->next.next,
+			container_of(req->treq.image->next.next,
 				    td_image_t, next);
 		ll_log_switch(DISK_TYPE_LLPCACHE, error,
 			      s->local, shared);
@@ -273,7 +286,7 @@ llpcache_forward_write(td_llpcache_t *s, td_request_t treq)
 	const td_vbd_request_t *vreq = treq.vreq;
 	struct llpcache_vreq *lvr;
 
-	lvr = containerof(vreq, struct llpcache_vreq, vreq);
+	lvr = container_of(vreq, struct llpcache_vreq, vreq);
 
 	switch (lvr->target) {
 	case SHARED:
