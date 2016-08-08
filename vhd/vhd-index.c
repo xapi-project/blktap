@@ -515,7 +515,7 @@ static int
 vhd_index_clone_bat(vhdi_name_t *name, const char *parent)
 {
 	int err;
-	char *pbat;
+	char *pbat = NULL;
 	uint32_t block;
 	vhdi_bat_t bat;
 	vhd_context_t vhd;
@@ -526,8 +526,10 @@ vhd_index_clone_bat(vhdi_name_t *name, const char *parent)
 	memset(&files, 0, sizeof(vhdi_file_table_t));
 
 	err = asprintf(&pbat, "%s.bat", parent);
-	if (err == -1)
+	if (err == -1){
+		free(pbat);
 		return -ENOMEM;
+	}
 
 	err = access(pbat, R_OK);
 	if (err == -1) {
@@ -727,8 +729,10 @@ vhd_index(vhdi_name_t *name)
 	parent = NULL;
 
 	free(name->bat);
+	name->bat = NULL;
 	err = asprintf(&name->bat, "%s.bat", name->vhd);
 	if (err == -1) {
+		free(name->bat);
 		name->bat = NULL;
 		return -ENOMEM;
 	}

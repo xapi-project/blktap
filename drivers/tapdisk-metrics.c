@@ -57,7 +57,7 @@ empty_folder(char *path)
     DIR *dir;
     struct dirent *direntry;
     struct stat statbuf;
-    char *file;
+    char *file = NULL;
     int err = 0;
 
     dir = opendir(path);
@@ -73,6 +73,8 @@ empty_folder(char *path)
 
         err = asprintf(&file, "%s/%s", path, direntry->d_name);
         if (unlikely(err == -1)) {
+            free(file);
+            file = NULL;	
             err = errno;
             EPRINTF("failed to allocate file path name in memory to delete: %s\n",
                 strerror(err));
@@ -86,6 +88,7 @@ empty_folder(char *path)
             rmdir(file);
         }
         free(file);
+        file = NULL;
     }
 
 out:
