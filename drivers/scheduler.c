@@ -294,8 +294,8 @@ scheduler_register_event(scheduler_t *s, char mode, int fd,
 	event->id       = s->uuid++;
 	event->masked   = 0;
 
-	if (!s->uuid)
-		s->uuid++;
+	if (s->uuid < 0)
+		s->uuid = 1;
 
 	list_add_tail(&event->next, &s->events);
 
