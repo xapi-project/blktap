@@ -39,7 +39,6 @@
 #include <string.h>
 
 #include "tapdisk-metrics.h"
-#include "lock.h"
 #include "tapdisk-log.h"
 #include "debug.h"
 #include "tapdisk-queue.h"
