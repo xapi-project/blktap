@@ -974,6 +974,7 @@ main(int argc, char *argv[])
 	ret = tap_ctl_check(&msg);
 	if (ret) {
 		printf("%s\n", msg);
+		free(path);
 		return ret;
 	}
 
