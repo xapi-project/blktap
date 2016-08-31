@@ -537,6 +537,13 @@ tapback_install_sighdl(void)
         goto out;
     }
 
+    err = sigemptyset(&sigact.sa_mask);
+    if (unlikely(err == -1)) {
+	err = errno;
+	WARN(NULL, "failed to fill empty signal set in sa_mask: %s\n",
+                    strerror(err));
+    }
+
     for (i = 0; i < ARRAY_SIZE(signals); i++) {
         err = sigdelset(&set, signals[i]);
         if (unlikely(err == -1)) {
