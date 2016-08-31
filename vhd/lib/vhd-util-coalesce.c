@@ -216,6 +216,7 @@ vhd_util_coalesce_parent(const char *name, int sparse, int progress,
 		if (parent_fd == -1) {
 			err = -errno;
 			printf("failed to open parent %s: %d\n", pname, err);
+			free(pname);
 			vhd_close(&vhd);
 			return err;
 		}
