@@ -546,6 +546,14 @@ tapback_install_sighdl(void)
     sigact.sa_sigaction = &tapback_signal_handler;
     sigact.sa_flags = SA_SIGINFO | SA_NOCLDSTOP | SA_NOCLDWAIT;
 
+    err = sigemptyset(&sigact.sa_mask);
+    if (unlikely(err == -1)) {
+	err = errno;
+	WARN(NULL, "failed to fill empty signal set in sa_mask: %s\n",
+                    strerror(err));
+	goto out;
+    }
+
     for (i = 0; i < ARRAY_SIZE(signals); i++) {
         err = sigaction(signals[i], &sigact, NULL);
         if (unlikely(err == -1)) {
