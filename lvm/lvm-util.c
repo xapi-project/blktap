@@ -132,10 +132,7 @@ lvm_open_vg(const char *vgname, struct vg *vg)
 		goto out;
 	}
 
-	for (;;) {
-		if (lvm_read_line(scan))
-			break;
-
+	for (i = 0; !lvm_read_line(scan); ++i) {
 		err = -EINVAL;
 		if (sscanf(line, _NAME" %"PRIu64" %d %d "_NAME" %"PRIu64, vg->name,
 			   &size, &lvs, &pvs, pvname, &pv_start) != 6) {
@@ -151,11 +148,14 @@ lvm_open_vg(const char *vgname, struct vg *vg)
 		if (err)
 			goto out;
 
-		if (lvm_next_line(scan))
-			break;
+		/* If there is a new line char, consume it */
+		lvm_next_line(scan);
 	}
 
 	err = -EINVAL;
+	if (!i)
+		goto out;
+
 	if (strcmp(vg->name, vgname)) {
 		EPRINTF("VG name '%s' != '%s'\n", vg->name, vgname);
 		goto out;
