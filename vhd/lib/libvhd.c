@@ -2665,7 +2665,7 @@ vhd_close(vhd_context_t *ctx)
 {
 	vhd_cache_unload(ctx);
 
-	if (ctx->file) {
+	if (ctx->fd != -1) {
 		fsync(ctx->fd);
 		close(ctx->fd);
 	}
