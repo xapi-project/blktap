@@ -114,7 +114,6 @@ dump_partitions(const char *image)
 	struct partition_table pt;
 
 	ret = 1;
-	fd  = -1;
 
 	fd = open(image, O_RDONLY);
 	if (fd == -1)
@@ -136,7 +135,8 @@ dump_partitions(const char *image)
 	ret = 0;
 
 out:
-	close(fd);
+	if (fd >= 0)
+		close(fd);
 	return ret;
 }
 
@@ -170,7 +170,6 @@ dump_signature(const char *image, int part)
 	struct partition_table pt;
 
 	ret = 1;
-	fd  = -1;
 
 	fd = open(image, O_RDONLY);
 	if (fd == -1)
@@ -192,7 +191,8 @@ dump_signature(const char *image, int part)
 	ret = 0;
 
 out:
-	close(fd);
+	if (fd >= 0)
+		close(fd);
 	return ret;
 }
 
@@ -203,7 +203,6 @@ count_partitions(const char *image, int *count)
 	struct partition_table pt;
 
 	ret = 1;
-	fd  = -1;
 
 	fd = open(image, O_RDONLY);
 	if (fd == -1)
@@ -228,7 +227,8 @@ count_partitions(const char *image, int *count)
 done:
 	ret = 0;
 out:
-	close(fd);
+	if (fd >= 0)
+		close(fd);
 	return ret;
 }
 
@@ -237,15 +237,14 @@ format_partition(const char *image, int type, struct partition_table *pt)
 {
 	uint64_t lend;
 	uint32_t start, end;
-	int ret, sec_size, fd;
-	unsigned int cylinders;
+	int ret, fd;
+	unsigned int cylinders, sec_size;
 	struct hd_geometry geo;
 	struct primary_partition *pp;
 	struct partition_geometry pgeo;
 	unsigned long long bytes, llcyls;
 
 	ret = 1;
-	fd  = -1;
 
 	memset(pt, 0, sizeof(*pt));
 	pp = pt->partitions;
@@ -300,7 +299,8 @@ format_partition(const char *image, int type, struct partition_table *pt)
 	ret = 0;
 
 out:
-	close(fd);
+	if (fd >= 0)
+		close(fd);
 	return ret;
 }
 
