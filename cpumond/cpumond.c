@@ -125,7 +125,7 @@ inline int statread(int statfd, long long *total, long long *idle){
     int       i, err = 0;
 
     if (lseek(statfd, 0, SEEK_SET) == -1){
-        err = errno;
+        err = (errno)?errno:-1;
         perror("lseek");
         goto out;
     }
