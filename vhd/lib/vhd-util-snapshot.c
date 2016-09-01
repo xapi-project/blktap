@@ -45,8 +45,10 @@ vhd_util_find_snapshot_target(const char *name, char **result, int *parent_raw)
 
 	for (;;) {
 		err = vhd_open(&vhd, target, VHD_OPEN_RDONLY);
-		if (err)
+		if (err) {
+			free(target);
 			return err;
+		}
 
 		if (vhd.footer.type != HD_TYPE_DIFF)
 			goto out;
