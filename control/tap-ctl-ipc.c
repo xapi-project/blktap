@@ -187,6 +187,13 @@ tap_ctl_connect(const char *name, int *sfd)
 
 	memset(&saddr, 0, sizeof(saddr));
 	saddr.sun_family = AF_UNIX;
+
+	if (unlikely(strlen(name) >= sizeof(saddr.sun_path))) {
+		EPRINTF("socket name too long: %s\n", name);
+		close(fd);
+		return -ENAMETOOLONG;
+	}
+
 	strcpy(saddr.sun_path, name);
 
 	err = connect(fd, (const struct sockaddr *)&saddr, sizeof(saddr));
