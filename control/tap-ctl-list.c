@@ -306,7 +306,7 @@ _tap_ctl_list_tapdisk(pid_t pid, struct list_head *list)
 	err = 0;
 out:
 	close(sfd);
-	return 0;
+	return err;
 
 fail:
 	tap_ctl_list_free(list);
