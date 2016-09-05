@@ -126,7 +126,7 @@ tap_ctl_list_free(struct list_head *list)
 static int
 _tap_ctl_find_minors(struct list_head *list)
 {
-	const char *pattern, *format;
+	const char *pattern;
 	glob_t glbuf = { 0 };
 	tap_list_t *tl;
 	int i, err;
@@ -134,7 +134,6 @@ _tap_ctl_find_minors(struct list_head *list)
 	INIT_LIST_HEAD(list);
 
 	pattern = BLKTAP2_SYSFS_DIR"/blktap*";
-	format  = BLKTAP2_SYSFS_DIR"/blktap%d";
 
 	err = glob(pattern, 0, NULL, &glbuf);
 	switch (err) {
@@ -157,7 +156,7 @@ _tap_ctl_find_minors(struct list_head *list)
 			goto fail;
 		}
 
-		n = sscanf(glbuf.gl_pathv[i], format, &tl->minor);
+		n = sscanf(glbuf.gl_pathv[i], BLKTAP2_SYSFS_DIR"/blktap%d", &tl->minor);
 		if (n != 1) {
 			_tap_list_free(tl);
 			continue;
@@ -182,12 +181,11 @@ fail:
 int
 _tap_ctl_find_tapdisks(struct list_head *list)
 {
-	const char *pattern, *format;
+	const char *pattern;
 	glob_t glbuf = { 0 };
 	int err, i, n_taps = 0;
 
 	pattern = BLKTAP2_CONTROL_DIR"/"BLKTAP2_CONTROL_SOCKET"*";
-	format  = BLKTAP2_CONTROL_DIR"/"BLKTAP2_CONTROL_SOCKET"%d";
 
 	INIT_LIST_HEAD(list);
 
@@ -213,7 +211,9 @@ _tap_ctl_find_tapdisks(struct list_head *list)
 			goto fail;
 		}
 
-		n = sscanf(glbuf.gl_pathv[i], format, &tl->pid);
+		n = sscanf(glbuf.gl_pathv[i],
+				BLKTAP2_CONTROL_DIR"/"BLKTAP2_CONTROL_SOCKET"%d",
+				&tl->pid);
 		if (n != 1)
 			goto skip;
 
