@@ -267,7 +267,7 @@ _tap_ctl_list_tapdisk(pid_t pid, struct list_head *list)
 
 	err = tap_ctl_write_message(sfd, &message, &timeout);
 	if (err)
-		return err;
+		goto out;
 
 	INIT_LIST_HEAD(list);
 
