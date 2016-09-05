@@ -107,11 +107,13 @@ tap_ctl_make_device(const char *devname, const int major,
 	if (err)
 		return err;
 
-	if (!access(devname, F_OK))
-		if (unlink(devname)) {
+	if (unlink(devname)) {
+		err = errno;
+		if (err != ENOENT) {
 			PERROR("unlink %s", devname);
-			return errno;
+			return err;
 		}
+	}
 
 	err = mknod(devname, perm, makedev(major, minor));
 	if (err) {
