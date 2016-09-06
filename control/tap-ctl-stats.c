@@ -55,8 +55,10 @@ _tap_ctl_stats_connect_and_send(pid_t pid, int minor)
 	message.cookie = minor;
 
 	err = tap_ctl_write_message(sfd, &message, &timeout);
-	if (err)
+	if (err) {
+		close(sfd);
 		return err;
+	}
 
 	return sfd;
 }
