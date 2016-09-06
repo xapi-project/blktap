@@ -158,7 +158,10 @@ tap_ctl_stats_fwrite(pid_t pid, int minor, FILE *stream)
 			goto out;
 		}
 	}
-	len = fwrite("\n", 1, 1, stream);
+
+	if (fwrite("\n", 1, 1, stream) != 1) {
+		err = -EIO;
+	}
 
 out:
 	if (sfd >= 0)
