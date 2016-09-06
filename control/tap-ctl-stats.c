@@ -77,10 +77,6 @@ tap_ctl_stats(pid_t pid, int minor, char *buf, size_t size)
 		return err;
 
 	len = message.u.info.length;
-	if (len < 0) {
-		err = len;
-		goto out;
-	}
 	if (size < len + 1)
 		len = size - 1;
 
@@ -125,11 +121,6 @@ tap_ctl_stats_fwrite(pid_t pid, int minor, FILE *stream)
 		goto out;
 
 	len = message.u.info.length;
-	if (len < 0) {
-		err = len;
-		goto out;
-	}
-
 	while (len) {
 		fd_set rfds;
 		size_t in, out;
