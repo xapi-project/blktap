@@ -300,7 +300,18 @@ __tapdisk_nbdserver_request_cb(td_vbd_request_t *vreq, int error,
 		goto finish;
 	}
 
-	send(client->client_fd, &reply, sizeof(reply), 0);
+	tosend = len = sizeof(reply);
+	while (tosend > 0) {
+		sent = send(client->client_fd,
+			    ((char *)&reply) + (len - tosend),
+			    tosend, 0);
+		if (sent <= 0) {
+			sent = errno;
+			ERR("Short send/error in callback: %s", strerror(sent));
+			goto finish;
+		}	
+		tosend -= sent;
+	}
 
 	switch(vreq->op) {
 	case TD_OP_READ:
