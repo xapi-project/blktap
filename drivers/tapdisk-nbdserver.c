@@ -834,6 +834,14 @@ tapdisk_nbdserver_listen_unix(td_nbdserver_t *server)
 	}
 
 	server->local.sun_family = AF_UNIX;
+
+	if (unlikely(strlen(server->sockpath) > 
+		     (sizeof(server->local.sun_path) - 1))) {
+		err = -ENAMETOOLONG;
+		ERR("socket name too long: %s\n", server->sockpath);
+		goto out;
+	}
+
 	strcpy(server->local.sun_path, server->sockpath);
 	err = unlink(server->local.sun_path);
 	if (err == -1 && errno != ENOENT) {
