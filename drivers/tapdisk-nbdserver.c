@@ -772,6 +772,7 @@ tapdisk_nbdserver_listen_inet(td_nbdserver_t *server, const int port)
 					&yes, sizeof(int)) == -1) {
 			ERR("Failed to setsockopt");
 			close(server->fdrecv_listening_fd);
+			server->fdrecv_listening_fd = -1;
 			continue;
 		}
 
@@ -779,6 +780,7 @@ tapdisk_nbdserver_listen_inet(td_nbdserver_t *server, const int port)
 				-1) {
 			ERR("Failed to bind");
 			close(server->fdrecv_listening_fd);
+			server->fdrecv_listening_fd = -1;
 			continue;
 		}
 
