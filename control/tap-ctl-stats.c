@@ -105,11 +105,17 @@ tap_ctl_stats_fwrite(pid_t pid, int minor, FILE *stream)
 
 	prot  = PROT_READ|PROT_WRITE;
 	flags = MAP_ANONYMOUS|MAP_PRIVATE;
-	bufsz = sysconf(_SC_PAGE_SIZE);
+
+	err = sysconf(_SC_PAGE_SIZE);
+	if (err == -1) {
+		err = -errno;
+		goto out;
+	}
+
+	bufsz = err;
 
 	buf = mmap(NULL, bufsz, prot, flags, -1, 0);
 	if (buf == MAP_FAILED) {
-		buf = NULL;
 		err = -ENOMEM;
 		goto out;
 	}
