@@ -383,10 +383,16 @@ tapdisk_nbdserver_newclient_fd(td_nbdserver_t *server, int new_fd)
 		else
 			INFO("Short write in negotiation: wrote %d bytes instead of 152\n",
 					rc);
+		return;
 	}
 
 	INFO("About to alloc client");
 	client = tapdisk_nbdserver_alloc_client(server);
+	if (client == NULL) {
+		ERR("Error allocating client");
+		close(new_fd);
+		return;
+	}
 
 	INFO("Got an allocated client at %p", client);
 	client->client_fd = new_fd;
