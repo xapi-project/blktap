@@ -418,7 +418,8 @@ vhd_util_coalesce_clear_bitmap(vhd_context_t *child, char *cmap,
 			       vhd_context_t *ancestor, const uint64_t block)
 {
 	char *amap = NULL;
-	int i, dirty, err;
+	int dirty = 0;
+	int i, err;
 
 	if (child->spb != ancestor->spb) {
 		err = -EINVAL;
