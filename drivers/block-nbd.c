@@ -29,6 +29,7 @@
 #include <arpa/inet.h>
 #include <netinet/tcp.h>
 #include <netinet/in.h>
+#include <string.h>
 #include "tapdisk.h"
 #include "tapdisk-server.h"
 #include "tapdisk-driver.h"
@@ -138,7 +139,19 @@ tdnbd_stash_passed_fd(int fd, char *msg, void *data)
 
 	passed_fds[free_index].fd = fd;
 	strncpy(passed_fds[free_index].id, msg,
-			sizeof(passed_fds[free_index].id));
+                       sizeof(passed_fds[free_index].id));
+
+	/*
+	 * Since size of id is 40B, if msg length is > 39 it would cause id
+	 * to overflow and not be null terminated. Hence, we need to handle 
+	 * this corner case.
+	 */
+
+	if(unlikely(strlen(msg) >= sizeof(passed_fds[free_index].id))) {
+		INFO("message length (%zu) greater than 39B", strlen(msg));
+                passed_fds[free_index].id[sizeof(passed_fds[free_index].id) - 1] = '\0';
+	}
+	
 	gettimeofday(&passed_fds[free_index].t, NULL);
 
 }
