@@ -570,13 +570,27 @@ vhd_util_coalesce_open_output(vhd_context_t *dst,
 	}
 
 	err = vhd_open(dst, name, VHD_OPEN_RDWR | flags);
-	if (err || dst->header.block_size != src->header.block_size) {
-		printf("error opening %s: %d\n", name, (err ? : EINVAL));
-		unlink(name);
-		return err ? : EINVAL;
+	if (err) {
+		printf("error opening %s: %d\n", name, err);
+		goto fail1;
+	}
+
+	if (src->header.block_size != dst->header.block_size) {
+		printf("source and destination VHD block sizes are different: "
+				"%"PRIu32" != %"PRIu32,
+				src->header.block_size,
+				dst->header.block_size);
+		err = -EINVAL;
+		goto fail2;
 	}
 
 	return 0;
+
+fail2:
+	vhd_close(dst);
+fail1:
+	unlink(name);
+	return err;
 }
 
 /*
