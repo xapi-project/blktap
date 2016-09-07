@@ -94,8 +94,8 @@ tapdisk_nbdserver_alloc_request(td_nbdserver_client_t *client)
 	return req;
 }
 
-void
-tapdisk_nbdserver_free_request(td_nbdserver_client_t *client,
+static void
+tapdisk_nbdserver_set_free_request(td_nbdserver_client_t *client,
 		td_nbdserver_req_t *req)
 {
 	ASSERT(client);
@@ -103,7 +103,13 @@ tapdisk_nbdserver_free_request(td_nbdserver_client_t *client,
 	BUG_ON(client->n_reqs_free >= client->n_reqs);
 
 	client->reqs_free[client->n_reqs_free++] = req;
+}
 
+void
+tapdisk_nbdserver_free_request(td_nbdserver_client_t *client,
+		td_nbdserver_req_t *req)
+{
+	tapdisk_nbdserver_set_free_request(client, req);
 	if (unlikely(client->dead && !tapdisk_nbdserver_reqs_pending(client)))
 		tapdisk_nbdserver_free_client(client);
 }
@@ -160,7 +166,7 @@ tapdisk_nbdserver_reqs_init(td_nbdserver_client_t *client, int n_reqs)
 
 	for (i = 0; i < n_reqs; i++) {
 		client->reqs[i].vreq.iov = &client->iovecs[i];
-		tapdisk_nbdserver_free_request(client, &client->reqs[i]);
+		tapdisk_nbdserver_set_free_request(client, &client->reqs[i]);
 	}
 
 	return 0;
