@@ -411,6 +411,11 @@ out:
 		}
 		vhd_util_coalesce_free_chain(head);
 	}
+
+	if (next) {
+		free(next);
+	}
+
 	return err;
 }
 
