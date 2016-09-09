@@ -2668,12 +2668,21 @@ vhd_close(vhd_context_t *ctx)
 	if (ctx->file) {
 		fsync(ctx->fd);
 		close(ctx->fd);
+		free(ctx->file);
 	}
 
-	free(ctx->file);
-	free(ctx->bat.bat);
-	free(ctx->batmap.map);
-	free(ctx->custom_parent);
+	if (ctx->bat.bat) {
+		free(ctx->bat.bat);
+	}
+
+	if (ctx->batmap.map) {
+		free(ctx->batmap.map);
+	}
+
+	if (ctx->custom_parent) {
+		free(ctx->custom_parent);
+	}
+
 	memset(ctx, 0, sizeof(vhd_context_t));
 }
 
