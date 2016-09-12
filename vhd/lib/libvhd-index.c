@@ -477,8 +477,10 @@ vhdi_create(const char *name, uint32_t vhd_block_size)
 	memcpy(buf, &header, sizeof(vhdi_header_t));
 
 	fd = open(name, O_CREAT | O_TRUNC | O_RDWR, 0600);
-	if (fd == -1)
-		return -errno;
+	if (fd == -1) {
+		err = -errno;
+		goto fail;
+	}
 
 	err = write(fd, buf, size);
 	if (err != size) {
@@ -492,9 +494,11 @@ vhdi_create(const char *name, uint32_t vhd_block_size)
 	return 0;
 
 fail:
-	close(fd);
+	if (fd >= 0) {
+		close(fd);
+		unlink(name);
+	}
 	free(buf);
-	unlink(name);
 	return err;
 }
 
