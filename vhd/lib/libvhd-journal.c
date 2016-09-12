@@ -719,7 +719,7 @@ vhd_journal_read_locators(vhd_journal_t *j, char ***locators, int *locs)
 {
 	int err, n, _locs;
 	char **_locators;
-	void *buf;
+	void *buf = NULL;
 	off_t pos;
 	vhd_journal_entry_t entry;
 
@@ -733,9 +733,12 @@ vhd_journal_read_locators(vhd_journal_t *j, char ***locators, int *locs)
 		return -ENOMEM;
 
 	for (;;) {
-		buf = NULL;
-
 		pos = vhd_journal_position(j);
+		if (pos == (off64_t)-1) {
+			err = -errno;
+			goto fail;
+		}
+
 		err = vhd_journal_read_entry(j, &entry);
 		if (err)
 			goto fail;
@@ -755,7 +758,6 @@ vhd_journal_read_locators(vhd_journal_t *j, char ***locators, int *locs)
 		err = posix_memalign(&buf, VHD_SECTOR_SIZE, entry.size);
 		if (err) {
 			err = -err;
-			buf = NULL;
 			goto fail;
 		}
 
@@ -764,6 +766,7 @@ vhd_journal_read_locators(vhd_journal_t *j, char ***locators, int *locs)
 			goto fail;
 
 		_locators[_locs++] = buf;
+		buf                = NULL;
 		err                = 0;
 	}
 
@@ -774,6 +777,7 @@ vhd_journal_read_locators(vhd_journal_t *j, char ***locators, int *locs)
 	return 0;
 
 fail:
+	free(buf);
 	if (_locators) {
 		for (n = 0; n < _locs; n++)
 			free(_locators[n]);
