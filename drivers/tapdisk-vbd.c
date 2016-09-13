@@ -126,6 +126,10 @@ tapdisk_vbd_initialize(int rfd, int wfd, uint16_t uuid)
 	}
 
 	vbd = tapdisk_vbd_create(uuid);
+	if (!vbd) {
+		EPRINTF("failed to create vbd\n");
+		return -ENOMEM;
+	}
 
 	tapdisk_server_add_vbd(vbd);
 
