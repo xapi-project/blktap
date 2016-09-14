@@ -185,7 +185,7 @@ td_fdreceiver_stop(struct td_fdreceiver *fdreceiver)
 struct td_fdreceiver *
 td_fdreceiver_start(char *path, fd_cb_t callback, void *data)
 {
-	unsigned int s = -1;
+	int s = -1;
 	struct sockaddr_un local;
 	int len;
 	int err;
@@ -195,10 +195,16 @@ td_fdreceiver_start(char *path, fd_cb_t callback, void *data)
 	if (!fdreceiver) {
 		ERROR("td_fdreceiver_start: error allocating memory for "
 				"fdreceiver (path=%s)", path);
-		goto error;
+		return NULL;
 	}
 
 	fdreceiver->path = strdup(path);
+	if (unlikely(!fdreceiver->path)) {
+		ERROR("td_fdreceiver_start: error allocating memory for "
+				"fdreceiver->path (path=%s)", path);
+		goto error;
+	}
+
 	fdreceiver->fd = -1;
 	fdreceiver->fd_event_id = -1;
 	fdreceiver->client_fd = -1;
@@ -206,7 +212,14 @@ td_fdreceiver_start(char *path, fd_cb_t callback, void *data)
 	fdreceiver->callback = callback;
 	fdreceiver->callback_data = data;
 
-	snprintf(local.sun_path, sizeof(local.sun_path), "%s", path);
+	err = snprintf(local.sun_path, sizeof(local.sun_path), "%s", path);
+	if (unlikely(err >= sizeof(local.sun_path))) {
+		ERROR("td_fdreceiver_start: socket name too long (path=%s)", path);
+		goto error;
+	} else if (unlikely(err < 0)) {
+		ERROR("td_fdreceiver_start: snprintf() error (path=%s)", path);
+		goto error;
+	}
 	local.sun_family = AF_UNIX;
 
 	/*
@@ -255,6 +268,7 @@ td_fdreceiver_start(char *path, fd_cb_t callback, void *data)
 	return fdreceiver;
 
 error:
+	free(fdreceiver->path);
 	free(fdreceiver);
 
 	if (s >= 0)
