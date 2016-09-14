@@ -1506,7 +1506,14 @@ tapdisk_control_create_socket(char **socket_path)
 	}
 
 	memset(&saddr, 0, sizeof(saddr));
-	strncpy(saddr.sun_path, td_control.path, sizeof(saddr.sun_path));
+
+	if (unlikely(strlen(td_control.path) >= sizeof(saddr.sun_path))) {
+		EPRINTF("socket name too long: %s\n", td_control.path);
+		err = ENAMETOOLONG;
+		goto fail;
+	}
+	strcpy(saddr.sun_path, td_control.path);
+
 	saddr.sun_family = AF_UNIX;
 
 	err = bind(td_control.socket,

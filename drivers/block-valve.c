@@ -226,10 +226,14 @@ valve_sock_open(td_valve_t *valve)
 
 	valve->sock = s;
 
-	if (valve->brname[0] == '/')
-		strncpy(addr.sun_path, valve->brname,
-			sizeof(addr.sun_path));
-	else
+	if (valve->brname[0] == '/') {
+		if (unlikely(strlen(valve->brname) >= sizeof(addr.sun_path))) {
+			ERR("socket name too long: %s\n", valve->brname);
+			err = -ENAMETOOLONG;
+			goto fail;
+		}
+		strcpy(addr.sun_path, valve->brname);
+	} else
 		snprintf(addr.sun_path, sizeof(addr.sun_path),
 			 "%s/%s", TD_VALVE_SOCKDIR, valve->brname);
 

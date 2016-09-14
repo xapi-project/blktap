@@ -401,10 +401,14 @@ rlb_sock_open(td_rlb_t *rlb)
 
 	rlb->addr.sun_family = AF_UNIX;
 
-	if (rlb->name[0] == '/')
-		strncpy(rlb->addr.sun_path, rlb->name,
-			sizeof(rlb->addr.sun_path));
-	else
+	if (rlb->name[0] == '/') {
+		if (unlikely(strlen(rlb->name) >= sizeof(rlb->addr.sun_path))) {
+			ERR("socket name too long: %s\n", rlb->name);
+			err = -ENAMETOOLONG;
+			goto fail;
+		}
+		strcpy(rlb->addr.sun_path, rlb->name);
+	} else
 		snprintf(rlb->addr.sun_path, sizeof(rlb->addr.sun_path),
 			 "%s/%s", TD_VALVE_SOCKDIR, rlb->name);
 
