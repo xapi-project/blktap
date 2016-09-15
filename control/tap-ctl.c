@@ -192,6 +192,7 @@ tap_cli_allocate(int argc, char **argv)
 {
 	char *devname;
 	int c, minor, err;
+	char d_flag = 0;
 
 	devname = NULL;
 
@@ -200,6 +201,7 @@ tap_cli_allocate(int argc, char **argv)
 		switch (c) {
 		case 'd':
 			devname = optarg;
+			d_flag = 1;
 			break;
 		case '?':
 			goto usage;
@@ -212,6 +214,9 @@ tap_cli_allocate(int argc, char **argv)
 	err = tap_ctl_allocate(&minor, &devname);
 	if (!err)
 		printf("%s\n", devname);
+
+	if (!d_flag)
+		free(devname);
 
 	return err;
 
@@ -273,6 +278,7 @@ tap_cli_create(int argc, char **argv)
 {
 	int c, err, flags, prt_minor, timeout;
 	char *args, *devname, *secondary;
+	char d_flag = 0;
 
 	args      = NULL;
 	devname   = NULL;
@@ -289,6 +295,7 @@ tap_cli_create(int argc, char **argv)
 			break;
 		case 'd':
 			devname = optarg;
+			d_flag = 1;
 			break;
 		case 'R':
 			flags |= TAPDISK_MESSAGE_FLAG_RDONLY;
@@ -328,6 +335,9 @@ tap_cli_create(int argc, char **argv)
 			timeout);
 	if (!err)
 		printf("%s\n", devname);
+
+	if (!d_flag)
+		free(devname);
 
 	return err;
 
