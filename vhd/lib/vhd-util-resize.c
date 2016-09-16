@@ -689,7 +689,7 @@ vhd_shift_metadata(vhd_journal_t *journal, off64_t eob,
 	int i, n, err;
 	vhd_context_t *vhd;
 	size_t size_needed;
-	void *buf;
+	void *buf = NULL;
 	char **locators;
 	vhd_parent_locator_t *loc;
 
@@ -716,7 +716,6 @@ vhd_shift_metadata(vhd_journal_t *journal, off64_t eob,
 		err  = posix_memalign(&buf, VHD_SECTOR_SIZE, size);
 		if (err) {
 			err = -err;
-			buf = NULL;
 			goto out;
 		}
 
@@ -730,6 +729,8 @@ vhd_shift_metadata(vhd_journal_t *journal, off64_t eob,
 
 		locators[i] = buf;
 	}
+
+	buf = NULL;
 
 	for (i = 0; i < n; i++) {
 		off64_t off;
@@ -745,7 +746,8 @@ vhd_shift_metadata(vhd_journal_t *journal, off64_t eob,
 		if (vhd_check_for_clobber(vhd, off + size, SKIP_PLOC)) {
 			EPRINTF("%s: shifting locator %d would clobber data\n",
 				vhd->file, i);
-			return -EINVAL;
+			err = -EINVAL;
+			goto out;
 		}
 
 		err  = vhd_seek(vhd, off, SEEK_SET);
@@ -772,6 +774,7 @@ vhd_shift_metadata(vhd_journal_t *journal, off64_t eob,
 	err = 0;
 
 out:
+	free(buf);
 	for (i = 0; i < n; i++)
 		free(locators[i]);
 	free(locators);
