@@ -384,7 +384,7 @@ vhd_kill_footer(struct vhd_state *s)
 		return -err;
 
 	err = 1;
-	memset(zeros, 0xc7c7c7c7, 512);
+	memset(zeros, 0xc7, 512);
 
 	if ((end = lseek64(s->vhd.fd, 0, SEEK_END)) == -1)
 		goto fail;
