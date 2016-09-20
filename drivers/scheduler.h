@@ -38,11 +38,13 @@ typedef struct scheduler {
 	struct list_head             events;
 
 	int                          uuid;
+	int                          uuid_overflow;
 	int                          max_fd;
 	struct timeval               timeout;
 	struct timeval               max_timeout;
 	int                          depth;
 } scheduler_t;
+
 
 void scheduler_initialize(scheduler_t *);
 
@@ -55,6 +57,7 @@ event_id_t scheduler_register_event(scheduler_t *, char mode,
 				    int fd, struct timeval timeout,
 				    event_cb_t cb, void *private);
 
+int scheduler_get_event_uuid(scheduler_t *);
 void scheduler_unregister_event(scheduler_t *,  event_id_t);
 void scheduler_mask_event(scheduler_t *, event_id_t, int masked);
 void scheduler_set_max_timeout(scheduler_t *, struct timeval);

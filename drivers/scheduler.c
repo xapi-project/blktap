@@ -261,6 +261,37 @@ scheduler_run_events(scheduler_t *s)
 }
 
 int
+scheduler_get_event_uuid(scheduler_t *s) {
+
+	int uuid_found;
+	event_t *event;
+
+        if(unlikely(s->uuid < 0)) {
+		EPRINTF("scheduler uuid overflow detected");
+                s->uuid = 1;
+                s->uuid_overflow = 1;
+        }
+
+        if(unlikely(s->uuid_overflow == 1)) {
+                do {
+                        uuid_found = 1;
+                        scheduler_for_each_event(s, event) {
+                                if(event->id == s->uuid) {
+                                        uuid_found = 0;
+                                        s->uuid++;
+					if(s->uuid < 0)
+						s->uuid = 1;
+                                        break;
+                                }
+                        }
+
+                } while(!uuid_found);
+        }
+	
+	return s->uuid++;
+}
+
+int
 scheduler_register_event(scheduler_t *s, char mode, int fd,
 			 struct timeval timeout, event_cb_t cb, void *private)
 {
@@ -291,11 +322,8 @@ scheduler_register_event(scheduler_t *s, char mode, int fd,
 		TV_ADD(now, timeout, event->deadline);
 	event->cb       = cb;
 	event->private  = private;
-	event->id       = s->uuid++;
+	event->id       = scheduler_get_event_uuid(s);
 	event->masked   = 0;
-
-	if (!s->uuid)
-		s->uuid++;
 
 	list_add_tail(&event->next, &s->events);
 
@@ -411,6 +439,7 @@ scheduler_initialize(scheduler_t *s)
 
 	s->uuid  = 1;
 	s->depth = 0;
+	s->uuid_overflow = 0;
 
 	FD_ZERO(&s->read_fds);
 	FD_ZERO(&s->write_fds);
