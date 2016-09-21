@@ -1452,11 +1452,15 @@ tapdisk_control_mkdir(const char *dir)
 			*ptr = '\0';
 
 		err = mkdir(name, 0755);
-		if (err && errno != EEXIST) {
-			err = -errno;
-			EPRINTF("failed to create directory %s: %d\n",
-				  name, err);
-			break;
+		if (err) {
+			if (errno != EEXIST) {
+				err = -errno;
+				EPRINTF("failed to create directory %s: %d\n",
+					name, err);
+				break;
+			}
+			else
+				err = 0;
 		}
 
 		if (!ptr)
