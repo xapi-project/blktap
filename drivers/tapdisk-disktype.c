@@ -176,9 +176,7 @@ extern struct tap_disk tapdisk_qcow;
 #endif
 extern struct tap_disk tapdisk_block_cache;
 extern struct tap_disk tapdisk_vhd_index;
-#if 0
 extern struct tap_disk tapdisk_log;
-#endif
 extern struct tap_disk tapdisk_lcache;
 extern struct tap_disk tapdisk_llpcache;
 extern struct tap_disk tapdisk_llecache;
@@ -200,9 +198,7 @@ const struct tap_disk *tapdisk_disk_drivers[] = {
 #endif
 	[DISK_TYPE_BLOCK_CACHE] = &tapdisk_block_cache,
 	[DISK_TYPE_VINDEX]      = &tapdisk_vhd_index,
-#if 0
 	[DISK_TYPE_LOG]         = &tapdisk_log,
-#endif
 	[DISK_TYPE_LCACHE]      = &tapdisk_lcache,
 	[DISK_TYPE_LLPCACHE]    = &tapdisk_llpcache,
 	[DISK_TYPE_LLECACHE]    = &tapdisk_llecache,

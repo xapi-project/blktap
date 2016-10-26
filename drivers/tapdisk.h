@@ -95,7 +95,7 @@ extern unsigned int PAGE_SHIFT;
 #define TD_OPEN_SHAREABLE            0x00010
 #define TD_OPEN_ADD_CACHE            0x00020
 #define TD_OPEN_VHD_INDEX            0x00040
-#define TD_OPEN_LOG_DIRTY            0x00080
+#define TD_OPEN_ADD_LOG            0x00080
 #define TD_OPEN_LOCAL_CACHE          0x00100
 #define TD_OPEN_REUSE_PARENT         0x00200
 #define TD_OPEN_SECONDARY            0x00400
@@ -136,7 +136,7 @@ struct td_disk_id {
 
 struct td_disk_info {
 	td_sector_t                  size;
-        long                         sector_size;
+	long                         sector_size;
 	uint32_t                     info;
 };
 

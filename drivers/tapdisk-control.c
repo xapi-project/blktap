@@ -737,8 +737,8 @@ tapdisk_control_open_image(struct tapdisk_ctl_conn *conn,
 		flags |= TD_OPEN_ADD_CACHE;
 	if (request->u.params.flags & TAPDISK_MESSAGE_FLAG_VHD_INDEX)
 		flags |= TD_OPEN_VHD_INDEX;
-	if (request->u.params.flags & TAPDISK_MESSAGE_FLAG_LOG_DIRTY)
-		flags |= TD_OPEN_LOG_DIRTY;
+	if (request->u.params.flags & TAPDISK_MESSAGE_FLAG_ADD_LOG)
+		flags |= TD_OPEN_ADD_LOG;
 	if (request->u.params.flags & TAPDISK_MESSAGE_FLAG_ADD_LCACHE)
 		flags |= TD_OPEN_LOCAL_CACHE;
 	if (request->u.params.flags & TAPDISK_MESSAGE_FLAG_REUSE_PRT)
@@ -1213,6 +1213,7 @@ out:
     }
     return err;
 }
+
 
 struct tapdisk_control_info message_infos[] = {
 	[TAPDISK_MESSAGE_PID] = {

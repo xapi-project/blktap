@@ -76,6 +76,7 @@ libtapdisk_la_SOURCES += tapdisk-fdreceiver.h
 libtapdisk_la_SOURCES += md5.c
 libtapdisk_la_SOURCES += md5.h
 libtapdisk_la_SOURCES += ../cpumond/cpumond.h
+libtapdisk_la_SOURCES += log.h
 
 libtapdisk_la_SOURCES += block-aio.c
 libtapdisk_la_SOURCES += block-aio.h
@@ -90,6 +91,7 @@ libtapdisk_la_SOURCES += block-llcache.c
 libtapdisk_la_SOURCES += block-nbd.c
 libtapdisk_la_SOURCES += block-ntnx.c
 libtapdisk_la_SOURCES += block-ntnx.h
+libtapdisk_la_SOURCES += block-log.c
 
 # shared ring
 libtapdisk_la_SOURCES += td-blkif.c
