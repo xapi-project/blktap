@@ -858,13 +858,19 @@ tapdisk_control_close_image(struct tapdisk_ctl_conn *conn,
     if (unlikely(err))
         goto out;
 
-    /*
-     * Wait for requests against dead rings to complete, otherwise, if we
-     * proceed with tearing down the VBD, we will free memory that will later
-     * be accessed by these requests, and this will lead to a crash.
-     */
-    while (unlikely(tapdisk_vbd_contains_dead_rings(vbd)))
+    if(request->type != TAPDISK_MESSAGE_FORCE_SHUTDOWN) {
+
+        /*
+         * Wait for requests against dead rings to complete, otherwise, if we
+         * proceed with tearing down the VBD, we will free memory that will later
+         * be accessed by these requests, and this will lead to a crash.
+         */
+        while (unlikely(tapdisk_vbd_contains_dead_rings(vbd)))
             tapdisk_server_iterate();
+    }
+    else {
+        DPRINTF("Ignoring dead rings in forced shutdown mode\n");
+    }
 
 	if (!err) {
 		do {
@@ -1250,6 +1256,10 @@ struct tapdisk_control_info message_infos[] = {
 		.flags   = TAPDISK_MSG_VERBOSE,
 	},
 	[TAPDISK_MESSAGE_CLOSE] = {
+		.handler = tapdisk_control_close_image,
+		.flags   = TAPDISK_MSG_VERBOSE,
+	},
+	[TAPDISK_MESSAGE_FORCE_SHUTDOWN] = {
 		.handler = tapdisk_control_close_image,
 		.flags   = TAPDISK_MSG_VERBOSE,
 	},
