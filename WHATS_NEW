@@ -1,3 +1,42 @@
+Version 3.5.0 - 15th Nov 2016
+================================
+  CA-222244: Fix resource leaks in vhd_shift_metadata()
+  CA-222242: memset() 1 byte instead of 4
+  CA-222139: Resource leak in tap_ctl_allocate_device()
+  CA-222077: Fix bugs in td_fdreceiver_start()
+  CA-216249: Check length of socket name before copying
+  CA-222003: Fix NULL dereference bug
+  CA-221864: Fix bugs in vhd_journal_read_locators()
+  CA-221814: Fix resource leak in vhdi_create()
+  CA-216250: Fix resource leak
+  CA-215114: Resource leak in vhd_util_coalesce_open_output()
+  CA-220481: Fixes in tap_ctl_stats_fwrite()
+  CP-18757: Refactor the way we use ctx->fd (CID: 28676)
+  CA-220467 Read or Write to pointer after free
+  CA-220467 Double close
+  CA-220467: Destination buffer too small
+  CA-220467: Dereference null return value
+  CA-220467 Unchecked return value from library
+  CA-220482: Check return value of fwrite()
+  CA-220518: Potentially uninitialised variable used
+  CA-220479: Remove nonsensical checks
+  CA-220478: Fix leaked socket file descriptor
+  CA-220463: Ensure string fits in buffer before copying
+  CA-220442: Check length of socket name before copying
+  CA-220444: Fix possible race condition
+  CA-220436: Fix Resource leak in tap-ctl-list.c
+  CA-220434: Return 'err' instead of 0
+  CA-220433: Replace 'format' with string literal in tap-ctl-list.c
+  CA-220226: Fix bugs in part-util.c
+  CA-215084: Bug fixes in lvm-util.c
+  CA-215080:Uninitialized scalar variable(CID:63812)
+  CA-220003: Resource leak for memory allocated to target (CID:57413)
+  CA-220002: resource leak for memory allocated to pname (CID:57549)
+  CA-220000: memory leak from variable path (CID:57593)
+  CA-220041: blkif used after freed (CID:57556)
+  CA-219462: Remove lock.h and lock.c
+  CP-17399: fix resource leaking asprintf
+
 Version 3.4.0 - 2nd Aug 2016
 ================================
   CA-211529: Corrected tapdisk stats definitions
