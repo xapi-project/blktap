@@ -94,8 +94,8 @@ tapdisk_nbdserver_alloc_request(td_nbdserver_client_t *client)
 	return req;
 }
 
-void
-tapdisk_nbdserver_free_request(td_nbdserver_client_t *client,
+static void
+tapdisk_nbdserver_set_free_request(td_nbdserver_client_t *client,
 		td_nbdserver_req_t *req)
 {
 	ASSERT(client);
@@ -103,7 +103,13 @@ tapdisk_nbdserver_free_request(td_nbdserver_client_t *client,
 	BUG_ON(client->n_reqs_free >= client->n_reqs);
 
 	client->reqs_free[client->n_reqs_free++] = req;
+}
 
+void
+tapdisk_nbdserver_free_request(td_nbdserver_client_t *client,
+		td_nbdserver_req_t *req)
+{
+	tapdisk_nbdserver_set_free_request(client, req);
 	if (unlikely(client->dead && !tapdisk_nbdserver_reqs_pending(client)))
 		tapdisk_nbdserver_free_client(client);
 }
@@ -160,7 +166,7 @@ tapdisk_nbdserver_reqs_init(td_nbdserver_client_t *client, int n_reqs)
 
 	for (i = 0; i < n_reqs; i++) {
 		client->reqs[i].vreq.iov = &client->iovecs[i];
-		tapdisk_nbdserver_free_request(client, &client->reqs[i]);
+		tapdisk_nbdserver_set_free_request(client, &client->reqs[i]);
 	}
 
 	return 0;
@@ -300,7 +306,18 @@ __tapdisk_nbdserver_request_cb(td_vbd_request_t *vreq, int error,
 		goto finish;
 	}
 
-	send(client->client_fd, &reply, sizeof(reply), 0);
+	tosend = len = sizeof(reply);
+	while (tosend > 0) {
+		sent = send(client->client_fd,
+			    ((char *)&reply) + (len - tosend),
+			    tosend, 0);
+		if (sent <= 0) {
+			sent = errno;
+			ERR("Short send/error in callback: %s", strerror(sent));
+			goto finish;
+		}	
+		tosend -= sent;
+	}
 
 	switch(vreq->op) {
 	case TD_OP_READ:
@@ -372,10 +389,16 @@ tapdisk_nbdserver_newclient_fd(td_nbdserver_t *server, int new_fd)
 		else
 			INFO("Short write in negotiation: wrote %d bytes instead of 152\n",
 					rc);
+		return;
 	}
 
 	INFO("About to alloc client");
 	client = tapdisk_nbdserver_alloc_client(server);
+	if (client == NULL) {
+		ERR("Error allocating client");
+		close(new_fd);
+		return;
+	}
 
 	INFO("Got an allocated client at %p", client);
 	client->client_fd = new_fd;
@@ -755,6 +778,7 @@ tapdisk_nbdserver_listen_inet(td_nbdserver_t *server, const int port)
 					&yes, sizeof(int)) == -1) {
 			ERR("Failed to setsockopt");
 			close(server->fdrecv_listening_fd);
+			server->fdrecv_listening_fd = -1;
 			continue;
 		}
 
@@ -762,6 +786,7 @@ tapdisk_nbdserver_listen_inet(td_nbdserver_t *server, const int port)
 				-1) {
 			ERR("Failed to bind");
 			close(server->fdrecv_listening_fd);
+			server->fdrecv_listening_fd = -1;
 			continue;
 		}
 
@@ -817,6 +842,14 @@ tapdisk_nbdserver_listen_unix(td_nbdserver_t *server)
 	}
 
 	server->local.sun_family = AF_UNIX;
+
+	if (unlikely(strlen(server->sockpath) > 
+		     (sizeof(server->local.sun_path) - 1))) {
+		err = -ENAMETOOLONG;
+		ERR("socket name too long: %s\n", server->sockpath);
+		goto out;
+	}
+
 	strcpy(server->local.sun_path, server->sockpath);
 	err = unlink(server->local.sun_path);
 	if (err == -1 && errno != ENOENT) {
