@@ -2575,8 +2575,17 @@ vhd_open(vhd_context_t *ctx, const char *file, int flags)
 		return err;
 
 	oflags = O_LARGEFILE;
-	if (!(flags & VHD_OPEN_CACHED))
+	if (!(flags & VHD_OPEN_CACHED)) {
 		oflags |= O_DIRECT;
+		if (access("/etc/tapdisk_use_dsync", F_OK) != -1) {
+		/* tapdisk_use_dsync exists, it means we need to open
+		 * the leaf with O_DSYNC as well.
+		 * This is not a public tapdisk interface
+		 */
+			if (!(flags & VHD_OPEN_RDONLY))
+				oflags |= O_DSYNC;
+		}
+	}
 	if (flags & VHD_OPEN_RDONLY)
 		oflags |= O_RDONLY;
 	if (flags & VHD_OPEN_RDWR)
