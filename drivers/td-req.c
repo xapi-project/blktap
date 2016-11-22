@@ -41,6 +41,8 @@
 #define BLKIF_MSG_POISON 0xdeadbeef
 #endif
 
+#define CHECK_MODULUS_1024 0x3FF
+
 #define ERR(blkif, fmt, args...) \
     EPRINTF("%d/%d: "fmt, (blkif)->domid, (blkif)->devid, ##args);
 
@@ -454,6 +456,20 @@ tapdisk_xenblkif_complete_request(struct td_xenblkif * const blkif,
 			cnt = &blkif->stats.xenvbd->st_rd_cnt;
 			sum = &blkif->stats.xenvbd->st_rd_sum_usecs;
 			max = &blkif->stats.xenvbd->st_rd_max_usecs;
+                        /* Printing the read count stats for every 1000 requests*/
+                        if(unlikely((*cnt & CHECK_MODULUS_1024) == 0)){
+				RING_DEBUG(blkif, "The read stats for vbd %d "
+                                                   "with devid %d are:\n",
+						   blkif->domid, blkif->devid);
+				RING_DEBUG(blkif, "Completed BLKIF_OP_READ"
+                                                  "requests: %llu \n", *cnt);
+				RING_DEBUG(blkif, "Total request response time of"
+                                                  "all BLKIF_OP_READ requests:"
+                                                  " %llu \n", *sum);
+				RING_DEBUG(blkif, "maximum BLKIF_OP_READ response"
+                                                  "time: %llu \n", *max);
+                               
+                        }
 			if (likely(!err)) {
 				_err = guest_copy2(blkif, tapreq);
 				if (unlikely(_err)) {
@@ -466,7 +482,21 @@ tapdisk_xenblkif_complete_request(struct td_xenblkif * const blkif,
 			cnt = &blkif->stats.xenvbd->st_wr_cnt;
 			sum = &blkif->stats.xenvbd->st_wr_sum_usecs;
 			max = &blkif->stats.xenvbd->st_wr_max_usecs;
-		}
+                        /* Printing the write count stats
+                           for every 1000 requests*/
+                        if(unlikely((*cnt & CHECK_MODULUS_1024) == 0)){
+				RING_DEBUG(blkif, "The read stats for vbd %d "
+                                                   "with devid %d are:\n",
+						   blkif->domid, blkif->devid);
+				RING_DEBUG(blkif, "Completed BLKIF_OP_WRITE"
+                                                  " requests: %llu \n", *cnt);
+				RING_DEBUG(blkif, "Total request response time"
+                                                  "of all BLKIF_OP_WRITE"
+                                                  "requests: %llu \n", *sum);
+				RING_DEBUG(blkif, "maximum BLKIF_OP_WRITE response"
+                                                  "time: %llu \n", *max);
+		       }
+                  }
 
 		if (likely(cnt)) {
 			struct timeval now;
@@ -679,6 +709,7 @@ tapdisk_xenblkif_make_vbd_request(struct td_xenblkif * const blkif,
         struct td_xenblkif_req * const tapreq)
 {
     int err = 0;
+    long long op = 0;
     td_vbd_request_t *vreq;
 
     ASSERT(tapreq);
@@ -691,15 +722,25 @@ tapdisk_xenblkif_make_vbd_request(struct td_xenblkif * const blkif,
 
     switch (tapreq->msg.operation) {
     case BLKIF_OP_READ:
-        blkif->stats.xenvbd->st_rd_req++;
+        op = blkif->stats.xenvbd->st_rd_req++;
         tapreq->prot = PROT_WRITE;
         vreq->op = TD_OP_READ;
+        if(unlikely((op & CHECK_MODULUS_1024) == 0)) {
+               RING_DEBUG(blkif, "The total numeber of BLKIF_OP_READ requests"
+                                 "recevied for vbd %d with devid %d are: %llu \n",
+                                  blkif->domid, blkif->devid, op);
+        }
         break;
     case BLKIF_OP_WRITE:
     case BLKIF_OP_WRITE_BARRIER:
-        blkif->stats.xenvbd->st_wr_req++;
+        op = blkif->stats.xenvbd->st_wr_req++;
         tapreq->prot = PROT_READ;
         vreq->op = TD_OP_WRITE;
+        if(unlikely((op & CHECK_MODULUS_1024) == 0)) {
+               RING_DEBUG(blkif, "The total numeber of BLKIF_OP_WRITE requests"
+                                 "recevied for vbd %d with devid %d are: %llu \n",
+                                  blkif->domid, blkif->devid, op);
+        }
         break;
     default:
         RING_ERR(blkif, "req %lu: invalid request type %d\n",

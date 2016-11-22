@@ -103,6 +103,10 @@ tapdisk_xenblkif_stats_create(struct td_xenblkif *blkif)
 
     len = asprintf(&blkif->xenvbd_stats.root, "/dev/shm/vbd3-%d-%d",
             blkif->domid, blkif->devid);
+
+    EPRINTF("I/O stats create started for VBD with domid %d and devid %d\n",
+             blkif->domid, blkif->devid);
+
     if (unlikely(len == -1)) {
         err = errno;
         blkif->xenvbd_stats.root = NULL;
