@@ -172,8 +172,48 @@ tap_ctl_get_child_id(int readfd)
 	return id;
 }
 
+/* Move the process to the nominated cgroup slice
+ * Return 0 on success, -1 on error (with errno set) */
+static int
+tap_ctl_move_to_cgroup(int pid, const char *slice)
+{
+	FILE *f = NULL;
+	char *path;
+
+	if (!slice) {
+		errno = EINVAL;
+		return -1;
+	}
+
+	path = malloc(FILENAME_MAX);
+	if (!path) {
+		EPRINTF("malloc failed: %d\n", errno);
+		return -1;
+	}
+
+	if (snprintf(path, FILENAME_MAX, "/sys/fs/cgroup/cpu/%s/tasks", slice) >= FILENAME_MAX) {
+		EPRINTF("path truncated: %d\n", errno);
+		free(path);
+		return -1;
+	}
+
+	f = fopen(path, "we");
+	if (!f) {
+		EPRINTF("failed to write pid to cgroups task file '%s': %d\n",
+		    path, errno);
+		free(path);
+		return -1;
+	}
+
+	fprintf(f, "%d", pid);
+	fclose(f);
+
+	free(path);
+	return 0;
+}
+
 int
-tap_ctl_spawn(void)
+tap_ctl_spawn(const char *slice)
 {
 	pid_t child;
 	int err, id, readfd;
@@ -195,6 +235,18 @@ again:
 	id = tap_ctl_get_child_id(readfd);
 	if (id < 0)
 		EPRINTF("get_id failed, child %d err %d\n", child, errno);
+
+	/* Put the tapdisk in a cgroup slice (best-effort) */
+	if (!slice) {
+#ifndef TAP_CTL_NO_DEFAULT_CGROUP_SLICE
+		/* No option specified; move it to the default slice */
+		if (tap_ctl_move_to_cgroup(id, "/") < 0)
+			EPRINTF("failed to move tapdisk %d to default cgroup slice: %s; ignoring.\n", id, strerror(errno));
+#endif
+	} else {
+		if (tap_ctl_move_to_cgroup(id, slice) < 0)
+			EPRINTF("failed to move tapdisk %d to slice '%s': %s; ignoring.\n", id, slice, strerror(errno));
+	}
 
 	return id;
 }
