@@ -36,11 +36,10 @@
  * ensure all of data on socket comes through. f==read || f==vwrite
  */
 size_t
-atomicio(f, fd, _s, n)
-	ssize_t (*f) (int, void *, size_t);
-	int fd;
-	void *_s;
-	size_t n;
+atomicio(ssize_t (*f) (int, void *, size_t),
+	 int fd,
+	 void *_s,
+	 size_t n)
 {
 	char *s = _s;
 	size_t pos = 0;
