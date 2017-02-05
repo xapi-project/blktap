@@ -29,7 +29,7 @@
  */
 
 #ifndef __TAPDISK_UTIL_H__
-#define __TAPDISK_UTIL_H_
+#define __TAPDISK_UTIL_H__
 
 #define ARRAY_SIZE(_a) (sizeof(_a)/sizeof((_a)[0]))
 
