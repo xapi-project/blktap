@@ -1,5 +1,6 @@
 
 AM_CFLAGS  = -Wall
+AM_CFLAGS += -Wwrite-strings
 AM_CFLAGS += -Werror
 
 sbin_PROGRAMS = lvm-util
