@@ -62,7 +62,7 @@ struct vdi_field {
 	td_field_t  id;
 };
 
-static struct vdi_field td_vdi_fields[TD_FIELD_INVALID] = {
+static const struct vdi_field td_vdi_fields[TD_FIELD_INVALID] = {
 	{ .id = TD_FIELD_HIDDEN, .name = "hidden" }
 };
 
@@ -85,7 +85,7 @@ struct command {
 	int           needs_type;
 };
 
-struct command commands[TD_CMD_INVALID] = {
+static const struct command commands[TD_CMD_INVALID] = {
 	{ .id = TD_CMD_CREATE,   .name = "create",   .needs_type = 1 },
 	{ .id = TD_CMD_SNAPSHOT, .name = "snapshot", .needs_type = 1 },
 /*	{ .id = TD_CMD_COALESCE, .name = "coalesce", .needs_type = 1 },    */
@@ -148,7 +148,7 @@ help(void)
 	exit(-1);
 }
 
-static struct command *
+static const struct command *
 get_command(char *command)
 {
 	int i;
@@ -160,7 +160,7 @@ get_command(char *command)
 	return NULL;
 }
 
-static struct vdi_field *
+static const struct vdi_field *
 get_field(const char *field)
 {
 	int i;
@@ -559,7 +559,7 @@ static int
 td_set_field(int type, int argc, const char *argv[])
 {
 	int c, cargc;
-	struct vdi_field *field;
+	const struct vdi_field *field;
 	const char *name, *value, *cargv[7];
 
 	if (type != TD_TYPE_VHD) {
@@ -612,7 +612,7 @@ int
 main(int argc, char *argv[])
 {
 	const char **cargv;
-	struct command *cmd;
+	const struct command *cmd;
 	int cargc, i, type = -1, ret = 0;
 
 #ifdef CORE_DUMP
