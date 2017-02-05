@@ -138,7 +138,7 @@ const char *td_disk_types[TD_TYPE_INVALID] = {
 		fprintf(stderr, " }\n");				\
 	} while (0)
 
-void 
+static void
 help(void)
 {
 	fprintf(stderr, "Tapdisk Utilities: v1.0.0\n");
@@ -148,7 +148,7 @@ help(void)
 	exit(-1);
 }
 
-struct command *
+static struct command *
 get_command(char *command)
 {
 	int i;
@@ -160,7 +160,7 @@ get_command(char *command)
 	return NULL;
 }
 
-struct vdi_field *
+static struct vdi_field *
 get_field(const char *field)
 {
 	int i;
@@ -172,7 +172,7 @@ get_field(const char *field)
 	return NULL;
 }
 
-int
+static int
 get_driver_type(char *type)
 {
 	int i;
@@ -187,7 +187,7 @@ get_driver_type(char *type)
 	return -TD_TYPE_INVALID;
 }
 
-int
+static int
 td_create(int type, int argc, const char *argv[])
 {
 	ssize_t mb;
@@ -283,7 +283,7 @@ td_create(int type, int argc, const char *argv[])
 	return EINVAL;
 }
 
-int
+static int
 td_snapshot(int type, int argc, const char *argv[])
 {
 	const char *cargv[10];
@@ -409,7 +409,7 @@ td_coalesce(int type, int argc, char *argv[])
 	return EINVAL;
 }
 
-int
+static int
 td_query(int type, int argc, const char *argv[])
 {
 	const char *name;
@@ -555,7 +555,7 @@ td_query(int type, int argc, const char *argv[])
 	return err;
 }
 
-int
+static int
 td_set_field(int type, int argc, const char *argv[])
 {
 	int c, cargc;
