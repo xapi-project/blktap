@@ -106,7 +106,7 @@ chksum(char *buf)
 }
 
 static inline void
-check_hash(struct tfilter *filter, uint64_t sec, char *buf, char *type)
+check_hash(struct tfilter *filter, uint64_t sec, char *buf, const char *type)
 {
 	uint64_t sum;
 	struct dhash *hash;

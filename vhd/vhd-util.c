@@ -46,10 +46,10 @@
 #define DFPRINTF(_f, _a...) ((void)0)
 #endif
 
-typedef int (*vhd_util_func_t) (int, char **);
+typedef int (*vhd_util_func_t) (int, const char **);
 
 struct command {
-	char               *name;
+	const char         *name;
 	vhd_util_func_t     func;
 };
 
@@ -110,7 +110,7 @@ get_command(char *command)
 int
 main(int argc, char *argv[])
 {
-	char **cargv;
+	const char **cargv;
 	struct command *cmd;
 	int cargc, i, cnt, ret;
 

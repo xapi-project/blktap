@@ -152,7 +152,7 @@ out:
 }
 
 int
-vhd_util_fill(int argc, char **argv)
+vhd_util_fill(int argc, const char **argv)
 {
 	int err, c;
 	char *name;
@@ -172,7 +172,7 @@ vhd_util_fill(int argc, char **argv)
 		goto usage;
 
 	optind = 0;
-	while ((c = getopt(argc, argv, "n:f:t:bBh")) != -1) {
+	while ((c = getopt(argc, (char **) argv, "n:f:t:bBh")) != -1) {
 		switch (c) {
 		case 'n':
 			name = optarg;

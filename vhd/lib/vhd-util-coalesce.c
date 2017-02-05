@@ -689,7 +689,7 @@ done:
 }
 
 int
-vhd_util_coalesce(int argc, char **argv)
+vhd_util_coalesce(int argc, const char **argv)
 {
 	char *name, *oname, *ancestor, *step_parent;
 	int err, c, progress, sparse;
@@ -705,7 +705,7 @@ vhd_util_coalesce(int argc, char **argv)
 		goto usage;
 
 	optind = 0;
-	while ((c = getopt(argc, argv, "n:o:a:x:sph")) != -1) {
+	while ((c = getopt(argc, (char **) argv, "n:o:a:x:sph")) != -1) {
 		switch (c) {
 		case 'n':
 			name = optarg;

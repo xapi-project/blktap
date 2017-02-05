@@ -99,7 +99,7 @@ vhd_print_header(vhd_context_t *vhd, vhd_header_t *h, int hex)
 }
 
 /* String table for hd.type */
-char *hd_type_str[7] = {
+const char *hd_type_str[7] = {
         "None",                    /* 0 */
         "Reserved (deprecated)",   /* 1 */
         "Fixed hard disk",         /* 2 */
@@ -180,7 +180,7 @@ vhd_print_footer(vhd_footer_t *f, int hex)
 	printf("\n");
 }
 
-static inline char *
+static inline const char *
 code_name(uint32_t code)
 {
 	switch(code) {
@@ -730,7 +730,7 @@ vhd_read_bytes(vhd_context_t *vhd, uint64_t byte, int count, int hex)
 }
 
 int
-vhd_util_read(int argc, char **argv)
+vhd_util_read(int argc, const char **argv)
 {
 	char *name;
 	vhd_context_t vhd;
@@ -760,7 +760,7 @@ vhd_util_read(int argc, char **argv)
 		goto usage;
 
 	optind = 0;
-	while ((c = getopt(argc, argv, "n:pt:b:Bm:i:e:aj:d:c:r:R:xCh")) != -1) {
+	while ((c = getopt(argc, (char **) argv, "n:pt:b:Bm:i:e:aj:d:c:r:R:xCh")) != -1) {
 		switch(c) {
 		case 'n':
 			name = optarg;

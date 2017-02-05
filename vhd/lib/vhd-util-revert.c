@@ -42,7 +42,7 @@
 #include "libvhd-journal.h"
 
 int
-vhd_util_revert(int argc, char **argv)
+vhd_util_revert(int argc, const char **argv)
 {
 	char *name, *jname;
 	vhd_journal_t journal;
@@ -52,7 +52,7 @@ vhd_util_revert(int argc, char **argv)
 	jname = NULL;
 
 	optind = 0;
-	while ((c = getopt(argc, argv, "n:j:h")) != -1) {
+	while ((c = getopt(argc, (char **) argv, "n:j:h")) != -1) {
 		switch (c) {
 		case 'n':
 			name = optarg;

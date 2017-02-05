@@ -52,7 +52,7 @@
 
 typedef struct disk_info {
 	const char     *name; /* driver name, e.g. 'aio' */
-	char           *desc;  /* e.g. "raw image" */
+	const char     *desc;  /* e.g. "raw image" */
 	unsigned int    flags; 
 } disk_info_t;
 

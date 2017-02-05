@@ -1524,7 +1524,7 @@ vhd_macx_decode_location(char *in, char *out, int len)
 }
 
 static char *
-vhd_w2u_decode_location(char *in, char *out, int len, char *utf_type)
+vhd_w2u_decode_location(char *in, char *out, int len, const char *utf_type)
 {
 	iconv_t cd;
 	char *name, *tmp;
@@ -1559,7 +1559,8 @@ vhd_w2u_decode_location(char *in, char *out, int len, char *utf_type)
 int
 vhd_header_decode_parent(vhd_context_t *ctx, vhd_header_t *header, char **buf)
 {
-	char *code, out[512];
+	const char *code;
+	char out[512];
 
 	if (vhd_creator_tapdisk(ctx) &&
 	    ctx->footer.crtr_ver == VHD_VERSION(0, 1))

@@ -461,7 +461,7 @@ tapback_backend_handle_backend_watch(backend_t *backend,
  * @param xbs the XenbusState to convert
  * @returns a printable string
  */
-char *
+const char *
 xenbus_strstate(const XenbusState xbs);
 
 /**

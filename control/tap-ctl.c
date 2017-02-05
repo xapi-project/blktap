@@ -42,10 +42,10 @@
 
 #include "tap-ctl.h"
 
-typedef int (*tap_ctl_func_t) (int, char **);
+typedef int (*tap_ctl_func_t) (int, const char **);
 
 struct command {
-	char                     *name;
+	const char                *name;
 	tap_ctl_func_t            func;
 };
 
@@ -109,7 +109,7 @@ tap_cli_list_dict(tap_list_t *entry)
 }
 
 int
-tap_cli_list(int argc, char **argv)
+tap_cli_list(int argc, const char **argv)
 {
 	struct list_head list = LIST_HEAD_INIT(list);
 	int c, minor, tty, err;
@@ -122,7 +122,7 @@ tap_cli_list(int argc, char **argv)
 	type  = NULL;
 	file  = NULL;
 
-	while ((c = getopt(argc, argv, "m:p:t:f:h")) != -1) {
+	while ((c = getopt(argc, (char **) argv, "m:p:t:f:h")) != -1) {
 		switch (c) {
 		case 'm':
 			minor = atoi(optarg);
@@ -188,7 +188,7 @@ tap_cli_allocate_usage(FILE *stream)
 }
 
 static int
-tap_cli_allocate(int argc, char **argv)
+tap_cli_allocate(int argc, const char **argv)
 {
 	char *devname;
 	int c, minor, err;
@@ -197,7 +197,7 @@ tap_cli_allocate(int argc, char **argv)
 	devname = NULL;
 
 	optind = 0;
-	while ((c = getopt(argc, argv, "d:h")) != -1) {
+	while ((c = getopt(argc, (char **) argv, "d:h")) != -1) {
 		switch (c) {
 		case 'd':
 			devname = optarg;
@@ -232,14 +232,14 @@ tap_cli_free_usage(FILE *stream)
 }
 
 static int
-tap_cli_free(int argc, char **argv)
+tap_cli_free(int argc, const char **argv)
 {
 	int c, minor;
 
 	minor = -1;
 
 	optind = 0;
-	while ((c = getopt(argc, argv, "m:h")) != -1) {
+	while ((c = getopt(argc, (char **) argv, "m:h")) != -1) {
 		switch (c) {
 		case 'm':
 			minor = atoi(optarg);
@@ -274,7 +274,7 @@ tap_cli_create_usage(FILE *stream)
 }
 
 static int
-tap_cli_create(int argc, char **argv)
+tap_cli_create(int argc, const char **argv)
 {
 	int c, err, flags, prt_minor, timeout;
 	char *args, *devname, *secondary;
@@ -288,7 +288,7 @@ tap_cli_create(int argc, char **argv)
 	timeout   = 0;
 
 	optind = 0;
-	while ((c = getopt(argc, argv, "a:RDd:e:r2:st:h")) != -1) {
+	while ((c = getopt(argc, (char **) argv, "a:RDd:e:r2:st:h")) != -1) {
 		switch (c) {
 		case 'a':
 			args = optarg;
@@ -368,7 +368,7 @@ tap_cli_timeout(const char *optarg)
 }
 
 static int
-tap_cli_destroy(int argc, char **argv)
+tap_cli_destroy(int argc, const char **argv)
 {
 	int c, pid, minor;
 	struct timeval *timeout;
@@ -378,7 +378,7 @@ tap_cli_destroy(int argc, char **argv)
 	timeout = NULL;
 
 	optind = 0;
-	while ((c = getopt(argc, argv, "p:m:t:h")) != -1) {
+	while ((c = getopt(argc, (char **) argv, "p:m:t:h")) != -1) {
 		switch (c) {
 		case 'p':
 			pid = atoi(optarg);
@@ -416,13 +416,13 @@ tap_cli_spawn_usage(FILE *stream)
 }
 
 static int
-tap_cli_spawn(int argc, char **argv)
+tap_cli_spawn(int argc, const char **argv)
 {
 	int c, tty;
 	pid_t pid;
 
 	optind = 0;
-	while ((c = getopt(argc, argv, "h")) != -1) {
+	while ((c = getopt(argc, (char **) argv, "h")) != -1) {
 		switch (c) {
 		case '?':
 			goto usage;
@@ -456,7 +456,7 @@ tap_cli_attach_usage(FILE *stream)
 }
 
 static int
-tap_cli_attach(int argc, char **argv)
+tap_cli_attach(int argc, const char **argv)
 {
 	int c, pid, minor;
 
@@ -464,7 +464,7 @@ tap_cli_attach(int argc, char **argv)
 	minor = -1;
 
 	optind = 0;
-	while ((c = getopt(argc, argv, "p:m:h")) != -1) {
+	while ((c = getopt(argc, (char **) argv, "p:m:h")) != -1) {
 		switch (c) {
 		case 'p':
 			pid = atoi(optarg);
@@ -497,7 +497,7 @@ tap_cli_detach_usage(FILE *stream)
 }
 
 static int
-tap_cli_detach(int argc, char **argv)
+tap_cli_detach(int argc, const char **argv)
 {
 	int c, pid, minor;
 
@@ -505,7 +505,7 @@ tap_cli_detach(int argc, char **argv)
 	minor = -1;
 
 	optind = 0;
-	while ((c = getopt(argc, argv, "p:m:h")) != -1) {
+	while ((c = getopt(argc, (char **) argv, "p:m:h")) != -1) {
 		switch (c) {
 		case 'p':
 			pid = atoi(optarg);
@@ -538,7 +538,7 @@ tap_cli_close_usage(FILE *stream)
 }
 
 static int
-tap_cli_close(int argc, char **argv)
+tap_cli_close(int argc, const char **argv)
 {
 	int c, pid, minor, force;
 	struct timeval *timeout;
@@ -549,7 +549,7 @@ tap_cli_close(int argc, char **argv)
 	timeout = NULL;
 
 	optind = 0;
-	while ((c = getopt(argc, argv, "p:m:ft:h")) != -1) {
+	while ((c = getopt(argc, (char **) argv, "p:m:ft:h")) != -1) {
 		switch (c) {
 		case 'p':
 			pid = atoi(optarg);
@@ -590,7 +590,7 @@ tap_cli_pause_usage(FILE *stream)
 }
 
 static int
-tap_cli_pause(int argc, char **argv)
+tap_cli_pause(int argc, const char **argv)
 {
 	int c, pid, minor;
 	struct timeval *timeout;
@@ -600,7 +600,7 @@ tap_cli_pause(int argc, char **argv)
 	timeout = NULL;
 
 	optind = 0;
-	while ((c = getopt(argc, argv, "p:m:t:h")) != -1) {
+	while ((c = getopt(argc, (char **) argv, "p:m:t:h")) != -1) {
 		switch (c) {
 		case 'p':
 			pid = atoi(optarg);
@@ -638,7 +638,7 @@ tap_cli_unpause_usage(FILE *stream)
 }
 
 int
-tap_cli_unpause(int argc, char **argv)
+tap_cli_unpause(int argc, const char **argv)
 {
 	const char *args;
 	char *secondary;
@@ -651,7 +651,7 @@ tap_cli_unpause(int argc, char **argv)
 	flags      = 0;
 
 	optind = 0;
-	while ((c = getopt(argc, argv, "p:m:a:2:h")) != -1) {
+	while ((c = getopt(argc, (char **) argv, "p:m:a:2:h")) != -1) {
 		switch (c) {
 		case 'p':
 			pid = atoi(optarg);
@@ -691,13 +691,13 @@ tap_cli_major_usage(FILE *stream)
 }
 
 static int
-tap_cli_major(int argc, char **argv)
+tap_cli_major(int argc, const char **argv)
 {
 	int c, chr, major;
 
 	chr = 0;
 
-	while ((c = getopt(argc, argv, "bch")) != -1) {
+	while ((c = getopt(argc, (char **) argv, "bch")) != -1) {
 		switch (c) {
 		case 'b':
 			chr = 0;
@@ -744,7 +744,7 @@ tap_cli_open_usage(FILE *stream)
 }
 
 static int
-tap_cli_open(int argc, char **argv)
+tap_cli_open(int argc, const char **argv)
 {
 	const char *args, *secondary;
 	int c, pid, minor, flags, prt_minor, timeout;
@@ -758,7 +758,7 @@ tap_cli_open(int argc, char **argv)
 	secondary  = NULL;
 
 	optind = 0;
-	while ((c = getopt(argc, argv, "a:RDm:p:e:r2:st:h")) != -1) {
+	while ((c = getopt(argc, (char **) argv, "a:RDm:p:e:r2:st:h")) != -1) {
 		switch (c) {
 		case 'p':
 			pid = atoi(optarg);
@@ -821,7 +821,7 @@ tap_cli_stats_usage(FILE *stream)
 }
 
 static int
-tap_cli_stats(int argc, char **argv)
+tap_cli_stats(int argc, const char **argv)
 {
 	pid_t pid;
 	int c, minor, err;
@@ -830,7 +830,7 @@ tap_cli_stats(int argc, char **argv)
 	minor   = -1;
 
 	optind = 0;
-	while ((c = getopt(argc, argv, "p:m:h")) != -1) {
+	while ((c = getopt(argc, (char **) argv, "p:m:h")) != -1) {
 		switch (c) {
 		case 'p':
 			pid = atoi(optarg);
@@ -870,7 +870,7 @@ tap_cli_check_usage(FILE *stream)
 }
 
 static int
-tap_cli_check(int argc, char **argv)
+tap_cli_check(int argc, const char **argv)
 {
 	int err;
 	const char *msg;
@@ -945,11 +945,12 @@ get_command(char *command)
 int
 main(int argc, char *argv[])
 {
-	char **cargv;
+	const char **cargv;
 	const char *msg;
 	struct command *cmd;
 	int cargc, i, cnt, ret;
-	char *path = NULL, *prgname = NULL;
+	char *path = NULL;
+	const char *prgname = NULL;
 
 	path = strdup(argv[0]);
 	if (path)

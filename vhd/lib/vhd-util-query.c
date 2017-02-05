@@ -41,7 +41,7 @@
 #include "libvhd.h"
 
 int
-vhd_util_query(int argc, char **argv)
+vhd_util_query(int argc, const char **argv)
 {
 	char *name;
 	vhd_context_t vhd;
@@ -63,7 +63,7 @@ vhd_util_query(int argc, char **argv)
 	}
 
 	optind = 0;
-	while ((c = getopt(argc, argv, "n:vspfdSmh")) != -1) {
+	while ((c = getopt(argc, (char **) argv, "n:vspfdSmh")) != -1) {
 		switch (c) {
 		case 'n':
 			name = optarg;

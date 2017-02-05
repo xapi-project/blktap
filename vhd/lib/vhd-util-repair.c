@@ -41,7 +41,7 @@
 #include "libvhd.h"
 
 int
-vhd_util_repair(int argc, char **argv)
+vhd_util_repair(int argc, const char **argv)
 {
 	char *name;
 	int err, c;
@@ -54,7 +54,7 @@ vhd_util_repair(int argc, char **argv)
 		goto usage;
 
 	optind = 0;
-	while ((c = getopt(argc, argv, "n:bh")) != -1) {
+	while ((c = getopt(argc, (char **) argv, "n:bh")) != -1) {
 		switch (c) {
 		case 'n':
 			name = optarg;
