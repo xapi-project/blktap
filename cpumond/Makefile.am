@@ -1,6 +1,7 @@
 
 AM_CFLAGS  = -Wall
 AM_CFLAGS += -Werror
+AM_CFLAGS += $(if $(GCOV),-fprofile-dir=/tmp -fprofile-arcs -ftest-coverage)
 
 bin_PROGRAMS = cpumond
 
