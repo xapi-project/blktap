@@ -737,8 +737,15 @@ tapdisk_control_open_image(struct tapdisk_ctl_conn *conn,
 		flags |= TD_OPEN_ADD_CACHE;
 	if (request->u.params.flags & TAPDISK_MESSAGE_FLAG_VHD_INDEX)
 		flags |= TD_OPEN_VHD_INDEX;
-	if (request->u.params.flags & TAPDISK_MESSAGE_FLAG_ADD_LOG)
+	if (request->u.params.flags & TAPDISK_MESSAGE_FLAG_ADD_LOG) {
+		char *logpath = strdup(request->u.params.logpath);
+		if (!logpath) {
+			err = -errno;
+			goto out;
+		}
+		vbd->logpath = logpath;
 		flags |= TD_OPEN_ADD_LOG;
+	}
 	if (request->u.params.flags & TAPDISK_MESSAGE_FLAG_ADD_LCACHE)
 		flags |= TD_OPEN_LOCAL_CACHE;
 	if (request->u.params.flags & TAPDISK_MESSAGE_FLAG_REUSE_PRT)

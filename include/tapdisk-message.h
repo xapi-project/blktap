@@ -75,6 +75,7 @@ struct tapdisk_message_params {
 	uint32_t                         prt_devnum;
 	uint16_t                         req_timeout;
 	char                             secondary[TAPDISK_MESSAGE_MAX_PATH_LENGTH];
+	char                             logpath[TAPDISK_MESSAGE_MAX_PATH_LENGTH];
 };
 
 struct tapdisk_message_image {

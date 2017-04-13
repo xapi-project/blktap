@@ -116,7 +116,7 @@ int tap_ctl_attach(const int id, const int minor);
 int tap_ctl_detach(const int id, const int minor);
 
 int tap_ctl_open(const int id, const int minor, const char *params, int flags,
-		const int prt_minor, const char *secondary, int timeout);
+		const int prt_minor, const char *secondary, int timeout, const char *logpath);
 int tap_ctl_close(const int id, const int minor, const int force,
 		  struct timeval *timeout);
 

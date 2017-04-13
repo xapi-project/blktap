@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2016, Citrix Systems, Inc.
+ * Copyright (c) 2017, Citrix Systems, Inc.
  *
  * All rights reserved.
  *
@@ -28,49 +28,21 @@
  * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifdef HAVE_CONFIG_H
-#include "config.h"
+#ifndef __BLOCK_LOG_H__
+#define __BLOCK_LOG_H__
+
+#include <uuid/uuid.h>
+
+struct log_metadata {
+	uuid_t 	parent_log;
+	uuid_t 	child_log; 
+	int 	consistent;
+};
+
+struct tdlog_data {
+    int         fd;
+	uint64_t   	size;
+	void*		bitmap;
+};
+
 #endif
-
-#include <stdio.h>
-#include <errno.h>
-#include <stdlib.h>
-#include <unistd.h>
-#include <getopt.h>
-
-#include "tap-ctl.h"
-#include "blktap2.h"
-
-int
-tap_ctl_create(const char *params, char **devname, int flags, int parent_minor,
-		char *secondary, int timeout, const char *slice)
-{
-	int err, id, minor;
-
-	err = tap_ctl_allocate(&minor, devname);
-	if (err)
-		return err;
-
-	id = tap_ctl_spawn(slice);
-	if (id < 0) {
-		err = id;
-		goto destroy;
-	}
-
-	err = tap_ctl_attach(id, minor);
-	if (err)
-		goto destroy;
-
-	err = tap_ctl_open(id, minor, params, flags, parent_minor, secondary,
-			timeout, NULL);
-	if (err)
-		goto detach;
-
-	return 0;
-
-detach:
-	tap_ctl_detach(id, minor);
-destroy:
-	tap_ctl_free(minor);
-	return err;
-}

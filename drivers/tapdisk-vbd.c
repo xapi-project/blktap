@@ -520,8 +520,7 @@ fail:
 }
 #endif
 
-static int
-tapdisk_vbd_add_dirty_log(td_vbd_t *vbd)
+static int tapdisk_vbd_add_dirty_log(td_vbd_t *vbd)
 {
 	int err;
 	td_driver_t *driver;
@@ -530,14 +529,15 @@ tapdisk_vbd_add_dirty_log(td_vbd_t *vbd)
 	driver = NULL;
 	log    = NULL;
 
-	ERR(TLOG_WARN, "tapdisk_vbd_add_dirty_log called for %s\n", vbd->name);
+	ERR(TLOG_WARN, "tapdisk_vbd_add_dirty_log called for %s with log file %s\n",
+			vbd->name, vbd->logpath);
 
 	parent = tapdisk_vbd_first_image(vbd);
 
 	ERR(TLOG_WARN, "Size in VBD: %"PRIu64"\n", vbd->disk_info.size);
 	ERR(TLOG_WARN, "Size in Image: %"PRIu64"\n", parent->info.size);
 
-	log    = tapdisk_image_allocate(parent->name,
+	log = tapdisk_image_allocate(vbd->logpath,
 					DISK_TYPE_LOG,
 					parent->flags);
 	if (!log)
@@ -558,10 +558,8 @@ tapdisk_vbd_add_dirty_log(td_vbd_t *vbd)
 	if (err)
 		goto fail;
 
-	/* insert cache before image */
+	/* insert log before image */
 	list_add(&log->next, parent->next.prev);
-
-//	tapdisk_vbd_add_image(vbd, log);
 	return 0;
 
 fail:
@@ -569,7 +567,7 @@ fail:
 	return err;
 }
 
-int
+int 
 tapdisk_vbd_open_vdi(td_vbd_t *vbd, const char *name, td_flag_t flags, int prt_devnum)
 {
 	char *tmp = vbd->name;
@@ -601,6 +599,10 @@ tapdisk_vbd_open_vdi(td_vbd_t *vbd, const char *name, td_flag_t flags, int prt_d
 	vbd->flags = flags;
 
 	if (td_flag_test(vbd->flags, TD_OPEN_ADD_LOG)) {
+		if (!vbd->logpath) {
+			err = -EINVAL;
+			goto fail;
+		}
 		err = tapdisk_vbd_add_dirty_log(vbd);
 		if (err)
 			goto fail;

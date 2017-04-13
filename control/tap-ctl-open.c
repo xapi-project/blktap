@@ -43,7 +43,7 @@
 
 int
 tap_ctl_open(const int id, const int minor, const char *params, int flags,
-		const int prt_minor, const char *secondary, int timeout)
+		const int prt_minor, const char *secondary, int timeout, const char* logpath)
 {
 	int err;
 	tapdisk_message_t message;
@@ -69,6 +69,16 @@ tap_ctl_open(const int id, const int minor, const char *params, int flags,
 			       secondary);
 		if (err >= sizeof(message.u.params.secondary)) {
 			EPRINTF("secondary image name too long\n");
+			return ENAMETOOLONG;
+		}
+	}
+
+	if (logpath) {
+		err = snprintf(message.u.params.logpath,
+			       sizeof(message.u.params.logpath) - 1, "%s",
+			       logpath);
+		if (err >= sizeof(message.u.params.logpath)) {
+			EPRINTF("logpath too long\n");
 			return ENAMETOOLONG;
 		}
 	}

@@ -750,25 +750,26 @@ tap_cli_open_usage(FILE *stream)
 		"use secondary image (in mirror mode if no -s)] [-s "
 		"fail over to the secondary image on ENOSPC] "
 		"[-t request timeout in seconds] [-D no O_DIRECT] "
-		"[-c insert dirty log layer to track changed blocks]\n");
+		"[-c </path/to/logfile> insert dirty log layer to track changed blocks]\n");
 }
 
 static int
 tap_cli_open(int argc, char **argv)
 {
-	const char *args, *secondary;
+	const char *args, *secondary, *logpath;
 	int c, pid, minor, flags, prt_minor, timeout;
 
 	flags      = 0;
 	pid        = -1;
-	minor     = -1;
-	prt_minor = -1;
+	minor      = -1;
+	prt_minor  = -1;
 	timeout    = 0;
-	args      = NULL;
+	args       = NULL;
 	secondary  = NULL;
+	logpath    = NULL;
 
 	optind = 0;
-	while ((c = getopt(argc, argv, "a:RDm:p:e:r2:st:ch")) != -1) {
+	while ((c = getopt(argc, argv, "a:RDm:p:e:r2:st:c:h")) != -1) {
 		switch (c) {
 		case 'p':
 			pid = atoi(optarg);
@@ -803,6 +804,7 @@ tap_cli_open(int argc, char **argv)
 			timeout = atoi(optarg);
 			break;
 		case 'c': 
+			logpath = optarg;
 			flags |= TAPDISK_MESSAGE_FLAG_ADD_LOG;
 			break;
 		case '?':
@@ -817,7 +819,7 @@ tap_cli_open(int argc, char **argv)
 		goto usage;
 
 	return tap_ctl_open(pid, minor, args, flags, prt_minor, secondary,
-			timeout);
+			timeout, logpath);
 
 usage:
 	tap_cli_open_usage(stderr);

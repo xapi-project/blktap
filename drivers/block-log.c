@@ -52,18 +52,7 @@
 #include "tapdisk-utils.h"
 #include "timeout-math.h"
 #include "log.h"
-
-#define MAX_CONNECTIONS 1
-
-typedef struct poll_fd {
-	int          fd;
-	event_id_t   id;
-} poll_fd_t;
-
-struct tdlog_data {
-	uint64_t     size;
-	void*        bitmap;
-};
+#include "block-log.h"
 
 #define BITS_PER_LONG (sizeof(unsigned long) * 8)
 #define BITS_TO_LONGS(bits) (((bits)+BITS_PER_LONG-1)/BITS_PER_LONG)
@@ -95,15 +84,15 @@ static int bitmap_size(uint64_t sz)
 		return (num_blocks >> 3);
 }
 
-static int bitmap_create(struct tdlog_data *data)
+static int bitmap_init(struct tdlog_data *data)
 {
 	uint64_t bmsize;
-
 	bmsize = bitmap_size(data->size);
 
 	DPRINTF("allocating %"PRIu64" bytes for dirty bitmap", bmsize);
 
-	if (!(data->bitmap = calloc(bmsize, 1))) {
+	data->bitmap = mmap(0, bmsize, PROT_READ | PROT_WRITE, MAP_PRIVATE, data->fd, 0);
+	if (!data->bitmap) {
 		EPRINTF("could not allocate dirty bitmap of size %"PRIu64, bmsize);
 		return -1;
 	}
@@ -113,10 +102,13 @@ static int bitmap_create(struct tdlog_data *data)
 
 static int bitmap_free(struct tdlog_data *data)
 {
-	if (data->bitmap)
-		free(data->bitmap);
+	if (data->bitmap) {
+		munmap(data->bitmap, bitmap_size(data->size));
+	}
 
-return 0;
+	close(data->fd);
+
+	return 0;
 }
 
 static int bitmap_set(struct tdlog_data* data, uint64_t sector, int count)
@@ -148,12 +140,13 @@ static int tdlog_open(td_driver_t* driver, const char *name, td_flag_t flags)
 	int rc;
 
 	memset(data, 0, sizeof(*data));
-
 	data->size = driver->info.size;
 
-	DPRINTF("Size of original image is %"PRIu64"\n", data->size);
-	
-	if ((rc = bitmap_create(data))) {
+	/* Open on disk log file and map it into memory */
+	data->fd = open(driver->name, O_RDWR);
+	lseek(data->fd, SEEK_SET, sizeof(struct log_metadata));
+
+	if ((rc = bitmap_init(data))) {
 		tdlog_close(driver);
 		return rc;
 	}
