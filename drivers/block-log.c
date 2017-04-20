@@ -60,29 +60,22 @@ typedef struct poll_fd {
 	event_id_t   id;
 } poll_fd_t;
 
-struct tdlog_state {
+struct tdlog_data {
 	uint64_t     size;
-  	void*        writelog;
+	void*        bitmap;
 };
 
-/* -- write log -- */
-
-/* large flat bitmaps don't scale particularly well either in size or scan
- * time, but they'll do for now */
 #define BITS_PER_LONG (sizeof(unsigned long) * 8)
 #define BITS_TO_LONGS(bits) (((bits)+BITS_PER_LONG-1)/BITS_PER_LONG)
 
 #define BITMAP_ENTRY(_nr, _bmap) ((unsigned long*)(_bmap))[(_nr)/BITS_PER_LONG]
 #define BITMAP_SHIFT(_nr) ((_nr) % BITS_PER_LONG)
 
+#define BLOCK_SIZE (64 * 1024)
+
 static inline int test_bit(int nr, void* bmap)
 {
 	return (BITMAP_ENTRY(nr, bmap) >> BITMAP_SHIFT(nr)) & 1;
-}
-
-static inline void clear_bit(int nr, void* bmap)
-{
-	BITMAP_ENTRY(nr, bmap) &= ~(1UL << BITMAP_SHIFT(nr));
 }
 
 static inline void set_bit(int nr, void* bmap)
@@ -90,37 +83,27 @@ static inline void set_bit(int nr, void* bmap)
 	BITMAP_ENTRY(nr, bmap) |= (1UL << BITMAP_SHIFT(nr));
 }
 
-static inline int bitmap_size(uint64_t sz)
+static int bitmap_size(uint64_t sz)
 {
-	return sz >> 3;
+	// Original disk size is in sectors
+	uint64_t size_in_bytes  = (sz * SECTOR_SIZE); 
+	uint64_t num_blocks = size_in_bytes / BLOCK_SIZE;
+
+	if (size_in_bytes % BLOCK_SIZE) 
+		return (num_blocks >> 3) + 1;
+	else
+		return (num_blocks >> 3);
 }
 
-/* if end is 0, clear to end of disk */
-int writelog_clear(struct tdlog_state* s, uint64_t start, uint64_t end)
-{
-	if (!end)
-		end = s->size;
-
-	/* clear to word boundaries */
-	while (BITMAP_SHIFT(start))
-		clear_bit(start++, s->writelog);
-	while (BITMAP_SHIFT(end))
-		clear_bit(end--, s->writelog);
-
-	memset(s->writelog + start / BITS_PER_LONG, 0, (end - start) >> 3);
-
-	return 0;
-}
-
-static int writelog_create(struct tdlog_state *s)
+static int bitmap_create(struct tdlog_data *data)
 {
 	uint64_t bmsize;
 
-	bmsize = bitmap_size(s->size);
+	bmsize = bitmap_size(data->size);
 
 	DPRINTF("allocating %"PRIu64" bytes for dirty bitmap", bmsize);
 
-	if (!(s->writelog = calloc(bmsize, 1))) {
+	if (!(data->bitmap = calloc(bmsize, 1))) {
 		EPRINTF("could not allocate dirty bitmap of size %"PRIu64, bmsize);
 		return -1;
 	}
@@ -128,21 +111,22 @@ static int writelog_create(struct tdlog_state *s)
 	return 0;
 }
 
-static int writelog_free(struct tdlog_state *s)
+static int bitmap_free(struct tdlog_data *data)
 {
-	if (s->writelog)
-		free(s->writelog);
+	if (data->bitmap)
+		free(data->bitmap);
 
-	return 0;
+return 0;
 }
 
-static int writelog_set(struct tdlog_state* s, uint64_t sector, int count)
+static int bitmap_set(struct tdlog_data* data, uint64_t sector, int count)
 {
 	int i;
+
 	EPRINTF("Setting %d bits starting at sector %"PRIu64"\n", count, sector);
 
-	for (i = 0; i < count; i++) 
-		set_bit(sector + i, s->writelog);
+	for (i = 0; i < count; i++)
+		set_bit(sector + i, data->bitmap);
 
 	return 0;
 }
@@ -152,23 +136,24 @@ static int writelog_set(struct tdlog_state* s, uint64_t sector, int count)
 
 static int tdlog_close(td_driver_t* driver)
 {
-	struct tdlog_state* s = (struct tdlog_state*)driver->data;
-	writelog_free(s);
+	struct tdlog_data* data = (struct tdlog_data*)driver->data;
+	bitmap_free(data);
 
 	return 0;
 }
 
-static int tdlog_open(td_driver_t* driver, const char* name, td_flag_t flags)
+static int tdlog_open(td_driver_t* driver, const char *name, td_flag_t flags)
 {
-	struct tdlog_state* s = (struct tdlog_state*)driver->data;
+	struct tdlog_data* data = (struct tdlog_data*)driver->data;
 	int rc;
 
-	memset(s, 0, sizeof(*s));
+	memset(data, 0, sizeof(*data));
 
-	s->size = driver->info.size;
+	data->size = driver->info.size;
 
-	DPRINTF("Size of original image is %"PRIu64"\n", s->size);
-	if ((rc = writelog_create(s))) {
+	DPRINTF("Size of original image is %"PRIu64"\n", data->size);
+	
+	if ((rc = bitmap_create(data))) {
 		tdlog_close(driver);
 		return rc;
 	}
@@ -183,9 +168,9 @@ static void tdlog_queue_read(td_driver_t* driver, td_request_t treq)
 
 static void tdlog_queue_write(td_driver_t* driver, td_request_t treq)
 {
-	struct tdlog_state* s = (struct tdlog_state*)driver->data;
+	struct tdlog_data* data = (struct tdlog_data*)driver->data;
 
-	writelog_set(s, treq.sec, treq.secs);
+	bitmap_set(data, treq.sec, treq.secs);
 	td_forward_request(treq);
 }
 
@@ -202,7 +187,7 @@ static int tdlog_validate_parent(td_driver_t *driver,
 
 struct tap_disk tapdisk_log = {
 	.disk_type          = "tapdisk_log",
-	.private_data_size  = sizeof(struct tdlog_state),
+	.private_data_size  = sizeof(struct tdlog_data),
 	.flags              = 0,
 	.td_open            = tdlog_open,
 	.td_close           = tdlog_close,
