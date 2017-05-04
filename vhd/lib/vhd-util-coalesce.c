@@ -402,10 +402,16 @@ done:
 	err = 0;
 out:
 	if (err) {
-		if (entry && list_empty(&entry->next)) {
+		/*
+		 * If 'entry->next.next' is NULL, it means 'entry'
+		 * is not part of list 'head'; hence, it won't be
+		 * freed by 'vhd_util_coalesce_free_chain()'
+		 * and needs to be freed explicitly.
+		 */
+		if (entry && !entry->next.next) {
 			if (entry->vhd.file)
 				vhd_close(&entry->vhd);
-			else if (entry->raw)
+			else if (entry->raw && (entry->raw_fd >= 0))
 				close(entry->raw_fd);
 			free(entry);
 		}
