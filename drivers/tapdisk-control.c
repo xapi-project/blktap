@@ -1012,6 +1012,15 @@ tapdisk_control_resume_vbd(struct tapdisk_ctl_conn *conn,
 
 		/* TODO If an error occurs below we're not undoing this. */
 	}
+    if (request->u.params.flags & TAPDISK_MESSAGE_FLAG_ADD_LOG) {
+        char *logpath = strdup(request->u.params.logpath);
+        if (!logpath) {
+            err = -errno;
+            goto out;
+        }
+        vbd->logpath = logpath;
+        vbd->flags |= TD_OPEN_ADD_LOG;
+    }
 
 	if (request->u.params.path[0])
 		desc = request->u.params.path;

@@ -643,13 +643,14 @@ static void
 tap_cli_unpause_usage(FILE *stream)
 {
 	fprintf(stream, "usage: unpause <-p pid> <-m minor> [-a type:/path/to/file] "
-			"[-2 secondary]\n");
+    "[-2 secondary] "
+    "[-c </path/to/logfile> insert log layer to track changed blocks]\n");
 }
 
 int
 tap_cli_unpause(int argc, char **argv)
 {
-	const char *args;
+	const char *args, *logpath;
 	char *secondary;
 	int c, pid, minor, flags;
 
@@ -658,9 +659,10 @@ tap_cli_unpause(int argc, char **argv)
 	args  = NULL;
 	secondary  = NULL;
 	flags      = 0;
+	logpath	   = NULL;	
 
 	optind = 0;
-	while ((c = getopt(argc, argv, "p:m:a:2:h")) != -1) {
+	while ((c = getopt(argc, argv, "p:m:a:2:c:h")) != -1) {
 		switch (c) {
 		case 'p':
 			pid = atoi(optarg);
@@ -675,6 +677,10 @@ tap_cli_unpause(int argc, char **argv)
 			flags |= TAPDISK_MESSAGE_FLAG_SECONDARY;
 			secondary = optarg;
 			break;
+		case 'c':
+			logpath = optarg;
+			flags |= TAPDISK_MESSAGE_FLAG_ADD_LOG;
+			break;
 		case '?':
 			goto usage;
 		case 'h':
@@ -686,7 +692,7 @@ tap_cli_unpause(int argc, char **argv)
 	if (pid == -1 || minor == -1)
 		goto usage;
 
-	return tap_ctl_unpause(pid, minor, args, flags, secondary);
+	return tap_ctl_unpause(pid, minor, args, flags, secondary, logpath);
 
 usage:
 	tap_cli_unpause_usage(stderr);
@@ -750,7 +756,7 @@ tap_cli_open_usage(FILE *stream)
 		"use secondary image (in mirror mode if no -s)] [-s "
 		"fail over to the secondary image on ENOSPC] "
 		"[-t request timeout in seconds] [-D no O_DIRECT] "
-		"[-c </path/to/logfile> insert dirty log layer to track changed blocks]\n");
+		"[-c </path/to/logfile> insert log layer to track changed blocks]\n");
 }
 
 static int

@@ -43,7 +43,7 @@
 
 int
 tap_ctl_unpause(const int id, const int minor, const char *params, int flags,
-		char *secondary)
+		char *secondary, const char *logpath)
 {
 	int err;
 	tapdisk_message_t message;
@@ -65,6 +65,15 @@ tap_ctl_unpause(const int id, const int minor, const char *params, int flags,
 			return -ENAMETOOLONG;
 		}
 	}
+    if (logpath) {
+        err = snprintf(message.u.params.logpath,
+                   sizeof(message.u.params.logpath) - 1, "%s",
+                   logpath);
+        if (err >= sizeof(message.u.params.logpath)) {
+            EPRINTF("logpath too long\n");
+            return ENAMETOOLONG;
+        }
+    }
 
 	err = tap_ctl_connect_send_and_receive(id, &message, NULL);
 	if (err)

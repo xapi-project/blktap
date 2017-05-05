@@ -135,7 +135,7 @@ int tap_ctl_pause(const int id, const int minor, struct timeval *timeout);
  * @param new_params the new VDI to use (type:/path/to/file), optional
  */
 int tap_ctl_unpause(const int id, const int minor, const char *params,
-		int flags, char *secondary);
+		int flags, char *secondary, const char *logpath);
 
 ssize_t tap_ctl_stats(pid_t pid, int minor, char *buf, size_t size);
 int tap_ctl_stats_fwrite(pid_t pid, int minor, FILE *out);
