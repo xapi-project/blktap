@@ -28,15 +28,39 @@
  * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef __BLOCK_LOG_H__
-#define __BLOCK_LOG_H__
+#ifndef _CBT_UTIL_H_
+#define _CBT_UTIL_H_
 
-#include "cbt-util.h"
+#include <uuid/uuid.h>
 
-struct tdlog_data {
-    int         fd;
-	uint64_t   	size;
-	void*		bitmap;
+#define CBT_BLOCK_SIZE (64 * 1024)
+
+struct cbt_log_metadata {
+	uuid_t parent;
+	uuid_t child;
+	int    consistent;
 };
+
+struct cbt_log_data {
+	struct cbt_log_metadata metadata;
+	char 					*bitmap;
+};
+
+int cbt_block_size = CBT_BLOCK_SIZE;
+
+static inline uint64_t
+roundup_div(uint64_t a, int b)
+{
+	return (a + b - 1) / b;
+}
+
+static inline uint64_t 
+bitmap_size(uint64_t sz)
+{
+	// Original disk size is in bytes
+	uint64_t num_blocks = roundup_div(sz, CBT_BLOCK_SIZE);
+	return (roundup_div(num_blocks, 8));
+}
+
 
 #endif

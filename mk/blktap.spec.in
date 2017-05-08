@@ -63,6 +63,7 @@ cat /usr/lib/udev/rules.d/65-md-incremental.rules >> /etc/udev/rules.d/65-md-inc
 %{_bindir}/vhd-index
 %{_bindir}/tapback
 %{_bindir}/cpumond
+%{_sbindir}/cbt-util
 %{_sbindir}/lvm-util
 %{_sbindir}/tap-ctl
 %{_sbindir}/td-util

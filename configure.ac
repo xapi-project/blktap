@@ -74,6 +74,7 @@ Makefile
 lvm/Makefile
 part/Makefile
 cpumond/Makefile
+cbt/Makefile
 vhd/Makefile
 vhd/lib/Makefile
 vhd/lib/test/Makefile

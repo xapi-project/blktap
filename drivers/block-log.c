@@ -60,8 +60,6 @@
 #define BITMAP_ENTRY(_nr, _bmap) ((unsigned long*)(_bmap))[(_nr)/BITS_PER_LONG]
 #define BITMAP_SHIFT(_nr) ((_nr) % BITS_PER_LONG)
 
-#define BLOCK_SIZE (64 * 1024)
-
 static inline int test_bit(int nr, void* bmap)
 {
 	return (BITMAP_ENTRY(nr, bmap) >> BITMAP_SHIFT(nr)) & 1;
@@ -72,22 +70,12 @@ static inline void set_bit(int nr, void* bmap)
 	BITMAP_ENTRY(nr, bmap) |= (1UL << BITMAP_SHIFT(nr));
 }
 
-static int bitmap_size(uint64_t sz)
-{
-	// Original disk size is in sectors
-	uint64_t size_in_bytes  = (sz * SECTOR_SIZE); 
-	uint64_t num_blocks = size_in_bytes / BLOCK_SIZE;
-
-	if (size_in_bytes % BLOCK_SIZE) 
-		return (num_blocks >> 3) + 1;
-	else
-		return (num_blocks >> 3);
-}
-
 static int bitmap_init(struct tdlog_data *data)
 {
 	uint64_t bmsize;
-	bmsize = bitmap_size(data->size);
+	//data->size is in number of sectors
+	//Convert it to bytes
+	bmsize = bitmap_size(data->size * SECTOR_SIZE);
 
 	DPRINTF("allocating %"PRIu64" bytes for dirty bitmap", bmsize);
 
@@ -144,7 +132,7 @@ static int tdlog_open(td_driver_t* driver, const char *name, td_flag_t flags)
 
 	/* Open on disk log file and map it into memory */
 	data->fd = open(driver->name, O_RDWR);
-	lseek(data->fd, SEEK_SET, sizeof(struct log_metadata));
+	lseek(data->fd, SEEK_SET, sizeof(struct cbt_log_metadata));
 
 	if ((rc = bitmap_init(data))) {
 		tdlog_close(driver);

@@ -11,6 +11,7 @@ SUBDIRS += control
 SUBDIRS += drivers
 SUBDIRS += include
 SUBDIRS += tapback
+SUBDIRS += cbt
 
 if ENABLE_PART
 MAYBE_part = part
