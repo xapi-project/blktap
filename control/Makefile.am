@@ -34,6 +34,3 @@ libblktapctl_la_SOURCES += tap-ctl-xen.c
 libblktapctl_la_SOURCES += tap-ctl-info.c
 
 libblktapctl_la_LDFLAGS = -version-info 1:1:1
-
-udev_rulesdir = $(sysconfdir)/udev/rules.d
-dist_udev_rules_DATA = blktap.rules
