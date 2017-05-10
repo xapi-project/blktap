@@ -6,7 +6,6 @@ License: BSD
 Group: System/Hypervisor
 Source0: %{name}-%{version}.tar.bz2
 
-Patch1: %{name}-udev-ignore-tapdevs.patch
 BuildRoot: %{_tmppath}/%{name}-%{release}-buildroot
 Obsoletes: xen-blktap
 BuildRequires: e2fsprogs-devel, libaio-devel, systemd
@@ -39,7 +38,6 @@ Blktap and VHD development files.
 
 %prep
 %setup -q
-%patch1 -p1
 
 %build
 %configure
@@ -49,6 +47,10 @@ Blktap and VHD development files.
 rm -rf %{buildroot}
 make install DESTDIR=%{buildroot}
 mkdir -p %{buildroot}%{_localstatedir}/log/blktap
+
+%triggerin -- mdadm
+echo 'KERNEL=="td[a-z]*", GOTO="md_end"' > /etc/udev/rules.d/65-md-incremental.rules
+cat /usr/lib/udev/rules.d/65-md-incremental.rules >> /etc/udev/rules.d/65-md-incremental.rules
 
 %files
 %defattr(-,root,root,-)
@@ -68,7 +70,6 @@ mkdir -p %{buildroot}%{_localstatedir}/log/blktap
 %{_sbindir}/part-util
 %{_sbindir}/vhdpartx
 %{_libexecdir}/tapdisk
-%{_sysconfdir}/udev/rules.d/blktap.rules
 %{_sysconfdir}/logrotate.d/blktap
 %{_sysconfdir}/xensource/bugtool/tapdisk-logs.xml
 %{_sysconfdir}/xensource/bugtool/tapdisk-logs/description.xml
@@ -95,5 +96,8 @@ mkdir -p %{buildroot}%{_localstatedir}/log/blktap
 %postun
 %systemd_postun tapback.service
 %systemd_postun cpumond.service
+if [ $1 -eq 0 ]; then
+    rm -f %{_sysconfdir}/udev/rules.d/65-md-incremental.rules
+fi
 
 %changelog
