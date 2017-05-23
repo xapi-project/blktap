@@ -41,24 +41,20 @@
 
 #include "cbt-util.h"
 
-#if 1
-#define DFPRINTF(_f, _a...) fprintf(stdout, _f , ##_a)
-#else
-#define DFPRINTF(_f, _a...) ((void)0)
-#endif
-
 typedef int (*cbt_util_func_t) (int, char **);
 int cbt_util_create(int , char **);
 int cbt_util_set(int , char **);
+int cbt_util_get(int , char **);
 
 struct command {
-	char               *name;
-	cbt_util_func_t     func;
+	char			*name;
+	cbt_util_func_t	func;
 };
 
 struct command commands[] = {
-	{ .name = "create",      .func = cbt_util_create        },
-	{ .name = "set",         .func = cbt_util_set        },
+	{ .name = "create", .func = cbt_util_create},
+	{ .name = "set", .func = cbt_util_set},
+	{ .name = "get", .func = cbt_util_get},
 };
 
 #define print_commands()					\
@@ -72,12 +68,103 @@ struct command commands[] = {
 		printf(" }\n");					\
 	} while (0)
 
+int 
+cbt_util_get(int argc, char **argv)
+{
+	char *name, uuid_str[37];
+	int err, c, ret; 
+	int parent, child, flag; 
+	FILE *f = NULL;
+
+	err			= 0;
+	name		= NULL;
+	parent		= 0;
+	child		= 0;
+	flag		= 0;
+
+	if (!argc || !argv)
+		goto usage;
+
+	while ((c = getopt(argc, argv, "n:pcfh")) != -1) {
+		switch (c) {
+			case 'n':
+				name = optarg;
+				break;
+			case 'p':
+				parent = 1;
+				break;
+			case 'c':
+				child = 1;
+				break;
+			case 'f':
+				flag = 1;
+				break;
+			case 'h':
+			default:
+				goto usage;
+		}
+	}
+
+	// Exactly one of p, c or f must be queried for
+	if (!name || (parent + child + flag != 1)) 
+		goto usage;
+
+	struct cbt_log_metadata *log_meta = malloc(sizeof(struct cbt_log_metadata));
+	if (!log_meta) {
+		fprintf(stderr, "Failed to allocate memory for CBT log metadata\n");
+		err = -ENOMEM;
+		goto error;
+	}
+
+	f = fopen(name, "r");
+	if (f == NULL) {
+		fprintf(stderr, "Failed to open log file %s. %s\n", 
+										name, strerror(errno));
+		err = -errno;
+		goto error;
+	}
+	
+	ret = fread(log_meta, sizeof(struct cbt_log_metadata), 1, f);
+
+	if (ret != sizeof(struct cbt_log_metadata)) {
+		fprintf(stderr, "Failed to read CBT metadata from file %s\n", name);
+		err = -EIO;
+		goto error;
+	}
+
+	if (parent) {
+		uuid_unparse(log_meta->parent, uuid_str);
+		printf("%s\n", uuid_str);
+	}
+	else if (child) {
+		uuid_unparse(log_meta->child, uuid_str);
+		printf("%s\n", uuid_str);
+	} else if(flag) {
+		printf("%d\n", log_meta->consistent);
+	}
+
+error:
+	if(log_meta)
+		free(log_meta);
+	if(f)
+		fclose(f);
+	return err;
+
+usage:
+	printf("cbt-util get: Read field from log file\n\n");
+	printf("Options:\n -n name\tName of log file\n[-p]\t\t"
+			"Print parent log file UUID\n[-c]\t\tPrint child log file UUID\n"
+			"[-f]\t\tPrint consistency flag\n[-h]\t\thelp\n");
+
+	return -EINVAL;
+}
+
 
 int 
 cbt_util_set(int argc, char **argv)
 {
 	char *name, *parent, *child;
-	int err, c, consistent, flag = 0, read; 
+	int err, c, consistent, flag = 0, ret; 
 	FILE *f = NULL;
 
 	err 	= 0;
@@ -109,26 +196,30 @@ cbt_util_set(int argc, char **argv)
 		}
 	}
 
+	//TODO:Check at least one of p, c or f is supplied?
 	if (!name) 
 		goto usage;
 
 	struct cbt_log_metadata *log_meta = malloc(sizeof(struct cbt_log_metadata));
 	if (!log_meta) {
+		fprintf(stderr, "Failed to allocate memory for CBT log metadata\n");
 		err = -ENOMEM;
 		goto error;
 	}
 
 	f = fopen(name, "r+");
 	if (f == NULL) {
-		fprintf(stderr, "%s: failed to open log file: %d\n", name, -errno);
+		fprintf(stderr, "Failed to open log file %s. %s\n", 
+											name, strerror(errno));
 		err = -errno;
 		goto error;
 	}
 	
-	read = fread(log_meta, sizeof(struct cbt_log_metadata), 1, f);
+	ret = fread(log_meta, sizeof(struct cbt_log_metadata), 1, f);
 
-	if (read == 0) {
-		err = -EINVAL;
+	if (ret != sizeof(struct cbt_log_metadata)) {
+		fprintf(stderr, "Failed to read CBT metadata from file %s\n", name);
+		err = -EIO;
 		goto error;
 	}
 
@@ -145,8 +236,21 @@ cbt_util_set(int argc, char **argv)
 	}
 
 	// Rewind pointer to start of file and rewrite data
-	fseek(f, 0, SEEK_SET);
-	fwrite(log_meta, sizeof(struct cbt_log_metadata), 1, f);
+	ret = fseek(f, 0, SEEK_SET);
+
+	if(ret < 0) {
+		fprintf(stderr, "Failed to seek to start of file %s. %s\n", 
+													name, strerror(errno));
+		err = -errno;
+		goto error;
+	}
+
+	ret = fwrite(log_meta, sizeof(struct cbt_log_metadata), 1, f);
+
+	if (ret != sizeof(struct cbt_log_metadata)) {
+		fprintf(stderr, "Failed to write CBT metadata to file %s\n", name);
+		err = -EIO;
+	}
 
 error:
 	if(log_meta)
@@ -157,9 +261,9 @@ error:
 
 usage:
 	printf("cbt-util set: Set field in log file\n\n");
-	printf("Options:\n\t-n Log file name\n\t[-p Parent log file UUID]\n"
-			"\t[-c Child log file UUID]\n\t[-f 0|1 Consistency flag]\n"
-			"\t[-h help]\n");
+	printf("Options:\n -n name\tName of log file\n[-p parent]\t"
+			"Parent log file UUID\n[-c child]\tChild log file UUID\n[-f 0|1]"
+			"\tConsistency flag\n[-h]\t\thelp\n");
 
 	return -EINVAL;
 }
@@ -168,7 +272,7 @@ int
 cbt_util_create(int argc, char **argv)
 {
 	char *name;
-	int err, c;
+	int err, c, ret;
 	FILE *f = NULL; 
 	uint64_t size, bitmap_sz;
 
@@ -193,12 +297,8 @@ cbt_util_create(int argc, char **argv)
 		}
 	}
 
-	printf("Name parsed as: %s, size parsed as: %lu\n", name, size);
-
 	if (!name || !size) 
 		goto usage;
-
-	fprintf(stderr, "Initialising metadata for file %s\n", name);
 
 	/* Initialise metadata */
 	struct cbt_log_data *log_data = malloc(sizeof(struct cbt_log_data));
@@ -211,7 +311,6 @@ cbt_util_create(int argc, char **argv)
 	uuid_clear(log_data->metadata.child);
 	log_data->metadata.consistent = 0;
     
-
 	bitmap_sz = bitmap_size(size);
 	log_data->bitmap = (char*)malloc(bitmap_sz);
 	if (!log_data->bitmap) {
@@ -223,13 +322,25 @@ cbt_util_create(int argc, char **argv)
 
 	f = fopen(name, "w+");
 	if (f == NULL) {
-		fprintf(stderr, "%s: failed to create: %d\n", name, -errno);
+		fprintf(stderr, "Failed to open log file %s. %s\n", 
+											name, strerror(errno));
 		err = -errno;
 		goto error;
 	}
-	
-	fwrite(&log_data->metadata, sizeof(struct cbt_log_metadata), 1, f);
-	fwrite(log_data->bitmap, bitmap_sz, 1, f);
+
+	ret = fwrite(&log_data->metadata, sizeof(struct cbt_log_metadata), 1, f);
+	if (ret != sizeof(struct cbt_log_metadata)) {
+		fprintf(stderr, "Failed to write metadata to log file %s\n", name);
+		err = -EIO;
+		goto error;
+	}
+
+	ret = fwrite(log_data->bitmap, bitmap_sz, 1, f);
+	if (ret != bitmap_sz) {
+		fprintf(stderr, "Failed to write bitmap to log file %s\n", name);
+		err = -EIO;
+		goto error;
+	}
 
 error:
 	if(log_data) {
@@ -291,7 +402,7 @@ main(int argc, char *argv[])
 	cargc = argc - 1;
 	cmd   = get_command(argv[1]);
 	if (!cmd) {
-		fprintf(stderr, "invalid COMMAND %s\n", argv[1]);
+		fprintf(stderr, "Invalid COMMAND %s\n", argv[1]);
 		help();
 	}
 
