@@ -36,13 +36,10 @@ __wrap_fclose(FILE *fp)
 }
 
 int
-__wrap_printf(const char *format, ...)
+wrap_vprintf(const char *format, va_list ap)
 {
-	va_list ap;
 	int bufsize = mock();
 	char* buf = mock();
-
-	va_start(ap, format);
 
 	int len = vsnprintf(buf, bufsize, format, ap);
 
@@ -51,6 +48,23 @@ __wrap_printf(const char *format, ...)
 	return len;
 }
 
+int
+__wrap_printf(const char *format, ...)
+{
+	va_list ap;
+	va_start(ap, format);
+
+	return wrap_vprintf(format, ap);
+}
+
+int
+__wrap___printf_chk (int __flag, const char *format, ...)
+{
+	va_list ap;
+	va_start(ap, format);
+
+	return wrap_vprintf(format, ap);
+}
 
 void
 test_get_command_create(void **state)
@@ -107,8 +121,8 @@ void test_cbt_util_get_flag(void **state)
 	will_return(__wrap_fopen, test_log);
 	expect_value(__wrap_fclose, fp, test_log);
 
-	will_return(__wrap_printf, 1024);
-	will_return(__wrap_printf, output);
+	will_return(wrap_vprintf, 1024);
+	will_return(wrap_vprintf, output);
 
 	result = cbt_util_get(4, args);
 

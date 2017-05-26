@@ -11,4 +11,6 @@ TESTS = test-cbt-util
 
 test_cbt_util_SOURCES = test-cbt-util.c
 test_cbt_util_LDFLAGS = $(top_srcdir)/cbt/libcbtutil.la -lcmocka -luuid
-test_cbt_util_LDFLAGS += -Wl,--wrap=fopen,--wrap=fclose,--wrap=printf
+test_cbt_util_LDFLAGS += -Wl,--wrap=fopen,--wrap=fclose
+# Need to wrap both of these as rpmbuild/mock set -D_FORTIFY_SOURCE=2
+test_cbt_util_LDFLAGS += -Wl,--wrap=printf,--wrap=__printf_chk
