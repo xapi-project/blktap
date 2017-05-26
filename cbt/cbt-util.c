@@ -126,7 +126,7 @@ cbt_util_get(int argc, char **argv)
 	
 	ret = fread(log_meta, sizeof(struct cbt_log_metadata), 1, f);
 
-	if (ret != sizeof(struct cbt_log_metadata)) {
+	if (!ret) {
 		fprintf(stderr, "Failed to read CBT metadata from file %s\n", name);
 		err = -EIO;
 		goto error;
@@ -217,7 +217,7 @@ cbt_util_set(int argc, char **argv)
 	
 	ret = fread(log_meta, sizeof(struct cbt_log_metadata), 1, f);
 
-	if (ret != sizeof(struct cbt_log_metadata)) {
+	if (!ret) {
 		fprintf(stderr, "Failed to read CBT metadata from file %s\n", name);
 		err = -EIO;
 		goto error;
@@ -247,7 +247,7 @@ cbt_util_set(int argc, char **argv)
 
 	ret = fwrite(log_meta, sizeof(struct cbt_log_metadata), 1, f);
 
-	if (ret != sizeof(struct cbt_log_metadata)) {
+	if (!ret) {
 		fprintf(stderr, "Failed to write CBT metadata to file %s\n", name);
 		err = -EIO;
 	}
@@ -329,14 +329,14 @@ cbt_util_create(int argc, char **argv)
 	}
 
 	ret = fwrite(&log_data->metadata, sizeof(struct cbt_log_metadata), 1, f);
-	if (ret != sizeof(struct cbt_log_metadata)) {
+	if (!ret) {
 		fprintf(stderr, "Failed to write metadata to log file %s\n", name);
 		err = -EIO;
 		goto error;
 	}
 
 	ret = fwrite(log_data->bitmap, bitmap_sz, 1, f);
-	if (ret != bitmap_sz) {
+	if (!ret) {
 		fprintf(stderr, "Failed to write bitmap to log file %s\n", name);
 		err = -EIO;
 		goto error;
