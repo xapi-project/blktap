@@ -34,7 +34,6 @@
 #include "cbt-util.h"
 
 struct tdlog_data {
-    int         fd;
 	uint64_t   	size;
 	void*		bitmap;
 };

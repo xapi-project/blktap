@@ -57,7 +57,7 @@
 #define BITS_PER_LONG (sizeof(unsigned long) * 8)
 #define BITS_TO_LONGS(bits) (((bits)+BITS_PER_LONG-1)/BITS_PER_LONG)
 
-#define BITMAP_ENTRY(_nr, _bmap) ((unsigned long*)(_bmap))[(_nr)/BITS_PER_LONG]
+#define BITMAP_ENTRY(_nr, _bmap) ((unsigned long*)(_bmap + sizeof(struct cbt_log_metadata)))[((_nr)/BITS_PER_LONG)]
 #define BITMAP_SHIFT(_nr) ((_nr) % BITS_PER_LONG)
 
 static inline int test_bit(int nr, void* bmap)
@@ -70,31 +70,49 @@ static inline void set_bit(int nr, void* bmap)
 	BITMAP_ENTRY(nr, bmap) |= (1UL << BITMAP_SHIFT(nr));
 }
 
-static int bitmap_init(struct tdlog_data *data)
+static int bitmap_init(struct tdlog_data *data, char *name)
 {
 	uint64_t bmsize;
-	//data->size is in number of sectors
-	//Convert it to bytes
-	bmsize = bitmap_size(data->size * SECTOR_SIZE);
+	int fd;
+	int result = 0;
 
-	DPRINTF("allocating %"PRIu64" bytes for dirty bitmap", bmsize);
-
-	data->bitmap = mmap(0, bmsize, PROT_READ | PROT_WRITE, MAP_PRIVATE, data->fd, 0);
-	if (!data->bitmap) {
-		EPRINTF("could not allocate dirty bitmap of size %"PRIu64, bmsize);
-		return -1;
+	/* Open on disk log file and map it into memory */
+	fd = open(name, O_RDWR);
+	if (fd == -1) {
+		EPRINTF("failed to open bitmap log file");
+		result = -1;
 	}
 
-	return 0;
+	if (result == 0) {
+		//data->size is in number of sectors
+		//Convert it to bytes
+		bmsize = bitmap_size(data->size * SECTOR_SIZE) + sizeof(struct cbt_log_metadata);
+
+		DPRINTF("allocating %"PRIu64" bytes for dirty bitmap", bmsize);
+
+		data->bitmap = mmap(NULL, bmsize, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
+		if (!data->bitmap) {
+			EPRINTF("could not allocate dirty bitmap of size %"PRIu64, bmsize);
+			result = -1;
+		}
+
+		close (fd);
+	}
+
+	return result;
 }
 
 static int bitmap_free(struct tdlog_data *data)
 {
+	uint64_t bmsize;
+	int rc;
+	bmsize = bitmap_size(data->size * SECTOR_SIZE) + sizeof(struct cbt_log_metadata);
 	if (data->bitmap) {
-		munmap(data->bitmap, bitmap_size(data->size));
+		rc = munmap(data->bitmap, bmsize);
+		if (rc != 0) {
+			EPRINTF("Failed to unmap the bitmap block");
+		}
 	}
-
-	close(data->fd);
 
 	return 0;
 }
@@ -130,11 +148,7 @@ static int tdlog_open(td_driver_t* driver, const char *name, td_flag_t flags)
 	memset(data, 0, sizeof(*data));
 	data->size = driver->info.size;
 
-	/* Open on disk log file and map it into memory */
-	data->fd = open(driver->name, O_RDWR);
-	lseek(data->fd, SEEK_SET, sizeof(struct cbt_log_metadata));
-
-	if ((rc = bitmap_init(data))) {
+	if ((rc = bitmap_init(data, driver->name))) {
 		tdlog_close(driver);
 		return rc;
 	}
