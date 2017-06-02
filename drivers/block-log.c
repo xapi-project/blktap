@@ -70,6 +70,13 @@ static inline void set_bit(int nr, void* bmap)
 	BITMAP_ENTRY(nr, bmap) |= (1UL << BITMAP_SHIFT(nr));
 }
 
+static inline uint64_t
+get_bit_for_sec(td_sector_t sector)
+{
+	uint64_t block = (sector * SECTOR_SIZE) / CBT_BLOCK_SIZE;
+	return block;
+}
+
 static int bitmap_init(struct tdlog_data *data, char *name)
 {
 	uint64_t bmsize;
@@ -84,11 +91,11 @@ static int bitmap_init(struct tdlog_data *data, char *name)
 	}
 
 	if (result == 0) {
-		//data->size is in number of sectors
-		//Convert it to bytes
+		//data->size is in number of sectors, convert it to bytes
 		bmsize = bitmap_size(data->size * SECTOR_SIZE) + sizeof(struct cbt_log_metadata);
-
-		DPRINTF("allocating %"PRIu64" bytes for dirty bitmap", bmsize);
+		DPRINTF("CBT: allocating %"PRIu64" bytes (bitmap %"PRIu64" + header %lu) for dirty bitmap",
+								bmsize, bitmap_size(data->size * SECTOR_SIZE),
+											sizeof(struct cbt_log_metadata));
 
 		data->bitmap = mmap(NULL, bmsize, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
 		if (!data->bitmap) {
@@ -117,14 +124,12 @@ static int bitmap_free(struct tdlog_data *data)
 	return 0;
 }
 
-static int bitmap_set(struct tdlog_data* data, uint64_t sector, int count)
+static int bitmap_set(struct tdlog_data* data, uint64_t block, int count)
 {
 	int i;
 
-	EPRINTF("Setting %d bits starting at sector %"PRIu64"\n", count, sector);
-
 	for (i = 0; i < count; i++)
-		set_bit(sector + i, data->bitmap);
+		set_bit(block + i, data->bitmap);
 
 	return 0;
 }
@@ -164,8 +169,12 @@ static void tdlog_queue_read(td_driver_t* driver, td_request_t treq)
 static void tdlog_queue_write(td_driver_t* driver, td_request_t treq)
 {
 	struct tdlog_data* data = (struct tdlog_data*)driver->data;
+	uint64_t start_bit, last_bit;
 
-	bitmap_set(data, treq.sec, treq.secs);
+	start_bit = get_bit_for_sec(treq.sec);
+	last_bit = get_bit_for_sec(treq.sec + treq.secs - 1);
+
+	bitmap_set(data, start_bit, (last_bit - start_bit) + 1);
 	td_forward_request(treq);
 }
 

@@ -529,13 +529,12 @@ static int tapdisk_vbd_add_dirty_log(td_vbd_t *vbd)
 	driver = NULL;
 	log    = NULL;
 
-	ERR(TLOG_WARN, "tapdisk_vbd_add_dirty_log called for %s with log file %s\n",
+	DPRINTF("CBT:tapdisk_vbd_add_dirty_log called for %s with log file %s\n",
 			vbd->name, vbd->logpath);
 
 	parent = tapdisk_vbd_first_image(vbd);
 
-	ERR(TLOG_WARN, "Size in VBD: %"PRIu64"\n", vbd->disk_info.size);
-	ERR(TLOG_WARN, "Size in Image: %"PRIu64"\n", parent->info.size);
+	DPRINTF("CBT: Size in Image: %"PRIu64" sectors\n", parent->info.size);
 
 	log = tapdisk_image_allocate(vbd->logpath,
 					DISK_TYPE_LOG,
