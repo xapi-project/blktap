@@ -68,16 +68,19 @@ struct command commands[] = {
 int 
 cbt_util_get(int argc, char **argv)
 {
-	char *name, uuid_str[37];
+	char *name, uuid_str[37], *buf;
 	int err, c, ret; 
-	int parent, child, flag; 
+	int parent, child, flag, bitmap; 
 	FILE *f = NULL;
+	uint64_t size = 0;
 
 	err			= 0;
 	name		= NULL;
 	parent		= 0;
 	child		= 0;
 	flag		= 0;
+	buf			= NULL;
+	bitmap		= 0;
 
 	if (!argc || !argv)
 		goto usage;
@@ -85,7 +88,7 @@ cbt_util_get(int argc, char **argv)
 	/* Make sure we start from the start of the args */
 	optind = 1;
 
-	while ((c = getopt(argc, argv, "n:pcfh")) != -1) {
+	while ((c = getopt(argc, argv, "n:pcfbs:h")) != -1) {
 		switch (c) {
 			case 'n':
 				name = optarg;
@@ -99,14 +102,20 @@ cbt_util_get(int argc, char **argv)
 			case 'f':
 				flag = 1;
 				break;
+			case 'b':
+				bitmap = 1;
+				break;
+			case 's':
+				size = strtoull(optarg, NULL, 10);
+				break;
 			case 'h':
 			default:
 				goto usage;
 		}
 	}
 
-	// Exactly one of p, c or f must be queried for
-	if (!name || (parent + child + flag != 1)) 
+	// Exactly one of p, c, f or b must be queried for
+	if (!name || (parent + child + flag + bitmap != 1) || (bitmap && !size))
 		goto usage;
 
 	struct cbt_log_metadata *log_meta = malloc(sizeof(struct cbt_log_metadata));
@@ -142,19 +151,45 @@ cbt_util_get(int argc, char **argv)
 	} else if(flag) {
 		printf("%d\n", log_meta->consistent);
 	}
+	else {
+		uint64_t bmsize = bitmap_size(size);
+		buf = malloc(bmsize);
+		if (!buf) {
+			fprintf(stderr, "Failed to allocate memory for bitmap buffer\n");
+			err = -ENOMEM;
+			goto error;
+		}
+
+		ret = fread(buf, bmsize, 1, f);
+
+		if (!ret) {
+			fprintf(stderr, "Failed to read bitmap from file %s\n", name);
+			err = -EIO;
+			goto error;
+		}
+
+		fwrite(buf, bmsize, 1, stdout);
+	}
 
 error:
 	if(log_meta)
 		free(log_meta);
+	if(buf)
+		free(buf);
 	if(f)
 		fclose(f);
 	return err;
 
 usage:
 	printf("cbt-util get: Read field from log file\n\n");
-	printf("Options:\n -n name\tName of log file\n[-p]\t\t"
-			"Print parent log file UUID\n[-c]\t\tPrint child log file UUID\n"
-			"[-f]\t\tPrint consistency flag\n[-h]\t\thelp\n");
+	printf("Options:\n");
+	printf(" -n name\tName of log file\n");
+	printf("[-p]\t\tPrint parent log file UUID\n");
+	printf("[-c]\t\tPrint child log file UUID\n");
+	printf("[-f]\t\tPrint consistency flag\n");
+	printf("[-b]\t\tPrint bitmap contents. Required with -s\n");
+	printf("[-s size]\tSize of leaf VDI in bytes. Required with -b\n");
+	printf("[-h]\t\thelp\n");
 
 	return -EINVAL;
 }
