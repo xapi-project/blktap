@@ -1341,8 +1341,15 @@ __tapdisk_vbd_reissue_td_request(td_vbd_t *vbd,
 		td_complete_request(treq, 0);
 		goto done;
 	}
+	/*
+	 * If intellicache is enabled, check to confirm  mirroring
+	 * is disabled due to out of space.
+	 */
+	if (unlikely(vbd->retired && vbd->retired == image))
+		parent = tapdisk_vbd_first_image(vbd);
+	else
+		parent = tapdisk_vbd_next_image(image);
 
-	parent     = tapdisk_vbd_next_image(image);
 	treq.image = parent;
 
 	/* return zeros for requests that extend beyond end of parent image */
