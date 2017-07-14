@@ -37,7 +37,7 @@
 #include <cmocka.h>
 #include <errno.h>
 
-#include "wrappers.h"
+#include <wrappers.h>
 
 static int tests_running = 1;
 static int mock_malloc = 0;

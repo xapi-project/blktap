@@ -38,7 +38,7 @@
 #include <uuid/uuid.h>
 
 #include <cbt-util-priv.h>
-#include "wrappers.h"
+#include <wrappers.h>
 #include "test-suites.h"
 
 void test_cbt_util_get_flag(void **state)

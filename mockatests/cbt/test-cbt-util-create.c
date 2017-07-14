@@ -35,7 +35,7 @@
 #include <errno.h>
 
 #include <cbt-util-priv.h>
-#include "wrappers.h"
+#include <wrappers.h>
 #include "test-suites.h"
 
 void test_cbt_util_create_success(void **state)

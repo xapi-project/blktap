@@ -33,7 +33,7 @@
 #include <setjmp.h>
 #include <cmocka.h>
 
-#include "wrappers.h"
+#include <wrappers.h>
 #include "test-suites.h"
 
 int main(void)

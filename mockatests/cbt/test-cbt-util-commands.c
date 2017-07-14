@@ -34,7 +34,7 @@
 #include <cmocka.h>
 
 #include <cbt-util-priv.h>
-#include "wrappers.h"
+#include <wrappers.h>
 #include "test-suites.h"
 
 void

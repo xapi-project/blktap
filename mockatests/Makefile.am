@@ -1,3 +1,4 @@
 # ACLOCAL_AMFLAGS = -I m4
 
-SUBDIRS  = cbt
+SUBDIRS  = wrappers
+SUBDIRS += cbt

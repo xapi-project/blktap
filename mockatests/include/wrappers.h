@@ -75,4 +75,10 @@ void disable_mocks();
 
 void enable_mock_fwrite();
 
+int __wrap_printf(const char *format, ...);
+
+int __wrap___printf_chk (int __flag, const char *format, ...);
+
+int __wrap_puts(const char *s);
+
 #endif /* __WRAPPERS_H__ */
