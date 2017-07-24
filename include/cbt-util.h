@@ -36,9 +36,10 @@
 #define CBT_BLOCK_SIZE (64 * 1024)
 
 struct cbt_log_metadata {
-	uuid_t parent;
-	uuid_t child;
-	int    consistent;
+	uuid_t 		parent;
+	uuid_t 		child;
+	int			consistent;
+	uint64_t	size;
 };
 
 struct cbt_log_data {

@@ -38,6 +38,7 @@
 #include <string.h>
 #include <unistd.h>
 #include <stdint.h>
+#include <inttypes.h>
 
 #include "cbt-util.h"
 #include "cbt-util-priv.h"
@@ -45,8 +46,6 @@
 int cbt_util_create(int , char **);
 int cbt_util_set(int , char **);
 int cbt_util_get(int , char **);
-
-
 
 struct command commands[] = {
 	{ .name = "create", .func = cbt_util_create},
@@ -70,15 +69,15 @@ cbt_util_get(int argc, char **argv)
 {
 	char *name, uuid_str[37], *buf;
 	int err, c, ret; 
-	int parent, child, flag, bitmap; 
+	int parent, child, flag, size, bitmap; 
 	FILE *f = NULL;
-	uint64_t size = 0;
 
 	err			= 0;
 	name		= NULL;
 	parent		= 0;
 	child		= 0;
 	flag		= 0;
+	size		= 0;
 	buf			= NULL;
 	bitmap		= 0;
 
@@ -88,7 +87,7 @@ cbt_util_get(int argc, char **argv)
 	/* Make sure we start from the start of the args */
 	optind = 1;
 
-	while ((c = getopt(argc, argv, "n:pcfbs:h")) != -1) {
+	while ((c = getopt(argc, argv, "n:pcfsbh")) != -1) {
 		switch (c) {
 			case 'n':
 				name = optarg;
@@ -102,11 +101,11 @@ cbt_util_get(int argc, char **argv)
 			case 'f':
 				flag = 1;
 				break;
+			case 's':
+				size = 1;
+				break;
 			case 'b':
 				bitmap = 1;
-				break;
-			case 's':
-				size = strtoull(optarg, NULL, 10);
 				break;
 			case 'h':
 			default:
@@ -115,7 +114,7 @@ cbt_util_get(int argc, char **argv)
 	}
 
 	// Exactly one of p, c, f or b must be queried for
-	if (!name || (parent + child + flag + bitmap != 1) || (bitmap && !size))
+	if (!name || (parent + child + flag + size + bitmap != 1))
 		goto usage;
 
 	struct cbt_log_metadata *log_meta = malloc(sizeof(struct cbt_log_metadata));
@@ -150,9 +149,11 @@ cbt_util_get(int argc, char **argv)
 		printf("%s\n", uuid_str);
 	} else if(flag) {
 		printf("%d\n", log_meta->consistent);
+	} else if(size) {
+		printf("%"PRIu64"\n", log_meta->size);
 	}
 	else {
-		uint64_t bmsize = bitmap_size(size);
+		uint64_t bmsize = bitmap_size(log_meta->size);
 		buf = malloc(bmsize);
 		if (!buf) {
 			fprintf(stderr, "Failed to allocate memory for bitmap buffer\n");
@@ -187,8 +188,8 @@ usage:
 	printf("[-p]\t\tPrint parent log file UUID\n");
 	printf("[-c]\t\tPrint child log file UUID\n");
 	printf("[-f]\t\tPrint consistency flag\n");
-	printf("[-b]\t\tPrint bitmap contents. Required with -s\n");
-	printf("[-s size]\tSize of leaf VDI in bytes. Required with -b\n");
+	printf("[-s]\t\tPrint size of disk in bytes\n");
+	printf("[-b]\t\tPrint bitmap contents\n");
 	printf("[-h]\t\thelp\n");
 
 	return -EINVAL;
@@ -198,19 +199,24 @@ usage:
 int 
 cbt_util_set(int argc, char **argv)
 {
-	char *name, *parent, *child;
+	char *name, *parent, *child, *buf;
 	int err, c, consistent, flag = 0, ret; 
 	FILE *f = NULL;
+	uint64_t size, bmsize, old_bmsize;
 
-	err 	= 0;
-	name 	= NULL;
-	parent	= NULL;
-	child	= NULL;
+	err 		= 0;
+	name 		= NULL;
+	parent		= NULL;
+	child		= NULL;
+	buf			= NULL;
+	size		= 0;
+	bmsize		= 0; 
+	old_bmsize 	= 0;
 
 	if (!argc || !argv)
 		goto usage;
 
-	while ((c = getopt(argc, argv, "n:p:c:f:h")) != -1) {
+	while ((c = getopt(argc, argv, "n:p:c:f:s:h")) != -1) {
 		switch (c) {
 			case 'n':
 				name = optarg;
@@ -224,6 +230,9 @@ cbt_util_set(int argc, char **argv)
 			case 'f':
 				flag = 1;
 				consistent = atoi(optarg);
+				break;
+			case 's':
+				size = strtoull(optarg, NULL, 10);
 				break;
 			case 'h':
 			default:
@@ -270,9 +279,51 @@ cbt_util_set(int argc, char **argv)
 		log_meta->consistent = consistent;
 	}
 
+	if(size) {
+		if (size < log_meta->size) {
+			fprintf(stderr, "Size smaller than current file size (%"PRIu64")\n",
+									log_meta->size);
+			err = -EINVAL;
+			goto error;
+		}
+
+		bmsize = bitmap_size(size);
+		old_bmsize = bitmap_size(log_meta->size);
+		buf = malloc(bmsize);
+		if (!buf) {
+			fprintf(stderr, "Failed to allocate memory for bitmap buffer\n");
+			err = -ENOMEM;
+			goto error;
+		}
+
+		ret = fread(buf, old_bmsize, 1, f);
+		if (!ret) {
+			fprintf(stderr, "Failed to read bitmap from file %s\n", name);
+			err = -EIO;
+			goto error;
+		}
+
+    	memset(buf + old_bmsize, 0, bmsize - old_bmsize);
+		// Set file pointer to start of bitmap area
+		ret = fseek(f, sizeof(struct cbt_log_metadata), SEEK_SET);
+		if(ret < 0) {
+			fprintf(stderr, "Failed to seek to start of bitmap in file %s. %s\n", 
+													name, strerror(errno));
+			err = -errno;
+			goto error;
+		}
+
+		ret = fwrite(buf, bmsize, 1, f);
+		if (!ret) {
+			fprintf(stderr, "Failed to write CBT bitmap to file %s\n", name);
+			err = -EIO;
+		}
+                                                                                
+		log_meta->size = size;
+	}
+
 	// Rewind pointer to start of file and rewrite data
 	ret = fseek(f, 0, SEEK_SET);
-
 	if(ret < 0) {
 		fprintf(stderr, "Failed to seek to start of file %s. %s\n", 
 													name, strerror(errno));
@@ -281,7 +332,6 @@ cbt_util_set(int argc, char **argv)
 	}
 
 	ret = fwrite(log_meta, sizeof(struct cbt_log_metadata), 1, f);
-
 	if (!ret) {
 		fprintf(stderr, "Failed to write CBT metadata to file %s\n", name);
 		err = -EIO;
@@ -296,9 +346,13 @@ error:
 
 usage:
 	printf("cbt-util set: Set field in log file\n\n");
-	printf("Options:\n -n name\tName of log file\n[-p parent]\t"
-			"Parent log file UUID\n[-c child]\tChild log file UUID\n[-f 0|1]"
-			"\tConsistency flag\n[-h]\t\thelp\n");
+	printf("Options:\n");
+	printf(" -n name\tName of log file\n");
+	printf("[-p parent]\tParent log file UUID\n");
+	printf("[-c child]\tChild log file UUID\n");
+	printf("[-f 0|1]\tConsistency flag\n");
+	printf("[-s size]\tSize of the disk in bytes\n");
+	printf("[-h]\t\thelp\n");
 
 	return -EINVAL;
 }
@@ -348,7 +402,8 @@ cbt_util_create(int argc, char **argv)
 	uuid_clear(log_data->metadata.parent);
 	uuid_clear(log_data->metadata.child);
 	log_data->metadata.consistent = 0;
-    
+	log_data->metadata.size = size;
+
 	bitmap_sz = bitmap_size(size);
 	log_data->bitmap = (char*)malloc(bitmap_sz);
 	if (!log_data->bitmap) {

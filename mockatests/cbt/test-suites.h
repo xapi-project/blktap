@@ -50,6 +50,7 @@ void test_help_success(void ** state);
 void test_cbt_util_get_flag(void **state);
 void test_cbt_util_get_parent(void **state);
 void test_cbt_util_get_child(void **state);
+void test_cbt_util_get_size(void **state);
 void test_cbt_util_get_nofile_failure(void **state);
 void test_cbt_util_get_nodata_failure(void **state);
 void test_cbt_util_get_malloc_failure(void **state);
@@ -58,8 +59,6 @@ void test_cbt_util_get_no_command_failure(void **state);
 void test_cbt_util_get_bitmap(void **state);
 void test_cbt_util_get_bitmap_nodata_failure(void **state);
 void test_cbt_util_get_bitmap_malloc_failure(void **state);
-void test_cbt_util_get_no_bitmap_size_failure(void **state);
-void test_cbt_util_get_no_bitmap_size_flag_failure(void **state);
 void test_cbt_util_get_no_bitmap_flag_failure(void **state);
 
 /* 'cbt-util create' tests */
@@ -92,6 +91,7 @@ static const struct CMUnitTest cbt_get_tests[] = {
 	cmocka_unit_test(test_cbt_util_get_flag),
 	cmocka_unit_test(test_cbt_util_get_parent),
 	cmocka_unit_test(test_cbt_util_get_child),
+	cmocka_unit_test(test_cbt_util_get_size),
 	cmocka_unit_test(test_cbt_util_get_nofile_failure),
 	cmocka_unit_test(test_cbt_util_get_nodata_failure),
 	cmocka_unit_test(test_cbt_util_get_malloc_failure),
@@ -100,8 +100,6 @@ static const struct CMUnitTest cbt_get_tests[] = {
 	cmocka_unit_test(test_cbt_util_get_bitmap),
 	cmocka_unit_test(test_cbt_util_get_bitmap_nodata_failure),
 	cmocka_unit_test(test_cbt_util_get_bitmap_malloc_failure),
-	cmocka_unit_test(test_cbt_util_get_no_bitmap_size_failure),
-	cmocka_unit_test(test_cbt_util_get_no_bitmap_size_flag_failure),
 	cmocka_unit_test(test_cbt_util_get_no_bitmap_flag_failure)
 };
 
