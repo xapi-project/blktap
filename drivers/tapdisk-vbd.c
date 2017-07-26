@@ -96,7 +96,7 @@ tapdisk_vbd_create(uint16_t uuid)
 		return NULL;
 	}
 
-    shm_init(&vbd->rrd.shm);
+	shm_init(&vbd->rrd.shm);
 
 	vbd->uuid        = uuid;
 	vbd->req_timeout = TD_VBD_REQUEST_TIMEOUT;
@@ -107,8 +107,8 @@ tapdisk_vbd_create(uint16_t uuid)
 	INIT_LIST_HEAD(&vbd->failed_requests);
 	INIT_LIST_HEAD(&vbd->completed_requests);
 	INIT_LIST_HEAD(&vbd->next);
-    INIT_LIST_HEAD(&vbd->rings);
-    INIT_LIST_HEAD(&vbd->dead_rings);
+	INIT_LIST_HEAD(&vbd->rings);
+	INIT_LIST_HEAD(&vbd->dead_rings);
 	tapdisk_vbd_mark_progress(vbd);
 
 	return vbd;

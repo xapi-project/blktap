@@ -77,27 +77,27 @@ struct td_vbd_rrd {
 };
 
 struct td_vbd_handle {
-    /**
-     * type:/path/to/file
-     */
+	/**
+	 * type:/path/to/file
+	 */
 	char                       *name;
 
 	td_blktap_t                *tap;
 
 	td_uuid_t                   uuid;
 
-    /**
-     * shared rings
-     */
-    struct list_head           rings;
+	/**
+	 * shared rings
+	 */
+	struct list_head           rings;
 
-    /**
-     * List of rings that contain pending requests but a disconnection was
-     * issued. We need to maintain these rings until all their pending requests
-     * complete. When the last request completes, the ring is destroyed and
-     * removed from this list.
-     */
-    struct list_head            dead_rings;
+	/**
+	 * List of rings that contain pending requests but a disconnection was
+	 * issued. We need to maintain these rings until all their pending requests
+	 * complete. When the last request completes, the ring is destroyed and
+	 * removed from this list.
+	 */
+	struct list_head            dead_rings;
 
 	td_flag_t                   flags;
 
