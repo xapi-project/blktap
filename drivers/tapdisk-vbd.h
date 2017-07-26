@@ -162,6 +162,8 @@ struct td_vbd_handle {
 	stats_t vdi_stats;
 
 	char                       *logpath;
+
+	bool                       watchdog_warned;
 };
 
 #define tapdisk_vbd_for_each_request(vreq, tmp, list)	                \

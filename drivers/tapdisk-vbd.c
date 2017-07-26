@@ -100,6 +100,7 @@ tapdisk_vbd_create(uint16_t uuid)
 
 	vbd->uuid        = uuid;
 	vbd->req_timeout = TD_VBD_REQUEST_TIMEOUT;
+	vbd->watchdog_warned = false;
 
 	INIT_LIST_HEAD(&vbd->images);
 	INIT_LIST_HEAD(&vbd->new_requests);
@@ -1194,14 +1195,26 @@ tapdisk_vbd_check_state(td_vbd_t *vbd)
 		tapdisk_vbd_close(vbd);
 }
 
+void watchdog_cleared(td_vbd_t *vbd)
+{
+	if (vbd->watchdog_warned) {
+		DBG(TLOG_WARN, "%s: watchdog timeout: requests were blocked\n", vbd->name);
+		/* Ideally want a direct way to flush the log */
+		tlog_precious(1);
+	}
+	vbd->watchdog_warned = false;
+}
+
 void
 tapdisk_vbd_check_progress(td_vbd_t *vbd)
 {
 	time_t diff;
 	struct timeval now, delta;
 
-	if (list_empty(&vbd->pending_requests))
+	if (list_empty(&vbd->pending_requests)) {
+		watchdog_cleared(vbd);
 		return;
+	}
 
 	gettimeofday(&now, NULL);
 	timersub(&now, &vbd->ts, &delta);
@@ -1211,12 +1224,17 @@ tapdisk_vbd_check_progress(td_vbd_t *vbd)
 	{
 		if(tapdisk_vbd_queue_ready(vbd))
 		{
-			DBG(TLOG_WARN, "%s: watchdog timeout: pending requests "
-			"idle for %ld seconds\n", vbd->name, diff);
+			if (!vbd->watchdog_warned) {
+				DBG(TLOG_WARN, "%s: watchdog timeout: pending requests "
+				    "idle for %ld seconds\n", vbd->name, diff);
+				vbd->watchdog_warned = true;
+			}
 			tapdisk_vbd_drop_log(vbd);
 		}
 		return;
 	}
+
+	watchdog_cleared(vbd);
 
 	tapdisk_server_set_max_timeout(TD_VBD_WATCHDOG_TIMEOUT - diff);
 }
