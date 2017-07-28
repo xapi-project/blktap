@@ -46,11 +46,13 @@
 int cbt_util_create(int , char **);
 int cbt_util_set(int , char **);
 int cbt_util_get(int , char **);
+int cbt_util_coalesce(int , char **);
 
 struct command commands[] = {
 	{ .name = "create", .func = cbt_util_create},
 	{ .name = "set", .func = cbt_util_set},
 	{ .name = "get", .func = cbt_util_get},
+	{ .name = "coalesce", .func = cbt_util_coalesce},
 };
 
 #define print_commands()					\
@@ -64,12 +66,89 @@ struct command commands[] = {
 		printf(" }\n");					\
 	} while (0)
 
-int 
+int
+malloc_cbt_log_data(struct cbt_log_data **log_data)
+{
+	int err = 0;
+
+	*log_data = malloc(sizeof(struct cbt_log_data));
+	if (!*log_data) {
+		fprintf(stderr, "Failed to allocate memory for CBT log\n");
+		err = -ENOMEM;
+	}
+	else
+		(*log_data)->bitmap = NULL;
+
+	return err;
+}
+
+int
+file_open(FILE **f, char * name, char *mode)
+{
+	int err = 0;
+
+	*f = fopen(name, mode);
+	if (*f == NULL) {
+		fprintf(stderr, "Failed to open log file %s. %s\n",
+										name, strerror(errno));
+		err = -errno;
+	}
+
+	return err;
+}
+
+int
+read_cbt_metadata(char *name, FILE *f, struct cbt_log_metadata *log_meta)
+{
+	int err = 0, ret;
+
+	ret = fread(log_meta, sizeof(struct cbt_log_metadata), 1, f);
+
+	if (!ret) {
+		fprintf(stderr, "Failed to read CBT metadata from file %s\n", name);
+		err = -EIO;
+	}
+
+	return err;
+}
+
+int
+allocate_cbt_bitmap(struct cbt_log_data *log_data)
+{
+	int err = 0;
+
+	uint64_t bmsize = bitmap_size(log_data->metadata.size);
+	log_data->bitmap = malloc(bmsize);
+	if (!log_data->bitmap) {
+		fprintf(stderr, "Failed to allocate memory for bitmap buffer\n");
+		err = -ENOMEM;
+	}
+
+	return err;
+}
+
+int
+read_cbt_bitmap(FILE *f, struct cbt_log_data *log_data)
+{
+	int err = 0, ret;
+	uint64_t bmsize = bitmap_size(log_data->metadata.size);
+
+	ret = fread(log_data->bitmap, bmsize, 1, f);
+
+	if (!ret) {
+		fprintf(stderr, "Failed to read bitmap\n");
+		err = -EIO;
+	}
+
+	return err;
+}
+
+int
 cbt_util_get(int argc, char **argv)
 {
 	char *name, uuid_str[37], *buf;
-	int err, c, ret; 
-	int parent, child, flag, size, bitmap; 
+	int err, c, ret;
+	int parent, child, flag, size, bitmap;
 	FILE *f = NULL;
 
 	err			= 0;
@@ -126,7 +205,7 @@ cbt_util_get(int argc, char **argv)
 
 	f = fopen(name, "r");
 	if (f == NULL) {
-		fprintf(stderr, "Failed to open log file %s. %s\n", 
+		fprintf(stderr, "Failed to open log file %s. %s\n",
 										name, strerror(errno));
 		err = -errno;
 		goto error;
@@ -240,8 +319,7 @@ cbt_util_set(int argc, char **argv)
 		}
 	}
 
-	//TODO:Check at least one of p, c or f is supplied?
-	if (!name) 
+	if (!name || !(parent || child || flag || size))
 		goto usage;
 
 	struct cbt_log_metadata *log_meta = malloc(sizeof(struct cbt_log_metadata));
@@ -253,7 +331,7 @@ cbt_util_set(int argc, char **argv)
 
 	f = fopen(name, "r+");
 	if (f == NULL) {
-		fprintf(stderr, "Failed to open log file %s. %s\n", 
+		fprintf(stderr, "Failed to open log file %s. %s\n",
 											name, strerror(errno));
 		err = -errno;
 		goto error;
@@ -275,11 +353,11 @@ cbt_util_set(int argc, char **argv)
 		uuid_parse(child, log_meta->child);
 	}
 
-	if(flag) {
+	if (flag) {
 		log_meta->consistent = consistent;
 	}
 
-	if(size) {
+	if (size) {
 		if (size < log_meta->size) {
 			fprintf(stderr, "Size smaller than current file size (%"PRIu64")\n",
 									log_meta->size);
@@ -415,7 +493,7 @@ cbt_util_create(int argc, char **argv)
 
 	f = fopen(name, "w+");
 	if (f == NULL) {
-		fprintf(stderr, "Failed to open log file %s. %s\n", 
+		fprintf(stderr, "Failed to open log file %s. %s\n",
 											name, strerror(errno));
 		err = -errno;
 		goto error;
@@ -453,6 +531,156 @@ usage:
 			"\t[-h help]\n");
 
 	return -EINVAL;
+}
+
+int
+cbt_util_coalesce(int argc, char **argv)
+{
+	char *parent, *child, *pbuf, *cbuf;
+	int err, c, ret;
+	FILE *fparent = NULL, *fchild = NULL;;
+	struct cbt_log_data *parent_log, *child_log;
+	uint64_t size;
+
+	parent = NULL;
+	child = NULL;
+	parent_log = NULL;
+	child_log = NULL;
+	pbuf = NULL;
+	cbuf = NULL;
+
+	if (!argc || !argv)
+		goto usage;
+
+	/* Make sure we start from the start of the args */
+	optind = 1;
+
+	while ((c = getopt(argc, argv, "p:c:h")) != -1) {
+		switch (c) {
+			case 'p':
+				parent = optarg;
+				break;
+			case 'c':
+				child = optarg;
+				break;
+			case 'h':
+			default:
+				goto usage;
+		}
+	}
+
+	if (!parent || !child)
+		goto usage;
+
+	// Open parent log in r/o mode
+	err = file_open(&fparent, parent, "r");
+	if (err)
+		goto error;
+
+	err = malloc_cbt_log_data(&parent_log);
+	if (err)
+		goto error;
+
+	// Read parent metadata
+	err = read_cbt_metadata(parent, fparent, &parent_log->metadata);
+	if (err)
+		goto error;
+
+	// Open child log in r/w mode
+	err = file_open(&fchild, child, "r+");
+	if (err)
+		goto error;
+
+	err = malloc_cbt_log_data(&child_log);
+	if (err)
+		goto error;
+
+	// Read child metadata
+	err = read_cbt_metadata(child, fchild, &child_log->metadata);
+	if (err)
+		goto error;
+
+	// check parent size is <= child size
+	if (bitmap_size(parent_log->metadata.size) >
+					bitmap_size(child_log->metadata.size)) {
+		fprintf(stderr, "Parent bitmap larger than child bitmap,"
+							"can't coalesce");
+		err = -EINVAL;
+		goto error;
+	}
+
+	//allocate and read cbt bitmap for parent
+	err = allocate_cbt_bitmap(parent_log);
+	if (err)
+		goto error;
+
+	err = read_cbt_bitmap(fparent, parent_log);
+	if (err)
+		goto error;
+
+	//allocate and read cbt bitmap for child
+	err = allocate_cbt_bitmap(child_log);
+	if (err)
+		goto error;
+
+	err = read_cbt_bitmap(fchild, child_log);
+	if (err)
+		goto error;
+
+	// Coalesce up to size of parent bitmap
+	size = bitmap_size(parent_log->metadata.size);
+	pbuf = parent_log->bitmap;
+	cbuf = child_log->bitmap;
+
+	while(size--){
+		*cbuf++ |= *pbuf++;
+	}
+
+	// Set file pointer to start of bitmap area
+	ret = fseek(fchild, sizeof(struct cbt_log_metadata), SEEK_SET);
+
+	if(ret < 0) {
+		fprintf(stderr, "Failed to seek to start of file %s. %s\n",
+													child, strerror(errno));
+		err = -errno;
+		goto error;
+	}
+
+	size = bitmap_size(child_log->metadata.size);
+	ret = fwrite(child_log->bitmap, size, 1, fchild);
+	if (!ret) {
+		fprintf(stderr, "Failed to write bitmap to log file %s\n", child);
+		err = -EIO;
+		goto error;
+	}
+
+error:
+	if (parent_log) {
+		if (parent_log->bitmap)
+			free(parent_log->bitmap);
+		free(parent_log);
+	}
+	if (child_log) {
+		if (child_log->bitmap)
+			free(child_log->bitmap);
+		free(child_log);
+	}
+
+	if (fparent)
+		fclose(fparent);
+	if (fchild)
+		fclose(fchild);
+
+	return err;
+
+usage:
+	printf("cbt-util coalesce: Coalesce contents of parent bitmap on to child bitmap\n\n");
+	printf("Options:\n\t-p Parent log file name\n");
+	printf("\t-c Child log file name\n");
+	printf("\t[-h help]\n");
+
+	return -EINVAL;
+
 }
 
 void
