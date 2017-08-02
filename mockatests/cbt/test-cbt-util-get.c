@@ -28,7 +28,6 @@
  * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
 #include <stddef.h>
@@ -129,6 +128,118 @@ void test_cbt_util_get_child(void **state)
 	assert_string_equal(output->buf, uuid_str);
 	free_printf_data(output);
 	free(log_meta);
+}
+
+void test_cbt_util_get_bitmap(void **state)
+{
+	int result;
+	int file_size;
+	char* args[] = { "cbt-util", "get", "-b", "-n", "test_disk.log", "-s", "4194304" };
+	void *log_meta;
+	struct fwrite_data *output;
+
+	uint64_t bmsize = bitmap_size(4194304);
+	file_size = sizeof(struct cbt_log_metadata) + bmsize;
+	log_meta = malloc(file_size);
+
+	//Fill bitmap with random bytes
+	memcpy( log_meta + sizeof(struct cbt_log_metadata), (void*)memcpy, bmsize );
+	FILE *test_log = fmemopen((void*)log_meta, file_size, "r");
+
+	will_return(__wrap_fopen, test_log);
+	expect_value(__wrap_fclose, fp, test_log);
+	enable_mock_fwrite();
+	output = setup_fwrite_mock(bmsize);
+
+	result = cbt_util_get(7, args);
+	assert_int_equal(result, 0);
+	assert_memory_equal(output->buf, log_meta + sizeof(struct cbt_log_metadata), bmsize);
+
+	free_fwrite_data(output);
+	free(log_meta);
+}
+
+void test_cbt_util_get_bitmap_nodata_failure(void **state)
+{
+
+	int result;
+	char* args[] = { "cbt-util", "get", "-b", "-n", "test_disk.log", "-s", "4194304" };
+	void *log_meta;
+
+	log_meta = malloc(sizeof(struct cbt_log_metadata));
+	FILE *test_log = fmemopen((void*)log_meta, sizeof(struct cbt_log_metadata), "r");
+
+	will_return(__wrap_fopen, test_log);
+	expect_value(__wrap_fclose, fp, test_log);
+
+	result = cbt_util_get(7, args);
+	assert_int_equal(result, -EIO);
+
+	free(log_meta);
+
+}
+
+void test_cbt_util_get_bitmap_malloc_failure(void **state)
+{
+	int result;
+	int file_size;
+	char* args[] = { "cbt-util", "get", "-b", "-n", "test_disk.log", "-s", "4194304" };
+	void *log_meta;
+
+	file_size = 4194304 + sizeof(struct cbt_log_metadata);
+	log_meta = malloc(file_size);
+	FILE *test_log = fmemopen((void*)log_meta, file_size, "r");
+
+	will_return(__wrap_fopen, test_log);
+	expect_value(__wrap_fclose, fp, test_log);
+
+	malloc_succeeds(true);
+	malloc_succeeds(false);
+
+	result = cbt_util_get(7, args);
+	assert_int_equal(result, -ENOMEM);
+
+	disable_malloc_mock();
+	free(log_meta);
+}
+
+void test_cbt_util_get_no_bitmap_size_failure(void **state)
+{
+	int result;
+	char* args[] = { "cbt-util", "get", "-b", "-n", "test_disk.log", "-s" };
+	struct printf_data *output;
+
+	output = setup_vprintf_mock(1024);
+
+	result = cbt_util_get(6, args);
+	assert_int_equal(result, -EINVAL);
+	free_printf_data(output);
+}
+
+void test_cbt_util_get_no_bitmap_size_flag_failure(void **state)
+{
+	int result;
+	char* args[] = { "cbt-util", "get", "-b", "-n", "test_disk.log" };
+	struct printf_data *output;
+
+	output = setup_vprintf_mock(1024);
+
+	result = cbt_util_get(5, args);
+	assert_int_equal(result, -EINVAL);
+	free_printf_data(output);
+}
+
+void test_cbt_util_get_no_bitmap_flag_failure(void **state)
+{
+	int result;
+	char* args[] = { "cbt-util", "get", "-n", "test_disk.log", "-s", "4194304" };
+	struct printf_data *output;
+
+	output = setup_vprintf_mock(1024);
+
+	result = cbt_util_get(6, args);
+	assert_int_equal(result, -EINVAL);
+	free_printf_data(output);
 }
 
 void test_cbt_util_get_nofile_failure(void **state)

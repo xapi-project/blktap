@@ -41,6 +41,7 @@
 
 static int tests_running = 1;
 static int mock_malloc = 0;
+static int mock_fwrite = 0;
 
 void *
 __wrap_malloc(size_t size)
@@ -86,6 +87,56 @@ __wrap_fclose(FILE *fp)
 		check_expected_ptr(fp);
 	}
 	__real_fclose(fp);
+}
+
+int
+__real_fwrite(const void *ptr, size_t size, size_t nmemb, FILE *stream);
+
+int
+__wrap_fwrite(const void *ptr, size_t size, size_t nmemb, FILE *stream)
+{
+	if (mock_fwrite) {
+
+	struct fwrite_data *data = mock();
+
+	size_t remaining = data->size - data->offset;
+	size_t len = size * nmemb;
+
+	assert_in_range(len, 0, remaining);
+	memcpy(data->buf + data->offset, ptr, len);
+	
+	data->offset += len;
+
+	return len;
+	}
+	return __real_fwrite(ptr, size, nmemb, stream);
+}
+
+struct fwrite_data *setup_fwrite_mock(int size)
+{
+	void *buf;
+	struct fwrite_data *data;
+
+	buf = test_malloc(size);
+	memset(buf, 0, size);
+
+	data = test_malloc(sizeof(struct fwrite_data));
+	data->size = size;
+	data->offset = 0;
+	data->buf = buf;
+	data->type = stdout;
+
+	will_return_always(__wrap_fwrite, data);
+
+	return data;
+}
+
+void free_fwrite_data(struct fwrite_data *data)
+{
+	if (data->buf)
+		test_free(data->buf);
+	test_free(data);
+	mock_fwrite = false;
 }
 
 int
@@ -169,4 +220,9 @@ void disable_malloc_mock()
 void disable_mocks()
 {
 	tests_running = 0;
+}
+
+void enable_mock_fwrite()
+{
+	mock_fwrite = true;
 }

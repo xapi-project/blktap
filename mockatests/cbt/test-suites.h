@@ -34,12 +34,8 @@
 #include <setjmp.h>
 #include <cmocka.h>
 #include <uuid/uuid.h>
-
-struct cbt_log_metadata {
-	uuid_t parent;
-	uuid_t child;
-	int    consistent;
-};
+#include <stdint.h>
+#include <cbt-util.h>
 
 /* Command lookup tests */
 void test_get_command_create(void **state);
@@ -59,6 +55,12 @@ void test_cbt_util_get_nodata_failure(void **state);
 void test_cbt_util_get_malloc_failure(void **state);
 void test_cbt_util_get_no_name_failure(void **state);
 void test_cbt_util_get_no_command_failure(void **state);
+void test_cbt_util_get_bitmap(void **state);
+void test_cbt_util_get_bitmap_nodata_failure(void **state);
+void test_cbt_util_get_bitmap_malloc_failure(void **state);
+void test_cbt_util_get_no_bitmap_size_failure(void **state);
+void test_cbt_util_get_no_bitmap_size_flag_failure(void **state);
+void test_cbt_util_get_no_bitmap_flag_failure(void **state);
 
 /* 'cbt-util create' tests */
 void test_cbt_util_create_success(void **state);
@@ -94,7 +96,13 @@ static const struct CMUnitTest cbt_get_tests[] = {
 	cmocka_unit_test(test_cbt_util_get_nodata_failure),
 	cmocka_unit_test(test_cbt_util_get_malloc_failure),
 	cmocka_unit_test(test_cbt_util_get_no_name_failure),
-	cmocka_unit_test(test_cbt_util_get_no_command_failure)
+	cmocka_unit_test(test_cbt_util_get_no_command_failure),
+	cmocka_unit_test(test_cbt_util_get_bitmap),
+	cmocka_unit_test(test_cbt_util_get_bitmap_nodata_failure),
+	cmocka_unit_test(test_cbt_util_get_bitmap_malloc_failure),
+	cmocka_unit_test(test_cbt_util_get_no_bitmap_size_failure),
+	cmocka_unit_test(test_cbt_util_get_no_bitmap_size_flag_failure),
+	cmocka_unit_test(test_cbt_util_get_no_bitmap_flag_failure)
 };
 
 static const struct CMUnitTest cbt_create_tests[] = {

@@ -46,8 +46,6 @@ struct cbt_log_data {
 	char 					*bitmap;
 };
 
-int cbt_block_size = CBT_BLOCK_SIZE;
-
 static inline uint64_t
 roundup_div(uint64_t a, int b)
 {

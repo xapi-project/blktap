@@ -17,3 +17,4 @@ test_cbt_util_LDFLAGS += -Wl,--wrap=malloc,--wrap=free
 test_cbt_util_LDFLAGS += -Wl,--wrap=printf,--wrap=__printf_chk
 # GCC will "optimise" printf calls - http://www.ciselant.de/projects/gcc_printf/gcc_printf.html
 test_cbt_util_LDFLAGS += -Wl,--wrap=puts
+test_cbt_util_LDFLAGS += -Wl,--wrap=fwrite

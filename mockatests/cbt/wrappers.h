@@ -40,13 +40,24 @@ struct printf_data {
 	char *buf;
 };
 
+struct fwrite_data {
+	FILE *type;
+	int size;
+	int offset;
+	char *buf;
+};
+
 FILE * __wrap_fopen(void);
 
 void __wrap_fclose(FILE *fp);
 
+struct fwrite_data *setup_fwrite_mock(int size);
+
 struct printf_data *setup_vprintf_mock(int size);
 
 void free_printf_data(struct printf_data *data);
+
+void free_fwrite_data(struct fwrite_data *data);
 
 /*
  * This enables mocking of malloc and provides a flag to control
@@ -61,5 +72,7 @@ void malloc_succeeds(bool succeed);
 void disable_malloc_mock();
 
 void disable_mocks();
+
+void enable_mock_fwrite();
 
 #endif /* __WRAPPERS_H__ */
