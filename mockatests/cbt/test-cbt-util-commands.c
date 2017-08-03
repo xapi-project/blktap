@@ -77,6 +77,19 @@ test_get_command_get(void **state)
 }
 
 void
+test_get_command_coalesce(void **state)
+{
+	struct command *cmd;
+
+	char* requested_command = { "coalesce" };
+
+	cmd = get_command(requested_command);
+
+	assert_string_equal(cmd->name, "coalesce");
+	assert_ptr_equal(cmd->func, cbt_util_coalesce);
+}
+
+void
 test_get_command_bad_command(void **state)
 {
 	struct command *cmd;

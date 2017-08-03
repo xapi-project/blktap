@@ -41,6 +41,7 @@
 void test_get_command_create(void **state);
 void test_get_command_set(void **state);
 void test_get_command_get(void **state);
+void test_get_command_coalesce(void **state);
 void test_get_command_bad_command(void **state);
 void test_get_command_over_long_command(void **state);
 
@@ -71,17 +72,35 @@ void test_cbt_util_create_bitmap_allocation_failure(void **state);
 void test_cbt_util_create_no_name_failure(void **state);
 void test_cbt_util_create_no_size_failure(void **state);
 
+/* 'cbt-util coalesce' tests */
+void test_cbt_util_coalesce_no_parent_failure(void **state);
+void test_cbt_util_coalesce_no_child_failure(void **state);
+void test_cbt_util_coalesce_no_parent_file_failure(void **state);
+void test_cbt_util_coalesce_no_child_file_failure(void **state);
+void test_cbt_util_coalesce_parent_log_malloc_failure(void **state);
+void test_cbt_util_coalesce_child_log_malloc_failure(void **state);
+void test_cbt_util_coalesce_no_parent_meta_failure(void **state);
+void test_cbt_util_coalesce_no_child_meta_failure(void **state);
+void test_cbt_util_coalesce_larger_parent_bitmap_failure(void **state);
+void test_cbt_util_coalesce_parent_bitmap_malloc_failure(void **state);
+void test_cbt_util_coalesce_child_bitmap_malloc_failure(void **state);
+void test_cbt_util_coalesce_parent_no_bitmap_data_failure(void **state);
+void test_cbt_util_coalesce_child_no_bitmap_data_failure(void **state);
+void test_cbt_util_coalesce_success(void **state);
+
 /* Functions under test */
 
 extern int cbt_util_create(int , char **);
 extern int cbt_util_set(int , char **);
 extern int cbt_util_get(int , char **);
+extern int cbt_util_coalesce(int , char **);
 extern void help(void);
 
 static const struct CMUnitTest cbt_command_tests[] = {
 	cmocka_unit_test(test_get_command_create),
 	cmocka_unit_test(test_get_command_set),
 	cmocka_unit_test(test_get_command_get),
+	cmocka_unit_test(test_get_command_coalesce),
 	cmocka_unit_test(test_get_command_bad_command),
 	cmocka_unit_test(test_get_command_over_long_command),
 	cmocka_unit_test(test_help_success)
@@ -112,6 +131,23 @@ static const struct CMUnitTest cbt_create_tests[] = {
 	cmocka_unit_test(test_cbt_util_create_bitmap_allocation_failure),
 	cmocka_unit_test(test_cbt_util_create_no_name_failure),
 	cmocka_unit_test(test_cbt_util_create_no_size_failure)
+};
+
+static const struct CMUnitTest cbt_coalesce_tests[] = {
+	cmocka_unit_test(test_cbt_util_coalesce_no_parent_failure),
+	cmocka_unit_test(test_cbt_util_coalesce_no_child_failure),
+	cmocka_unit_test(test_cbt_util_coalesce_no_parent_file_failure),
+	cmocka_unit_test(test_cbt_util_coalesce_no_child_file_failure),
+	cmocka_unit_test(test_cbt_util_coalesce_parent_log_malloc_failure),
+	cmocka_unit_test(test_cbt_util_coalesce_child_log_malloc_failure),
+	cmocka_unit_test(test_cbt_util_coalesce_no_parent_meta_failure),
+	cmocka_unit_test(test_cbt_util_coalesce_no_child_meta_failure),
+	cmocka_unit_test(test_cbt_util_coalesce_larger_parent_bitmap_failure),
+	cmocka_unit_test(test_cbt_util_coalesce_parent_bitmap_malloc_failure),
+	cmocka_unit_test(test_cbt_util_coalesce_child_bitmap_malloc_failure),
+	cmocka_unit_test(test_cbt_util_coalesce_parent_no_bitmap_data_failure),
+	cmocka_unit_test(test_cbt_util_coalesce_child_no_bitmap_data_failure),
+	cmocka_unit_test(test_cbt_util_coalesce_success),
 };
 
 #endif /* __TEST_SUITES_H__ */
