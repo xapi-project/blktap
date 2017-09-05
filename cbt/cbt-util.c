@@ -247,6 +247,10 @@ cbt_util_get(int argc, char **argv)
 			err = -EIO;
 			goto error;
 		}
+		else {
+			DPRINTF("Read %"PRIu64" bytes from bitmap region for file %s\n",
+						bmsize, name);
+		}
 
 		fwrite(buf, bmsize, 1, stdout);
 	}
@@ -381,7 +385,7 @@ cbt_util_set(int argc, char **argv)
 			goto error;
 		}
 
-    	memset(buf + old_bmsize, 0, bmsize - old_bmsize);
+		memset(buf + old_bmsize, 0, bmsize - old_bmsize);
 		// Set file pointer to start of bitmap area
 		ret = fseek(f, sizeof(struct cbt_log_metadata), SEEK_SET);
 		if(ret < 0) {
@@ -482,6 +486,8 @@ cbt_util_create(int argc, char **argv)
 	log_data->metadata.consistent = 0;
 	log_data->metadata.size = size;
 
+	DPRINTF("Creating new log file %s of size %"PRIu64"\n", name, size);
+
 	bitmap_sz = bitmap_size(size);
 	log_data->bitmap = (char*)malloc(bitmap_sz);
 	if (!log_data->bitmap) {
@@ -512,6 +518,10 @@ cbt_util_create(int argc, char **argv)
 		err = -EIO;
 		goto error;
 	}
+	else {
+		DPRINTF("Bitmap area of %"PRIu64" bytes initialised\n", bitmap_sz);
+	}
+	
 
 error:
 	if(log_data) {

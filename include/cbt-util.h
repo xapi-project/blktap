@@ -32,6 +32,7 @@
 #define _CBT_UTIL_H_
 
 #include <uuid/uuid.h>
+#include "../drivers/tapdisk-log.h"
 
 #define CBT_BLOCK_SIZE (64 * 1024)
 
