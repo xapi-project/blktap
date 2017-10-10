@@ -702,7 +702,7 @@ static int
 tapdisk_control_open_image(struct tapdisk_ctl_conn *conn,
 			   tapdisk_message_t *request, tapdisk_message_t * const response)
 {
-	int err;
+	int err, ret;
 	td_vbd_t *vbd;
 	td_flag_t flags;
 
@@ -738,9 +738,10 @@ tapdisk_control_open_image(struct tapdisk_ctl_conn *conn,
 	if (request->u.params.flags & TAPDISK_MESSAGE_FLAG_VHD_INDEX)
 		flags |= TD_OPEN_VHD_INDEX;
 	if (request->u.params.flags & TAPDISK_MESSAGE_FLAG_ADD_LOG) {
-		char *logpath = strdup(request->u.params.logpath);
-		if (!logpath) {
-			err = -errno;
+		char *logpath = malloc(TAPDISK_MESSAGE_MAX_PATH_LENGTH);
+		ret = read(conn->fd, logpath, TAPDISK_MESSAGE_MAX_PATH_LENGTH);
+		if (ret < 0) {
+			err = -EIO;
 			goto out;
 		}
 		vbd->logpath = logpath;
@@ -980,7 +981,7 @@ static int
 tapdisk_control_resume_vbd(struct tapdisk_ctl_conn *conn,
 			   tapdisk_message_t *request, tapdisk_message_t * const response)
 {
-	int err;
+	int err, ret;
 	td_vbd_t *vbd;
 	const char *desc = NULL;
 
@@ -1014,9 +1015,10 @@ tapdisk_control_resume_vbd(struct tapdisk_ctl_conn *conn,
 	}
 
 	if (request->u.params.flags & TAPDISK_MESSAGE_FLAG_ADD_LOG) {
-		char *logpath = strdup(request->u.params.logpath);
-		if (!logpath) {
-			err = -errno;
+		char *logpath = malloc(TAPDISK_MESSAGE_MAX_PATH_LENGTH);
+		ret = read(conn->fd, logpath, TAPDISK_MESSAGE_MAX_PATH_LENGTH);
+		if (ret < 0) {
+			err = -EIO;
 			goto out;
 		}
 		vbd->logpath = logpath;

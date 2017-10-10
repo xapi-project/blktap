@@ -77,6 +77,10 @@ int tap_ctl_send_and_receive(int fd, tapdisk_message_t *message,
 int tap_ctl_connect_send_and_receive(int id,
 				     tapdisk_message_t *message,
 				     struct timeval *timeout);
+int tap_ctl_connect_send_receive_with_logpath(int id,
+				     tapdisk_message_t *message,
+				     const char *logpath,
+				     struct timeval *timeout);
 char *tap_ctl_socket_name(int id);
 
 typedef struct {

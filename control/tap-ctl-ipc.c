@@ -159,6 +159,40 @@ tap_ctl_send_and_receive(int sfd, tapdisk_message_t *message,
 	return 0;
 }
 
+int
+tap_ctl_send_and_receive_with_logpath(int sfd, tapdisk_message_t *message,
+			 const char *logpath, struct timeval *timeout)
+{
+	int err, ret;
+
+	err = tap_ctl_write_message(sfd, message, timeout);
+	if (err) {
+		EPRINTF("failed to send '%s' message\n",
+			tapdisk_message_name(message->type));
+		return err;
+	}
+
+	char buf[TAPDISK_MESSAGE_MAX_PATH_LENGTH];
+
+	snprintf(buf, TAPDISK_MESSAGE_MAX_PATH_LENGTH - 1, "%s", logpath);  
+
+	ret = write(sfd, &buf, sizeof(buf));
+
+	if (ret == -1) {
+		EPRINTF("Failed to send logpath with '%s' message\n",
+			tapdisk_message_name(message->type));
+	}	
+
+	err = tap_ctl_read_message(sfd, message, timeout);
+	if (err) {
+		EPRINTF("failed to receive '%s' message\n",
+			tapdisk_message_name(message->type));
+		return err;
+	}
+
+	return 0;
+}
+
 char *
 tap_ctl_socket_name(int id)
 {
@@ -248,6 +282,22 @@ tap_ctl_connect_send_and_receive(int id, tapdisk_message_t *message,
 		return err;
 
 	err = tap_ctl_send_and_receive(sfd, message, timeout);
+
+	close(sfd);
+	return err;
+}
+
+int
+tap_ctl_connect_send_receive_with_logpath(int id, tapdisk_message_t *message,
+				 const char *logpath, struct timeval *timeout)
+{
+	int err, sfd;
+
+	err = tap_ctl_connect_id(id, &sfd);
+	if (err)
+		return err;
+
+	err = tap_ctl_send_and_receive_with_logpath(sfd, message, logpath, timeout);
 
 	close(sfd);
 	return err;

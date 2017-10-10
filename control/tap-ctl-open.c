@@ -72,18 +72,14 @@ tap_ctl_open(const int id, const int minor, const char *params, int flags,
 			return ENAMETOOLONG;
 		}
 	}
-
 	if (logpath) {
-		err = snprintf(message.u.params.logpath,
-			       sizeof(message.u.params.logpath) - 1, "%s",
-			       logpath);
-		if (err >= sizeof(message.u.params.logpath)) {
-			EPRINTF("logpath too long\n");
-			return ENAMETOOLONG;
-		}
+		err = tap_ctl_connect_send_receive_with_logpath
+								(id, &message, logpath, NULL);
+	}
+	else {
+		err = tap_ctl_connect_send_and_receive(id, &message, NULL);
 	}
 
-	err = tap_ctl_connect_send_and_receive(id, &message, NULL);
 	if (err)
 		return err;
 
