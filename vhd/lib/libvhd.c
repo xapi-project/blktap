@@ -49,6 +49,7 @@
 #include <sys/types.h>
 
 #include "debug.h"
+#include "xattr.h"
 #include "libvhd.h"
 #include "relative-path.h"
 #include "canonpath.h"
@@ -211,6 +212,7 @@ vhd_batmap_header_out(vhd_batmap_t *batmap)
 	BE32_OUT(&batmap->header.batmap_size);
 	BE32_OUT(&batmap->header.batmap_version);
 	BE32_OUT(&batmap->header.checksum);
+	memset(batmap->header.res, 0, sizeof(batmap->header.res));
 }
 
 void
@@ -4436,7 +4438,10 @@ vhd_marker(vhd_context_t *ctx, char *marker)
 	*marker = 0;
 
 	if (!vhd_has_batmap(ctx))
-		return -ENOSYS;
+		return xattr_get(ctx->fd,
+				 VHD_XATTR_MARKER,
+				 (void *)marker,
+				 sizeof(*marker));
 
 	err = vhd_read_batmap_header(ctx, &batmap);
 	if (err)
@@ -4453,12 +4458,55 @@ vhd_set_marker(vhd_context_t *ctx, char marker)
 	vhd_batmap_t batmap;
 
 	if (!vhd_has_batmap(ctx))
-		return -ENOSYS;
+		return xattr_set(ctx->fd,
+				 VHD_XATTR_MARKER,
+				 (void *)&marker,
+				 sizeof(marker));
 
 	err = vhd_read_batmap_header(ctx, &batmap);
 	if (err)
 		return err;
 
 	batmap.header.marker = marker;
+	return vhd_write_batmap_header(ctx, &batmap);
+}
+
+int
+vhd_get_keyhash(vhd_context_t *ctx, struct vhd_keyhash *keyhash)
+{
+	int err;
+	vhd_batmap_t batmap;
+
+	if (!vhd_has_batmap(ctx))
+		return xattr_get(ctx->fd,
+				 VHD_XATTR_KEYHASH,
+				 (void *)keyhash,
+				 sizeof(*keyhash));
+
+	err = vhd_read_batmap_header(ctx, &batmap);
+	if (err)
+		return err;
+
+	memcpy(keyhash, &batmap.header.keyhash, sizeof(*keyhash));
+	return 0;
+}
+
+int
+vhd_set_keyhash(vhd_context_t *ctx, const struct vhd_keyhash *keyhash)
+{
+	int err;
+	vhd_batmap_t batmap;
+
+	if (!vhd_has_batmap(ctx))
+		return xattr_set(ctx->fd,
+				 VHD_XATTR_KEYHASH,
+				 (void *)keyhash,
+				 sizeof(*keyhash));
+
+	err = vhd_read_batmap_header(ctx, &batmap);
+	if (err)
+		return err;
+
+	memcpy(&batmap.header.keyhash, keyhash, sizeof(*keyhash));
 	return vhd_write_batmap_header(ctx, &batmap);
 }

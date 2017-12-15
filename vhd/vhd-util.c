@@ -67,6 +67,7 @@ struct command commands[] = {
 	{ .name = "scan",        .func = vhd_util_scan          },
 	{ .name = "check",       .func = vhd_util_check         },
 	{ .name = "revert",      .func = vhd_util_revert        },
+	{ .name = "key",         .func = vhd_util_key           },
 };
 
 #define print_commands()					\

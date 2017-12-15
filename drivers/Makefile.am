@@ -1,5 +1,5 @@
 AM_CFLAGS  = -Wall
-AM_CFLAGS += -Werror
+AM_CFLAGS += -Werror -Wno-unused-function
 AM_CFLAGS += -DXC_WANT_COMPAT_EVTCHN_API -DXC_WANT_COMPAT_GNTTAB_API
 # TODO add -Wextra
 
@@ -9,11 +9,11 @@ AM_CPPFLAGS += -I$(top_srcdir)/include
 libexec_PROGRAMS = tapdisk
 
 tapdisk_SOURCES = tapdisk2.c
-tapdisk_LDADD = libtapdisk.la
+tapdisk_LDADD = libtapdisk.la crypto/libxts-aes.la
 
 noinst_PROGRAMS = tapdisk-stream
 
-tapdisk_stream_LDADD = libtapdisk.la
+tapdisk_stream_LDADD = libtapdisk.la crypto/libxts-aes.la
 
 sbin_PROGRAMS  = td-util
 sbin_PROGRAMS += td-rated
@@ -98,6 +98,10 @@ libtapdisk_la_SOURCES += td-ctx.c
 libtapdisk_la_SOURCES += td-ctx.h
 libtapdisk_la_SOURCES += td-stats.c
 libtapdisk_la_SOURCES += td-stats.h
+
+# encryption support
+libtapdisk_la_SOURCES += crypto/xts_aes.c
+libtapdisk_la_SOURCES += crypto/xts_aes.h
 
 libtapdisk_la_LIBADD  = ../vhd/lib/libvhd.la
 libtapdisk_la_LIBADD += -laio

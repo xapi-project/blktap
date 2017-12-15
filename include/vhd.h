@@ -156,6 +156,12 @@ static const char DD_COOKIE[9]  =  "cxsparse";
 
 #define DD_BLK_UNUSED 0xFFFFFFFF
 
+struct vhd_keyhash {
+  uint8_t cookie;         /* 1 if keyhash is set, 0 otherwise            */
+  uint8_t nonce[32];      /* arbitrary 256 bit nonce                     */
+  uint8_t hash[32];       /* SHA256 sum of nonce appended by keyhash     */
+};
+
 struct dd_batmap_hdr {
   char        cookie[8];       /* should contain "tdbatmap"                    */
   uint64_t    batmap_offset;   /* byte offset to batmap                        */
@@ -163,6 +169,8 @@ struct dd_batmap_hdr {
   uint32_t    batmap_version;  /* version of batmap                            */
   uint32_t    checksum;        /* batmap checksum -- 1's complement of batmap  */
   char        marker;          /* generic marker field                         */
+  struct vhd_keyhash keyhash;  /* nonce & SHA256 hash of encryption key   */
+  char   res[418];        /* reserved                                     */
 };
 
 static const char VHD_BATMAP_COOKIE[9] = "tdbatmap";
