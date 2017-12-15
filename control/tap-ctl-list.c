@@ -428,3 +428,29 @@ tap_ctl_find_minor(const char *type, const char *path)
 
 	return minor >= 0 ? minor : -ENOENT;
 }
+
+int
+tap_ctl_find_pid(int minor)
+{
+	int pid, err;
+	struct list_head list = LIST_HEAD_INIT(list);
+	tap_list_t *entry;
+
+	err = tap_ctl_list(&list);
+	if (err)
+		return err;
+
+	pid = -1;
+
+	tap_list_for_each_entry(entry, &list) {
+
+		if (entry->minor == minor) {
+			pid = entry->pid;
+			break;
+		}
+	}
+
+	tap_ctl_list_free(&list);
+
+	return pid >= 0 ? pid : -ENOENT;
+}
