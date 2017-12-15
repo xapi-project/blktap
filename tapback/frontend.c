@@ -440,20 +440,15 @@ frontend_changed(vbd_t * const device, const XenbusState state)
 
     switch (state) {
         case XenbusStateInitialising:
-			if (device->hotplug_status_connected)
 				err = xenbus_switch_state(device, XenbusStateInitWait);
             break;
         case XenbusStateInitialised:
     	case XenbusStateConnected:
-            if (!device->hotplug_status_connected)
-                DBG(device, "udev scripts haven't yet run\n");
-            else {
-                if (device->state != XenbusStateConnected) {
-                    DBG(device, "connecting to front-end\n");
-                    err = xenbus_connect(device);
-                } else
-                    DBG(device, "already connected\n");
-            }
+            if (device->state != XenbusStateConnected) {
+                DBG(device, "connecting to front-end\n");
+                err = xenbus_connect(device);
+            } else
+                DBG(device, "already connected\n");
             break;
         case XenbusStateClosing:
             err = xenbus_switch_state(device, XenbusStateClosing);
