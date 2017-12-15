@@ -248,6 +248,30 @@ vhd_print_parent_locators(vhd_context_t *vhd, int hex)
 }
 
 static void
+vhd_print_keyhash(vhd_context_t *vhd)
+{
+	int ret;
+	struct vhd_keyhash keyhash;
+
+	ret = vhd_get_keyhash(vhd, &keyhash);
+	if (ret)
+		printf("error reading keyhash: %d\n", ret);
+	else if (keyhash.cookie == 1) {
+		int i;
+
+		printf("Batmap keyhash nonce: ");
+		for (i = 0; i < sizeof(keyhash.nonce); i++)
+			printf("%02x", keyhash.nonce[i]);
+
+		printf("\nBatmap keyhash hash : ");
+		for (i = 0; i < sizeof(keyhash.hash); i++)
+			printf("%02x", keyhash.hash[i]);
+
+		printf("\n");
+	}
+}
+
+static void
 vhd_print_batmap_header(vhd_context_t *vhd, vhd_batmap_t *batmap, int hex)
 {
 	uint32_t cksm;
@@ -259,6 +283,7 @@ vhd_print_batmap_header(vhd_context_t *vhd, vhd_batmap_t *batmap, int hex)
 	       conv(hex, batmap->header.batmap_size));
 	printf("Batmap version      : 0x%08x\n",
 	       batmap->header.batmap_version);
+	vhd_print_keyhash(vhd);
 
 	cksm = vhd_checksum_batmap(vhd, batmap);
 	printf("Checksum            : 0x%x|0x%x (%s)\n",

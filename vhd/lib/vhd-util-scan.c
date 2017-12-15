@@ -104,6 +104,7 @@ struct vhd_image {
 	off64_t              size;
 	uint8_t              hidden;
 	char                 marker;
+	struct vhd_keyhash   keyhash;
 	int                  error;
 	char                *message;
 
@@ -237,6 +238,7 @@ vhd_util_scan_pretty_add_image(struct vhd_image *image)
 	img->marker   = image->marker;
 	img->error    = image->error;
 	img->message  = image->message;
+	memcpy(&img->keyhash, &image->keyhash, sizeof(img->keyhash));
 
 	img->name = strdup(image->name);
 	if (!img->name)
@@ -296,11 +298,24 @@ vhd_util_scan_print_image_indent(struct vhd_image *image, int tab)
 		printf("%*svhd=%s capacity=%"PRIu64" size=%"PRIu64" hidden=%u "
 		       "parent=%s%s\n", tab, pad, name, image->capacity,
 		       image->size, image->hidden, parent, pmsg);
-	else
-		printf("%*svhd=%s capacity=%"PRIu64" size=%"PRIu64" hidden=%u "
-		       "marker=%u parent=%s%s\n", tab, pad, name,
-		       image->capacity, image->size, image->hidden,
-		       (uint8_t)image->marker, parent, pmsg);
+	else {
+		int i;
+		uint8_t *hash;
+		char *p, str[65];
+
+		str[0] = 0;
+		hash   = image->keyhash.hash;
+
+		if (image->keyhash.cookie)
+			for (i = 0, p = str;
+			     i < sizeof(image->keyhash.hash); i++)
+				p += sprintf(p, "%02x", hash[i]);
+
+ 		printf("%*svhd=%s capacity=%"PRIu64" size=%"PRIu64" hidden=%u "
+		       "marker=%u keyhash=%s parent=%s%s\n", tab, pad, name,
+ 		       image->capacity, image->size, image->hidden,
+		       (uint8_t)image->marker, str, parent, pmsg);
+	}
 }
 
 static void
@@ -590,18 +605,26 @@ vhd_util_scan_get_hidden(vhd_context_t *vhd, struct vhd_image *image)
 }
 
 static int
-vhd_util_scan_get_marker(vhd_context_t *vhd, struct vhd_image *image)
+vhd_util_scan_get_markers(vhd_context_t *vhd, struct vhd_image *image)
 {
 	int err;
 	char marker;
+	struct vhd_keyhash keyhash;
 
 	err    = 0;
 	marker = 0;
 
-	if (target_vhd(image->target->type) && vhd_has_batmap(vhd))
-		err = vhd_marker(vhd, &marker);
+	if (target_vhd(image->target->type) /* && vhd_has_batmap(vhd) */) {
+ 		err = vhd_marker(vhd, &marker);
+		if (err)
+			return err;
+		err = vhd_get_keyhash(vhd, &keyhash);
+		if (err)
+			return err;
+	}
 
 	image->marker = marker;
+	memcpy(&image->keyhash, &keyhash, sizeof(image->keyhash));
 	return err;
 }
 
@@ -1020,10 +1043,10 @@ vhd_util_scan_targets(int cnt, struct target *targets)
 		}
 
 		if (flags & VHD_SCAN_MARKERS) {
-			err = vhd_util_scan_get_marker(&vhd, &image);
+			err = vhd_util_scan_get_markers(&vhd, &image);
 			if (err) {
 				ret           = -EAGAIN;
-				image.message = "checking marker";
+				image.message = "checking markers";
 				image.error   = err;
 				goto end;
 			}

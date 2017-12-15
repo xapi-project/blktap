@@ -46,7 +46,7 @@ vhd_util_query(int argc, char **argv)
 	char *name;
 	vhd_context_t vhd;
 	off64_t currsize;
-	int ret, err, c, size, physize, parent, fields, depth, fastresize, marker;
+	int ret, err, c, size, physize, parent, fields, depth, fastresize, marker, allocated;
 
 	name       = NULL;
 	size       = 0;
@@ -56,6 +56,7 @@ vhd_util_query(int argc, char **argv)
 	depth      = 0;
 	fastresize = 0;
 	marker     = 0;
+	allocated  = 0;
 
 	if (!argc || !argv) {
 		err = -EINVAL;
@@ -63,7 +64,7 @@ vhd_util_query(int argc, char **argv)
 	}
 
 	optind = 0;
-	while ((c = getopt(argc, argv, "n:vspfdSmh")) != -1) {
+	while ((c = getopt(argc, argv, "n:vspfdSmah")) != -1) {
 		switch (c) {
 		case 'n':
 			name = optarg;
@@ -88,6 +89,9 @@ vhd_util_query(int argc, char **argv)
 			break;
 		case 'm':
 			marker = 1;
+			break;
+		case 'a':
+			allocated = 1;
 			break;
 		case 'h':
 			err = 0;
@@ -176,6 +180,23 @@ vhd_util_query(int argc, char **argv)
 		err = (err ? : ret);
 	}
 
+	if (allocated) {
+		ret = vhd_get_bat(&vhd);
+		if (ret)
+			printf("error reading bat: %d\n", ret);
+		else {
+			uint32_t i, used;
+
+			for (i = 0, used = 0; i < vhd.bat.entries; i++)
+				if (vhd.bat.bat[i] != DD_BLK_UNUSED)
+					used++;
+
+			printf("%u\n", used);
+		}
+
+		err = (err ? : ret);
+	}
+
 	if (fastresize) {
 		uint64_t max_size;
 
@@ -190,6 +211,7 @@ usage:
 	printf("options: <-n name> [-v print virtual size (in MB)] "
 	       "[-s print physical utilization (bytes)] [-p print parent] "
 	       "[-f print fields] [-m print marker] [-d print chain depth] "
-	       "[-S print max virtual size (MB) for fast resize] [-h help]\n");
+	       "[-S print max virtual size (MB) for fast resize] "
+	       "[-a print allocated block count] [-h help]\n");
 	return err;
 }
