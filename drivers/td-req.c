@@ -367,18 +367,38 @@ guest_copy2(struct td_xenblkif * const blkif,
     for (i = 0; i < tapreq->msg.nr_segments; i++) {
         struct blkif_request_segment *blkif_seg = &tapreq->msg.seg[i];
         struct gntdev_grant_copy_segment *gcopy_seg = &tapreq->gcopy_segs[i];
-        gcopy_seg->iov.iov_base = tapreq->vma + (i << PAGE_SHIFT)
-            + (blkif_seg->first_sect << SECTOR_SHIFT);
-        gcopy_seg->iov.iov_len = (blkif_seg->last_sect
-                - blkif_seg->first_sect
-                + 1)
-            << SECTOR_SHIFT;
-        gcopy_seg->ref = blkif_seg->gref;
-        gcopy_seg->offset = blkif_seg->first_sect << SECTOR_SHIFT;
+
+	gcopy_seg->flags = 0; /* clear the flags */
+
+	if(blkif_rq_wr(&tapreq->msg)){ /* 1 to copy from guest*/
+		gcopy_seg->flags |= GNTCOPY_source_gref;
+	}
+	else{/* 0 to copy to guest */
+		gcopy_seg->flags |= GNTCOPY_dest_gref;
+	}
+
+	if(gcopy_seg->flags & GNTCOPY_source_gref){ /* copy from guest */
+		gcopy_seg->source.foreign.domid = blkif->domid;
+		gcopy_seg->source.foreign.ref = blkif_seg->gref;
+		gcopy_seg->source.foreign.offset = blkif_seg->first_sect << SECTOR_SHIFT;
+
+		gcopy_seg->dest.virt = tapreq->vma + (i << PAGE_SHIFT)
+			+ (blkif_seg->first_sect << SECTOR_SHIFT);
+	}
+	else if(gcopy_seg->flags & GNTCOPY_dest_gref){/* copy to guest */
+		gcopy_seg->dest.foreign.domid = blkif->domid;
+		gcopy_seg->dest.foreign.ref = blkif_seg->gref;
+		gcopy_seg->dest.foreign.offset = blkif_seg->first_sect << SECTOR_SHIFT;
+
+		gcopy_seg->source.virt = tapreq->vma + (i << PAGE_SHIFT)
+			+ (blkif_seg->first_sect << SECTOR_SHIFT);
+	}
+	 gcopy_seg->len = (blkif_seg->last_sect
+			- blkif_seg->first_sect
+			+ 1)
+			<< SECTOR_SHIFT;
     }
 
-    gcopy.dir = blkif_rq_wr(&tapreq->msg);
-    gcopy.domid = blkif->domid;
     gcopy.count = tapreq->msg.nr_segments;
 	gcopy.segments = tapreq->gcopy_segs;
 
