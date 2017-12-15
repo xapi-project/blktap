@@ -216,6 +216,7 @@ vhd_print_parent(vhd_context_t *vhd, vhd_parent_locator_t *loc)
 	}
 
 	printf("       decoded name : %s\n", buf);
+	free(buf);
 }
 
 static void
@@ -499,8 +500,10 @@ vhd_test_bitmap(vhd_context_t *vhd, uint64_t sector, int count, int hex)
 
 		if (vhd->bat.bat[blk] == DD_BLK_UNUSED)
 			bit = 0;
-		else
+		else {
+			/* Switch to sector, seems more in line with what -i does */
 			bit = vhd_bitmap_test(vhd, buf, sec);
+		}
 
 		printf("block %s: ", conv(hex, blk));
 		printf("sec: %s: %d\n", conv(hex, sec), bit);
@@ -614,8 +617,8 @@ vhd_test_batmap(vhd_context_t *vhd, uint64_t block, int count, int hex)
 
 	for (i = 0; i < count; i++) {
 		cur = block + i;
-		fprintf(stderr, "batmap for block %s: %d\n", conv(hex, cur),
-			vhd_batmap_test(vhd, &vhd->batmap, cur));
+		printf("batmap for block %s: %d\n", conv(hex, cur),
+		       vhd_batmap_test(vhd, &vhd->batmap, cur));
 	}
 
 	return 0;

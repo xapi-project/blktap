@@ -1311,7 +1311,7 @@ vhd_find_parent(vhd_context_t *ctx, const char *parent, char **_location)
 	location   = NULL;
 	*_location = NULL;
 
-	if (!parent)
+	if (!parent || !strcmp(parent, ""))
 		return -EINVAL;
 
 	if (parent[0] == '/') {
@@ -1839,7 +1839,7 @@ vhd_footer_offset_at_eof(vhd_context_t *ctx, off64_t *off)
 {
 	int err;
 	if ((err = vhd_seek(ctx, 0, SEEK_END)))
-		return errno;
+		return err;
 	*off = vhd_position(ctx) - sizeof(vhd_footer_t);
 	return 0;
 }
@@ -2713,7 +2713,7 @@ vhd_initialize_header_parent_name(vhd_context_t *ctx, const char *parent_path)
 	 * MICROSOFT_COMPAT
 	 * big endian unicode here 
 	 */
-	cd = iconv_open(UTF_16BE, "ASCII");
+	cd = iconv_open("UTF-16BE", "ASCII");
 	if (cd == (iconv_t)-1) {
 		err = -errno;
 		goto out;

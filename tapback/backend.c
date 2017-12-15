@@ -742,7 +742,7 @@ tapback_backend_probe_device(backend_t *backend,
      * We don't set a XenStore watch on these paths in order to limit the
      * number of watches for performance reasons.
      */
-    if (!remove && comp) {
+    if (!remove && comp && device) {
         /*
          * TODO Replace this with a despatch table mapping XenStore keys to
          * callbacks.
