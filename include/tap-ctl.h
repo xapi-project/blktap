@@ -79,7 +79,7 @@ int tap_ctl_connect_send_and_receive(int id,
 				     struct timeval *timeout);
 char *tap_ctl_socket_name(int id);
 
-typedef struct {
+typedef struct tap_list{
 	pid_t       pid;
 	int         minor;
 	int         state;
