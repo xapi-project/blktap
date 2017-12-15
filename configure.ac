@@ -80,6 +80,7 @@ vhd/lib/Makefile
 vhd/lib/test/Makefile
 control/Makefile
 drivers/Makefile
+drivers/crypto/Makefile
 include/Makefile
 tapback/Makefile
 mockatests/Makefile
