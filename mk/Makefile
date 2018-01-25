@@ -12,7 +12,7 @@ STAMP_RPMBUILD = $(MY_OBJ_DIR)/.stamp-rpmbuild
 BLKTAP_GIT      = git --git-dir $(BLKTAP_GITREPO)
 BLKTAP_GITREPO	= $(call git_loc,blktap)/.git
 BLKTAP_CSET	= $(shell $(call __git_repo_cset_number,$(call git_loc,blktap)))
-BLKTAP_RELEASE  = xs$(PRODUCT_VERSION)
+BLKTAP_RELEASE  = xs$(BLKTAP_CSET)
 BLKTAP_SRCTREE  = $(MY_OBJ_DIR)/blktap
 BLKTAP_CFGSTAT  = $(BLKTAP_SRCTREE)/config.status
 BLKTAP_RPMSPEC  = $(RPM_SPECSDIR)/blktap.spec
@@ -44,7 +44,7 @@ rpm-sources: $(BLKTAP_RPM_SOURCES)
 $(MY_OUTPUT_DIR)/blktap.inc: blktap.inc.in $(BLKTAP_CFGSTAT)
 	$(BLKTAP_CFGSTAT) --file $@:$<
 
-$(BLKTAP_CFGSTAT): $(BLKTAP_SRCTREE)/version.m4 $(BLKTAP_SRCTREE)/EXTRAVERSION
+$(BLKTAP_CFGSTAT): $(BLKTAP_SRCTREE)/version.m4
 	cd $(BLKTAP_SRCTREE) && sh autogen.sh
 	cd $(BLKTAP_SRCTREE) && ./configure
 	touch $@
@@ -52,9 +52,6 @@ $(BLKTAP_CFGSTAT): $(BLKTAP_SRCTREE)/version.m4 $(BLKTAP_SRCTREE)/EXTRAVERSION
 # Patch dist target to identify as blktap-%{version}.%{extraversion}.tar.bz2
 $(BLKTAP_SRCTREE)/version.m4: version.m4 $(STAMP_CHECKOUT)
 	cp $< $@
-
-$(BLKTAP_SRCTREE)/EXTRAVERSION: $(STAMP_CHECKOUT)
-	echo -n .xs$(BLKTAP_CSET) > $@
 
 $(STAMP_CHECKOUT):
 	rm -rf $(BLKTAP_SRCTREE)
@@ -96,4 +93,3 @@ clean:
 	rm -f $(BLKTAP_RPM_SOURCES)
 	rm -f $(STAMP_RPMBUILD)
 	rm -f $(STAMP_CHECKOUT)
-	rm -f $(BLKTAP_SRCTREE)/EXTRAVERSION
