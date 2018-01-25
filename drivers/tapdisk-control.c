@@ -926,6 +926,7 @@ static int
 tapdisk_control_pause_vbd(struct tapdisk_ctl_conn *conn,
 			  tapdisk_message_t *request, tapdisk_message_t * const response)
 {
+	struct timeval now, next = { 0, 0 }, interval = { 0, 10000 };
 	int err;
 	td_vbd_t *vbd;
 
@@ -941,10 +942,15 @@ tapdisk_control_pause_vbd(struct tapdisk_ctl_conn *conn,
 	}
 
 	do {
-		err = tapdisk_vbd_pause(vbd);
+		gettimeofday(&now, NULL);
+		if (TV_AFTER(now, next)) {
+				err = tapdisk_vbd_pause(vbd);
 
-		if (!err || err != -EAGAIN)
-			break;
+				if (!err || err != -EAGAIN)
+					break;
+
+				TV_ADD(now, interval, next);
+		}
 
 		tapdisk_server_iterate();
 
