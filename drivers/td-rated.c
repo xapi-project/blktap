@@ -1350,7 +1350,12 @@ rlb_siginit(void)
 		goto fail;
 	}
 
-	sigemptyset(&sigmask);
+	err = sigemptyset(&sigmask);
+	if (err == -1) { 
+		err = -errno;
+		goto fail;
+	}
+
 	sigaddset(&sigmask, SIGINT);
 	sigaddset(&sigmask, SIGTERM);
 	sigaddset(&sigmask, SIGUSR1);
