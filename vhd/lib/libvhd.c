@@ -3159,8 +3159,10 @@ __vhd_create(const char *name, const char *parent, uint64_t bytes, int type,
 
 	ctx.fd = open(name, O_WRONLY | O_CREAT |
 		      O_TRUNC | O_LARGEFILE | O_DIRECT, 0644);
-	if (ctx.fd == -1)
-		return -errno;
+	if (ctx.fd == -1) {
+        fprintf(stderr, "%s: failed to create: %d\n", name, -errno);
+        return -errno;
+    }
 
 	ctx.file = strdup(name);
 	if (!ctx.file) {
