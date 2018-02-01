@@ -1,5 +1,6 @@
 
 AM_CFLAGS  = -Wall
+AM_CFLAGS += -Wwrite-strings
 AM_CFLAGS += -Werror
 
 AM_CPPFLAGS  = -D_GNU_SOURCE

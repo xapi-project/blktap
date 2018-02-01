@@ -609,7 +609,7 @@ static int
 vhd_check_for_clobber(vhd_context_t *vhd, off64_t off, int mode)
 {
 	int i, n;
-	char *msg;
+	const char *msg;
 	size_t size;
 	vhd_block_t fb;
 	vhd_parent_locator_t *loc;
@@ -1101,7 +1101,7 @@ done:
 }
 
 int
-vhd_util_resize(int argc, char **argv)
+vhd_util_resize(int argc, const char **argv)
 {
 	char *name, *jname;
 	uint64_t size;
@@ -1116,7 +1116,7 @@ vhd_util_resize(int argc, char **argv)
 	fast  = 0;
 
 	optind = 0;
-	while ((c = getopt(argc, argv, "n:s:j:fh")) != -1) {
+	while ((c = getopt(argc, (char **) argv, "n:s:j:fh")) != -1) {
 		switch (c) {
 		case 'n':
 			name = optarg;

@@ -74,7 +74,7 @@ vhd_util_zero_bat(vhd_context_t *vhd)
 }
 
 int
-vhd_util_modify(int argc, char **argv)
+vhd_util_modify(int argc, const char **argv)
 {
 	char *name;
 	vhd_context_t vhd;
@@ -90,7 +90,7 @@ vhd_util_modify(int argc, char **argv)
 	kill_data  = 0;
 
 	optind = 0;
-	while ((c = getopt(argc, argv, "n:s:p:mzh")) != -1) {
+	while ((c = getopt(argc, (char **) argv, "n:s:p:mzh")) != -1) {
 		switch (c) {
 		case 'n':
 			name = optarg;

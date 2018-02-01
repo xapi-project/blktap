@@ -1,6 +1,6 @@
 m4_include([version.m4])
 AC_INIT([blktap], BLKTAP_VERSION)
-AM_INIT_AUTOMAKE([foreign])
+AM_INIT_AUTOMAKE([foreign subdir-objects])
 # AM_SILENT_RULES([yes])
 
 AC_PROG_CC

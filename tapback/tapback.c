@@ -61,9 +61,9 @@ int tapdev_major;
 
 struct list_head backends = LIST_HEAD_INIT(backends);
 
-char *xenbus_strstate(const XenbusState xbs)
+const char *xenbus_strstate(const XenbusState xbs)
 {
-    static char * const str[] = {
+    static const char * const str[] = {
         [XenbusStateUnknown] = "0 (unknown)",
         [XenbusStateInitialising] = "1 (initialising)",
         [XenbusStateInitWait] = "2 (init wait)",
@@ -580,7 +580,8 @@ out:
 int main(int argc, char **argv)
 {
     const char *prog = NULL;
-    char *opt_name = "vbd3", *opt_pidfile = NULL, *end = NULL;
+    const char *opt_name = "vbd3";
+    char *opt_pidfile = NULL, *end = NULL;
     bool opt_debug = false, opt_verbose = false;
     int err = 0;
 	backend_t *backend = NULL;

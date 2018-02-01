@@ -40,7 +40,7 @@
 #include "libvhd.h"
 
 int
-vhd_util_create(int argc, char **argv)
+vhd_util_create(int argc, const char **argv)
 {
 	char *name;
 	uint64_t size, msize;
@@ -58,7 +58,7 @@ vhd_util_create(int argc, char **argv)
 		goto usage;
 
 	optind = 0;
-	while ((c = getopt(argc, argv, "n:s:S:rh")) != -1) {
+	while ((c = getopt(argc, (char **) argv, "n:s:S:rh")) != -1) {
 		switch (c) {
 		case 'n':
 			name = optarg;

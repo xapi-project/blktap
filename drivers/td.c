@@ -58,11 +58,11 @@ typedef enum {
 } td_field_t;
 
 struct vdi_field {
-	char       *name;
+	const char  *name;
 	td_field_t  id;
 };
 
-static struct vdi_field td_vdi_fields[TD_FIELD_INVALID] = {
+static const struct vdi_field td_vdi_fields[TD_FIELD_INVALID] = {
 	{ .id = TD_FIELD_HIDDEN, .name = "hidden" }
 };
 
@@ -81,11 +81,11 @@ typedef enum {
 
 struct command {
 	td_command_t  id;
-	char         *name;
+	const char   *name;
 	int           needs_type;
 };
 
-struct command commands[TD_CMD_INVALID] = {
+static const struct command commands[TD_CMD_INVALID] = {
 	{ .id = TD_CMD_CREATE,   .name = "create",   .needs_type = 1 },
 	{ .id = TD_CMD_SNAPSHOT, .name = "snapshot", .needs_type = 1 },
 /*	{ .id = TD_CMD_COALESCE, .name = "coalesce", .needs_type = 1 },    */
@@ -138,7 +138,7 @@ const char *td_disk_types[TD_TYPE_INVALID] = {
 		fprintf(stderr, " }\n");				\
 	} while (0)
 
-void 
+static void
 help(void)
 {
 	fprintf(stderr, "Tapdisk Utilities: v1.0.0\n");
@@ -148,7 +148,7 @@ help(void)
 	exit(-1);
 }
 
-struct command *
+static const struct command *
 get_command(char *command)
 {
 	int i;
@@ -160,8 +160,8 @@ get_command(char *command)
 	return NULL;
 }
 
-struct vdi_field *
-get_field(char *field)
+static const struct vdi_field *
+get_field(const char *field)
 {
 	int i;
 
@@ -172,7 +172,7 @@ get_field(char *field)
 	return NULL;
 }
 
-int
+static int
 get_driver_type(char *type)
 {
 	int i;
@@ -187,15 +187,16 @@ get_driver_type(char *type)
 	return -TD_TYPE_INVALID;
 }
 
-int
-td_create(int type, int argc, char *argv[])
+static int
+td_create(int type, int argc, const char *argv[])
 {
 	ssize_t mb;
 	uint64_t size;
-	char *name, *buf;
+	const char *name;
+	char *buf;
 	int c, i, fd, sparse = 1, fixedsize = 0;
 
-	while ((c = getopt(argc, argv, "hrb")) != -1) {
+	while ((c = getopt(argc, (char **) argv, "hrb")) != -1) {
 		switch(c) {
 		case 'r':
 			sparse = 0;
@@ -225,7 +226,8 @@ td_create(int type, int argc, char *argv[])
 
 	if (type == TD_TYPE_VHD) {
 		int cargc = 0;
-		char sbuf[32], *cargv[10];
+		char sbuf[32];
+		const char *cargv[10];
 
 		size >>= 20;
 
@@ -281,13 +283,13 @@ td_create(int type, int argc, char *argv[])
 	return EINVAL;
 }
 
-int
-td_snapshot(int type, int argc, char *argv[])
+static int
+td_snapshot(int type, int argc, const char *argv[])
 {
-	char *cargv[10];
+	const char *cargv[10];
 	int c, err, cargc;
 	struct stat stats;
-	char *name, *backing, *limit = NULL;
+	const char *name, *backing, *limit = NULL;
 	int fixedsize = 0, rawparent = 0;
 
 	if (type != TD_TYPE_VHD) {
@@ -296,7 +298,7 @@ td_snapshot(int type, int argc, char *argv[])
 		return EINVAL;
 	}
 
-	while ((c = getopt(argc, argv, "hbml:")) != -1) {
+	while ((c = getopt(argc, (char **) argv, "hbml:")) != -1) {
 		switch(c) {
 		case 'b':
 			fixedsize = 1;
@@ -363,7 +365,7 @@ int
 td_coalesce(int type, int argc, char *argv[])
 {
 	int c, ret, cargc;
-	char *name, *cargv[3];
+	const char *name, *cargv[3];
 
 	if (type != TD_TYPE_VHD) {
 		fprintf(stderr, "Cannot create snapshot of %s image type\n",
@@ -407,14 +409,14 @@ td_coalesce(int type, int argc, char *argv[])
 	return EINVAL;
 }
 
-int
-td_query(int type, int argc, char *argv[])
+static int
+td_query(int type, int argc, const char *argv[])
 {
-	char *name;
+	const char *name;
 	int c, size = 0, parent = 0, fields = 0, depth = 0, err = 0;
 	int flags = VHD_OPEN_RDONLY;
 
-	while ((c = getopt(argc, argv, "hvpfdb")) != -1) {
+	while ((c = getopt(argc, (char **) argv, "hvpfdb")) != -1) {
 		switch(c) {
 		case 'v':
 			size = 1;
@@ -553,12 +555,12 @@ td_query(int type, int argc, char *argv[])
 	return err;
 }
 
-int
-td_set_field(int type, int argc, char *argv[])
+static int
+td_set_field(int type, int argc, const char *argv[])
 {
 	int c, cargc;
-	struct vdi_field *field;
-	char *name, *value, *cargv[7];
+	const struct vdi_field *field;
+	const char *name, *value, *cargv[7];
 
 	if (type != TD_TYPE_VHD) {
 		fprintf(stderr, "Cannot set fields of %s images\n",
@@ -566,7 +568,7 @@ td_set_field(int type, int argc, char *argv[])
 		return EINVAL;
 	}
 
-	while ((c = getopt(argc, argv, "h")) != -1) {
+	while ((c = getopt(argc, (char **) argv, "h")) != -1) {
 		switch(c) {
 		default:
 			fprintf(stderr, "Unknown option %c\n", (char)c);
@@ -609,8 +611,8 @@ td_set_field(int type, int argc, char *argv[])
 int
 main(int argc, char *argv[])
 {
-	char **cargv;
-	struct command *cmd;
+	const char **cargv;
+	const struct command *cmd;
 	int cargc, i, type = -1, ret = 0;
 
 #ifdef CORE_DUMP

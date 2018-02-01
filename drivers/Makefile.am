@@ -1,4 +1,5 @@
 AM_CFLAGS  = -Wall
+AM_CFLAGS += -Wwrite-strings
 AM_CFLAGS += -Werror
 AM_CFLAGS += -DXC_WANT_COMPAT_EVTCHN_API -DXC_WANT_COMPAT_GNTTAB_API
 # TODO add -Wextra

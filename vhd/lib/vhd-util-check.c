@@ -238,7 +238,7 @@ vhd_util_check_zeros(void *buf, size_t size)
 	return 0;
 }
 
-static char *
+static const char *
 vhd_util_check_validate_footer(struct vhd_util_check_ctx *ctx,
 			       vhd_footer_t *footer)
 {
@@ -316,7 +316,7 @@ ok:
 	return NULL;
 }
 
-static char *
+static const char *
 vhd_util_check_validate_header(int fd, vhd_header_t *header)
 {
 	off64_t eof;
@@ -364,7 +364,7 @@ vhd_util_check_validate_header(int fd, vhd_header_t *header)
 	return NULL;
 }
 
-static char *
+static const char *
 vhd_util_check_validate_differencing_header(struct vhd_util_check_ctx *ctx,
 					    vhd_context_t *vhd)
 {
@@ -403,7 +403,7 @@ vhd_util_check_validate_differencing_header(struct vhd_util_check_ctx *ctx,
 	return NULL;
 }
 
-static char *
+static const char *
 vhd_util_check_validate_batmap(vhd_context_t *vhd, vhd_batmap_t *batmap)
 {
 	int size;
@@ -444,7 +444,7 @@ vhd_util_check_validate_batmap(vhd_context_t *vhd, vhd_batmap_t *batmap)
 	return NULL;
 }
 
-static char *
+static const char *
 vhd_util_check_validate_parent_locator(vhd_context_t *vhd,
 				       vhd_parent_locator_t *loc)
 {
@@ -483,11 +483,11 @@ vhd_util_check_validate_parent_locator(vhd_context_t *vhd,
 	return NULL;
 }
 
-static char *
+static const char *
 vhd_util_check_validate_parent(struct vhd_util_check_ctx *ctx,
 			       vhd_context_t *vhd, const char *ppath)
 {
-	char *msg;
+	const char *msg;
 	vhd_context_t parent;
 
 	msg = NULL;
@@ -518,7 +518,7 @@ vhd_util_check_footer(struct vhd_util_check_ctx *ctx,
 {
 	int err;
 	size_t size;
-	char *msg;
+	const char *msg;
 	void *buf;
 	off64_t eof, off;
 	vhd_footer_t primary, backup;
@@ -641,7 +641,7 @@ vhd_util_check_header(int fd, vhd_footer_t *footer)
 {
 	int err;
 	off64_t off;
-	char *msg;
+	const char *msg;
 	void *buf;
 	vhd_header_t header;
 
@@ -687,7 +687,7 @@ static int
 vhd_util_check_differencing_header(struct vhd_util_check_ctx *ctx,
 				   vhd_context_t *vhd)
 {
-	char *msg;
+	const char *msg;
 
 	msg = vhd_util_check_validate_differencing_header(ctx, vhd);
 	if (msg) {
@@ -876,7 +876,7 @@ vhd_util_check_bat(struct vhd_util_check_ctx *ctx, vhd_context_t *vhd)
 static int
 vhd_util_check_batmap(vhd_context_t *vhd)
 {
-	char *msg;
+	const char *msg;
 	int i, err;
 
 	err = vhd_get_bat(vhd);
@@ -916,7 +916,8 @@ vhd_util_check_parent_locators(struct vhd_util_check_ctx *ctx,
 {
 	int i, n, err;
 	vhd_parent_locator_t *loc;
-	char *msg, *file, *ppath, *location, *pname;
+	const char *msg;
+	char *file, *ppath, *location, *pname;
 	int mac, macx, w2ku, w2ru, wi2r, wi2k, found;
 
 	mac      = 0;
@@ -1062,7 +1063,7 @@ out:
 static void
 vhd_util_dump_headers(const char *name)
 {
-	char *argv[] = { "read", "-p", "-n", (char *)name };
+	const char *argv[] = { "read", "-p", "-n", name };
 	int argc = sizeof(argv) / sizeof(argv[0]);
 
 	printf("%s appears invalid; dumping metadata\n", name);
@@ -1193,7 +1194,7 @@ out:
 }
 
 int
-vhd_util_check(int argc, char **argv)
+vhd_util_check(int argc, const char **argv)
 {
 	char *name;
 	int c, err, parents;
@@ -1210,7 +1211,7 @@ vhd_util_check(int argc, char **argv)
 	vhd_util_check_stats_init(&ctx);
 
 	optind = 0;
-	while ((c = getopt(argc, argv, "n:iItpbBsh")) != -1) {
+	while ((c = getopt(argc, (char **) argv, "n:iItpbBsh")) != -1) {
 		switch (c) {
 		case 'n':
 			name = optarg;

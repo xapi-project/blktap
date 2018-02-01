@@ -74,7 +74,7 @@ void cpumond_destroy(cpumond_entry_t *cpumond_entry){
     return;
 }
 
-cpumond_entry_t *cpumond_create(char *path){
+cpumond_entry_t *cpumond_create(const char *path){
     cpumond_entry_t *cpumond_entry;
 
     assert(path);

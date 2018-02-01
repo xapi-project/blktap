@@ -1050,13 +1050,15 @@ tapback_backend_handle_backend_watch(backend_t *backend,
                  * FIXME Shall we watch the child process?
                  */
             } else { /* child */
-                char *args[7];
+                const char *args[7];
+		char *domain = NULL;
                 int i = 0;
 
-                args[i++] = (char*)tapback_name;
+                args[i++] = tapback_name;
                 args[i++] = "-d";
                 args[i++] = "-x";
-                err = asprintf(&args[i++], "%d", domid);
+                err = asprintf(&domain, "%d", domid);
+                args[i++] = domain;
                 if (err == -1) {
                     err = -errno;
                     WARN(NULL, "failed to asprintf: %s\n", strerror(-err));
@@ -1071,7 +1073,7 @@ tapback_backend_handle_backend_watch(backend_t *backend,
                  * TODO we're hard-coding the name of the binary, better let
                  * the build system supply it.
                  */
-                err = execvp(tapback_name, args);
+                err = execvp(tapback_name, (char **) args);
                 err = -errno;
                 WARN(NULL, "failed to replace master process with slave: %s\n",
                         strerror(-err));

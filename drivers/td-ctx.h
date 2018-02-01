@@ -50,7 +50,7 @@
  * unnecessary.
  */
 struct td_xenio_ctx {
-    char *pool; /* TODO rename to pool_name */
+    const char *pool; /* TODO rename to pool_name */
 
     /**
      * Handle to the grant table driver.

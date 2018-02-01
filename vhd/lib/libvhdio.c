@@ -755,7 +755,7 @@ _libvhd_io_close(int fd, _std_close_t _std_close)
 static FILE *
 _libvhd_io_fopen(const char *path, const char *mode)
 {
-	char *m;
+	const char *m;
 	FILE *f;
 	int fd, flags;
 	vhd_fd_context_t *vhd_fd;
@@ -789,7 +789,7 @@ _libvhd_io_fopen(const char *path, const char *mode)
 	if (vhd_fd)
 		m = "r";
 	else
-		m = (char *)mode;
+		m = mode;
 
 	f = fdopen(fd, m);
 	if (!f) {

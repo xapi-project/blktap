@@ -114,7 +114,7 @@ vhd_util_check_depth(const char *name, int *depth)
 }
 
 int
-vhd_util_snapshot(int argc, char **argv)
+vhd_util_snapshot(int argc, const char **argv)
 {
 	vhd_flag_creat_t flags;
 	int c, err, prt_raw, limit, empty_check;
@@ -139,7 +139,7 @@ vhd_util_snapshot(int argc, char **argv)
 	}
 
 	optind = 0;
-	while ((c = getopt(argc, argv, "n:p:S:l:meh")) != -1) {
+	while ((c = getopt(argc, (char **) argv, "n:p:S:l:meh")) != -1) {
 
 		switch (c) {
 		case 'n':

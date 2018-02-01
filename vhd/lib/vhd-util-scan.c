@@ -105,7 +105,7 @@ struct vhd_image {
 	uint8_t              hidden;
 	char                 marker;
 	int                  error;
-	char                *message;
+	const char          *message;
 
 	struct target       *target;
 
@@ -272,7 +272,7 @@ vhd_util_scan_pretty_image_compare(const void *lhs, const void *rhs)
 static void
 vhd_util_scan_print_image_indent(struct vhd_image *image, int tab)
 {
-	char *pad, *name, *pmsg, *parent;
+	const char *pad, *name, *pmsg, *parent;
 
 	pad    = (tab ? " " : "");
 	name   = image->name;
@@ -1083,7 +1083,7 @@ vhd_util_scan_targets_pretty(int cnt, struct target *targets)
 }
 
 static int
-vhd_util_scan_find_file_targets(int cnt, char **names,
+vhd_util_scan_find_file_targets(int cnt, const char **names,
 				const char *filter,
 				struct target **_targets, int *_total)
 {
@@ -1219,7 +1219,7 @@ vhd_util_scan_sort_volumes(struct lv *lvs, int cnt,
 }
 
 static int
-vhd_util_scan_find_volume_targets(int cnt, char **names,
+vhd_util_scan_find_volume_targets(int cnt, const char **names,
 				  const char *volume, const char *filter,
 				  struct target **_targets, int *_total)
 {
@@ -1278,7 +1278,7 @@ out:
 }
 
 static int
-vhd_util_scan_find_targets(int cnt, char **names,
+vhd_util_scan_find_targets(int cnt, const char **names,
 			   const char *volume, const char *filter,
 			   struct target **targets, int *total)
 {
@@ -1291,7 +1291,7 @@ vhd_util_scan_find_targets(int cnt, char **names,
 }
 
 int
-vhd_util_scan(int argc, char **argv)
+vhd_util_scan(int argc, const char **argv)
 {
 	int c, err, cnt;
 	char *filter, *volume;
@@ -1305,7 +1305,7 @@ vhd_util_scan(int argc, char **argv)
 	targets = NULL;
 
 	optind = 0;
-	while ((c = getopt(argc, argv, "m:fcl:pavMh")) != -1) {
+	while ((c = getopt(argc, (char **) argv, "m:fcl:pavMh")) != -1) {
 		switch (c) {
 		case 'm':
 			filter = optarg;

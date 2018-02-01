@@ -41,7 +41,7 @@
 #include "libvhd.h"
 
 int
-vhd_util_set_field(int argc, char **argv)
+vhd_util_set_field(int argc, const char **argv)
 {
 	long value;
 	int err, c;
@@ -57,7 +57,7 @@ vhd_util_set_field(int argc, char **argv)
 		goto usage;
 
 	optind = 0;
-	while ((c = getopt(argc, argv, "n:f:v:h")) != -1) {
+	while ((c = getopt(argc, (char **) argv, "n:f:v:h")) != -1) {
 		switch (c) {
 		case 'n':
 			name = optarg;
