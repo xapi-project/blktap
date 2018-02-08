@@ -440,7 +440,7 @@ frontend_changed(vbd_t * const device, const XenbusState state)
 
     switch (state) {
         case XenbusStateInitialising:
-				err = xenbus_switch_state(device, XenbusStateInitWait);
+            err = xenbus_switch_state(device, XenbusStateInitWait);
             break;
         case XenbusStateInitialised:
     	case XenbusStateConnected:
@@ -502,8 +502,8 @@ tapback_backend_handle_otherend_watch(backend_t *backend,
     /*
      * Read the new front-end's state.
      */
-	s = tapback_xs_read(device->backend->xs, XBT_NULL, "%s",
-			device->frontend_state_path);
+    s = tapback_xs_read(device->backend->xs, XBT_NULL, "%s",
+            device->frontend_state_path);
     if(s) {
         state = strtol(s, &end, 0);
         if (*end != 0 || end == s) {
