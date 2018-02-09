@@ -73,19 +73,6 @@ tlog_logfile_vprint(const char *fmt, va_list ap)
 	tapdisk_logfile_vprintf(&tapdisk_log.logfile, fmt, ap);
 }
 
-static void __printf(1, 2)
-tlog_logfile_print(const char *fmt, ...)
-{
-	va_list ap;
-
-	va_start(ap, fmt);
-	tlog_logfile_vprint(fmt, ap);
-	va_end(ap);
-}
-
-#define tlog_info(_fmt, _args ...)					\
-	tlog_logfile_print("%s: "_fmt, tapdisk_log.ident, ##_args)
-
 static void
 tlog_syslog_close(void)
 {

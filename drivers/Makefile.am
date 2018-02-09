@@ -1,6 +1,6 @@
 SUBDIRS = crypto
 AM_CFLAGS  = -Wall
-AM_CFLAGS += -Werror -Wno-unused-function
+AM_CFLAGS += -Werror
 AM_CFLAGS += -DXC_WANT_COMPAT_EVTCHN_API -DXC_WANT_COMPAT_GNTTAB_API
 # TODO add -Wextra
 
