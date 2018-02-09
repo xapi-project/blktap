@@ -48,15 +48,6 @@
 
 #define MAX_AES_XTS_PLAIN_KEYSIZE 1024
 
-struct keystore_entry {
-    struct list_head    next;
-    uint8_t             key[MAX_AES_XTS_PLAIN_KEYSIZE / 8];
-    int                 keysize;
-    struct vhd_keyhash  keyhash;
-};
-
-static struct list_head keystore = LIST_HEAD_INIT(keystore);
-
 int __vhd_util_calculate_keyhash(struct vhd_keyhash *, const uint8_t *, size_t);
 
 static int
@@ -90,80 +81,6 @@ out:
 		DPRINTF("key check failed\n");
 		err = -ENOKEY;
 	}
-	return err;
-}
-
-static void
-keystore_free_entry(struct keystore_entry *ent)
-{
-	if (ent) {
-		memset(ent->key, 0, sizeof(ent->key));
-		free(ent);
-	}
-}
-
-static int
-keystore_add_entry(const uint8_t *keybuf,
-		   size_t keysize, struct vhd_keyhash *keyhash)
-{
-	int err;
-	struct keystore_entry *ent = NULL;
-
-	list_for_each_entry(ent, &keystore, next) {
-		if (!memcmp(&ent->keyhash, keyhash, sizeof(ent->keyhash))) {
-			err = 0;
-			goto out;
-		}
-	}
-
-	ent = calloc(1, sizeof(*ent));
-	if (!ent) {
-		err = -ENOMEM;
-		goto out;
-	}
-
-	INIT_LIST_HEAD(&ent->next);
-	memcpy(ent->key, keybuf, keysize / 8);
-	memcpy(&ent->keyhash, keyhash, sizeof(ent->keyhash));
-        ent->keysize = keysize;
-
-	list_add(&ent->next, &keystore);
-
-out:
-	if (err)
-		keystore_free_entry(ent);
-	return err;
-}
-
-static int
-keystore_read_entry(uint8_t *keybuf, int *keysize, const struct vhd_keyhash *keyhash)
-{
-	int err;
-	struct keystore_entry *ent;
-        *keysize = 0;
-	/*
-	 * in the offline backup case, we won't have an entry for the
-	 * newest snapshot (since it didn't exist when we first opened
-	 * the chain). instead, we check all cached keys for a keyhash
-	 * match, assuming the snapshot shares the same key as one of
-	 * its ancestors.
-	 */
-
-	list_for_each_entry(ent, &keystore, next) {
-		if (!check_key(ent->key, ent->keysize, &ent->keyhash)) {
-			DPRINTF("using key from keystore\n");
-			memcpy(keybuf, ent->key, ent->keysize / 8);
-                        *keysize = ent->keysize;
-			err = 0;
-		} else {
-			err = -EINVAL;
-		}
-		goto out;
-	}
-
-	err = -ENOENT;
-
-out:
 	return err;
 }
 
