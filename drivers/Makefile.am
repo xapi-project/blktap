@@ -1,3 +1,4 @@
+SUBDIRS = crypto
 AM_CFLAGS  = -Wall
 AM_CFLAGS += -Werror
 AM_CFLAGS += -DXC_WANT_COMPAT_EVTCHN_API -DXC_WANT_COMPAT_GNTTAB_API
@@ -5,15 +6,16 @@ AM_CFLAGS += -DXC_WANT_COMPAT_EVTCHN_API -DXC_WANT_COMPAT_GNTTAB_API
 
 AM_CPPFLAGS  = -D_GNU_SOURCE
 AM_CPPFLAGS += -I$(top_srcdir)/include
+CRYPTLIBS = -lcrypto -Lcrypto -lxts-aes
 
 libexec_PROGRAMS = tapdisk
 
 tapdisk_SOURCES = tapdisk2.c
-tapdisk_LDADD = libtapdisk.la
+tapdisk_LDADD = libtapdisk.la crypto/libxts-aes.la $(CRYPTLIBS)
 
 noinst_PROGRAMS = tapdisk-stream
 
-tapdisk_stream_LDADD = libtapdisk.la
+tapdisk_stream_LDADD = libtapdisk.la crypto/libxts-aes.la $(CRYPTLIBS)
 
 sbin_PROGRAMS  = td-util
 sbin_PROGRAMS += td-rated
@@ -81,6 +83,8 @@ libtapdisk_la_SOURCES += block-aio.c
 libtapdisk_la_SOURCES += block-aio.h
 libtapdisk_la_SOURCES += block-ram.c
 libtapdisk_la_SOURCES += block-cache.c
+libtapdisk_la_SOURCES += block-crypto.c
+libtapdisk_la_SOURCES += block-crypto.h
 libtapdisk_la_SOURCES += block-vhd.c
 libtapdisk_la_SOURCES += block-valve.c
 libtapdisk_la_SOURCES += block-valve.h
@@ -98,6 +102,10 @@ libtapdisk_la_SOURCES += td-ctx.c
 libtapdisk_la_SOURCES += td-ctx.h
 libtapdisk_la_SOURCES += td-stats.c
 libtapdisk_la_SOURCES += td-stats.h
+
+# encryption support
+libtapdisk_la_SOURCES += crypto/xts_aes.c
+libtapdisk_la_SOURCES += crypto/xts_aes.h
 
 libtapdisk_la_LIBADD  = ../vhd/lib/libvhd.la
 libtapdisk_la_LIBADD += -laio

@@ -79,7 +79,7 @@ int tap_ctl_connect_send_and_receive(int id,
 				     struct timeval *timeout);
 char *tap_ctl_socket_name(int id);
 
-typedef struct {
+typedef struct tap_list{
 	pid_t       pid;
 	int         minor;
 	int         state;
@@ -100,6 +100,7 @@ int tap_ctl_list_pid(pid_t pid, struct list_head *list);
 void tap_ctl_list_free(struct list_head *list);
 
 int tap_ctl_find_minor(const char *type, const char *path);
+int tap_ctl_find_pid(int minor);
 
 int tap_ctl_allocate(int *minor, char **devname);
 int tap_ctl_free(const int minor);

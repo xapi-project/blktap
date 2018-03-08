@@ -680,7 +680,7 @@ tapdisk_xenblkif_ring_stats_update(struct td_xenblkif *blkif)
         err = ftruncate(blkif->xenvbd_stats.io_ring.fd, len + sizeof(*chksum));
         if (unlikely(err)) {
             err = errno;
-            EPRINTF("failed to truncate %s to %lu: %s\n",
+            EPRINTF("failed to truncate %s to %u: %s\n",
                     blkif->xenvbd_stats.io_ring.path, len + sizeof(*chksum),
 					strerror(err));
         }

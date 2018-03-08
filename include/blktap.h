@@ -32,7 +32,7 @@
 #define _TD_BLKTAP_H_
 
 #define BLKTAP2_SYSFS_DIR              "/sys/class/blktap2"
-#define BLKTAP2_CONTROL_NAME           "blktap/control"
+#define BLKTAP2_CONTROL_NAME           "blktap-control"
 #define BLKTAP2_CONTROL_DIR            "/var/run/blktap-control"
 #define BLKTAP2_CONTROL_SOCKET         "ctl"
 #define BLKTAP2_DIRECTORY              "/dev/xen/blktap-2"

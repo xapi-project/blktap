@@ -100,6 +100,6 @@ shm_create(struct shm *shm);
 int
 shm_destroy(struct shm *shm);
 
-inline long long timeval_to_us(struct timeval *tv);
+long long timeval_to_us(struct timeval *tv);
 
 #endif

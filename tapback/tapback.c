@@ -171,6 +171,7 @@ tapback_backend_destroy(backend_t *backend)
         backend->xs = NULL;
     }
 
+    close(backend->ctrl_sock);
     unlink(backend->local.sun_path);
 
 	list_del(&backend->entry);
