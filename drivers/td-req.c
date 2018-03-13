@@ -527,16 +527,16 @@ tapdisk_xenblkif_complete_request(struct td_xenblkif * const blkif,
 		xenio_blkif_put_response(blkif, tapreq, _err, final);
 	}
 
-    tapdisk_xenblkif_free_request(blkif, tapreq);
+	tapdisk_xenblkif_free_request(blkif, tapreq);
 
-    blkif->stats.reqs.out++;
-    if (final)
-        blkif->stats.kicks.out++;
+	blkif->stats.reqs.out++;
+	if (final)
+		blkif->stats.kicks.out++;
 
 	if (unlikely(processing_barrier_message))
 		blkif->barrier.msg = NULL;
 
-    /*
+	/*
 	 * Schedule a ring check in case we left requests in it due to lack of
 	 * memory or in case we stopped processing it because of a barrier.
 	 *

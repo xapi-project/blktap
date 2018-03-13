@@ -583,9 +583,9 @@ tapdisk_xenblkif_connect(domid_t domid, int devid, const grant_ref_t * grefs,
     if (unlikely(err))
         goto fail;
 
-	td_blkif->stoppolling_event = tapdisk_server_register_event(
-			SCHEDULER_POLL_TIMEOUT,	-1, TV_INF,
-			tapdisk_xenblkif_cb_stoppolling, td_blkif);
+    td_blkif->stoppolling_event =
+        tapdisk_server_register_event(SCHEDULER_POLL_TIMEOUT, -1, TV_INF,
+                tapdisk_xenblkif_cb_stoppolling, td_blkif);
     if (unlikely(td_blkif->stoppolling_event < 0)) {
         err = td_blkif->stoppolling_event;
         RING_ERR(td_blkif, "failed to register event: %s\n", strerror(-err));
