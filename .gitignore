@@ -10,6 +10,8 @@
 .libs
 cscope.*
 TAGS
+EXTRAVERSION
+*linux-libtool
 
 # ac/am
 Makefile.in
@@ -25,6 +27,7 @@ Makefile.in
 /m4/
 /missing
 /stamp-h1
+/mk/config.log
 
 # executables
 /drivers/lock-util
@@ -41,6 +44,7 @@ Makefile.in
 /vhd/lib/test/random-copy
 /vhd/lib/test/test-snapshot
 /tapback/tapback
+/cpumond/cpumond
 
 # generated makefiles
 /Makefile
@@ -53,7 +57,8 @@ Makefile.in
 /vhd/lib/Makefile
 /vhd/lib/test/Makefile
 /tapback/Makefile
-mk/config.log
+/cpumond/Makefile
+/drivers/crypto/Makefile
 
 # dist output
 /blktap-*.tar.*
