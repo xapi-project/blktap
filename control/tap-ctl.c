@@ -40,7 +40,7 @@
 #include <signal.h>
 #include <sys/time.h>
 #include <sys/stat.h>
-#include <sys/types.h>
+#include <sys/sysmacros.h>
 #include <errno.h>
 
 #include "tap-ctl.h"

@@ -427,8 +427,8 @@ find_next_free_block(struct vhd_state *s)
 		if (entry != DD_BLK_UNUSED && entry >= s->next_db)
 			s->next_db = (uint64_t)entry + (uint64_t)s->spb
 				+ (uint64_t)s->bm_secs;
-			if (s->next_db > UINT_MAX)
-				break;
+		if (s->next_db > UINT_MAX)
+			break;
 	}
 
 	return 0;
@@ -768,8 +768,8 @@ _vhd_open(td_driver_t *driver, const char *name, td_flag_t flags)
 			      VHD_FLAG_OPEN_QUIET  |
 			      VHD_FLAG_OPEN_RDONLY |
 			      VHD_FLAG_OPEN_NO_CACHE);
-    if (flags & TD_OPEN_LOCAL_CACHE)
-        vhd_flags |= VHD_FLAG_OPEN_LOCAL_CACHE;
+	if (flags & TD_OPEN_LOCAL_CACHE)
+		vhd_flags |= VHD_FLAG_OPEN_LOCAL_CACHE;
 
 	/* pre-allocate for all but NFS and LVM storage */
 	driver->storage = tapdisk_storage_type(name);
