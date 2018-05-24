@@ -29,20 +29,52 @@
  */
 
 #include <string.h>
+#include <stdbool.h>
 #include <stdint.h>
 #include <stdarg.h>
 #include <stddef.h>
 #include <setjmp.h>
 #include <cmocka.h>
+#include <errno.h>
 
 #include "wrappers.h"
 
 static int tests_running = 1;
+static int mock_malloc = 0;
+
+void *
+__wrap_malloc(size_t size)
+{
+	bool succeed = true;
+	if (mock_malloc) {
+		succeed = (bool) mock();
+	}
+
+	if (succeed) {
+		void * result = test_malloc(size);
+		/*fprintf(stderr, "Allocated block of %zu bytes at %p\n", size, result);*/
+		return result;
+	}
+	return NULL;
+}
+
+void
+__wrap_free(void *ptr)
+{
+	/*fprintf(stderr, "Freeing block at %p\n", ptr);*/
+	test_free(ptr);
+}
 
 FILE *
 __wrap_fopen(void)
 {
-	return (FILE*) mock();
+	FILE *file = (FILE*)mock();
+
+	if (file == NULL) {
+		errno = ENOENT;
+	}
+
+	return file;
 }
 
 void __real_fclose(FILE *fp);
@@ -59,12 +91,16 @@ __wrap_fclose(FILE *fp)
 int
 wrap_vprintf(const char *format, va_list ap)
 {
-	int bufsize = mock();
-	char* buf = mock();
 
-	int len = vsnprintf(buf, bufsize, format, ap);
+	struct printf_data *data = mock();
 
-	assert_in_range(len, 0, bufsize);
+	int remaining = data->size - data->offset;
+
+	int len = vsnprintf(data->buf + data->offset, remaining, format, ap);
+
+	assert_in_range(len, 0, remaining);
+
+	data->offset += len;
 
 	return len;
 }
@@ -87,16 +123,47 @@ __wrap___printf_chk (int __flag, const char *format, ...)
 	return wrap_vprintf(format, ap);
 }
 
-char *setup_vprintf_mock(int size)
+int
+__wrap_puts(const char *s)
+{
+	return __wrap_printf("%s\n", s);
+}
+
+struct printf_data *setup_vprintf_mock(int size)
 {
 	char *buf;
+	struct printf_data *data;
 
-	buf = malloc(size);
+	buf = test_malloc(size);
+	memset(buf, 0, size);
 
-	will_return(wrap_vprintf, size);
-	will_return(wrap_vprintf, buf);
+	data = test_malloc(sizeof(struct printf_data));
+	data->size = size;
+	data->offset = 0;
+	data->buf = buf;
 
-	return buf;
+	will_return_always(wrap_vprintf, data);
+
+	return data;
+}
+
+void free_printf_data(struct printf_data *data)
+{
+	if (data->buf)
+		test_free(data->buf);
+	test_free(data);
+}
+
+
+void malloc_succeeds(bool succeed)
+{
+	mock_malloc = true;
+	will_return(__wrap_malloc, succeed);
+}
+
+void disable_malloc_mock()
+{
+	mock_malloc = false;
 }
 
 void disable_mocks()

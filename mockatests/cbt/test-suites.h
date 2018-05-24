@@ -39,6 +39,13 @@ void test_get_command_set(void **state);
 void test_get_command_get(void **state);
 
 void test_cbt_util_get_flag(void **state);
+void test_cbt_util_get_parent(void **state);
+void test_cbt_util_get_child(void **state);
+void test_cbt_util_get_nofile_failure(void **state);
+void test_cbt_util_get_nodata_failure(void **state);
+void test_cbt_util_get_malloc_failure(void **state);
+void test_cbt_util_get_no_name_failure(void **state);
+void test_cbt_util_get_no_command_failure(void **state);
 
 /* Functions under test */
 
@@ -54,7 +61,14 @@ static const struct CMUnitTest cbt_command_tests[] = {
 };
 
 static const struct CMUnitTest cbt_get_tests[] = {
-	cmocka_unit_test(test_cbt_util_get_flag)
+	cmocka_unit_test(test_cbt_util_get_flag),
+	cmocka_unit_test(test_cbt_util_get_parent),
+	cmocka_unit_test(test_cbt_util_get_child),
+	cmocka_unit_test(test_cbt_util_get_nofile_failure),
+	cmocka_unit_test(test_cbt_util_get_nodata_failure),
+	cmocka_unit_test(test_cbt_util_get_malloc_failure),
+	cmocka_unit_test(test_cbt_util_get_no_name_failure),
+	cmocka_unit_test(test_cbt_util_get_no_command_failure)
 };
 
 #endif /* __TEST_SUITES_H__ */

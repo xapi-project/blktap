@@ -28,16 +28,37 @@
  * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#include <stdio.h>
-
 #ifndef __WRAPPERS_H__
 #define __WRAPPERS_H__
+
+#include <stdio.h>
+#include <stdbool.h>
+
+struct printf_data {
+	int size;
+	int offset;
+	char *buf;
+};
 
 FILE * __wrap_fopen(void);
 
 void __wrap_fclose(FILE *fp);
 
-char *setup_vprintf_mock(int size);
+struct printf_data *setup_vprintf_mock(int size);
+
+void free_printf_data(struct printf_data *data);
+
+/*
+ * This enables mocking of malloc and provides a flag to control
+ * whether malloc succeeds. Mocking stays in force until a call to
+ * disable_malloc_mock.
+ *
+ * Subsequent calls to mallloc_suceeds will queue successive results
+ * for the mock.
+ */
+void malloc_succeeds(bool succeed);
+
+void disable_malloc_mock();
 
 void disable_mocks();
 

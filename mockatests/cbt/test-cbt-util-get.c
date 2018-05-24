@@ -29,11 +29,13 @@
  */
 
 #include <stdint.h>
+#include <stdlib.h>
 #include <string.h>
 #include <stddef.h>
 #include <stdarg.h>
 #include <setjmp.h>
 #include <cmocka.h>
+#include <errno.h>
 #include <uuid/uuid.h>
 
 #include <cbt-util-priv.h>
@@ -51,7 +53,7 @@ void test_cbt_util_get_flag(void **state)
 	int result;
 	char* args[] = { "cbt-util", "-n", "test_disk.log", "-f" };
 	void *log_meta;
-	char *output;
+	struct printf_data *output;
 
 	log_meta = malloc(sizeof(struct cbt_log_metadata));
 
@@ -66,5 +68,138 @@ void test_cbt_util_get_flag(void **state)
 	result = cbt_util_get(4, args);
 
 	assert_int_equal(result, 0);
-	assert_string_equal(output, "1\n");
+	assert_string_equal(output->buf, "1\n");
+	free_printf_data(output);
+	free(log_meta);
+}
+
+void test_cbt_util_get_parent(void **state)
+{
+	int result;
+	char* args[] = { "cbt-util", "-n", "test_disk.log", "-p" };
+	void *log_meta;
+	struct printf_data *output;
+	uuid_t parent;
+	char uuid_str[38];
+
+	uuid_generate_random(parent);
+
+	log_meta = malloc(sizeof(struct cbt_log_metadata));
+
+	uuid_copy(((struct cbt_log_metadata*)log_meta)->parent, parent);
+	FILE *test_log = fmemopen((void*)log_meta, sizeof(struct cbt_log_metadata), "r");
+
+	will_return(__wrap_fopen, test_log);
+	expect_value(__wrap_fclose, fp, test_log);
+
+	output = setup_vprintf_mock(1024);
+
+	result = cbt_util_get(4, args);
+
+	assert_int_equal(result, 0);
+	uuid_unparse(parent, uuid_str);
+	strncat(uuid_str, "\n", 38);
+
+	assert_string_equal(output->buf, uuid_str);
+	free_printf_data(output);
+	free(log_meta);
+}
+
+void test_cbt_util_get_child(void **state)
+{
+	int result;
+	char* args[] = { "cbt-util", "-n", "test_disk.log", "-c" };
+	void *log_meta;
+	struct printf_data *output;
+	uuid_t child;
+	char uuid_str[38];
+
+	uuid_generate_random(child);
+
+	log_meta = malloc(sizeof(struct cbt_log_metadata));
+
+	uuid_copy(((struct cbt_log_metadata*)log_meta)->child, child);
+	FILE *test_log = fmemopen((void*)log_meta, sizeof(struct cbt_log_metadata), "r");
+
+	will_return(__wrap_fopen, test_log);
+	expect_value(__wrap_fclose, fp, test_log);
+
+	output = setup_vprintf_mock(1024);
+
+	result = cbt_util_get(4, args);
+
+	assert_int_equal(result, 0);
+	uuid_unparse(child, uuid_str);
+	strncat(uuid_str, "\n", 38);
+
+	assert_string_equal(output->buf, uuid_str);
+	free_printf_data(output);
+	free(log_meta);
+}
+
+void test_cbt_util_get_nofile_failure(void **state)
+{
+	int result;
+	char* args[] = { "cbt-util", "-n", "test_disk.log", "-c" };
+
+	will_return(__wrap_fopen, NULL);
+
+	result = cbt_util_get(4, args);
+
+	assert_int_equal(result, -ENOENT);
+}
+
+void test_cbt_util_get_nodata_failure(void **state)
+{
+	int result;
+	char* args[] = { "cbt-util", "-n", "test_disk.log", "-c" };
+	void *log_meta[1];
+
+	FILE *test_log = fmemopen((void*)log_meta, 1, "r");
+
+	will_return(__wrap_fopen, test_log);
+	expect_value(__wrap_fclose, fp, test_log);
+
+	result = cbt_util_get(4, args);
+
+	assert_int_equal(result, -EIO);
+}
+
+void test_cbt_util_get_malloc_failure(void **state)
+{
+	int result;
+	char* args[] = { "cbt-util", "-n", "test_disk.log", "-c" };
+
+	malloc_succeeds(false);
+
+	result = cbt_util_get(4, args);
+	assert_int_equal(result, -ENOMEM);
+
+	disable_malloc_mock();
+}
+
+void test_cbt_util_get_no_name_failure(void **state)
+{
+	int result;
+	char* args[] = { "cbt-util", "-c" };
+	struct printf_data *output;
+
+	output = setup_vprintf_mock(1024);
+
+	result = cbt_util_get(2, args);
+	assert_int_equal(result, -EINVAL);
+	free_printf_data(output);
+}
+
+void test_cbt_util_get_no_command_failure(void **state)
+{
+	int result;
+	char* args[] = { "cbt-util", "-n", "test_disk.log" };
+	struct printf_data  *output;
+
+	output = setup_vprintf_mock(1024);
+
+	result = cbt_util_get(3, args);
+	assert_int_equal(result, -EINVAL);
+	free_printf_data(output);
 }
