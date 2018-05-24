@@ -105,7 +105,7 @@ int tap_ctl_allocate(int *minor, char **devname);
 int tap_ctl_free(const int minor);
 
 int tap_ctl_create(const char *params, char **devname, int flags, 
-		int prt_minor, char *secondary, int timeout, const char *slice);
+		int prt_minor, char *secondary, int timeout, const char *slice, const char *logpath);
 int tap_ctl_destroy(const int id, const int minor, int force,
 		    struct timeval *timeout);
 
