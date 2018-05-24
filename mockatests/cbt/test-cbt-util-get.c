@@ -28,22 +28,43 @@
  * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
+#include <stdint.h>
+#include <string.h>
 #include <stddef.h>
 #include <stdarg.h>
 #include <setjmp.h>
 #include <cmocka.h>
+#include <uuid/uuid.h>
 
+#include <cbt-util-priv.h>
 #include "wrappers.h"
 #include "test-suites.h"
 
-int main(void)
+struct cbt_log_metadata {
+	uuid_t parent;
+	uuid_t child;
+	int    consistent;
+};
+
+void test_cbt_util_get_flag(void **state)
 {
-	int result =
-		cmocka_run_group_tests_name("Command tests", cbt_command_tests, NULL, NULL) +
-		cmocka_run_group_tests_name("Get tests", cbt_get_tests, NULL, NULL);
+	int result;
+	char* args[] = { "cbt-util", "-n", "test_disk.log", "-f" };
+	void *log_meta;
+	char *output;
 
-	/* Need to flag that the tests are done so that the fclose mock goes quiescent */
-	disable_mocks();
+	log_meta = malloc(sizeof(struct cbt_log_metadata));
 
-	return result;
+	((struct cbt_log_metadata*)log_meta)->consistent = 1;
+	FILE *test_log = fmemopen((void*)log_meta, sizeof(struct cbt_log_metadata), "r");
+
+	will_return(__wrap_fopen, test_log);
+	expect_value(__wrap_fclose, fp, test_log);
+
+	output = setup_vprintf_mock(1024);
+
+	result = cbt_util_get(4, args);
+
+	assert_int_equal(result, 0);
+	assert_string_equal(output, "1\n");
 }

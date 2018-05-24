@@ -28,22 +28,78 @@
  * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#include <stddef.h>
+#include <string.h>
+#include <stdint.h>
 #include <stdarg.h>
+#include <stddef.h>
 #include <setjmp.h>
 #include <cmocka.h>
 
 #include "wrappers.h"
-#include "test-suites.h"
 
-int main(void)
+static int tests_running = 1;
+
+FILE *
+__wrap_fopen(void)
 {
-	int result =
-		cmocka_run_group_tests_name("Command tests", cbt_command_tests, NULL, NULL) +
-		cmocka_run_group_tests_name("Get tests", cbt_get_tests, NULL, NULL);
+	return (FILE*) mock();
+}
 
-	/* Need to flag that the tests are done so that the fclose mock goes quiescent */
-	disable_mocks();
+void __real_fclose(FILE *fp);
 
-	return result;
+void
+__wrap_fclose(FILE *fp)
+{
+	if (tests_running) {
+		check_expected_ptr(fp);
+	}
+	__real_fclose(fp);
+}
+
+int
+wrap_vprintf(const char *format, va_list ap)
+{
+	int bufsize = mock();
+	char* buf = mock();
+
+	int len = vsnprintf(buf, bufsize, format, ap);
+
+	assert_in_range(len, 0, bufsize);
+
+	return len;
+}
+
+int
+__wrap_printf(const char *format, ...)
+{
+	va_list ap;
+	va_start(ap, format);
+
+	return wrap_vprintf(format, ap);
+}
+
+int
+__wrap___printf_chk (int __flag, const char *format, ...)
+{
+	va_list ap;
+	va_start(ap, format);
+
+	return wrap_vprintf(format, ap);
+}
+
+char *setup_vprintf_mock(int size)
+{
+	char *buf;
+
+	buf = malloc(size);
+
+	will_return(wrap_vprintf, size);
+	will_return(wrap_vprintf, buf);
+
+	return buf;
+}
+
+void disable_mocks()
+{
+	tests_running = 0;
 }

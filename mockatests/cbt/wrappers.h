@@ -28,22 +28,17 @@
  * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#include <stddef.h>
-#include <stdarg.h>
-#include <setjmp.h>
-#include <cmocka.h>
+#include <stdio.h>
 
-#include "wrappers.h"
-#include "test-suites.h"
+#ifndef __WRAPPERS_H__
+#define __WRAPPERS_H__
 
-int main(void)
-{
-	int result =
-		cmocka_run_group_tests_name("Command tests", cbt_command_tests, NULL, NULL) +
-		cmocka_run_group_tests_name("Get tests", cbt_get_tests, NULL, NULL);
+FILE * __wrap_fopen(void);
 
-	/* Need to flag that the tests are done so that the fclose mock goes quiescent */
-	disable_mocks();
+void __wrap_fclose(FILE *fp);
 
-	return result;
-}
+char *setup_vprintf_mock(int size);
+
+void disable_mocks();
+
+#endif /* __WRAPPERS_H__ */

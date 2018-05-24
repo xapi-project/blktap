@@ -28,22 +28,33 @@
  * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#include <stddef.h>
-#include <stdarg.h>
 #include <setjmp.h>
 #include <cmocka.h>
 
-#include "wrappers.h"
-#include "test-suites.h"
+#ifndef __TEST_SUITES_H__
+#define __TEST_SUITES_H__
 
-int main(void)
-{
-	int result =
-		cmocka_run_group_tests_name("Command tests", cbt_command_tests, NULL, NULL) +
-		cmocka_run_group_tests_name("Get tests", cbt_get_tests, NULL, NULL);
+void test_get_command_create(void **state);
+void test_get_command_set(void **state);
+void test_get_command_get(void **state);
 
-	/* Need to flag that the tests are done so that the fclose mock goes quiescent */
-	disable_mocks();
+void test_cbt_util_get_flag(void **state);
 
-	return result;
-}
+/* Functions under test */
+
+extern int cbt_util_create(int , char **);
+extern int cbt_util_set(int , char **);
+extern int cbt_util_get(int , char **);
+
+
+static const struct CMUnitTest cbt_command_tests[] = {
+	cmocka_unit_test(test_get_command_create),
+	cmocka_unit_test(test_get_command_set),
+	cmocka_unit_test(test_get_command_get)
+};
+
+static const struct CMUnitTest cbt_get_tests[] = {
+	cmocka_unit_test(test_cbt_util_get_flag)
+};
+
+#endif /* __TEST_SUITES_H__ */

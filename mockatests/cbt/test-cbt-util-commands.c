@@ -28,22 +28,51 @@
  * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
+#include <stdint.h>
 #include <stddef.h>
 #include <stdarg.h>
 #include <setjmp.h>
 #include <cmocka.h>
 
+#include <cbt-util-priv.h>
 #include "wrappers.h"
 #include "test-suites.h"
 
-int main(void)
+void
+test_get_command_create(void **state)
 {
-	int result =
-		cmocka_run_group_tests_name("Command tests", cbt_command_tests, NULL, NULL) +
-		cmocka_run_group_tests_name("Get tests", cbt_get_tests, NULL, NULL);
+	struct command *cmd;
 
-	/* Need to flag that the tests are done so that the fclose mock goes quiescent */
-	disable_mocks();
+	char* requested_command = { "create" };
 
-	return result;
+	cmd = get_command(requested_command);
+
+	assert_string_equal(cmd->name, "create");
+	assert_ptr_equal(cmd->func, cbt_util_create);
+}
+
+void
+test_get_command_set(void **state)
+{
+	struct command *cmd;
+
+	char* requested_command = { "set" };
+
+	cmd = get_command(requested_command);
+
+	assert_string_equal(cmd->name, "set");
+	assert_ptr_equal(cmd->func, cbt_util_set);
+}
+
+void
+test_get_command_get(void **state)
+{
+	struct command *cmd;
+
+	char* requested_command = { "get" };
+
+	cmd = get_command(requested_command);
+
+	assert_string_equal(cmd->name, "get");
+	assert_ptr_equal(cmd->func, cbt_util_get);
 }
