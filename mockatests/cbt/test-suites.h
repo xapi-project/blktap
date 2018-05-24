@@ -62,6 +62,22 @@ void test_cbt_util_get_bitmap_nodata_failure(void **state);
 void test_cbt_util_get_bitmap_malloc_failure(void **state);
 void test_cbt_util_get_no_bitmap_flag_failure(void **state);
 
+/* 'cbt-util set' tests */
+void test_cbt_util_set_parent(void **state);
+void test_cbt_util_set_child(void **state);
+void test_cbt_util_set_flag(void **state);
+void test_cbt_util_set_size(void **state);
+void test_cbt_util_set_size_smaller_file_failure(void **state);
+void test_cbt_util_set_size_malloc_failure(void **state);
+void test_cbt_util_set_size_no_bitmap_failure(void **state);
+void test_cbt_util_set_size_write_failure(void **state);
+void test_cbt_util_set_no_name_failure(void **state);
+void test_cbt_util_set_no_command_failure(void **state);
+void test_cbt_util_set_malloc_failure(void **state);
+void test_cbt_util_set_no_data_failure(void **state);
+void test_cbt_util_set_no_file_failure(void **state);
+
+
 /* 'cbt-util create' tests */
 void test_cbt_util_create_success(void **state);
 void test_cbt_util_create_file_open_failure(void **state);
@@ -104,6 +120,22 @@ static const struct CMUnitTest cbt_command_tests[] = {
 	cmocka_unit_test(test_get_command_bad_command),
 	cmocka_unit_test(test_get_command_over_long_command),
 	cmocka_unit_test(test_help_success)
+};
+
+static const struct CMUnitTest cbt_set_tests[] = {
+	cmocka_unit_test(test_cbt_util_set_parent),
+	cmocka_unit_test(test_cbt_util_set_child),
+	cmocka_unit_test(test_cbt_util_set_flag),
+	cmocka_unit_test(test_cbt_util_set_size),
+	cmocka_unit_test(test_cbt_util_set_size_smaller_file_failure),
+	cmocka_unit_test(test_cbt_util_set_size_malloc_failure),
+	cmocka_unit_test(test_cbt_util_set_size_no_bitmap_failure),
+	cmocka_unit_test(test_cbt_util_set_size_write_failure),
+	cmocka_unit_test(test_cbt_util_set_no_name_failure),
+	cmocka_unit_test(test_cbt_util_set_no_command_failure),
+	cmocka_unit_test(test_cbt_util_set_malloc_failure),
+	cmocka_unit_test(test_cbt_util_set_no_data_failure),
+	cmocka_unit_test(test_cbt_util_set_no_file_failure)
 };
 
 static const struct CMUnitTest cbt_get_tests[] = {

@@ -299,6 +299,9 @@ cbt_util_set(int argc, char **argv)
 	if (!argc || !argv)
 		goto usage;
 
+	/* Make sure we start from the start of the args */
+	optind = 1;
+
 	while ((c = getopt(argc, argv, "n:p:c:f:s:h")) != -1) {
 		switch (c) {
 			case 'n':
@@ -420,6 +423,8 @@ cbt_util_set(int argc, char **argv)
 	}
 
 error:
+	if(buf)
+		free(buf);
 	if(log_meta)
 		free(log_meta);
 	if(f)

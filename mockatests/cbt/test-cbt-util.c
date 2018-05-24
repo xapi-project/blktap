@@ -42,7 +42,8 @@ int main(void)
 		cmocka_run_group_tests_name("Command tests", cbt_command_tests, NULL, NULL) +
 		cmocka_run_group_tests_name("Get tests", cbt_get_tests, NULL, NULL) +
 		cmocka_run_group_tests_name("Create tests", cbt_create_tests, NULL, NULL) +
-		cmocka_run_group_tests_name("Coalesce tests", cbt_coalesce_tests, NULL, NULL);
+		cmocka_run_group_tests_name("Coalesce tests", cbt_coalesce_tests, NULL, NULL) +
+		cmocka_run_group_tests_name("Set tests", cbt_set_tests, NULL, NULL);
 
 	/* Need to flag that the tests are done so that the fclose mock goes quiescent */
 	disable_mocks();

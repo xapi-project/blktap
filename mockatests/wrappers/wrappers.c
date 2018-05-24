@@ -42,6 +42,7 @@
 static int tests_running = 1;
 static int mock_malloc = 0;
 static int mock_fwrite = 0;
+static int mock_vprintf = 0;
 
 void *
 __wrap_malloc(size_t size)
@@ -50,7 +51,6 @@ __wrap_malloc(size_t size)
 	if (mock_malloc) {
 		succeed = (bool) mock();
 	}
-
 	if (succeed) {
 		void * result = test_malloc(size);
 		/*fprintf(stderr, "Allocated block of %zu bytes at %p\n", size, result);*/
@@ -70,7 +70,6 @@ FILE *
 __wrap_fopen(void)
 {
 	FILE *file = (FILE*)mock();
-
 	if (file == NULL) {
 		errno = ENOENT;
 	}
@@ -142,18 +141,18 @@ void free_fwrite_data(struct fwrite_data *data)
 int
 wrap_vprintf(const char *format, va_list ap)
 {
-
-	struct printf_data *data = mock();
-
-	int remaining = data->size - data->offset;
-
-	int len = vsnprintf(data->buf + data->offset, remaining, format, ap);
-
-	assert_in_range(len, 0, remaining);
-
-	data->offset += len;
-
-	return len;
+	if (mock_vprintf) {
+		struct printf_data *data = mock();
+		int remaining = data->size - data->offset;
+		int len = vsnprintf(data->buf + data->offset, remaining, format, ap);
+		assert_in_range(len, 0, remaining);
+		data->offset += len;
+		return len;
+	} else {
+		fprintf(stderr, "Unexpected call to printf\n");
+		vfprintf(stderr, format, ap);
+	}
+	return 0;
 }
 
 int
@@ -195,6 +194,8 @@ struct printf_data *setup_vprintf_mock(int size)
 
 	will_return_always(wrap_vprintf, data);
 
+	mock_vprintf = 1;
+
 	return data;
 }
 
@@ -203,6 +204,7 @@ void free_printf_data(struct printf_data *data)
 	if (data->buf)
 		test_free(data->buf);
 	test_free(data);
+	mock_vprintf = 0;
 }
 
 
