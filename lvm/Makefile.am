@@ -4,8 +4,11 @@ AM_CFLAGS += -Werror
 
 sbin_PROGRAMS = lvm-util
 
-lvm_util_SOURCES  = lvm-util.c
-lvm_util_SOURCES += lvm-util.h
+noinst_LTLIBRARIES = liblvmutil.la
 
-lvm_util_CPPFLAGS  = -D_GNU_SOURCE
-lvm_util_CPPFLAGS += -DLVM_UTIL
+liblvmutil_la_SOURCES  = lvm-util.c
+
+lvm_util_SOURCES = main.c
+lvm_util_LDADD = liblvmutil.la
+
+liblvmutil_la_CPPFLAGS  = -D_GNU_SOURCE
