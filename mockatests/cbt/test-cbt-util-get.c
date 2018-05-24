@@ -42,12 +42,6 @@
 #include "wrappers.h"
 #include "test-suites.h"
 
-struct cbt_log_metadata {
-	uuid_t parent;
-	uuid_t child;
-	int    consistent;
-};
-
 void test_cbt_util_get_flag(void **state)
 {
 	int result;

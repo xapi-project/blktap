@@ -28,16 +28,25 @@
  * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#include <setjmp.h>
-#include <cmocka.h>
-
 #ifndef __TEST_SUITES_H__
 #define __TEST_SUITES_H__
 
+#include <setjmp.h>
+#include <cmocka.h>
+#include <uuid/uuid.h>
+
+struct cbt_log_metadata {
+	uuid_t parent;
+	uuid_t child;
+	int    consistent;
+};
+
+/* Command lookup tests */
 void test_get_command_create(void **state);
 void test_get_command_set(void **state);
 void test_get_command_get(void **state);
 
+/* 'cbt-util get' tests */
 void test_cbt_util_get_flag(void **state);
 void test_cbt_util_get_parent(void **state);
 void test_cbt_util_get_child(void **state);
@@ -46,6 +55,16 @@ void test_cbt_util_get_nodata_failure(void **state);
 void test_cbt_util_get_malloc_failure(void **state);
 void test_cbt_util_get_no_name_failure(void **state);
 void test_cbt_util_get_no_command_failure(void **state);
+
+/* 'cbt-util create' tests */
+void test_cbt_util_create_success(void **state);
+void test_cbt_util_create_file_open_failure(void **state);
+void test_cbt_util_create_metadata_write_failure(void **state);
+void test_cbt_util_create_bitmap_write_failure(void **state);
+void test_cbt_util_create_log_data_allocation_failure(void **state);
+void test_cbt_util_create_bitmap_allocation_failure(void **state);
+void test_cbt_util_create_no_name_failure(void **state);
+void test_cbt_util_create_no_size_failure(void **state);
 
 /* Functions under test */
 
@@ -69,6 +88,17 @@ static const struct CMUnitTest cbt_get_tests[] = {
 	cmocka_unit_test(test_cbt_util_get_malloc_failure),
 	cmocka_unit_test(test_cbt_util_get_no_name_failure),
 	cmocka_unit_test(test_cbt_util_get_no_command_failure)
+};
+
+static const struct CMUnitTest cbt_create_tests[] = {
+	cmocka_unit_test(test_cbt_util_create_success),
+	cmocka_unit_test(test_cbt_util_create_file_open_failure),
+	cmocka_unit_test(test_cbt_util_create_metadata_write_failure),
+	cmocka_unit_test(test_cbt_util_create_bitmap_write_failure),
+	cmocka_unit_test(test_cbt_util_create_log_data_allocation_failure),
+	cmocka_unit_test(test_cbt_util_create_bitmap_allocation_failure),
+	cmocka_unit_test(test_cbt_util_create_no_name_failure),
+	cmocka_unit_test(test_cbt_util_create_no_size_failure)
 };
 
 #endif /* __TEST_SUITES_H__ */

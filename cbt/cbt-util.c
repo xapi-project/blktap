@@ -283,6 +283,9 @@ cbt_util_create(int argc, char **argv)
 	if (!argc || !argv)
 		goto usage;
 
+	/* Make sure we start from the start of the args */
+	optind = 1;
+
 	while ((c = getopt(argc, argv, "n:s:h")) != -1) {
 		switch (c) {
 			case 'n':
