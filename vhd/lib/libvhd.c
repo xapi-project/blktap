@@ -1372,8 +1372,11 @@ vhd_macx_encode_location(char *name, char **out, int *outlen)
 	uri = urip = malloc(ibl + 1);
 	uri_utf8 = uri_utf8p = malloc(obl);
 
-	if (!uri || !uri_utf8)
+	if (!uri || !uri_utf8) {
+		free(uri);
+		free(uri_utf8);
 		return -ENOMEM;
+	}
 
 	cd = iconv_open("UTF-8", "ASCII");
 	if (cd == (iconv_t)-1) {
