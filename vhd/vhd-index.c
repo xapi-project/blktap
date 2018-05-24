@@ -918,6 +918,8 @@ vhd_index_summary(vhdi_name_t *name, uint32_t block)
 	vhdi_context_t vhdi;
 	vhdi_file_table_t files;
 
+	memset(&files, 0, sizeof(vhdi_file_table_t));
+
 	err = vhdi_open(&vhdi, name->index, O_RDWR);
 	if (err)
 		return err;
