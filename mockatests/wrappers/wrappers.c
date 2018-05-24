@@ -43,6 +43,7 @@ static int tests_running = 1;
 static int mock_malloc = 0;
 static int mock_fwrite = 0;
 static int mock_vprintf = 0;
+static int mock_fseek = 0;
 
 void *
 __wrap_malloc(size_t size)
@@ -205,6 +206,25 @@ void free_printf_data(struct printf_data *data)
 		test_free(data->buf);
 	test_free(data);
 	mock_vprintf = 0;
+}
+
+int __real_fseek(FILE *stream, long offset, int whence);
+
+int __wrap_fseek(FILE *stream, long offset, int whence)
+{
+	if(mock_fseek){
+		mock_fseek = 0;
+		errno = mock();
+		return -1;
+	}
+
+	return __real_fseek(stream, offset, whence);
+}
+
+void fail_fseek(int Errno)
+{
+	will_return(__wrap_fseek, Errno);
+	mock_fseek = 1;
 }
 
 

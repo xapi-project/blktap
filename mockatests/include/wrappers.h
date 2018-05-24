@@ -73,6 +73,12 @@ void disable_malloc_mock();
 
 void disable_mocks();
 
+// Mock fseek
+int __wrap_fseek(FILE *stream, long offset, int whence);
+
+void fail_fseek(int Errno);
+
+
 void enable_mock_fwrite();
 
 int __wrap_printf(const char *format, ...);

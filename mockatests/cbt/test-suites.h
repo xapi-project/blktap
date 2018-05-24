@@ -103,6 +103,8 @@ void test_cbt_util_coalesce_child_bitmap_malloc_failure(void **state);
 void test_cbt_util_coalesce_parent_no_bitmap_data_failure(void **state);
 void test_cbt_util_coalesce_child_no_bitmap_data_failure(void **state);
 void test_cbt_util_coalesce_success(void **state);
+void test_cbt_util_coalesce_set_file_pointer_failure(void **state);
+void test_cbt_util_coalesce_write_bitmap_failure(void **state);
 
 /* Functions under test */
 
@@ -180,6 +182,8 @@ static const struct CMUnitTest cbt_coalesce_tests[] = {
 	cmocka_unit_test(test_cbt_util_coalesce_parent_no_bitmap_data_failure),
 	cmocka_unit_test(test_cbt_util_coalesce_child_no_bitmap_data_failure),
 	cmocka_unit_test(test_cbt_util_coalesce_success),
+	cmocka_unit_test(test_cbt_util_coalesce_set_file_pointer_failure),
+	cmocka_unit_test(test_cbt_util_coalesce_write_bitmap_failure)
 };
 
 #endif /* __TEST_SUITES_H__ */
