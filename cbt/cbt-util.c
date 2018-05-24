@@ -40,16 +40,13 @@
 #include <stdint.h>
 
 #include "cbt-util.h"
+#include "cbt-util-priv.h"
 
-typedef int (*cbt_util_func_t) (int, char **);
 int cbt_util_create(int , char **);
 int cbt_util_set(int , char **);
 int cbt_util_get(int , char **);
 
-struct command {
-	char			*name;
-	cbt_util_func_t	func;
-};
+
 
 struct command commands[] = {
 	{ .name = "create", .func = cbt_util_create},
@@ -385,42 +382,4 @@ get_command(char *command)
 			return &commands[i];
 
 	return NULL;
-}
-
-int
-main(int argc, char *argv[])
-{
-	char **cargv;
-	struct command *cmd;
-	int cargc, i, cnt, ret;
-
-	ret = 0;
-
-	if (argc < 2)
-		help();
-
-	cargc = argc - 1;
-	cmd   = get_command(argv[1]);
-	if (!cmd) {
-		fprintf(stderr, "Invalid COMMAND %s\n", argv[1]);
-		help();
-	}
-
-	cargv = malloc(sizeof(char *) * cargc);
-	if (!cargv)
-		exit(ENOMEM);
-
-	cnt      = 1;
-	cargv[0] = cmd->name;
-	for (i = 1; i < cargc; i++) {
-		char *arg = argv[i + (argc - cargc)];
-
-		cargv[cnt++] = arg;
-	}
-
-	ret = cmd->func(cnt, cargv);
-
-	free(cargv);
-
-	return (ret >= 0 ? ret : -ret);
 }
