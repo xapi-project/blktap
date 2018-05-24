@@ -76,3 +76,41 @@ test_get_command_get(void **state)
 	assert_string_equal(cmd->name, "get");
 	assert_ptr_equal(cmd->func, cbt_util_get);
 }
+
+void
+test_get_command_bad_command(void **state)
+{
+	struct command *cmd;
+
+	char* requested_command = { "breakme" };
+
+	cmd = get_command(requested_command);
+
+	assert_null(cmd);
+}
+
+void
+test_get_command_over_long_command(void **state)
+{
+	struct command *cmd;
+
+	char* requested_command = { "im_a_really_really_long_command" };
+
+	cmd = get_command(requested_command);
+
+	assert_null(cmd);
+}
+
+void
+test_help_success(void ** state)
+{
+	struct printf_data *output;
+
+	output = setup_vprintf_mock(1024);
+
+	help();
+
+	assert_in_range(output->offset, 10, 1024);
+
+	free_printf_data(output);
+}

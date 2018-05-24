@@ -53,6 +53,7 @@ main(int argc, char *argv[])
 	if (!cmd) {
 		fprintf(stderr, "Invalid COMMAND %s\n", argv[1]);
 		help();
+		exit(0);
 	}
 
 	cargv = malloc(sizeof(char *) * cargc);

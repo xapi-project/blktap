@@ -370,7 +370,6 @@ help(void)
 {
 	printf("usage: cbt-util COMMAND [OPTIONS]\n");
 	print_commands();
-	exit(0);
 }
 
 struct command *

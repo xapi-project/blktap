@@ -45,6 +45,10 @@ struct cbt_log_metadata {
 void test_get_command_create(void **state);
 void test_get_command_set(void **state);
 void test_get_command_get(void **state);
+void test_get_command_bad_command(void **state);
+void test_get_command_over_long_command(void **state);
+
+void test_help_success(void ** state);
 
 /* 'cbt-util get' tests */
 void test_cbt_util_get_flag(void **state);
@@ -71,12 +75,15 @@ void test_cbt_util_create_no_size_failure(void **state);
 extern int cbt_util_create(int , char **);
 extern int cbt_util_set(int , char **);
 extern int cbt_util_get(int , char **);
-
+extern void help(void);
 
 static const struct CMUnitTest cbt_command_tests[] = {
 	cmocka_unit_test(test_get_command_create),
 	cmocka_unit_test(test_get_command_set),
-	cmocka_unit_test(test_get_command_get)
+	cmocka_unit_test(test_get_command_get),
+	cmocka_unit_test(test_get_command_bad_command),
+	cmocka_unit_test(test_get_command_over_long_command),
+	cmocka_unit_test(test_help_success)
 };
 
 static const struct CMUnitTest cbt_get_tests[] = {
