@@ -20,8 +20,10 @@ struct cbt_log_metadata {
 	int    consistent;
 };
 
+static int tests_running = 1;
+
 FILE *
-__wrap_fopen(void)
+__wrap_fopen(const char *path, const char *mode)
 {
 	return (FILE*) mock();
 }
@@ -31,7 +33,9 @@ void __real_fclose(FILE *fp);
 void
 __wrap_fclose(FILE *fp)
 {
-	check_expected_ptr(fp);
+	if (tests_running) {
+		check_expected_ptr(fp);
+	}
 	__real_fclose(fp);
 }
 
@@ -142,7 +146,12 @@ const struct CMUnitTest cbt_get_tests[] = {
 
 int main(void)
 {
-	return
+	int result =
 		cmocka_run_group_tests_name("Command tests", cbt_command_tests, NULL, NULL) +
 		cmocka_run_group_tests_name("Get tests", cbt_get_tests, NULL, NULL);
+
+	/* Need to flag that the tests are done so that the fclose mock goes quiescent */
+	tests_running = 0;
+
+	return result;
 }

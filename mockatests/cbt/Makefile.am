@@ -1,8 +1,7 @@
 AM_CFLAGS  = -Wall
 AM_CFLAGS += -Werror
-# Arc coverage and wrap don't seem to be compatible
-#AM_CFLAGS += -fprofile-arcs
-#AM_CFLAGS += -ftest-coverage
+AM_CFLAGS += -fprofile-arcs
+AM_CFLAGS += -ftest-coverage
 
 AM_CPPFLAGS = -I$(top_srcdir)/include -I$(top_srcdir)/cbt
 
