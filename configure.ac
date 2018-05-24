@@ -82,5 +82,7 @@ control/Makefile
 drivers/Makefile
 include/Makefile
 tapback/Makefile
+mockatests/Makefile
+mockatests/cbt/Makefile
 ])
 AC_OUTPUT

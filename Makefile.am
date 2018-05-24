@@ -12,6 +12,7 @@ SUBDIRS += drivers
 SUBDIRS += include
 SUBDIRS += tapback
 SUBDIRS += cbt
+SUBDIRS += mockatests
 
 if ENABLE_PART
 MAYBE_part = part

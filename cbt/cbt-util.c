@@ -120,7 +120,7 @@ cbt_util_get(int argc, char **argv)
 		err = -errno;
 		goto error;
 	}
-	
+
 	ret = fread(log_meta, sizeof(struct cbt_log_metadata), 1, f);
 
 	if (!ret) {

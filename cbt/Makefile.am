@@ -7,7 +7,7 @@ sbin_PROGRAMS = cbt-util
 
 noinst_LTLIBRARIES = libcbtutil.la
 
-libcbtutil_la_SOURCES = cbt-util.c cbt-utl-priv.h
+libcbtutil_la_SOURCES = cbt-util.c
 
 cbt_util_SOURCES  = main.c
 cbt_util_LDADD  = -lrt -luuid libcbtutil.la
