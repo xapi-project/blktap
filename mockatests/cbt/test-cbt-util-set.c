@@ -271,6 +271,36 @@ test_cbt_util_set_size_write_failure(void **state)
 	free(log_meta);
 }
 
+void
+test_cbt_util_set_size_reset_file_pointer_failure(void **state)
+{
+	int result;
+	void *log_meta;
+	uint64_t size_int64 = 4194303;
+	char size_string[8];
+	snprintf(size_string, sizeof(size_string), "%" PRIu64, size_int64);
+	char* args[] = {"cbt-util", "-n", "test_disk.log", "-s", size_string};
+
+	uint64_t btmsize = bitmap_size(size_int64);
+
+	int file_size = sizeof(struct cbt_log_metadata) + btmsize;
+	log_meta = malloc(file_size);
+
+	((struct cbt_log_metadata*)log_meta)->size = 2048;
+
+	memcpy(log_meta + sizeof(struct cbt_log_metadata), (void*)memcpy, btmsize);
+	FILE *test_log = fmemopen((void*)log_meta, file_size, "r+");
+
+	will_return(__wrap_fopen, test_log);
+	expect_value(__wrap_fclose, fp, test_log);
+
+	fail_fseek(EIO);
+
+	result = cbt_util_set(5, args);
+	assert_int_equal(result, -EIO);
+
+	free(log_meta);
+}
 
 void
 test_cbt_util_set_no_name_failure(void **state)

@@ -71,6 +71,7 @@ void test_cbt_util_set_size_smaller_file_failure(void **state);
 void test_cbt_util_set_size_malloc_failure(void **state);
 void test_cbt_util_set_size_no_bitmap_failure(void **state);
 void test_cbt_util_set_size_write_failure(void **state);
+void test_cbt_util_set_size_reset_file_pointer_failure(void **state);
 void test_cbt_util_set_no_name_failure(void **state);
 void test_cbt_util_set_no_command_failure(void **state);
 void test_cbt_util_set_malloc_failure(void **state);
@@ -133,6 +134,7 @@ static const struct CMUnitTest cbt_set_tests[] = {
 	cmocka_unit_test(test_cbt_util_set_size_malloc_failure),
 	cmocka_unit_test(test_cbt_util_set_size_no_bitmap_failure),
 	cmocka_unit_test(test_cbt_util_set_size_write_failure),
+	cmocka_unit_test(test_cbt_util_set_size_reset_file_pointer_failure),
 	cmocka_unit_test(test_cbt_util_set_no_name_failure),
 	cmocka_unit_test(test_cbt_util_set_no_command_failure),
 	cmocka_unit_test(test_cbt_util_set_malloc_failure),
