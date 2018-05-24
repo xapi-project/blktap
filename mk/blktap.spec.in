@@ -52,7 +52,8 @@ mkdir -p %{buildroot}%{_localstatedir}/log/blktap
 
 %files
 %defattr(-,root,root,-)
-%doc
+%docdir /usr/share/doc/%{name}
+/usr/share/doc/%{name}
 %{_libdir}/*.so
 %{_libdir}/*.so.*
 %{_bindir}/vhd-util
