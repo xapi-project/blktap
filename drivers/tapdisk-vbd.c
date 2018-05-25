@@ -75,6 +75,8 @@ static void tapdisk_vbd_complete_vbd_request(td_vbd_t *, td_vbd_request_t *);
 static int  tapdisk_vbd_queue_ready(td_vbd_t *);
 static void tapdisk_vbd_check_queue_state(td_vbd_t *);
 
+static bool log=true;
+
 /*
  * initialization
  */
@@ -915,18 +917,30 @@ tapdisk_vbd_open_image(td_vbd_t *vbd, td_image_t *image)
 }
 #endif
 
+/*
+ * Pausing a tapdisk can produce a lot of logging if the storage is not available
+ * and there are inflight data requests. All the caller to squash the logging 
+ * when entering a retry process.
+ */
+void tapdisk_vbd_squash_pause_logging(bool squash)
+{
+	log = !squash;
+}
+
 int
 tapdisk_vbd_pause(td_vbd_t *vbd)
 {
 	int err;
 	struct td_xenblkif *blkif;
 
-	INFO("pause requested\n");
+	if (log) {
+		INFO("pause requested\n");
+	}
 
 	td_flag_set(vbd->state, TD_VBD_PAUSE_REQUESTED);
 
 	if (vbd->nbdserver)
-		tapdisk_nbdserver_pause(vbd->nbdserver);
+		tapdisk_nbdserver_pause(vbd->nbdserver, log);
 
 	err = tapdisk_vbd_quiesce_queue(vbd);
 	if (err)
@@ -937,6 +951,7 @@ tapdisk_vbd_pause(td_vbd_t *vbd)
 
 	tapdisk_vbd_close_vdi(vbd);
 
+	/* Don't guard this one as at this point the pause operation is complete */
 	INFO("pause completed\n");
 
 	if (!list_empty(&vbd->failed_requests))

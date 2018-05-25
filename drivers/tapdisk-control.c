@@ -846,7 +846,7 @@ tapdisk_control_close_image(struct tapdisk_ctl_conn *conn,
 		EPRINTF("closing VBD %d with failed requests\n", request->cookie);
 
 	if (vbd->nbdserver) {
-	  tapdisk_nbdserver_pause(vbd->nbdserver);
+		tapdisk_nbdserver_pause(vbd->nbdserver, true);
 	}
 
     err = 0;
@@ -955,6 +955,7 @@ tapdisk_control_pause_vbd(struct tapdisk_ctl_conn *conn,
 		goto out;
 	}
 
+	INFO("pause requested\n");
 	do {
 		gettimeofday(&now, NULL);
 		if (TV_AFTER(now, next)) {
@@ -963,12 +964,18 @@ tapdisk_control_pause_vbd(struct tapdisk_ctl_conn *conn,
 			if (!err || err != -EAGAIN)
 				break;
 
+			/*
+			 * Squash the logging so that we don't fill the logs
+			 * partition
+			 */
+			tapdisk_vbd_squash_pause_logging(true);
 			TV_ADD(now, interval, next);
 		}
 
 		tapdisk_server_iterate();
 
 	} while (conn->fd >= 0);
+	tapdisk_vbd_squash_pause_logging(false);
 
 out:
 	response->cookie = request->cookie;

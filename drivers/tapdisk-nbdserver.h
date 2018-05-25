@@ -143,7 +143,7 @@ int tapdisk_nbdserver_listen_inet(td_nbdserver_t *server, const int port);
 int tapdisk_nbdserver_listen_unix(td_nbdserver_t *server);
 
 void tapdisk_nbdserver_free(td_nbdserver_t *);
-void tapdisk_nbdserver_pause(td_nbdserver_t *);
+void tapdisk_nbdserver_pause(td_nbdserver_t *, bool log);
 int tapdisk_nbdserver_unpause(td_nbdserver_t *);
 
 /**

@@ -666,11 +666,13 @@ fail:
 }
 
 void
-tapdisk_nbdserver_pause(td_nbdserver_t *server)
+tapdisk_nbdserver_pause(td_nbdserver_t *server, bool log)
 {
 	struct td_nbdserver_client *pos, *q;
 
-	INFO("NBD server pause(%p)", server);
+	if (log) {
+		INFO("NBD server pause(%p)", server);
+	}
 
 	list_for_each_entry_safe(pos, q, &server->clients, clientlist){
 		if (pos->paused != 1 && pos->client_event_id >= 0) {
