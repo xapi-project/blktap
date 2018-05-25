@@ -944,9 +944,9 @@ tapdisk_control_pause_vbd(struct tapdisk_ctl_conn *conn,
 	int err;
 	td_vbd_t *vbd;
 
-    ASSERT(conn);
-    ASSERT(request);
-    ASSERT(response);
+	ASSERT(conn);
+	ASSERT(request);
+	ASSERT(response);
 
 	vbd = tapdisk_server_get_vbd(request->cookie);
 	if (!vbd) {
@@ -958,12 +958,12 @@ tapdisk_control_pause_vbd(struct tapdisk_ctl_conn *conn,
 	do {
 		gettimeofday(&now, NULL);
 		if (TV_AFTER(now, next)) {
-				err = tapdisk_vbd_pause(vbd);
+			err = tapdisk_vbd_pause(vbd);
 
-				if (!err || err != -EAGAIN)
-					break;
+			if (!err || err != -EAGAIN)
+				break;
 
-				TV_ADD(now, interval, next);
+			TV_ADD(now, interval, next);
 		}
 
 		tapdisk_server_iterate();
@@ -972,9 +972,9 @@ tapdisk_control_pause_vbd(struct tapdisk_ctl_conn *conn,
 
 out:
 	response->cookie = request->cookie;
-    if (!err)
+	if (!err)
 		response->type = TAPDISK_MESSAGE_PAUSE_RSP;
-    return err;
+	return err;
 }
 
 static int

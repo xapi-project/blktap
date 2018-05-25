@@ -919,7 +919,7 @@ int
 tapdisk_vbd_pause(td_vbd_t *vbd)
 {
 	int err;
-    struct td_xenblkif *blkif;
+	struct td_xenblkif *blkif;
 
 	INFO("pause requested\n");
 
@@ -932,7 +932,7 @@ tapdisk_vbd_pause(td_vbd_t *vbd)
 	if (err)
 		return err;
 
-    list_for_each_entry(blkif, &vbd->rings, entry)
+	list_for_each_entry(blkif, &vbd->rings, entry)
 		tapdisk_xenblkif_suspend(blkif);
 
 	tapdisk_vbd_close_vdi(vbd);
