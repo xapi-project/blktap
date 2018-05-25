@@ -38,6 +38,10 @@
 #include <unistd.h>
 #include <sys/ioctl.h>
 
+#ifdef __linux__
+#include <linux/version.h>
+#endif
+
 #include "debug.h"
 #include "td-req.h"
 #include "td-blkif.h"
@@ -367,6 +371,31 @@ guest_copy2(struct td_xenblkif * const blkif,
     for (i = 0; i < tapreq->msg.nr_segments; i++) {
         struct blkif_request_segment *blkif_seg = &tapreq->msg.seg[i];
         struct gntdev_grant_copy_segment *gcopy_seg = &tapreq->gcopy_segs[i];
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 5, 0)
+        if (blkif_rq_wr(&tapreq->msg)) {
+            /* copy from guest */
+            gcopy_seg->dest.virt = tapreq->vma + (i << PAGE_SHIFT)
+                + (blkif_seg->first_sect << SECTOR_SHIFT);
+            gcopy_seg->source.foreign.ref = blkif_seg->gref;
+            gcopy_seg->source.foreign.offset = blkif_seg->first_sect << SECTOR_SHIFT;
+            gcopy_seg->source.foreign.domid = blkif->domid;
+            gcopy_seg->flags = GNTCOPY_source_gref;
+        } else {
+            /* copy to guest */
+            gcopy_seg->source.virt = tapreq->vma + (i << PAGE_SHIFT)
+                + (blkif_seg->first_sect << SECTOR_SHIFT);
+            gcopy_seg->dest.foreign.ref = blkif_seg->gref;
+            gcopy_seg->dest.foreign.offset = blkif_seg->first_sect << SECTOR_SHIFT;
+            gcopy_seg->dest.foreign.domid = blkif->domid;
+            gcopy_seg->flags = GNTCOPY_dest_gref;
+        }
+
+        gcopy_seg->len = (blkif_seg->last_sect
+                - blkif_seg->first_sect
+                + 1)
+            << SECTOR_SHIFT;
+    }
+#else
         gcopy_seg->iov.iov_base = tapreq->vma + (i << PAGE_SHIFT)
             + (blkif_seg->first_sect << SECTOR_SHIFT);
         gcopy_seg->iov.iov_len = (blkif_seg->last_sect
@@ -379,6 +408,7 @@ guest_copy2(struct td_xenblkif * const blkif,
 
     gcopy.dir = blkif_rq_wr(&tapreq->msg);
     gcopy.domid = blkif->domid;
+#endif
     gcopy.count = tapreq->msg.nr_segments;
 	gcopy.segments = tapreq->gcopy_segs;
 
