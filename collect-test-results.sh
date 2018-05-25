@@ -12,3 +12,4 @@ mkdir -p $OUTPUT_DIR
 lcov --capture --directory . --rc lcov_branch_coverage=1 --no-external --output-file $OUTPUT_DIR/coverage.info
 genhtml $OUTPUT_DIR/coverage.info  --rc lcov_branch_coverage=1 --output-directory $OUTPUT_DIR/coverage-html
 tar cf $OUTPUT_DIR/test-results.tar `find mockatests -name \*.log`
+tar cf $OUTPUT_DIR/gcov-files.tar `find . -name \*.gcda -or -name \*.gcno`
