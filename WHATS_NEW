@@ -1,3 +1,29 @@
+Version 3.6.0 - 25th May 2018
+================================
+  Changed block tracking
+  Nutanix support
+
+  CA-222124: Handle race-condition in tap-ctl spawn
+  CA-223652: Add delay to reduce number of syslog messages
+  CA-227162: Enable tapdisk forced shutdown mode
+  CA-220042: sigact.sa_mask is not initialized (CID:57552)
+  CA-217394: Handle scheduler uuid data type overflow in tapdisk
+  CP-18038: Fix multiple resource leaks
+  CA-221904: vhd create EINVAL, report errors
+  Add a check to force O_DSYNC if needed
+  CA-220042: adding error handler for sigemptyset() function
+  CA-225067: tap_ctl_{spawn,create}: move tapdisk to cgroup slice
+  Fix udev rules to prevent td devices being bound by Dom0 services
+  CA-220608: Corrected potential memory leak
+  CA-250385: Check if vbd image is in chain, before retrieving
+  CA-220510: Initialsed vhd_file_table pointer before use
+  CP-23825: Structure lvm-util as a business logic library with an execution wrapper
+  CA-260195 Only log once for watchdog timeout
+  CA-254690: Add a flag to control logging based on call context
+  CA-260298 Add the device to invalid pe_start error message
+  CP-26852: Support building with upstream Linux
+  CA-277128: remove redundant, broken RRD code from tapdisk
+
 Version 3.5.0 - 15th Nov 2016
 ================================
   CA-222244: Fix resource leaks in vhd_shift_metadata()
