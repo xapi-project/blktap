@@ -140,6 +140,8 @@ main(int argc, char *argv[])
 		goto out;
 	}
 
+	DPRINTF("Tapdisk running, control on %s\n", control);
+
 	fprintf(out, "%s\n", control);
 	fclose(out);
 
@@ -158,6 +160,9 @@ main(int argc, char *argv[])
 	err = tapdisk_server_run();
 
 out:
+	if (err) {
+		EPRINTF("Tapdisk exiting with error %d\n", err);
+	}
 	td_metrics_stop();
 	tdnbd_fdreceiver_stop();
 	tapdisk_control_close();

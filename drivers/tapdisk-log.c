@@ -212,6 +212,7 @@ tlog_open(const char *name, int facility, int level)
 	return 0;
 
 fail:
+        EPRINTF("tapdisk-log: failed %d\n", errno);
 	tlog_close();
 	return err;
 }

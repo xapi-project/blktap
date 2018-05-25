@@ -807,6 +807,8 @@ tapdisk_server_run()
 
 	server.tlog_reopen_evid = err;
 
+	err = 0;
+
 	__tapdisk_server_run();
 
 out:
