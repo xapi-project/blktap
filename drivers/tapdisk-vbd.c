@@ -1076,126 +1076,15 @@ tapdisk_vbd_check_queue_state(td_vbd_t *vbd)
 
 }
 
-static inline int
-tapdisk_vbd_produce_rrds(td_vbd_t *vbd) {
-
-	td_image_t *leaf;
-	int off = 0, size = 0;
-	int err;
-	int i, j;
-	char *buf;
-	int json_str_len_off, md5sum_str_len_off, json_data_off, json_data_len;
-	const int json_str_len = 8 + 1, md5sum_str_len = 32 + 1;
-	char tmp[md5sum_str_len + 1];
-	time_t t;
-	MD5_CTX md5_ctx;
-	unsigned char md5_out[MD5_DIGEST_LENGTH];
-
-	ASSERT(vbd);
-
-	buf = vbd->rrd.shm.mem;
-
-	/*
-	 * If no VDI has been opened yet there's nothing to report.
-	 */
-	if (!buf)
-		return 0;
-
-	/*
-	 * Produce RRDs every five seconds.
-	 */
-	t = time(NULL);
-	if (t - vbd->rrd.last < 5)
-		return 0;
-	vbd->rrd.last = t;
-
-	size = vbd->rrd.shm.size - off;
-	err = tapdisk_snprintf(buf, &off, &size, 0, "DATASOURCES\n");
-	if (err)
-		return err;
-
-	/*
-	 * reserve space for JSON string length
-	 */
-	json_str_len_off = off;
-	off += json_str_len, size -= json_str_len;
-
-	/*
-	 * reserve space for MD5 sum of JSON string
-	 */
-	md5sum_str_len_off = off;
-	off += md5sum_str_len, size -= md5sum_str_len;
-
-	json_data_off = off;
-	err = tapdisk_snprintf(buf, &off, &size, 0,	"{\n");
-	err += tapdisk_snprintf(buf, &off, &size, 1, "\"timestamp\": %lu,\n",
-			time(NULL));
-	err += tapdisk_snprintf(buf, &off, &size, 1, "\"datasources\": {\n");
-	if (err)
-		return err;
-
-	leaf = tapdisk_vbd_first_image(vbd);
-
-	/*
-	 * XXX We're only reporting RRDs for leaves. We could traverse the list
-	 * of parent and report RRDs for each one of them, if there is something
-	 * to report. However, for internal VHD files there's nothing to report
-	 * so that would end up in a useless traverse of the list. We could address
-	 * this issue by keeping a list of images that do have an RRD callback.
-	 */
-	if (leaf && leaf->driver->ops->td_rrd) {
-		err = leaf->driver->ops->td_rrd(leaf->driver, buf, &off, &size);
-		if (err)
-			return err;
-		err = tapdisk_snprintf(buf, &off, &size, 0, ",\n");
-		if (err)
-			return err;
-	}
-
-	err += tapdisk_snprintf(buf, &off, &size, 2, "\"io_errors\": {\n");
-	err += tapdisk_snprintf(buf, &off, &size, 3,
-			"\"description\": \"Number of I/O errors\",\n");
-	err += tapdisk_snprintf(buf, &off, &size, 3, "\"owner\": \"host\",\n");
-	err += tapdisk_snprintf(buf, &off, &size, 3,  "\"type\": "
-			"\"absolute\",\n");
-	err += tapdisk_snprintf(buf, &off, &size, 3, "\"units\": \"units\",\n");
-	err += tapdisk_snprintf(buf, &off, &size, 3, "\"min\": \"0.00\",\n");
-	err += tapdisk_snprintf(buf, &off, &size, 3, "\"max\": \"inf\",\n");
-	err += tapdisk_snprintf(buf, &off, &size, 3, "\"value\": \"%llu\",\n",
-			vbd->errors);
-	err += tapdisk_snprintf(buf, &off, &size, 3, "\"value_type\": \"float\"\n");
-	err += tapdisk_snprintf(buf, &off, &size, 2, "}\n");
-	err += tapdisk_snprintf(buf, &off, &size, 1, "}\n");
-	err += tapdisk_snprintf(buf, &off, &size, 0, "}\n");
-	if (err)
-		return err;
-
-	json_data_len = off - json_str_len;
-	sprintf(tmp, "%08x\n", json_data_len);
-	strncpy(buf + json_str_len_off, tmp, json_str_len);
-
-	MD5_Init(&md5_ctx);
-	MD5_Update(&md5_ctx, buf + json_data_off, json_data_len);
-	MD5_Final(md5_out, &md5_ctx);
-	for (i = 0, j = 0; i < MD5_DIGEST_LENGTH; i++)
-		j += sprintf(buf + md5sum_str_len_off + j, "%02x", md5_out[i]);
-	buf[(md5sum_str_len_off + j)] = '\n';
-
-	memset(buf + off, '\0', size - off);
-	return msync(buf, vbd->rrd.shm.size, MS_ASYNC);
-}
-
 void
 tapdisk_vbd_check_state(td_vbd_t *vbd)
 {
-    struct td_xenblkif *blkif;
+	struct td_xenblkif *blkif;
 
-	tapdisk_vbd_produce_rrds(vbd);
-
-    /*
-     * TODO don't ignore return value
-     */
-    list_for_each_entry(blkif, &vbd->rings, entry)
+	/*
+	 * TODO don't ignore return value
+	 */
+	list_for_each_entry(blkif, &vbd->rings, entry)
 		tapdisk_xenblkif_ring_stats_update(blkif);
 
 	tapdisk_vbd_check_queue_state(vbd);
