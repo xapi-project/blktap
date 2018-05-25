@@ -209,7 +209,12 @@ lvm_parse_lv_devices(struct vg *vg, struct lv_segment *seg, char *devices)
 		}
 
 	if (pe_start == -1) {
-		EPRINTF("invalid pe_start value\n");
+		EPRINTF("invalid pe_start value, device %s not found?\n",
+			seg->device);
+		EPRINTF("PVs known to VG %s, count %d -\n", vg->name, vg->pv_cnt);
+		for (i = 0; i < vg->pv_cnt; i++) {
+			EPRINTF("%s\n", vg->pvs[i].name);
+		}
 		return -EINVAL;
 	}
 
