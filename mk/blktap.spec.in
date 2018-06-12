@@ -5,10 +5,12 @@ Release: @BLKTAP_RELEASE@
 License: BSD
 Group: System/Hypervisor
 Source0: %{name}-%{version}.tar.bz2
+URL: https://github.com/xapi-project/blktap
 
 BuildRoot: %{_tmppath}/%{name}-%{release}-buildroot
 Obsoletes: xen-blktap
-BuildRequires: e2fsprogs-devel, libaio-devel, systemd
+BuildRequires: e2fsprogs-devel, libaio-devel, systemd, autogen, autoconf, automake, libtool, libuuid-devel
+BuildRequires: xen-devel, kernel-headers, xen-dom0-libs-devel, zlib-devel, xen-libs-devel, libcmocka-devel, lcov, git
 Requires(post): systemd
 Requires(preun): systemd
 Requires(postun): systemd
@@ -37,16 +39,24 @@ Obsoletes: xen-blktap
 Blktap and VHD development files.
 
 %prep
-%setup -q
+%autosetup -p1 -S git
 
 %build
+sh autogen.sh
 %configure
-%{?cov_wrap} make
+%{?cov_wrap} make %{?coverage:GCOV=true}
+
+%check
+make check || (find mockatests -name \*.log -print -exec cat {} \; && false)
+./collect-test-results.sh %{buildroot}/testresults
 
 %install
 rm -rf %{buildroot}
 make install DESTDIR=%{buildroot}
 mkdir -p %{buildroot}%{_localstatedir}/log/blktap
+%if 0%{?coverage:1}
+cd ../ && find -name "*.gcno" | grep -v '.libs/' | xargs -d "\n" tar -cvjSf %{buildroot}/%{name}-%{version}.gcno.tar.bz2
+%endif
 
 %triggerin -- mdadm
 echo 'KERNEL=="td[a-z]*", GOTO="md_end"' > /etc/udev/rules.d/65-md-incremental.rules
@@ -85,6 +95,9 @@ cat /usr/lib/udev/rules.d/65-md-incremental.rules >> /etc/udev/rules.d/65-md-inc
 %{_libdir}/*.la
 %{_includedir}/vhd/*
 %{_includedir}/blktap/*
+%if 0%{?coverage:1}
+/%{name}-%{version}.gcno.tar.bz2
+%endif
 
 %post
 %systemd_post tapback.service
@@ -102,3 +115,48 @@ if [ $1 -eq 0 ]; then
 fi
 
 %changelog
+* Fri May 25 2018 marksy <mark.syms@citrix.com> - 3.7.0-1.0
+- CA-285194: ensure that tapdisk logs if it exits and also on opening its control
+
+* Fri May 25 2018 marksy <mark.syms@citrix.com> - 3.6.0-1.0
+- Release 3.6.0
+
+* Tue Apr 10 2018 marksy <mark.syms@citrix.com> - 3.5.0-1.17
+- CA-277128: remove redundant, broken RRD code from tapdisk
+
+* Tue Mar 27 2018 marksy <mark.syms@citrix.com> - 3.5.0-1.16
+- Gather the gcov coverage files during build
+
+* Fri Feb 16 2018 marksy <mark.syms@citrix.com> - 3.5.0-1.15
+- CP-26852: Support building with upstream Linux
+
+* Tue Jan 30 2018 marksy <mark.syms@citrix.com> - 3.5.0-1.14
+- Convert patch to use tabs for merge to github
+- Reorder patchqueue with patches commited to github
+- CA-220042: Add missing half of pull request 191 to patchqueue
+- Update patchqueue patch to match the github pull request
+
+* Wed Dec 06 2017 marksy <mark.syms@citrix.com> - 3.5.0-1.13
+- CP-20541 Enable conditional coverage build
+
+* Thu Oct 12 2017 marksy <mark.syms@citrix.com> - 3.5.0-1.12
+- Patch cleanup
+
+* Wed Oct 11 2017 marksy <mark.syms@citrix.com> - 3.5.0-1.11
+- CA-268288: Send logpath as an additional write
+
+* Wed Sep 27 2017 marksy <mark.syms@citrix.com> - 3.5.0-xs.1+1.10
+- CP-23545: Extend tap-ctl create to consider CBT parameters
+- CP-23920: [Unit test] Increase test coverage for cbt-util coalesce
+- CP-24547: [Unit test] Increase test coverage for cbt-util set
+
+
+%package testresults
+Group:    System/Hypervisor
+Summary:  test results for blktap package
+
+%description testresults
+The package contains the build time test results for the blktap package
+
+%files testresults
+/testresults
