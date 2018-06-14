@@ -174,9 +174,9 @@ tapback_backend_destroy(backend_t *backend)
     close(backend->ctrl_sock);
     unlink(backend->local.sun_path);
 
-	list_del(&backend->entry);
+    list_del(&backend->entry);
 
-	free(backend);
+    free(backend);
 }
 
 static void
@@ -223,6 +223,47 @@ tapback_write_pid(const char *pidfile)
     return err;
 }
 
+static inline backend_t *
+tapback_backend_alloc(const char *name, const char *pidfile,
+        const bool barrier)
+{
+    int err;
+    backend_t *backend;
+
+    backend = calloc(1, sizeof(*backend));
+    if (!backend) {
+        err = errno;
+        WARN(NULL, "failed to calloc: %s\n", strerror(err));
+        goto fail_calloc;
+    }
+    if (pidfile) {
+        backend->pidfile = strdup(pidfile);
+        if (unlikely(!backend->pidfile)) {
+            err = errno;
+            WARN(NULL, "failed to strdup: %s\n", strerror(err));
+            goto fail_pidfile;
+        }
+    }
+    backend->name = strdup(name);
+    if (!backend->name) {
+        err = errno;
+        goto fail_name;
+    }
+    backend->barrier = barrier;
+    INIT_LIST_HEAD(&backend->entry);
+    backend->ctrl_sock = -1;
+
+    return backend;
+
+fail_name:
+    free(backend->pidfile);
+fail_pidfile:
+    free(backend);
+fail_calloc:
+    errno = err;
+    return NULL;
+}
+
 /**
  * Initializes the back-end descriptor. There is one back-end per tapback
  * process. Also, it initiates a watch to XenStore on backend/<backend name>.
@@ -235,23 +276,17 @@ tapback_backend_create(const char *name, const char *pidfile,
 {
     int err;
     int len;
-	backend_t *backend = NULL;
+    backend_t *backend = NULL;
 
     ASSERT(name);
 
-	backend = calloc(1, sizeof(*backend));
-	if (!backend) {
-		err = errno;
-		goto out;
-	}
+    backend = tapback_backend_alloc(name, pidfile, barrier);
+    if (!backend) {
+        WARN(NULL, "failed to allocate backend.\n");
+        return NULL;
+    }
 
-    if (pidfile) {
-        backend->pidfile = strdup(pidfile);
-        if (unlikely(!backend->pidfile)) {
-            err = errno;
-            WARN(NULL, "failed to strdup: %s\n", strerror(err));
-            goto out;
-        }
+    if (backend->pidfile) {
         err = tapback_write_pid(backend->pidfile);
         if (unlikely(err)) {
             WARN(NULL, "failed to write PID to %s: %s\n",
@@ -259,18 +294,6 @@ tapback_backend_create(const char *name, const char *pidfile,
             goto out;
         }
     }
-
-    backend->name = strdup(name);
-    if (!backend->name) {
-        err = errno;
-        goto out;
-    }
-
-	backend->barrier = barrier;
-
-    backend->path = NULL;
-
-    INIT_LIST_HEAD(&backend->entry);
 
     if (domid) {
         backend->slave_domid = domid;
@@ -328,8 +351,6 @@ tapback_backend_create(const char *name, const char *pidfile,
     }
 
     err = 0;
-
-    backend->ctrl_sock = -1;
 
     if (!(backend->xs = xs_daemon_open())) {
         err = EINVAL;
