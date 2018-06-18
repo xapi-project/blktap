@@ -1221,6 +1221,9 @@ vhd_journal_open(vhd_journal_t *j, const char *file, const char *jfile)
 		goto fail;
 
 	vhd->fd = open(file, O_LARGEFILE | O_RDWR | O_DIRECT);
+	if (vhd->fd == -1  && errno == EINVAL) {
+		vhd->fd = open(file,  O_LARGEFILE | O_RDWR | O_DSYNC);
+	}
 	if (vhd->fd == -1) {
 		err = -errno;
 		goto fail;
@@ -1463,6 +1466,9 @@ vhd_journal_revert(vhd_journal_t *j)
 
 	vhd_close(&j->vhd);
 	j->vhd.fd = open(file, O_RDWR | O_DIRECT | O_LARGEFILE);
+	if (j->vhd.fd == -1  && errno == EINVAL) {
+		j->vhd.fd = open(file,  O_LARGEFILE | O_RDWR | O_DSYNC);
+	}
 	if (j->vhd.fd == -1) {
 		free(file);
 		return -errno;

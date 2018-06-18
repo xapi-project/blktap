@@ -958,8 +958,13 @@ open(const char *pathname, int flags, mode_t _mode)
 	_RESOLVE(_std_open);
 	mode = (flags & O_CREAT ? _mode : 0);
 
-	if (!_libvhd_io_interpose)
-		return _std_open(pathname, flags, mode);
+	if (!_libvhd_io_interpose) {
+		int ret = _std_open(pathname, flags, mode);
+		if (ret == -1 && errno == EINVAL && (flags) & O_DIRECT) {
+			ret = _std_open(pathname, (flags | O_DSYNC) & ((int) ~O_DIRECT), mode);
+		}
+		return ret;
+	}
 
 	fd = _libvhd_io_open(pathname, flags, mode, _std_open);
 

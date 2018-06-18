@@ -2597,6 +2597,10 @@ vhd_open(vhd_context_t *ctx, const char *file, int flags)
 		oflags |= O_RDWR;
 
 	ctx->fd = open(ctx->file, oflags, 0644);
+	if (ctx->fd == -1 && (oflags & O_DIRECT) && errno == EINVAL) {
+		int newflags = ((oflags & ~O_DIRECT) | O_DSYNC);
+		ctx->fd = open(ctx->file, newflags, 0644);
+	}
 	if (ctx->fd == -1) {
 		err = -errno;
 		VHDLOG("failed to open %s: %d\n", ctx->file, err);
@@ -3173,6 +3177,9 @@ __vhd_create(const char *name, const char *parent, uint64_t bytes, int type,
 
 	ctx.fd = open(name, O_WRONLY | O_CREAT |
 		      O_TRUNC | O_LARGEFILE | O_DIRECT, 0644);
+	if (ctx.fd == -1  && errno == EINVAL) {
+		ctx.fd = open(name, O_WRONLY | O_CREAT | O_TRUNC | O_LARGEFILE | O_DSYNC, 0644);
+	}
 	if (ctx.fd == -1) {
         fprintf(stderr, "%s: failed to create: %d\n", name, -errno);
         return -errno;
@@ -3391,6 +3398,9 @@ __raw_read_link(char *filename,
 	err = 0;
 	errno = 0;
 	fd = open(filename, O_RDONLY | O_DIRECT | O_LARGEFILE);
+	if (fd == -1 && errno == EINVAL) {
+		fd = open(filename, O_RDONLY | O_LARGEFILE);
+	}
 	if (fd == -1) {
 		VHDLOG("%s: failed to open: %d\n", filename, -errno);
 		return -errno;
