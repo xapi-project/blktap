@@ -736,6 +736,8 @@ vhd_util_scan_open_volume(vhd_context_t *vhd, struct vhd_image *image)
 	}
 
 	vhd->fd = open(target->device, O_RDONLY | O_DIRECT | O_LARGEFILE);
+	if (vhd->fd == -1 && errno == EINVAL)
+		vhd->fd = open(target->device, O_RDONLY | O_LARGEFILE);
 	if (vhd->fd == -1) {
 		free(vhd->file);
 		vhd->file = NULL;

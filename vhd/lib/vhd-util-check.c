@@ -1093,6 +1093,9 @@ vhd_util_check_vhd(struct vhd_util_check_ctx *ctx, const char *name)
 	}
 
 	fd = open(name, O_RDONLY | O_DIRECT | O_LARGEFILE);
+	if (fd == -1 && errno == EINVAL) {
+		fd = open(name, O_RDONLY | O_LARGEFILE);
+	}
 	if (fd == -1) {
 		printf("error opening %s\n", name);
 		return -errno;
