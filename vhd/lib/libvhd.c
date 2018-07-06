@@ -1507,13 +1507,15 @@ vhd_macx_decode_location(char *in, char *out, int len)
 
 	name = out;
 	ibl  = obl = len;
-
-	cd = iconv_open("ASCII", "UTF-8");
-	if (cd == (iconv_t)-1) 
+	
+	if ( (cd = iconv_open("ASCII", "UTF-8")) == (iconv_t)-1 ) {
 		return NULL;
+	}
 
-	if (iconv(cd, &in, &ibl, &out, &obl) == (size_t)-1 || ibl)
+	if (iconv(cd, &in, &ibl, &out, &obl) == (size_t)-1 || ibl) {
+		iconv_close(cd);
 		return NULL;
+	}
 
 	iconv_close(cd);
 	*out = '\0';
