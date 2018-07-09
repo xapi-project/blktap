@@ -85,5 +85,6 @@ tapback/Makefile
 mockatests/Makefile
 mockatests/wrappers/Makefile
 mockatests/cbt/Makefile
+mockatests/drivers/Makefile
 ])
 AC_OUTPUT
