@@ -3,7 +3,7 @@ SUBDIRS = lib
 
 AM_CFLAGS  = -Wall
 AM_CFLAGS += -Werror
-AM_CFLAGS += $(if $(GCOV),-fprofile-dir=/tmp -fprofile-arcs -ftest-coverage)
+AM_CFLAGS += $(if $(GCOV),-fprofile-dir=/tmp/coverage/blktap/vhd -fprofile-arcs -ftest-coverage)
 
 AM_CPPFLAGS  = -D_GNU_SOURCE
 AM_CPPFLAGS += -I$(top_srcdir)/include
