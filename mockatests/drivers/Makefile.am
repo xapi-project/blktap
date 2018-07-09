@@ -1,7 +1,6 @@
 AM_CFLAGS  = -Wall
 AM_CFLAGS += -Werror
-AM_CFLAGS += -fprofile-arcs
-AM_CFLAGS += -ftest-coverage
+AM_CFLAGS += -fprofile-dir=/tmp/coverage/blktap/mockatests/drivers -fprofile-arcs -ftest-coverage
 AM_CFLAGS += -Og -fno-inline-functions -g
 
 AM_CPPFLAGS = -I$(top_srcdir)/include -I$(top_srcdir)/drivers -I../include

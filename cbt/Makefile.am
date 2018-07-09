@@ -1,8 +1,6 @@
 AM_CFLAGS  = -Wall
 AM_CFLAGS += -Werror
-# Need this to be conditionalised
-#AM_CFLAGS += -fprofile-arcs
-#AM_CFLAGS += -ftest-coverage
+AM_CFLAGS += $(if $(GCOV),-fprofile-dir=/tmp/coverage/blktap/cbt -fprofile-arcs -ftest-coverage)
 
 AM_CPPFLAGS = -I$(top_srcdir)/include
 
