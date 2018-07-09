@@ -46,14 +46,18 @@ static void
 __stats_vsprintf(td_stats_t *st,
 		      const char *fmt, va_list ap)
 {
-	void *buf;
+	char *buf;
 	int written, new_size, off;
 	size_t size = 0;
 	written = 1;
-	while (written > size) {
+	while (written >= size) {
+		va_list aq;
+
 		size = st->buf + st->size - st->pos;
-		written = vsnprintf(st->pos, size, fmt, ap);
-		if (written <= size)
+		va_copy(aq, ap);
+		written = vsnprintf(st->pos, size, fmt, aq);
+		va_end(aq);
+		if (written < size)
 			break;
 		new_size = st->size * 2;
 		buf = realloc(st->buf, new_size);

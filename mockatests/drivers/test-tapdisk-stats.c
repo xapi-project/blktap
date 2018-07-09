@@ -32,11 +32,94 @@
 #include <stdarg.h>
 #include <setjmp.h>
 #include <cmocka.h>
+#include <stdlib.h>
 
 #include "test-suites.h"
 
+#include "tapdisk-stats.h"
 
+#define TD_CTL_TEST_BUFSIZ ((size_t)64)
+
+/* Test that filling a normal stats buffer produces the
+ * expected output */
 void
-test_stats_success(void **state)
+test_stats_normal_buffer(void **state)
 {
+	td_stats_t 	st;
+	char		*buf;
+
+	buf = malloc(TD_CTL_TEST_BUFSIZ);
+	assert_non_null(buf);
+
+	tapdisk_stats_init(&st, buf, TD_CTL_TEST_BUFSIZ);
+
+	tapdisk_stats_enter(&st, '{');
+	tapdisk_stats_val(&st, "d", 123456789);
+	tapdisk_stats_leave(&st, '}');
+
+	assert_string_equal((char*)st.buf, "{ 123456789 }");
+
+	/* tapdisk_stats_init() put buf into st->buf and in the general case
+	 * it might have been realloc()'d so don't free buf here */
+	free(st.buf);
+}
+
+/* Test that filling the stats buffer with more than the 
+ * initial allocation correctly reallocates and extends
+ * the buffer
+ */
+void
+test_stats_realloc_buffer(void **state)
+{
+	td_stats_t 	st;
+	char		*buf;
+	int			i;
+
+	buf = malloc(TD_CTL_TEST_BUFSIZ);
+	assert_non_null(buf);
+
+	tapdisk_stats_init(&st, buf, TD_CTL_TEST_BUFSIZ);
+
+	for (i = 0; i < 10; i++) {
+		tapdisk_stats_val(&st, "d", 1234567890);
+	}
+
+	assert_string_equal((char*)st.buf, "1234567890, 1234567890, 1234567890, "
+		"1234567890, 1234567890, 1234567890, 1234567890, 1234567890, "
+		"1234567890, 1234567890");
+
+	/* tapdisk_stats_init() put buf into st->buf and in the general case
+	 * it might have been realloc()'d so don't free buf here */
+	free(st.buf);
+}
+
+/* Test that filling the stats buffer to exactly the
+ * initial buffer length not including the terminating
+ * NULL is handled correctly. Note if we change TD_CTL_TEST_BUFSIZ
+ * then this test has to change.
+ */
+void
+test_stats_realloc_buffer_edgecase(void **state)
+{
+	td_stats_t 	st;
+	char		*buf;
+	int			i;
+
+	buf = malloc(TD_CTL_TEST_BUFSIZ);
+	assert_non_null(buf);
+
+	tapdisk_stats_init(&st, buf, TD_CTL_TEST_BUFSIZ);
+
+	/* Put in 8 characters initially */
+	tapdisk_stats_val(&st, "d", 12345678);
+	/* Then 7 lots of 6 because the comma-space will pad it to 8 */
+	for (i = 0; i < 7; i++) {
+		tapdisk_stats_val(&st, "d", 123456);
+	}
+	assert_string_equal((char*)st.buf, "12345678, 123456, 123456, "
+		"123456, 123456, 123456, 123456, 123456");
+
+	/* tapdisk_stats_init() put buf into st->buf and in the general case
+	 * it might have been realloc()'d so don't free buf here */
+	free(st.buf);
 }

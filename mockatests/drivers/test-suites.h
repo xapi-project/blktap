@@ -36,14 +36,14 @@
 #include <uuid/uuid.h>
 #include <stdint.h>
 
-
-void test_stats_success(void **state);
-
+void test_stats_normal_buffer(void **state);
+void test_stats_realloc_buffer(void **state);
+void test_stats_realloc_buffer_edgecase(void **state);
 
 static const struct CMUnitTest tapdisk_stats_tests[] = {
-	cmocka_unit_test(test_stats_success)
-
-
+	cmocka_unit_test(test_stats_normal_buffer),
+	cmocka_unit_test(test_stats_realloc_buffer),
+	cmocka_unit_test(test_stats_realloc_buffer_edgecase)
 };
 
 

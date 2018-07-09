@@ -36,9 +36,9 @@
 #define TD_STATS_MAX_DEPTH 8
 
 struct tapdisk_stats_ctx {
-	void           *pos;
+	char           *pos;
 
-	void           *buf;
+	char           *buf;
 	size_t          size;
 
 	int             n_elem[TD_STATS_MAX_DEPTH];
