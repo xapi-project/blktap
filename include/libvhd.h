@@ -235,6 +235,8 @@ vhd_parent_raw(vhd_context_t *ctx)
 	return uuid_is_null(ctx->header.prt_uuid);
 }
 
+int open_optional_odirect(const char *pathname, int flags, ...);
+
 void libvhd_set_log_level(int);
 
 int vhd_test_file_fixed(const char *, int *);

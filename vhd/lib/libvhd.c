@@ -44,6 +44,7 @@
 #include <libgen.h>
 #include <iconv.h>
 #include <limits.h>
+#include <stdarg.h>
 #include <sys/mman.h>
 #include <sys/stat.h>
 #include <sys/types.h>
@@ -115,6 +116,24 @@ static inline void
 old_clear_bit(volatile char *addr, int nr)
 {
 	((uint32_t *)addr)[nr >> 5] &= ~(1 << (nr & 31));
+}
+
+int
+open_optional_odirect(const char *pathname, int flags, ...)
+{
+	mode_t mode;
+	if (flags & O_CREAT) {
+		va_list arg;
+		va_start(arg, flags);
+		mode = va_arg(arg, mode_t);
+		va_end(arg);
+	}
+	int fd = open(pathname, flags, mode);
+	if (fd == -1 && (flags & O_DIRECT) && errno == EINVAL) {
+		VHDLOG("could not open() file '%s', retrying without O_DIRECT and using O_DSYNC\n", pathname);
+		return open(pathname, ((flags & ~O_DIRECT) | O_DSYNC), mode);
+	}
+	return fd;
 }
 
 void
@@ -2596,11 +2615,7 @@ vhd_open(vhd_context_t *ctx, const char *file, int flags)
 	if (flags & VHD_OPEN_RDWR)
 		oflags |= O_RDWR;
 
-	ctx->fd = open(ctx->file, oflags, 0644);
-	if (ctx->fd == -1 && (oflags & O_DIRECT) && errno == EINVAL) {
-		int newflags = ((oflags & ~O_DIRECT) | O_DSYNC);
-		ctx->fd = open(ctx->file, newflags, 0644);
-	}
+	ctx->fd = open_optional_odirect(ctx->file, oflags, 0644);
 	if (ctx->fd == -1) {
 		err = -errno;
 		VHDLOG("failed to open %s: %d\n", ctx->file, err);
@@ -3175,11 +3190,8 @@ __vhd_create(const char *name, const char *parent, uint64_t bytes, int type,
 		blks = (mbytes + VHD_BLOCK_SIZE - 1) >> VHD_BLOCK_SHIFT;
 	size = blks << VHD_BLOCK_SHIFT;
 
-	ctx.fd = open(name, O_WRONLY | O_CREAT |
+	ctx.fd = open_optional_odirect(name, O_WRONLY | O_CREAT |
 		      O_TRUNC | O_LARGEFILE | O_DIRECT, 0644);
-	if (ctx.fd == -1  && errno == EINVAL) {
-		ctx.fd = open(name, O_WRONLY | O_CREAT | O_TRUNC | O_LARGEFILE | O_DSYNC, 0644);
-	}
 	if (ctx.fd == -1) {
         fprintf(stderr, "%s: failed to create: %d\n", name, -errno);
         return -errno;
@@ -3397,10 +3409,7 @@ __raw_read_link(char *filename,
 
 	err = 0;
 	errno = 0;
-	fd = open(filename, O_RDONLY | O_DIRECT | O_LARGEFILE);
-	if (fd == -1 && errno == EINVAL) {
-		fd = open(filename, O_RDONLY | O_LARGEFILE);
-	}
+	fd = open_optional_odirect(filename, O_RDONLY | O_DIRECT | O_LARGEFILE);
 	if (fd == -1) {
 		VHDLOG("%s: failed to open: %d\n", filename, -errno);
 		return -errno;
