@@ -121,7 +121,7 @@ old_clear_bit(volatile char *addr, int nr)
 int
 open_optional_odirect(const char *pathname, int flags, ...)
 {
-	mode_t mode;
+	mode_t mode = 0;
 	if (flags & O_CREAT) {
 		va_list arg;
 		va_start(arg, flags);
