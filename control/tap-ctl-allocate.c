@@ -40,6 +40,7 @@
 #include <string.h>
 #include <getopt.h>
 #include <libgen.h>
+#include <sys/file.h>
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <sys/ioctl.h>
@@ -135,16 +136,20 @@ tap_ctl_check_environment(void)
 	if (err)
 		return err;
 
-	if (!access(BLKTAP2_CONTROL_DEVICE, R_OK | W_OK))
-		return 0;
-
-	memset(name, 0, sizeof(name));
-
 	f = fopen("/proc/misc", "r");
 	if (!f) {
 		EPRINTF("failed to open /proc/misc: %d\n", errno);
 		return errno;
 	}
+	/* There is not a lot we can do about an error returned
+	 * from flock() so don't check */
+	flock(fileno(f), LOCK_EX);
+
+	/* Note err is 0 owing to tap_ctl_prepare_directory() above */
+	if (!access(BLKTAP2_CONTROL_DEVICE, R_OK | W_OK))
+		goto out;
+
+	memset(name, 0, sizeof(name));
 
 	while (fscanf(f, "%d %256s", &minor, name) == 2)
 		if (!strcmp(name, BLKTAP2_CONTROL_NAME)) {
@@ -158,6 +163,7 @@ tap_ctl_check_environment(void)
 	EPRINTF("didn't find %s in /proc/misc\n", BLKTAP2_CONTROL_NAME);
 
 out:
+	flock(fileno(f), LOCK_UN);
 	fclose(f);
 	return err;
 }
