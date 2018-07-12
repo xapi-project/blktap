@@ -492,10 +492,12 @@ valve_forward_stored_requests(td_valve_t *valve)
 		clone.cb      = __valve_complete_treq;
 		clone.cb_data = req;
 
+		list_move(&req->entry, &valve->forw);
+		/* 'list_move' must be run before td_forward_request.
+		 * 'req' may already be freed when td_forward_request returned.
+		 */
 		td_forward_request(clone);
 		valve->stats.forw++;
-
-		list_move(&req->entry, &valve->forw);
 	}
 }
 
