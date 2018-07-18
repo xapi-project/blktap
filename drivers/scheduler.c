@@ -37,7 +37,6 @@
 #include <unistd.h>
 #include <string.h>
 #include <sys/time.h>
-#include <fcntl.h>
 
 #include "debug.h"
 #include "tapdisk.h"
@@ -115,15 +114,6 @@ scheduler_prepare_events(scheduler_t *s)
 	scheduler_for_each_event(s, event) {
 		if (event->masked || event->dead)
 			continue;
-
-		if (event->mode & SCHEDULER_POLL_FD &&
-			(fcntl(event->fd, F_GETFL) < 0) &&
-			errno == EBADF)
-		{
-			EPRINTF("EBADF: Marking event dead, id: %d", event->id);
-			event->dead = 1;
-			continue;
-		}
 
 		if (event->mode & SCHEDULER_POLL_READ_FD) {
 			FD_SET(event->fd, &s->read_fds);
