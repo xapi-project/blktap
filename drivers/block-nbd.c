@@ -74,7 +74,6 @@ struct td_fdreceiver *fdreceiver = NULL;
 
 struct tdnbd_passed_fd {
 	char                    id[40];
-	struct                  timeval t;
 	int                     fd;
 } passed_fds[N_PASSED_FDS];
 
@@ -137,7 +136,11 @@ tdnbd_stash_passed_fd(int fd, char *msg, void *data)
 	int free_index = -1;
 	int i;
 	for (i = 0; i < N_PASSED_FDS; i++)
-		if (passed_fds[i].fd == -1) {
+		/* Check for unused slot before attempting to compare
+		 * names so that we never try to compare against the name
+		 * of an unused slot */
+		if (passed_fds[i].fd == -1 || strncmp(msg, passed_fds[i].id,
+					sizeof(passed_fds[i].id)) == 0) {
 			free_index = i;
 			break;
 		}
@@ -149,15 +152,19 @@ tdnbd_stash_passed_fd(int fd, char *msg, void *data)
 		return;
 	}
 
+	/* There exists a possibility that the FD we are replacing is still
+	 * open. Unconditionally close it here to avoid leaking FDs. Do not
+	 * care about errors from close(). */
+	if (passed_fds[free_index].fd > -1)
+		close(passed_fds[free_index].fd);
+
 	passed_fds[free_index].fd = fd;
 	strncpy(passed_fds[free_index].id, msg,
 			sizeof(passed_fds[free_index].id));
-	gettimeofday(&passed_fds[free_index].t, NULL);
-
 }
 
 static int
-tdnbd_retreive_passed_fd(const char *name)
+tdnbd_retrieve_passed_fd(const char *name)
 {
 	int fd, i;
 
@@ -801,7 +808,7 @@ tdnbd_open(td_driver_t* driver, const char* name, td_flag_t flags)
 				return -1;
 
 		} else {
-			prv->socket = tdnbd_retreive_passed_fd(name);
+			prv->socket = tdnbd_retrieve_passed_fd(name);
 			if (prv->socket < 0) {
 				ERROR("Couldn't find fd named: %s", name);
 				return -1;
