@@ -252,12 +252,16 @@ tap_ctl_allocate(int *minor, char **devname)
 	*minor = -1;
 
 	err = tap_ctl_check_environment();
-	if (err)
+	if (err) {
+		EPRINTF("tap-ctl allocate failed check environment");
 		return err;
+	}
 
 	err = tap_ctl_allocate_device(minor, devname);
-	if (err)
+	if (err) {
+		EPRINTF("tap-ctl allocate failed to allocate device");
 		return err;
+	}
 
 	return 0;
 }
