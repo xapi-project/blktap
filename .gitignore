@@ -2,10 +2,14 @@
 *~
 *.o
 *.a
+*.gcno
+*.gcda
 *.lo
 *.la
+*.log
 *.so
 *.so.*
+*.trs
 .deps
 .libs
 cscope.*
@@ -32,9 +36,13 @@ Makefile.in
 /drivers/td-rated
 /drivers/td-util
 /drivers/tapdisk
+/cbt/cbt-util
 /control/tap-ctl
+/cpumond/cpumond
 /part/part-util
 /lvm/lvm-util
+/mockatests/cbt/test-cbt-util
+/mockatests/drivers/test-drivers
 /vhd/vhd-index
 /vhd/vhd-update
 /vhd/vhd-util
@@ -47,8 +55,14 @@ Makefile.in
 /lvm/Makefile
 /part/Makefile
 /drivers/Makefile
+/cbt/Makefile
 /control/Makefile
+/cpumond/Makefile
 /include/Makefile
+/mockatests/Makefile
+/mockatests/cbt/Makefile
+/mockatests/drivers/Makefile
+/mockatests/wrappers/Makefile
 /vhd/Makefile
 /vhd/lib/Makefile
 /vhd/lib/test/Makefile
@@ -61,6 +75,9 @@ mk/config.log
 
 # doxygen
 /html/
+
+# tests
+/results
 
 # ctags
 tags
