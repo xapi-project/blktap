@@ -74,6 +74,7 @@ tap_ctl_prepare_directory(const char *dir)
 		if (err && errno != EEXIST) {
 			PERROR("mkdir %s", name);
 			err = errno;
+			EPRINTF("mkdir failed with %d\n", err);
 			break;
 		}
 
@@ -112,14 +113,17 @@ tap_ctl_make_device(const char *devname, const int major,
 		err = errno;
 		if (err != ENOENT) {
 			PERROR("unlink %s", devname);
+			EPRINTF("Unlink failed with %d\n", err);
 			return err;
 		}
 	}
 
 	err = mknod(devname, perm, makedev(major, minor));
 	if (err) {
+		err = errno;
 		PERROR("mknod %s", devname);
-		return errno;
+		EPRINTF("Mknod failed with %d\n", err);
+		return err;
 	}
 
 	return 0;
@@ -133,8 +137,10 @@ tap_ctl_check_environment(void)
 	char name[256];
 
 	err = tap_ctl_prepare_directory(BLKTAP2_CONTROL_DIR);
-	if (err)
+	if (err) {
+		EPRINTF("Prepare directory failed %d", err);
 		return err;
+	}
 
 	f = fopen("/proc/misc", "r");
 	if (!f) {
@@ -156,6 +162,8 @@ tap_ctl_check_environment(void)
 			err = tap_ctl_make_device(BLKTAP2_CONTROL_DEVICE,
 						  MISC_MAJOR,
 						  minor, S_IFCHR | 0600);
+			if (err)
+				EPRINTF("tap_ctl_make_device failed\n");
 			goto out;
 		}
 
