@@ -440,20 +440,15 @@ frontend_changed(vbd_t * const device, const XenbusState state)
 
     switch (state) {
         case XenbusStateInitialising:
-			if (device->hotplug_status_connected)
-				err = xenbus_switch_state(device, XenbusStateInitWait);
+            err = xenbus_switch_state(device, XenbusStateInitWait);
             break;
         case XenbusStateInitialised:
     	case XenbusStateConnected:
-            if (!device->hotplug_status_connected)
-                DBG(device, "udev scripts haven't yet run\n");
-            else {
-                if (device->state != XenbusStateConnected) {
-                    DBG(device, "connecting to front-end\n");
-                    err = xenbus_connect(device);
-                } else
-                    DBG(device, "already connected\n");
-            }
+            if (device->state != XenbusStateConnected) {
+                DBG(device, "connecting to front-end\n");
+                err = xenbus_connect(device);
+            } else
+                DBG(device, "already connected\n");
             break;
         case XenbusStateClosing:
             err = xenbus_switch_state(device, XenbusStateClosing);
@@ -478,7 +473,7 @@ tapback_backend_handle_otherend_watch(backend_t *backend,
 {
     vbd_t *device = NULL;
     int err = 0, state = 0;
-    char *s = NULL, *end = NULL, *_path = NULL;
+    char *s = NULL, *end = NULL;
 
 	ASSERT(backend);
     ASSERT(path);
@@ -507,32 +502,9 @@ tapback_backend_handle_otherend_watch(backend_t *backend,
     /*
      * Read the new front-end's state.
      */
-	s = tapback_xs_read(device->backend->xs, XBT_NULL, "%s",
-			device->frontend_state_path);
-    if (!s) {
-        err = errno;
-		/*
-         * If the front-end XenBus node is missing, the XenBus device has been
-         * removed: remove the XenBus back-end node.
-		 */
-		if (err == ENOENT) {
-            err = asprintf(&_path, "%s/%s/%d/%d", XENSTORE_BACKEND,
-                    device->backend->name, device->domid, device->devid);
-            if (err == -1) {
-                err = errno;
-                WARN(device, "failed to asprintf: %s\n", strerror(err));
-                goto out;
-            }
-            err = 0;
-            if (!xs_rm(device->backend->xs, XBT_NULL, _path)) {
-                if (errno != ENOENT) {
-                    err = errno;
-                    WARN(device, "failed to remove %s: %s\n", path,
-                            strerror(err));
-                }
-            }
-		}
-    } else {
+    s = tapback_xs_read(device->backend->xs, XBT_NULL, "%s",
+            device->frontend_state_path);
+    if(s) {
         state = strtol(s, &end, 0);
         if (*end != 0 || end == s) {
             WARN(device, "invalid XenBus state '%s'\n", s);
@@ -541,9 +513,7 @@ tapback_backend_handle_otherend_watch(backend_t *backend,
             err = frontend_changed(device, state);
     }
 
-out:
     free(s);
-    free(_path);
     return err;
 }
 

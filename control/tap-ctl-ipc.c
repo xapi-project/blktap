@@ -64,7 +64,7 @@ tap_ctl_read_raw(int fd, void *buf, size_t size, struct timeval *timeout)
 		if (ret == -1)
 			break;
 		else if (FD_ISSET(fd, &readfds)) {
-			ret = read(fd, buf + offset, size - offset);
+			ret = read(fd, (char*)buf + offset, size - offset);
 			if (ret <= 0)
 				break;
 			offset += ret;
@@ -120,7 +120,7 @@ tap_ctl_write_message(int fd, tapdisk_message_t *message, struct timeval *timeou
 		if (ret == -1)
 			break;
 		else if (FD_ISSET(fd, &writefds)) {
-			ret = write(fd, message + offset, len - offset);
+			ret = write(fd, (char*)message + offset, len - offset);
 			if (ret <= 0)
 				break;
 			offset += ret;

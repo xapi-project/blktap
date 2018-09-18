@@ -931,8 +931,8 @@ tapdisk_control_close_image(struct tapdisk_ctl_conn *conn,
 
 out:
 	response->cookie = request->cookie;
-    if (!err)
-        response->type = TAPDISK_MESSAGE_CLOSE_RSP;
+	if (!err)
+		response->type = TAPDISK_MESSAGE_CLOSE_RSP;
 	return err;
 }
 

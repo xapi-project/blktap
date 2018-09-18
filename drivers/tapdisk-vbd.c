@@ -636,13 +636,13 @@ tapdisk_vbd_open_vdi(td_vbd_t *vbd, const char *name, td_flag_t flags, int prt_d
 		}
 	}
 
-    err = vbd_stats_create(vbd);
-    if (err)
-        goto fail;
+	err = vbd_stats_create(vbd);
+	if (err)
+		goto fail;
 
-    err = td_metrics_vdi_start(vbd->tap->minor, &vbd->vdi_stats);
-    if (err)
-        goto fail;
+	err = td_metrics_vdi_start(vbd->tap->minor, &vbd->vdi_stats);
+	if (err)
+		goto fail;
 	if (tmp != vbd->name)
 		free(tmp);
 

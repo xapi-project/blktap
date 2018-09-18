@@ -243,9 +243,10 @@ tapdisk_image_open_parent(td_image_t *image, td_image_t **_parent)
 	if (err)
 		return err;
 
-    if (((id.flags & TD_OPEN_NO_O_DIRECT) == TD_OPEN_NO_O_DIRECT) &&
-            ((id.flags & TD_OPEN_LOCAL_CACHE) == TD_OPEN_LOCAL_CACHE))
-        id.flags &= ~TD_OPEN_NO_O_DIRECT;
+	if (((id.flags & TD_OPEN_NO_O_DIRECT) == TD_OPEN_NO_O_DIRECT) &&
+	    ((id.flags & TD_OPEN_LOCAL_CACHE) == TD_OPEN_LOCAL_CACHE))
+		id.flags &= ~TD_OPEN_NO_O_DIRECT;
+
 	err = tapdisk_image_open(id.type, id.name, id.flags, &parent);
 	if (err)
 		return err;
