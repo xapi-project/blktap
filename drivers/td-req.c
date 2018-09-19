@@ -5,14 +5,14 @@
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
- * 
+ *
  *  1. Redistributions of source code must retain the above copyright
  *     notice, this list of conditions and the following disclaimer.
  *  2. Redistributions in binary form must reproduce the above copyright
  *     notice, this list of conditions and the following disclaimer in the
  *     documentation and/or other materials provided with the distribution.
- *  3. Neither the name of the copyright holder nor the names of its 
- *     contributors may be used to endorse or promote products derived from 
+ *  3. Neither the name of the copyright holder nor the names of its
+ *     contributors may be used to endorse or promote products derived from
  *     this software without specific prior written permission.
  *
  * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
@@ -701,7 +701,7 @@ tapdisk_xenblkif_parse_request(struct td_xenblkif * const blkif,
     } else {
         blkif->stats.xenvbd->st_rd_sect += nr_sect;
         blkif->vbd_stats.stats->read_sectors += nr_sect;
-    } 
+    }
 
     /*
      * TODO Isn't this kind of expensive to do for each requests? Why does
@@ -914,8 +914,8 @@ tapdisk_xenblkif_queue_requests(struct td_xenblkif * const blkif,
         }
     }
 
-    /* there is a possibility of blkif getting freed if ring is 
-       dead and current request is the last one, hence adding 
+    /* there is a possibility of blkif getting freed if ring is
+       dead and current request is the last one, hence adding
        this check to avoid seg fault */
 
     if (nr_errors && blkif)

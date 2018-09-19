@@ -5,14 +5,14 @@
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
- * 
+ *
  *  1. Redistributions of source code must retain the above copyright
  *     notice, this list of conditions and the following disclaimer.
  *  2. Redistributions in binary form must reproduce the above copyright
  *     notice, this list of conditions and the following disclaimer in the
  *     documentation and/or other materials provided with the distribution.
- *  3. Neither the name of the copyright holder nor the names of its 
- *     contributors may be used to endorse or promote products derived from 
+ *  3. Neither the name of the copyright holder nor the names of its
+ *     contributors may be used to endorse or promote products derived from
  *     this software without specific prior written permission.
  *
  * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
@@ -203,12 +203,12 @@ struct vhd_bitmap {
 
 	char                     *map;         /* map should only be modified
 					        * in finish_bitmap_write */
-	char                     *shadow;      /* in-memory bitmap changes are 
+	char                     *shadow;      /* in-memory bitmap changes are
 					        * made to shadow and copied to
 					        * map only after having been
 					        * flushed to disk */
 	struct vhd_transaction    tx;          /* transaction data structure
-						* encapsulating data, bitmap, 
+						* encapsulating data, bitmap,
 						* and bat writes */
 	struct vhd_req_list       queue;       /* data writes waiting for next
 						* transaction */
@@ -677,7 +677,7 @@ __vhd_open(td_driver_t *driver, const char *name, vhd_flag_t flags)
 	if (err)
 		return err;
 
-	o_flags = ((test_vhd_flag(flags, VHD_FLAG_OPEN_RDONLY)) ? 
+	o_flags = ((test_vhd_flag(flags, VHD_FLAG_OPEN_RDONLY)) ?
 		   VHD_OPEN_RDONLY : VHD_OPEN_RDWR);
 	if ((test_vhd_flag(flags, VHD_FLAG_OPEN_RDONLY) ||
                 test_vhd_flag(flags, VHD_FLAG_OPEN_LOCAL_CACHE)) &&
@@ -725,7 +725,7 @@ __vhd_open(td_driver_t *driver, const char *name, vhd_flag_t flags)
         DBG(TLOG_INFO, "vhd_open: done (sz:%"PRIu64", sct:%lu, inf:%u)\n",
 	    driver->info.size, driver->info.sector_size, driver->info.info);
 
-	if (test_vhd_flag(flags, VHD_FLAG_OPEN_STRICT) && 
+	if (test_vhd_flag(flags, VHD_FLAG_OPEN_STRICT) &&
 	    !test_vhd_flag(flags, VHD_FLAG_OPEN_RDONLY)) {
 		err = vhd_kill_footer(s);
 		if (err) {
@@ -803,21 +803,21 @@ _vhd_close(td_driver_t *driver)
 {
 	int err;
 	struct vhd_state *s;
-	
+
 	DBG(TLOG_WARN, "vhd_close\n");
 	s = (struct vhd_state *)driver->data;
 
-	DPRINTF("gaps written/skipped: %ld/%ld\n", 
+	DPRINTF("gaps written/skipped: %ld/%ld\n",
 			s->debug_done_redundant_writes,
 			s->debug_skipped_redundant_writes);
 
 	/* don't write footer if tapdisk is read-only */
 	if (test_vhd_flag(s->flags, VHD_FLAG_OPEN_RDONLY))
 		goto free;
-	
-	/* 
+
+	/*
 	 * write footer if:
-	 *   - we killed it on open (opened with strict) 
+	 *   - we killed it on open (opened with strict)
 	 *   - we've written data since opening
 	 */
 	if (test_vhd_flag(s->flags, VHD_FLAG_OPEN_STRICT) || s->writes) {
@@ -867,7 +867,7 @@ vhd_validate_parent(td_driver_t *child_driver,
 
 	parent = (struct vhd_state *)parent_driver->data;
 
-	/* 
+	/*
 	 * This check removed because of cases like:
 	 *   - parent VHD marked as 'hidden'
 	 *   - parent VHD modified during coalesce
@@ -893,7 +893,7 @@ vhd_validate_parent(td_driver_t *child_driver,
 	}
 
 	/* TODO: compare sizes */
-	
+
 	return 0;
 }
 
@@ -934,9 +934,9 @@ clear_req_list(struct vhd_req_list *list)
 static inline void
 add_to_tail(struct vhd_req_list *list, struct vhd_request *e)
 {
-	if (!list->head) 
+	if (!list->head)
 		list->head = list->tail = e;
-	else 
+	else
 		list->tail = list->tail->next = e;
 }
 
@@ -1136,7 +1136,7 @@ static int
 alloc_vhd_bitmap(struct vhd_state *s, struct vhd_bitmap **bitmap, uint32_t blk)
 {
 	struct vhd_bitmap *bm;
-	
+
 	*bitmap = NULL;
 
 	if (s->bm_free_count > 0) {
@@ -1220,7 +1220,7 @@ read_bitmap_cache(struct vhd_state *s, uint64_t sector, uint8_t op)
 	struct vhd_bitmap *bm;
 
 	/* in fixed disks, every block is present */
-	if (s->vhd.footer.type == HD_TYPE_FIXED) 
+	if (s->vhd.footer.type == HD_TYPE_FIXED)
 		return VHD_BM_BIT_SET;
 
 	/* the extent the logical sector falls in */
@@ -1258,12 +1258,12 @@ read_bitmap_cache(struct vhd_state *s, uint64_t sector, uint8_t op)
 	if (test_vhd_flag(bm->status, VHD_FLAG_BM_READ_PENDING))
 		return VHD_BM_READ_PENDING;
 
-	return ((vhd_bitmap_test(&s->vhd, bm->map, sec)) ? 
+	return ((vhd_bitmap_test(&s->vhd, bm->map, sec)) ?
 		VHD_BM_BIT_SET : VHD_BM_BIT_CLEAR);
 }
 
 static int
-read_bitmap_cache_span(struct vhd_state *s, 
+read_bitmap_cache_span(struct vhd_state *s,
 		       uint64_t sector, int nr_secs, int value)
 {
 	int ret;
@@ -1271,7 +1271,7 @@ read_bitmap_cache_span(struct vhd_state *s,
 	struct vhd_bitmap *bm;
 
 	/* in fixed disks, every block is present */
-	if (s->vhd.footer.type == HD_TYPE_FIXED) 
+	if (s->vhd.footer.type == HD_TYPE_FIXED)
 		return nr_secs;
 
 	sec = sector % s->spb;
@@ -1281,7 +1281,7 @@ read_bitmap_cache_span(struct vhd_state *s,
 		return MIN(nr_secs, s->spb - sec);
 
 	bm  = get_bitmap(s, blk);
-	
+
 	ASSERT(bm && bitmap_valid(bm));
 
 	for (ret = 0; sec < s->spb && ret < nr_secs; sec++, ret++)
@@ -1295,7 +1295,7 @@ static inline struct vhd_request *
 alloc_vhd_request(struct vhd_state *s)
 {
 	struct vhd_request *req = NULL;
-	
+
 	if (s->vreq_free_count > 0) {
 		req = s->vreq_free[--s->vreq_free_count];
 		ASSERT(req->treq.secs == 0);
@@ -1455,22 +1455,22 @@ schedule_zero_bm_write(struct vhd_state *s,
 	aio_write(s, req, offset);
 }
 
-/* This is a performance optimization. When writing sequentially into full 
- * blocks, skipping (up-to-date) bitmaps causes an approx. 25% reduction in 
- * throughput. To prevent skipping, we issue redundant writes into the (padded) 
- * bitmap area just to make all writes sequential. This will help VHDs on raw 
+/* This is a performance optimization. When writing sequentially into full
+ * blocks, skipping (up-to-date) bitmaps causes an approx. 25% reduction in
+ * throughput. To prevent skipping, we issue redundant writes into the (padded)
+ * bitmap area just to make all writes sequential. This will help VHDs on raw
  * block devices, while the FS-based VHDs shouldn't suffer much.
  *
- * Note that it only makes sense to perform this reduntant bitmap write if the 
- * block is completely full (i.e. the batmap entry is set). If the block is not 
+ * Note that it only makes sense to perform this reduntant bitmap write if the
+ * block is completely full (i.e. the batmap entry is set). If the block is not
  * completely full then one of the following two things will be true:
  *  1. we'll either be allocating new sectors in this block and writing its
  *     bitmap transactionally, which will be slow anyways; or
  *  2. the IO will be skipping over the unallocated sectors again, so the
  *     pattern will not be sequential anyways
- * In either case a redundant bitmap write becomes pointless. This fact 
- * simplifies the implementation of redundant writes: since we know the bitmap 
- * cannot be updated by anyone else, we don't have to worry about transactions 
+ * In either case a redundant bitmap write becomes pointless. This fact
+ * simplifies the implementation of redundant writes: since we know the bitmap
+ * cannot be updated by anyone else, we don't have to worry about transactions
  * or potential write conflicts.
  * */
 static void
@@ -1483,7 +1483,7 @@ schedule_redundant_bm_write(struct vhd_state *s, uint32_t blk)
 	ASSERT(test_batmap(s, blk));
 
 	req = alloc_vhd_request(s);
-	if (!req) 
+	if (!req)
 		return;
 
 	req->treq.buf = s->padbm_buf;
@@ -1512,7 +1512,7 @@ update_bat(struct vhd_state *s, uint32_t blk)
 	struct vhd_bitmap *bm;
 
 	ASSERT(bat_entry(s, blk) == DD_BLK_UNUSED);
-	
+
 	if (bat_locked(s)) {
 		ASSERT(s->bat.pbw_blk == blk);
 		return 0;
@@ -1524,7 +1524,7 @@ update_bat(struct vhd_state *s, uint32_t blk)
 	if (!bm) {
 		/* install empty bitmap in cache */
 		err = alloc_vhd_bitmap(s, &bm, blk);
-		if (err) 
+		if (err)
 			return err;
 
 		install_bitmap(s, bm);
@@ -1601,7 +1601,7 @@ allocate_block(struct vhd_state *s, uint32_t blk)
 	if (!bm) {
 		/* install empty bitmap in cache */
 		err = alloc_vhd_bitmap(s, &bm, blk);
-		if (err) 
+		if (err)
 			return err;
 
 		install_bitmap(s, bm);
@@ -1615,7 +1615,7 @@ allocate_block(struct vhd_state *s, uint32_t blk)
 	return 0;
 }
 
-static int 
+static int
 schedule_data_read(struct vhd_state *s, td_request_t treq, vhd_flag_t flags)
 {
 	uint64_t offset;
@@ -1641,7 +1641,7 @@ schedule_data_read(struct vhd_state *s, td_request_t treq, vhd_flag_t flags)
 
  make_request:
 	req = alloc_vhd_request(s);
-	if (!req) 
+	if (!req)
 		return -EBUSY;
 
 	req->treq  = treq;
@@ -1713,7 +1713,7 @@ schedule_data_write(struct vhd_state *s, td_request_t treq, vhd_flag_t flags)
 		} else
 			add_to_transaction(&bm->tx, req);
 	} else if (sec == 0 && 	/* first sector inside data block */
-		   s->vhd.footer.type != HD_TYPE_FIXED && 
+		   s->vhd.footer.type != HD_TYPE_FIXED &&
 		   bat_entry(s, blk) != s->first_db &&
 		   test_batmap(s, blk))
 		schedule_redundant_bm_write(s, blk);
@@ -1771,7 +1771,7 @@ schedule_discard(struct vhd_state *s, td_request_t treq, vhd_flag_t flags)
 	return 0;
 }
 
-static int 
+static int
 schedule_bitmap_read(struct vhd_state *s, uint32_t blk)
 {
 	int err;
@@ -1832,7 +1832,7 @@ schedule_bitmap_write(struct vhd_state *s, uint32_t blk)
 		ASSERT(bat_locked(s) && s->bat.pbw_blk == blk);
 		offset = s->bat.pbw_offset;
 	}
-	
+
 	offset = vhd_sectors_to_bytes(offset);
 
 	req = &bm->req;
@@ -1855,9 +1855,9 @@ schedule_bitmap_write(struct vhd_state *s, uint32_t blk)
 	    req->treq.secs, offset);
 }
 
-/* 
+/*
  * queued requests will be submitted once the bitmap
- * describing them is read and the requests are validated. 
+ * describing them is read and the requests are validated.
  */
 static int
 __vhd_queue_request(struct vhd_state *s, uint8_t op, td_request_t treq)
@@ -2246,7 +2246,7 @@ finish_bitmap_transaction(struct vhd_state *s,
 		if (test_vhd_flag(tx->status, VHD_FLAG_TX_UPDATE_BAT)) {
 			/* still waiting for bat write */
 			ASSERT(bm->blk == s->bat.pbw_blk);
-			ASSERT(test_vhd_flag(s->bat.status, 
+			ASSERT(test_vhd_flag(s->bat.status,
 					     VHD_FLAG_BAT_WRITE_STARTED));
 			s->bat.req.tx = tx;
 			return;
@@ -2371,7 +2371,7 @@ finish_redundant_bm_write(struct vhd_request *req)
 	struct vhd_state *s = (struct vhd_state *) req->state;
 
 	s->returned++;
-	TRACE(s);	
+	TRACE(s);
 	/* blk = req->treq.sec / s->spb;
 	   DBG(TLOG_DBG, "blk: %u\n", blk); */
 
@@ -2415,7 +2415,7 @@ finish_bitmap_read(struct vhd_request *req)
 			next =  r->next;
 			free_vhd_request(s, r);
 
-			ASSERT(tmp.op == VHD_OP_DATA_READ || 
+			ASSERT(tmp.op == VHD_OP_DATA_READ ||
 			       tmp.op == VHD_OP_DATA_WRITE ||
 				   tmp.op == VHD_OP_DISCARD);
 
@@ -2470,7 +2470,7 @@ finish_data_read(struct vhd_request *req)
 {
 	struct vhd_state *s = req->state;
 
-	DBG(TLOG_DBG, "lsec 0x%08"PRIx64", blk: 0x%04"PRIx64"\n", 
+	DBG(TLOG_DBG, "lsec 0x%08"PRIx64", blk: 0x%04"PRIx64"\n",
 	    req->treq.sec, req->treq.sec / s->spb);
 	signal_completion(req, 0);
 }
@@ -2509,7 +2509,7 @@ finish_data_write(struct vhd_request *req)
 
 	} else if (!test_vhd_flag(req->flags, VHD_FLAG_REQ_QUEUED)) {
 		ASSERT(!req->next);
-		DBG(TLOG_DBG, "lsec: 0x%08"PRIx64", blk: 0x%04"PRIx64"\n", 
+		DBG(TLOG_DBG, "lsec: 0x%08"PRIx64", blk: 0x%04"PRIx64"\n",
 		    req->treq.sec, req->treq.sec / s->spb);
 		signal_completion(req, 0);
 	}
@@ -2613,7 +2613,7 @@ vhd_complete(void *arg, struct tiocb *tiocb, int err)
 	}
 }
 
-void 
+void
 vhd_debug(td_driver_t *driver)
 {
 	int i;
