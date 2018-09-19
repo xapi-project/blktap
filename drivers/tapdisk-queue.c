@@ -129,13 +129,16 @@ complete_tiocb(struct tqueue *queue, struct tiocb *tiocb, unsigned long res)
 	int err;
 	struct iocb *iocb = &tiocb->iocb;
 
+	if (tiocb->op == TIO_CMD_DISCARD) {
+		err = res;
+	} else {
 	if (res == iocb->u.c.nbytes)
 		err = 0;
 	else if ((int)res < 0)
 		err = (int)res;
 	else
 		err = -EIO;
-
+	}
 	tiocb->cb(tiocb->arg, tiocb, err);
 }
 
@@ -228,6 +231,19 @@ tapdisk_rwio_rw(const struct iocb *iocb)
 	return size;
 }
 
+static inline ssize_t
+tapdisk_rwio_discard(const struct iocb *iocb)
+{
+	int fd        = iocb->aio_fildes;
+	int mode      = FALLOC_FL_PUNCH_HOLE | FALLOC_FL_KEEP_SIZE;
+	long long off = iocb->u.c.offset;
+	size_t size   = iocb->u.c.nbytes;
+
+    if (fallocate(fd, mode, off, size))
+		return -errno;
+    return 0;
+}
+
 static int
 tapdisk_rwio_submit(struct tqueue *queue)
 {
@@ -248,7 +264,11 @@ tapdisk_rwio_submit(struct tqueue *queue)
 	for (i = 0; i < merged; i++) {
 		ep      = rwio->aio_events + i;
 		iocb    = queue->iocbs[i];
+		tiocb   = iocb->data;
 		ep->obj = iocb;
+		if (tiocb->op == TIO_CMD_DISCARD)
+			ep->res = tapdisk_rwio_discard(iocb);
+		else
 		ep->res = tapdisk_rwio_rw(iocb);
 	}
 

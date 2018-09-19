@@ -718,6 +718,37 @@ out:
     return err;
 }
 
+static inline int
+tapdisk_xenblkif_parse_request_discard(struct td_xenblkif * const blkif,
+									   struct td_xenblkif_req * const req)
+{
+	td_vbd_request_t *vreq;
+	blkif_request_discard_t *req_discard;
+	int err = 0;
+
+	ASSERT(blkif);
+    ASSERT(req);
+
+    vreq = &req->vreq;
+    ASSERT(vreq);
+
+	req_discard = (blkif_request_discard_t *)&req->msg;
+	vreq->sec = req_discard->sector_number;
+	vreq->nr_sectors = req_discard->nr_sectors;
+
+	/*
+     * TODO Isn't this kind of expensive to do for each requests? Why does
+     * the tapdisk need this in the first place?
+     */
+    snprintf(req->name, sizeof(req->name), "xenvbd-%d-%d.%"SCNx64"",
+             blkif->domid, blkif->devid, req->msg.id);
+
+    vreq->name = req->name;
+    vreq->token = blkif;
+    vreq->cb = __tapdisk_xenblkif_request_cb;
+
+	return err;
+}
 
 /**
  * Initialises the standard tapdisk request (td_vbd_request_t) from the
@@ -758,6 +789,12 @@ tapdisk_xenblkif_make_vbd_request(struct td_xenblkif * const blkif,
         tapreq->prot = PROT_READ;
         vreq->op = TD_OP_WRITE;
         break;
+	case BLKIF_OP_DISCARD:
+        blkif->stats.xenvbd->st_ds_req++;
+		//blkif->vbd_stats.stats->discard_reqs_submitted++;
+		tapreq->prot = PROT_READ;
+		vreq->op = TD_OP_DISCARD;
+		break;
     default:
         RING_ERR(blkif, "req %lu: invalid request type %d\n",
                 tapreq->msg.id, tapreq->msg.operation);
@@ -771,7 +808,8 @@ tapdisk_xenblkif_make_vbd_request(struct td_xenblkif * const blkif,
      * Check that the number of segments is sane.
      */
     if (unlikely((tapreq->msg.nr_segments == 0 &&
-                tapreq->msg.operation != BLKIF_OP_WRITE_BARRIER) ||
+				  tapreq->msg.operation != BLKIF_OP_WRITE_BARRIER &&
+				  tapreq->msg.operation != BLKIF_OP_DISCARD) ||
             tapreq->msg.nr_segments > BLKIF_MAX_SEGMENTS_PER_REQUEST)) {
         RING_ERR(blkif, "req %lu: bad number of segments in request (%d)\n",
                 tapreq->msg.id, tapreq->msg.nr_segments);
@@ -779,8 +817,14 @@ tapdisk_xenblkif_make_vbd_request(struct td_xenblkif * const blkif,
         goto out;
     }
 
-    if (likely(tapreq->msg.nr_segments))
+	if (unlikely(tapreq->msg.operation == BLKIF_OP_DISCARD)) {
+		err = tapdisk_xenblkif_parse_request_discard(blkif, tapreq);
+		goto out;
+	}
+
+    if (likely(tapreq->msg.nr_segments)) {
         err = tapdisk_xenblkif_parse_request(blkif, tapreq);
+	}
     /*
      * If we only got one request from the ring and that was a barrier one,
      * check whether the barrier requests completion conditions are satisfied
@@ -797,7 +841,6 @@ tapdisk_xenblkif_make_vbd_request(struct td_xenblkif * const blkif,
 out:
     return err;
 }
-
 
 /**
  * Queues a ring request, after it prepares it, to the standard taodisk queue
@@ -840,7 +883,6 @@ tapdisk_xenblkif_queue_request(struct td_xenblkif * const blkif,
 
     return 0;
 }
-
 
 void
 tapdisk_xenblkif_queue_requests(struct td_xenblkif * const blkif,

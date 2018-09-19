@@ -36,16 +36,19 @@
 #include "io-optimize.h"
 #include "scheduler.h"
 
+#define TIO_CMD_READ    0
+#define TIO_CMD_WRITE   1
+#define TIO_CMD_DISCARD 2
+
 struct tiocb;
 struct tfilter;
 
 typedef void (*td_queue_callback_t)(void *arg, struct tiocb *, int err);
 
-
 struct tiocb {
 	td_queue_callback_t   cb;
 	void                 *arg;
-
+	int                   op;
 	struct iocb           iocb;
 	struct tiocb         *next;
 };

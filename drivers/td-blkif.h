@@ -125,6 +125,7 @@ struct td_xenblkif {
      */
     int n_reqs_free;
 
+
     blkif_request_t **reqs_free;
 
     /**

@@ -292,7 +292,7 @@ static int
 tapdisk_server_init_aio(void)
 {
 	return tapdisk_init_queue(&server.aio_queue, TAPDISK_TIOCBS,
-				  TIO_DRV_LIO, NULL);
+				  TIO_DRV_RWIO, NULL);
 }
 
 static void
@@ -821,4 +821,3 @@ int
 tapdisk_server_event_set_timeout(event_id_t event_id, struct timeval timeo) {
 	return scheduler_event_set_timeout(&server.scheduler, event_id, timeo);
 }
-

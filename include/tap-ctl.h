@@ -193,8 +193,9 @@ int tap_ctl_disconnect_xenblkif(const pid_t pid, const domid_t domid,
  * @param minor
  *
  */
-int tap_ctl_info(pid_t pid, unsigned long long *sectors, unsigned int
-		*sector_size, unsigned int *info, const int minor);
+int tap_ctl_info(pid_t pid, unsigned long long *sectors,
+				 unsigned int *sector_size, unsigned int *info,
+				 bool *discard, const int minor);
 
 /**
  * Parses a type:/path/to/file string, storing the type and path to the output

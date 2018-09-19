@@ -237,6 +237,9 @@ tapdisk_filter_iocbs(struct tfilter *filter, struct iocb **iocbs, int num)
 	for (i = 0; i < num; i++) {
 		struct iocb *io = iocbs[i];
 
+		if (io->aio_lio_opcode == IO_CMD_NOOP)
+			continue;
+
 		if (filter->mode & TD_INJECT_FAULTS) {
 			if ((random() % 100) <= TD_FAULT_RATE) {
 				inject_fault(filter, io);
@@ -259,6 +262,9 @@ tapdisk_filter_events(struct tfilter *filter, struct io_event *events, int num)
 
 	for (i = 0; i < num; i++) {
 		struct iocb *io = events[i].obj;
+
+		if (io->aio_lio_opcode == IO_CMD_NOOP)
+			continue;
 
 		if (filter->mode & TD_INJECT_FAULTS) {
 			if (fault_injected(filter, io)) {

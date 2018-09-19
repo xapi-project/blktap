@@ -1246,7 +1246,7 @@ __tapdisk_vbd_complete_td_request(td_vbd_t *vbd, td_vbd_request_t *vreq,
             vbd->vdi_stats.stats->read_reqs_completed++;
             vbd->vdi_stats.stats->read_sectors += treq.secs;
             vbd->vdi_stats.stats->read_total_ticks += interval;
-        }else{
+        }else if (treq.op == TD_OP_WRITE){
             vbd->vdi_stats.stats->write_reqs_completed++;
             vbd->vdi_stats.stats->write_sectors += treq.secs;
             vbd->vdi_stats.stats->write_total_ticks += interval;
@@ -1502,6 +1502,56 @@ fail:
 }
 
 static int
+tapdisk_vbd_issue_request_discard(td_vbd_t *vbd, td_vbd_request_t *vreq)
+{
+	td_image_t *image;
+	td_request_t treq;
+	td_sector_t sec;
+	int err;
+
+	sec    = vreq->sec;
+	image  = tapdisk_vbd_first_image(vbd);
+
+	vreq->submitting = 1;
+
+	tapdisk_vbd_mark_progress(vbd);
+	vreq->last_try = vbd->ts;
+
+	tapdisk_vbd_move_request(vreq, &vbd->pending_requests);
+
+	err = tapdisk_vbd_check_queue(vbd);
+	if (err) {
+		vreq->error = err;
+		goto out;
+	}
+
+	err = tapdisk_image_check_request(image, vreq);
+	if (err) {
+		vreq->error = err;
+		goto out;
+	}
+
+	treq.sidx = 0;
+	treq.sec = sec;
+	treq.secs = vreq->nr_sectors;
+	treq.image = image;
+	treq.cb = tapdisk_vbd_complete_td_request;
+	treq.cb_data = NULL;
+	treq.vreq = vreq;
+	treq.op = TD_OP_DISCARD;
+	td_queue_discard(treq.image, treq);
+
+ out:
+	vreq->submitting--;
+	if (!vreq->secs_pending) {
+		err = (err ? : vreq->error);
+		tapdisk_vbd_complete_vbd_request(vbd, vreq);
+	}
+
+	return err;
+}
+
+static int
 tapdisk_vbd_request_completed(td_vbd_t *vbd, td_vbd_request_t *vreq)
 {
 	return vreq->list_head == &vbd->completed_requests;
@@ -1540,6 +1590,9 @@ tapdisk_vbd_reissue_failed_requests(td_vbd_t *vbd)
 		    "sec 0x%08"PRIx64", iovcnt: %d\n", vreq->num_retries,
 		    vreq->name, vreq->sec, vreq->iovcnt);
 
+		if (vreq->op == TD_OP_DISCARD)
+			err = tapdisk_vbd_issue_request_discard(vbd, vreq);
+		else
 		err = tapdisk_vbd_issue_request(vbd, vreq);
 		/*
 		 * if this request failed, but was not completed,
@@ -1571,6 +1624,9 @@ tapdisk_vbd_issue_new_requests(td_vbd_t *vbd)
 	td_vbd_request_t *vreq, *tmp;
 
 	tapdisk_vbd_for_each_request(vreq, tmp, &vbd->new_requests) {
+		if (vreq->op == TD_OP_DISCARD)
+			err = tapdisk_vbd_issue_request_discard(vbd, vreq);
+		else
 		err = tapdisk_vbd_issue_request(vbd, vreq);
 		/*
 		 * if this request failed, but was not completed,

@@ -358,7 +358,7 @@ physical_device_changed(vbd_t *device) {
      */
     if ((err = tap_ctl_info(device->tap->pid, &device->sectors,
                     &device->sector_size, &info,
-                    device->minor))) {
+							&device->discard, device->minor))) {
         WARN(device, "error retrieving disk characteristics: %s\n",
                 strerror(-err));
         goto out;

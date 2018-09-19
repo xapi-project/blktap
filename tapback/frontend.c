@@ -300,6 +300,32 @@ connect_frontend(vbd_t *device) {
             break;
         }
 
+		if (device->backend->discard &&
+			device->mode == true &&
+			device->cdrom == false) {
+
+		    if ((err = tapback_device_printf(device, xst, "discard-granularity",
+											 true, "%u", device->sector_size))) {
+				WARN(device, "failed to write discard-granularity: %s\n",
+					 strerror(-err));
+				break;
+			}
+
+			if ((err = tapback_device_printf(device, xst, "discard-alignment",
+											 true, "%u", 0))) {
+				WARN(device, "failed to write discard-alignment: %s\n",
+					 strerror(-err));
+				break;
+			}
+
+			if ((err = tapback_device_printf(device, xst, "feature-discard",
+											 true, "%u", 1))) {
+				WARN(device, "failed to write feature-discard: %s\n",
+					 strerror(-err));
+				break;
+			}
+		}
+
         if ((err = tapback_device_printf(device, xst, "sector-size", true,
                         "%u", device->sector_size))) {
             WARN(device, "failed to write sector-size: %s\n", strerror(-err));
