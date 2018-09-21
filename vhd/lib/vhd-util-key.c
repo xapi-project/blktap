@@ -41,6 +41,7 @@
 #include "libvhd.h"
 
 #define MAX_KEY_SIZE 512
+int CRYPTO_SUPPORTED_KEYSIZE[] = { 512, 256, -1};
 
 #define ERR(_f, _a...)						\
 	do {							\
@@ -48,9 +49,67 @@
 		fprintf(stderr, "%s: " _f, __func__, ##_a);	\
 	} while (0)
 
+char *
+vhd_util_get_vhd_basename(vhd_context_t *vhd)
+{
+	char *basename, *ext;
+
+	/* strip path */
+	basename = strrchr(vhd->file, '/');
+	if (basename == NULL)
+		basename = vhd->file;
+	else
+		basename++;
+
+	basename = strdup(basename);
+	if (!basename)
+		return NULL;
+
+	/* cut off .vhd extension */
+	ext = strstr(basename, ".vhd");
+	if (ext)
+		basename[ext - basename] = 0;
+	return basename;
+}
+
+static int
+vhd_util_validate_keypath(vhd_context_t *vhd, const char *keypath, size_t *key_bits)
+{
+	int err, i;
+	char expected_basename[256] = { 0 };
+	char *vhd_basename = NULL;
+	char *keypath_basename = NULL;
+
+	err = -1;
+
+	vhd_basename = vhd_util_get_vhd_basename(vhd);
+	if (!vhd_basename) {
+		err = -ENOMEM;
+		goto out;
+	}
+
+	keypath_basename = strrchr(keypath, '/')+1;
+
+	/* Verify the filename */
+	/* <path>/<VHD-uuid>,aes-xts-plain,<key-length>.key */
+	for (i = 0; CRYPTO_SUPPORTED_KEYSIZE[i] > 0; ++i) {
+		snprintf(expected_basename, sizeof(expected_basename),
+			 "%s,aes-xts-plain,%d.key",
+			 vhd_basename, CRYPTO_SUPPORTED_KEYSIZE[i]);
+		if (!strncmp(keypath_basename, expected_basename, strlen(expected_basename))) {
+			*key_bits = CRYPTO_SUPPORTED_KEYSIZE[i];
+			err = 0;
+			goto out;
+		}
+	}
+out:
+	free(vhd_basename);
+	return err;
+}
+
 static int
 vhd_util_read_key(const char *keypath, uint8_t *key,
-		  size_t max_size, size_t *out_size)
+		  size_t *key_bytes)
 {
 	int fd, err;
 	ssize_t size;
@@ -70,12 +129,13 @@ vhd_util_read_key(const char *keypath, uint8_t *key,
 		goto out;
 	}
 
-	size = read(fd, key, max_size);
+	size = read(fd, key, *key_bytes);
 	if (size == -1) {
 		ERR("failed to read key: %d\n", errno);
 		err = -errno;
 		goto out;
 	}
+	*key_bytes = size;
 
 	if (size != sb.st_size) {
 		ERR("short read of key\n");
@@ -83,9 +143,7 @@ vhd_util_read_key(const char *keypath, uint8_t *key,
 		goto out;
 	}
 
-	if (out_size)
-		*out_size = size;
-
+	ERR("using keyfile %s, Size (bytes) %zu\n", keypath, *key_bytes);
 out:
 	if (fd != -1)
 		close(fd);
@@ -97,7 +155,7 @@ out:
  */
 int
 __vhd_util_calculate_keyhash(struct vhd_keyhash *keyhash,
-			     const uint8_t *key, size_t size)
+			     const uint8_t *key, size_t key_bytes)
 {
 	int err;
 	EVP_MD_CTX evp;
@@ -114,7 +172,7 @@ __vhd_util_calculate_keyhash(struct vhd_keyhash *keyhash,
 		goto cleanup;
 	}
 
-	if (!EVP_DigestUpdate(&evp, key, size)) {
+	if (!EVP_DigestUpdate(&evp, key, key_bytes)) {
 		ERR("failed to hash key\n");
 		goto cleanup;
 	}
@@ -132,21 +190,31 @@ out:
 	return err;
 }
 
+
 static int
-vhd_util_calculate_keyhash(struct vhd_keyhash *keyhash, const char *keypath)
+vhd_util_calculate_keyhash(struct vhd_keyhash *keyhash, const char *keypath, size_t key_bytes)
 {
 	int err;
-	size_t size;
-	uint8_t key[MAX_KEY_SIZE];
+	size_t read_bytes;
+	uint8_t key[MAX_KEY_SIZE/8];
 
-	size = 0;
-	err = vhd_util_read_key(keypath, key, sizeof(key), &size);
+	if (key_bytes == 0)
+		read_bytes = MAX_KEY_SIZE/8;
+	else
+		read_bytes = key_bytes;
+
+	err = vhd_util_read_key(keypath, key, &read_bytes);
 	if (err) {
 		ERR("failed to read key: %d\n", err);
 		goto out;
 	}
+	if (key_bytes > 0 && key_bytes != read_bytes) {
+		ERR("incorrect key size: %zu != %zu\n", key_bytes, read_bytes);
+		err = -EINVAL;
+		goto out;
+	}
 
-	err = __vhd_util_calculate_keyhash(keyhash, key, size);
+	err = __vhd_util_calculate_keyhash(keyhash, key, read_bytes);
 	if (err) {
 		ERR("failed to calculate keyhash: %d\n", err);
 		goto out;
@@ -202,10 +270,11 @@ out:
 }
 
 static int
-vhd_util_set_keyhash(struct vhd_keyhash *keyhash, const char *keypath,
+vhd_util_set_keyhash(vhd_context_t *vhd, struct vhd_keyhash *keyhash, const char *keypath,
 		     const char *hash, const char *nonce)
 {
 	int err;
+	size_t key_bits;
 
 	memset(keyhash, 0, sizeof(*keyhash));
 
@@ -222,7 +291,15 @@ vhd_util_set_keyhash(struct vhd_keyhash *keyhash, const char *keypath,
 		if (err)
 			goto out;
 	} else {
-		err = vhd_util_calculate_keyhash(keyhash, keypath);
+		if (vhd) {
+			err = vhd_util_validate_keypath(vhd, keypath, &key_bits);
+			if (err) {
+				ERR("Invalid key name %s\n", keypath);
+				goto out;
+			}
+		} else
+			key_bits = 0;
+		err = vhd_util_calculate_keyhash(keyhash, keypath, key_bits/8);
 		if (err) {
 			ERR("failed to calculate keyhash: %d\n", err);
 			goto out;
@@ -272,7 +349,7 @@ vhd_util_set_key(vhd_context_t *vhd, const char *keypath,
         }
 
 
-	err = vhd_util_set_keyhash(&keyhash, keypath, hash, nonce);
+	err = vhd_util_set_keyhash(vhd, &keyhash, keypath, hash, nonce);
 	if (err)
 		goto out;
 
@@ -291,6 +368,7 @@ vhd_util_check_key(vhd_context_t *vhd, const char *keypath)
 {
 	int err;
 	struct vhd_keyhash vhdhash, keyhash;
+	size_t key_bits;
 
 	err = vhd_get_keyhash(vhd, &vhdhash);
 	if (err) {
@@ -304,8 +382,14 @@ vhd_util_check_key(vhd_context_t *vhd, const char *keypath)
 		goto out;
 	}
 
+	err = vhd_util_validate_keypath(vhd, keypath, &key_bits);
+	if (err) {
+		ERR("Invalid key name %s\n", keypath);
+		goto out;
+	}
+
 	memcpy(keyhash.nonce, vhdhash.nonce, sizeof(keyhash.nonce));
-	err = vhd_util_calculate_keyhash(&keyhash, keypath);
+	err = vhd_util_calculate_keyhash(&keyhash, keypath, key_bits/8);
 	if (err) {
 		ERR("failed to calculate keyhash: %d\n", err);
 		goto out;
@@ -381,7 +465,7 @@ vhd_util_key(int argc, char **argv)
 	if (calc) {
 		int i;
 		struct vhd_keyhash keyhash;
-		err = vhd_util_set_keyhash(&keyhash, keypath, NULL, nonce);
+		err = vhd_util_set_keyhash(NULL, &keyhash, keypath, NULL, nonce);
 		if (err) {
 			ERR("calculating keyhash failed: %d\n", err);
 			goto out;

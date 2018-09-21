@@ -49,6 +49,8 @@
 #define MAX_AES_XTS_PLAIN_KEYSIZE 1024
 
 int __vhd_util_calculate_keyhash(struct vhd_keyhash *, const uint8_t *, size_t);
+char * vhd_util_get_vhd_basename(vhd_context_t *vhd);
+extern int CRYPTO_SUPPORTED_KEYSIZE[];
 
 static int
 check_key(const uint8_t *keybuf, unsigned int keysize,
@@ -118,9 +120,12 @@ find_keyfile(char **keyfile, const char *dirs,
 			if (*keyfile == NULL) {
 				return -ENOMEM;
 			}
+			DPRINTF("found keyfile %s\n", path);
 			return 0;
 		} else if (err < 0 && errno != ENOENT) {
 			return -errno;
+		} else {
+			DPRINTF("keyfile %s not found\n", path);
 		}
 	}
 
@@ -166,13 +171,13 @@ out:
 static int
 read_preferred_keyfile(const char *keydir, const char *basename, uint8_t *keybuf, int *keysize)
 {
-    int sizes[] = { 512, 256 };
     int err, i;
     *keysize = 0;
-    for (i = 0; i < 2; ++i) {
-        err = read_keyfile(keydir, basename, keybuf, sizes[i]);
+    err = -EINVAL;
+    for (i = 0; CRYPTO_SUPPORTED_KEYSIZE[i] > 0; ++i) {
+        err = read_keyfile(keydir, basename, keybuf, CRYPTO_SUPPORTED_KEYSIZE[i]);
         if (err == 0) {
-            *keysize = sizes[i];
+            *keysize = CRYPTO_SUPPORTED_KEYSIZE[i];
             return 0;
         }
     }
@@ -210,29 +215,6 @@ out:
     return parent;
 }
 
-static char *
-get_vhd_basename(vhd_context_t *vhd)
-{
-    char *basename, *ext;
-
-    /* strip path */
-    basename = strrchr(vhd->file, '/');
-    if (basename == NULL)
-        basename = vhd->file;
-    else
-        basename++;
-
-    basename = strdup(basename);
-    if (!basename)
-        return NULL;
-
-    /* cut off .vhd extension */
-    ext = strstr(basename, ".vhd");
-    if (ext)
-        basename[ext - basename] = 0;
-    return basename;
-}
-
 /* look up the chain for first parent VHD with encryption key */
 static int
 chain_find_keyed_vhd(vhd_context_t *vhd, uint8_t *key, int *keysize, struct vhd_keyhash *out_keyhash)
@@ -247,6 +229,9 @@ chain_find_keyed_vhd(vhd_context_t *vhd, uint8_t *key, int *keysize, struct vhd_
     memset(out_keyhash, 0, sizeof(*out_keyhash));
 
     keydir = getenv("TAPDISK3_CRYPTO_KEYDIR");
+    if (keydir == NULL) {
+      keydir = CRYPTO_DEFAULT_KEYDIR;
+    }
 
     while (p) {
         err = vhd_get_keyhash(p, &keyhash);
@@ -264,7 +249,7 @@ chain_find_keyed_vhd(vhd_context_t *vhd, uint8_t *key, int *keysize, struct vhd_
          * regardless the keyhash.cookie value to prevent an issue where
          * the vhd has been replaced by another one that is clear */
         if (keydir) {
-            basename = get_vhd_basename(p);
+            basename = vhd_util_get_vhd_basename(p);
             if (!basename) {
                 err = -ENOMEM;
                 goto out;
