@@ -87,6 +87,9 @@
 #define vhd_flag_test(word, flag)        ((word) & (flag))
 
 
+#define CRYPTO_DEFAULT_KEYDIR "/var/xen/blktap/keys"
+extern int CRYPTO_SUPPORTED_KEYSIZE[];
+
 #define ENABLE_FAILURE_TESTING
 #define FAIL_REPARENT_BEGIN        0
 #define FAIL_REPARENT_LOCATOR      1
