@@ -1060,11 +1060,15 @@ vhd_journal_restore_metadata(vhd_journal_t *j)
 
 restore:
 	off  = vhd_journal_position(j);
-	if (off == (off64_t)-1)
-		return -errno;
+	if (off == (off64_t)-1) {
+		err = -errno;
+		goto out;
+	}
 
-	if (j->header.journal_data_offset != off)
-		return -EINVAL;
+	if (j->header.journal_data_offset != off) {
+		err = -EINVAL;
+		goto out;
+	}
 
 	err  = vhd_journal_restore_footer(j, &vhd->footer);
 	if (err)
