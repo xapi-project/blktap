@@ -333,6 +333,7 @@ tapdisk_vbd_add_block_cache(td_vbd_t *vbd)
 fail:
 	/* give up */
 	tapdisk_image_free(target);
+	tapdisk_image_free(cache);
 	return err;
 
 done:
