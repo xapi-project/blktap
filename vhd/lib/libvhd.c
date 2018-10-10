@@ -1561,8 +1561,10 @@ vhd_w2u_decode_location(char *in, char *out, int len, char *utf_type)
 	if (cd == (iconv_t)-1) 
 		return NULL;
 
-	if (iconv(cd, &in, &ibl, &out, &obl) == (size_t)-1 || ibl)
+	if (iconv(cd, &in, &ibl, &out, &obl) == (size_t)-1 || ibl) {
+		iconv_close(cd);
 		return NULL;
+	}
 
 	iconv_close(cd);
 	*out = '\0';
