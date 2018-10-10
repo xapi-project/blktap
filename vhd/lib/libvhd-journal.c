@@ -864,6 +864,7 @@ vhd_journal_read_batmap_header(vhd_journal_t *j, vhd_batmap_t *batmap)
 	}
 
 	memcpy(&batmap->header, buf, sizeof(batmap->header));
+	free(buf);
 
 	vhd_batmap_header_in(batmap);
 	return vhd_validate_batmap_header(batmap);
