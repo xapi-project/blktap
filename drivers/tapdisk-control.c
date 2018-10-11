@@ -742,6 +742,7 @@ tapdisk_control_open_image(struct tapdisk_ctl_conn *conn,
 		ret = read(conn->fd, logpath, TAPDISK_MESSAGE_MAX_PATH_LENGTH);
 		if (ret < 0) {
 			err = -EIO;
+			free(logpath);
 			goto out;
 		}
 		vbd->logpath = logpath;
@@ -941,7 +942,7 @@ tapdisk_control_pause_vbd(struct tapdisk_ctl_conn *conn,
 			  tapdisk_message_t *request, tapdisk_message_t * const response)
 {
 	struct timeval now, next = { 0, 0 }, interval = { 0, 10000 };
-	int err;
+	int err = 0;
 	td_vbd_t *vbd;
 
 	ASSERT(conn);
@@ -1026,6 +1027,7 @@ tapdisk_control_resume_vbd(struct tapdisk_ctl_conn *conn,
 		ret = read(conn->fd, logpath, TAPDISK_MESSAGE_MAX_PATH_LENGTH);
 		if (ret < 0) {
 			err = -EIO;
+			free(logpath);
 			goto out;
 		}
 		vbd->logpath = logpath;
@@ -1337,7 +1339,7 @@ tapdisk_control_receive_request(struct tapdisk_ctl_conn *conn)
 error:
 	memset(&conn->response, 0, sizeof(conn->response));
 	conn->response.type = TAPDISK_MESSAGE_ERROR;
-	conn->response.u.response.error = (err ? -err : EINVAL);
+	conn->response.u.response.error = -err;
 	tapdisk_control_write_message(conn, &conn->response);
 
 close:
@@ -1427,7 +1429,7 @@ tapdisk_control_handle_request(event_id_t id, char mode, void *private)
 		if (err == -1) {
 			memset(&conn->response, 0, sizeof(conn->response));
 			conn->response.type = TAPDISK_MESSAGE_ERROR;
-			conn->response.u.response.error = (err ? -err : EINVAL);
+			conn->response.u.response.error = EINVAL;
 			tapdisk_control_write_message(conn, &conn->response);
 			tapdisk_control_close_connection(conn);
 			ERR(err, "failed to register request process event\n");
