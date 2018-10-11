@@ -698,7 +698,7 @@ tdnbd_connect_import_session(struct tdnbd_data *prv, td_driver_t* driver)
 	}
 
 	prv->remote = (struct sockaddr_in *)malloc(
-			sizeof(struct sockaddr_in *));
+			sizeof(struct sockaddr_in));
 	if (!prv->remote) {
 		ERROR("struct sockaddr_in malloc failure\n");
 		close(sock);
