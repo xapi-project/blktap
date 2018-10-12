@@ -621,10 +621,10 @@ vhd_util_scan_get_markers(vhd_context_t *vhd, struct vhd_image *image)
 		err = vhd_get_keyhash(vhd, &keyhash);
 		if (err)
 			return err;
+		memcpy(&image->keyhash, &keyhash, sizeof(image->keyhash));
 	}
 
 	image->marker = marker;
-	memcpy(&image->keyhash, &keyhash, sizeof(image->keyhash));
 	return err;
 }
 
