@@ -705,6 +705,18 @@ tapback_backend_probe_device(backend_t *backend,
     remove = device && !should_exist;
     create = !device && should_exist;
 
+	/*
+	 * Sometimes we can get asked to process a notification for a device which
+	 * we would have been creating, but everything was removed from xenstore
+	 * before we got the notification. Catch this case before it confuses the
+	 * rest of the logic.
+	 */
+	if (!(remove || create)) {
+		WARN(NULL, "Neither remove nor create for domid %d, devname %s\n",
+				domid, devname);
+		return -EINVAL;
+	}
+
     /*
      * Remember that remove and create may both be true at the same time, as
      * this indicates that the device has been removed and re-created too fast.
