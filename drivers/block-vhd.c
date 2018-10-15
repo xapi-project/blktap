@@ -1644,6 +1644,12 @@ schedule_data_read(struct vhd_state *s, td_request_t treq, vhd_flag_t flags)
 	return 0;
 }
 
+static bool
+vhd_is_encrypted(struct vhd_state *s)
+{
+	return s->vhd.xts_tfm != NULL;
+}
+
 static int
 schedule_data_write(struct vhd_state *s, td_request_t treq, vhd_flag_t flags)
 {
@@ -1679,7 +1685,7 @@ schedule_data_write(struct vhd_state *s, td_request_t treq, vhd_flag_t flags)
 	offset  = vhd_sectors_to_bytes(offset);
 
  make_request:
-	if (s->vhd.xts_tfm) {
+	if (vhd_is_encrypted(s)) {
 		err = posix_memalign((void **)&crypto_buf, VHD_SECTOR_SIZE,
 				     treq.secs * VHD_SECTOR_SIZE);
 		if (err)
@@ -1687,7 +1693,7 @@ schedule_data_write(struct vhd_state *s, td_request_t treq, vhd_flag_t flags)
 	}
 	req = alloc_vhd_request(s);
 	if (!req) {
-		if (s->vhd.xts_tfm)
+		if (vhd_is_encrypted(s))
 			free(crypto_buf);
 		return -EBUSY;
 	}
@@ -1697,7 +1703,7 @@ schedule_data_write(struct vhd_state *s, td_request_t treq, vhd_flag_t flags)
 	req->op    = VHD_OP_DATA_WRITE;
 	req->next  = NULL;
 
-	if (s->vhd.xts_tfm) {
+	if (vhd_is_encrypted(s)) {
 		req->orig_buf = req->treq.buf;
 		req->treq.buf = crypto_buf;
 		vhd_crypto_encrypt(&s->vhd, &req->treq, req->orig_buf);
@@ -2023,7 +2029,7 @@ signal_completion(struct vhd_request *list, int error)
 
 		err  = (error ? error : r->error);
 		next = r->next;
-		if (s->vhd.xts_tfm) {
+		if (vhd_is_encrypted(s)) {
 			switch (r->op) {
 			case VHD_OP_DATA_READ:
 				vhd_crypto_decrypt(&s->vhd, &r->treq);
