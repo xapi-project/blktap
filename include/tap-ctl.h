@@ -77,10 +77,12 @@ int tap_ctl_send_and_receive(int fd, tapdisk_message_t *message,
 int tap_ctl_connect_send_and_receive(int id,
 				     tapdisk_message_t *message,
 				     struct timeval *timeout);
-int tap_ctl_connect_send_receive_with_logpath(int id,
-				     tapdisk_message_t *message,
-				     const char *logpath,
-				     struct timeval *timeout);
+int tap_ctl_connect_send_receive_ex(int id,
+				    tapdisk_message_t *message,
+				    const char *logpath,
+				    uint8_t key_size,
+				    const uint8_t *encryption_key,
+				    struct timeval *timeout);
 char *tap_ctl_socket_name(int id);
 
 typedef struct {
@@ -120,7 +122,8 @@ int tap_ctl_attach(const int id, const int minor);
 int tap_ctl_detach(const int id, const int minor);
 
 int tap_ctl_open(const int id, const int minor, const char *params, int flags,
-		const int prt_minor, const char *secondary, int timeout, const char *logpath);
+		 const int prt_minor, const char *secondary, int timeout,
+		 const char *logpath, uint8_t key_size, uint8_t *encryption_key);
 int tap_ctl_close(const int id, const int minor, const int force,
 		  struct timeval *timeout);
 

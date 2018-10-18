@@ -160,8 +160,10 @@ tap_ctl_send_and_receive(int sfd, tapdisk_message_t *message,
 }
 
 int
-tap_ctl_send_and_receive_with_logpath(int sfd, tapdisk_message_t *message,
-			 const char *logpath, struct timeval *timeout)
+tap_ctl_send_and_receive_ex(int sfd, tapdisk_message_t *message,
+			    const char *logpath, uint8_t key_size,
+			    const uint8_t *encryption_key,
+			    struct timeval *timeout)
 {
 	int err, ret;
 
@@ -172,16 +174,34 @@ tap_ctl_send_and_receive_with_logpath(int sfd, tapdisk_message_t *message,
 		return err;
 	}
 
-	char buf[TAPDISK_MESSAGE_MAX_PATH_LENGTH];
+	if (message->u.params.flags & TAPDISK_MESSAGE_FLAG_ADD_LOG) {
+		char buf[TAPDISK_MESSAGE_MAX_PATH_LENGTH];
 
-	snprintf(buf, TAPDISK_MESSAGE_MAX_PATH_LENGTH - 1, "%s", logpath);  
+		snprintf(buf, TAPDISK_MESSAGE_MAX_PATH_LENGTH - 1, "%s", logpath);
 
-	ret = write(sfd, &buf, sizeof(buf));
+		ret = write(sfd, &buf, sizeof(buf));
 
-	if (ret == -1) {
-		EPRINTF("Failed to send logpath with '%s' message\n",
-			tapdisk_message_name(message->type));
-	}	
+		if (ret == -1) {
+			EPRINTF("Failed to send logpath with '%s' message\n",
+				tapdisk_message_name(message->type));
+		}
+	}
+
+	if (message->u.params.flags & TAPDISK_MESSAGE_FLAG_OPEN_ENCRYPTED) {
+		DPRINTF("Sending encryption key of %d bits\n", (int)key_size * 8);
+		ret = write(sfd, &key_size, sizeof(key_size));
+		if (ret != sizeof(key_size)) {
+			EPRINTF("Failed to send encryption key size with '%s' message\n",
+				tapdisk_message_name(message->type));
+			return EIO;
+		}
+		ret = write(sfd, encryption_key, key_size);
+		if (ret != key_size) {
+			EPRINTF("Failed to send encryption key with '%s' message\n",
+				tapdisk_message_name(message->type));
+			return EIO;
+		}
+	}
 
 	err = tap_ctl_read_message(sfd, message, timeout);
 	if (err) {
@@ -288,8 +308,10 @@ tap_ctl_connect_send_and_receive(int id, tapdisk_message_t *message,
 }
 
 int
-tap_ctl_connect_send_receive_with_logpath(int id, tapdisk_message_t *message,
-				 const char *logpath, struct timeval *timeout)
+tap_ctl_connect_send_receive_ex(int id, tapdisk_message_t *message,
+				const char *logpath, uint8_t key_size,
+				const uint8_t *encryption_key,
+				struct timeval *timeout)
 {
 	int err, sfd;
 
@@ -297,7 +319,7 @@ tap_ctl_connect_send_receive_with_logpath(int id, tapdisk_message_t *message,
 	if (err)
 		return err;
 
-	err = tap_ctl_send_and_receive_with_logpath(sfd, message, logpath, timeout);
+	err = tap_ctl_send_and_receive_ex(sfd, message, logpath, key_size, encryption_key, timeout);
 
 	close(sfd);
 	return err;

@@ -763,6 +763,34 @@ tapdisk_control_open_image(struct tapdisk_ctl_conn *conn,
 		vbd->secondary_name = name;
 		flags |= TD_OPEN_SECONDARY;
 	}
+	if (request->u.params.flags & TAPDISK_MESSAGE_FLAG_OPEN_ENCRYPTED) {
+		uint8_t key_size;
+		uint8_t *encryption_key;
+		ssize_t ret;
+
+		DPRINTF("Reading encryption key for VHD\n");
+
+		ret = read(conn->fd, &key_size, sizeof(key_size));
+		if (ret != sizeof(key_size)) {
+			err = -EIO;
+			goto out;
+		}
+		DPRINTF("Encryption key for VHD is %d\n", key_size);
+		encryption_key = malloc(key_size);
+		if (!encryption_key) {
+			err = -ENOMEM;
+			goto out;
+		}
+		ret = read(conn->fd, encryption_key, key_size);
+		if (ret != key_size) {
+			err = -EIO;
+			free(encryption_key);
+			goto out;
+		}
+		DPRINTF("Read encryption key for VHD\n");
+		vbd->key_size = key_size;
+		vbd->encryption_key = encryption_key;
+	}
 
 	err = tapdisk_vbd_open_vdi(vbd, request->u.params.path, flags,
 				   request->u.params.prt_devnum);

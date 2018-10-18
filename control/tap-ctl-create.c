@@ -62,7 +62,7 @@ tap_ctl_create(const char *params, char **devname, int flags, int parent_minor,
 		goto destroy;
 
 	err = tap_ctl_open(id, minor, params, flags, parent_minor, secondary,
-			timeout, logpath);
+			   timeout, logpath, 0, NULL);
 	if (err)
 		goto detach;
 
