@@ -66,8 +66,7 @@ tap_ctl_unpause(const int id, const int minor, const char *params, int flags,
 		}
 	}
 	if (logpath) {
-		err = tap_ctl_connect_send_receive_with_logpath
-									(id, &message, logpath, NULL);
+		err = tap_ctl_connect_send_receive_ex(id, &message, logpath, 0, NULL, NULL);
 	}
 	else {
 		err = tap_ctl_connect_send_and_receive(id, &message, NULL);

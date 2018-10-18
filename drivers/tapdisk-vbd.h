@@ -163,6 +163,9 @@ struct td_vbd_handle {
 
 	char                       *logpath;
 
+	uint8_t                    key_size;
+	uint8_t                    *encryption_key;
+
 	bool                       watchdog_warned;
 };
 

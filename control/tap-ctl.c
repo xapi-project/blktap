@@ -42,6 +42,8 @@
 
 #include "tap-ctl.h"
 
+#define MAX_AES_XTS_PLAIN_KEYSIZE 1024
+
 typedef int (*tap_ctl_func_t) (int, char **);
 
 struct command {
@@ -762,7 +764,8 @@ tap_cli_open_usage(FILE *stream)
 		"use secondary image (in mirror mode if no -s)] [-s "
 		"fail over to the secondary image on ENOSPC] "
 		"[-t request timeout in seconds] [-D no O_DIRECT] "
-		"[-C </path/to/logfile> insert log layer to track changed blocks]\n");
+		"[-C </path/to/logfile> insert log layer to track changed blocks] "
+		"[-E read encryption key from stdin]\n");
 }
 
 static int
@@ -770,6 +773,8 @@ tap_cli_open(int argc, char **argv)
 {
 	const char *args, *secondary, *logpath;
 	int c, pid, minor, flags, prt_minor, timeout;
+	uint8_t *encryption_key;
+	ssize_t key_size = 0;
 
 	flags      = 0;
 	pid        = -1;
@@ -779,9 +784,10 @@ tap_cli_open(int argc, char **argv)
 	args       = NULL;
 	secondary  = NULL;
 	logpath    = NULL;
+	encryption_key = NULL;
 
 	optind = 0;
-	while ((c = getopt(argc, argv, "a:RDm:p:e:r2:st:C:h")) != -1) {
+	while ((c = getopt(argc, argv, "a:RDm:p:e:r2:st:C:Eh")) != -1) {
 		switch (c) {
 		case 'p':
 			pid = atoi(optarg);
@@ -819,10 +825,27 @@ tap_cli_open(int argc, char **argv)
 			logpath = optarg;
 			flags |= TAPDISK_MESSAGE_FLAG_ADD_LOG;
 			break;
+		case 'E':
+			/* Allocate the space for the key, */
+			encryption_key = malloc(MAX_AES_XTS_PLAIN_KEYSIZE / sizeof(uint8_t));
+			if (!encryption_key) {
+				fprintf(stdout, "Failed to allocate space for encrpytion key\n");
+				exit(1);
+			}
+			key_size = read(STDIN_FILENO, (void*)encryption_key, MAX_AES_XTS_PLAIN_KEYSIZE / sizeof(uint8_t));
+			if (key_size != 32 && key_size != 64){
+				fprintf(stdout, "Unsupported keysize, use either 256 bit or 512 bit key\n");
+				exit(1);
+			}
+			flags |= TAPDISK_MESSAGE_FLAG_OPEN_ENCRYPTED;
+			break;
 		case '?':
 			goto usage;
 		case 'h':
 			tap_cli_open_usage(stdout);
+			if (encryption_key) {
+				free(encryption_key);
+			}
 			return 0;
 		}
 	}
@@ -831,10 +854,13 @@ tap_cli_open(int argc, char **argv)
 		goto usage;
 
 	return tap_ctl_open(pid, minor, args, flags, prt_minor, secondary,
-			timeout, logpath);
+			    timeout, logpath, (uint8_t)key_size, encryption_key);
 
 usage:
 	tap_cli_open_usage(stderr);
+	if (encryption_key) {
+		free(encryption_key);
+	}
 	return EINVAL;
 }
 

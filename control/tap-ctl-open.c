@@ -43,7 +43,8 @@
 
 int
 tap_ctl_open(const int id, const int minor, const char *params, int flags,
-		const int prt_minor, const char *secondary, int timeout, const char* logpath)
+	     const int prt_minor, const char *secondary, int timeout,
+	     const char* logpath, uint8_t key_size, uint8_t *encryption_key)
 {
 	int err;
 	tapdisk_message_t message;
@@ -72,13 +73,16 @@ tap_ctl_open(const int id, const int minor, const char *params, int flags,
 			return ENAMETOOLONG;
 		}
 	}
-	if (logpath) {
-		err = tap_ctl_connect_send_receive_with_logpath
-								(id, &message, logpath, NULL);
+	if (flags & (TAPDISK_MESSAGE_FLAG_ADD_LOG | TAPDISK_MESSAGE_FLAG_OPEN_ENCRYPTED)) {
+		err = tap_ctl_connect_send_receive_ex(
+			id, &message, logpath, key_size, encryption_key, NULL);
 	}
 	else {
 		err = tap_ctl_connect_send_and_receive(id, &message, NULL);
 	}
+
+	if (encryption_key)
+		free(encryption_key);
 
 	if (err)
 		return err;

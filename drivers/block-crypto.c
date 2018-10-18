@@ -307,7 +307,7 @@ vhd_open_crypto(vhd_context_t *vhd, const char *_name)
 {
 	struct vhd_keyhash keyhash;
 	int err;
-        uint8_t key[MAX_AES_XTS_PLAIN_KEYSIZE / 8] = { 0 };
+        uint8_t key[MAX_AES_XTS_PLAIN_KEYSIZE / sizeof(uint8_t)] = { 0 };
         int keysize = 0;
 
 	if (vhd->xts_tfm)
