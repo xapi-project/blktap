@@ -145,7 +145,8 @@ static int tdlog_close(td_driver_t* driver)
 	return 0;
 }
 
-static int tdlog_open(td_driver_t* driver, const char *name, td_flag_t flags)
+static int tdlog_open(td_driver_t* driver, const char *name,
+		      struct td_vbd_encryption *encryption, td_flag_t flags)
 {
 	struct tdlog_data* data = (struct tdlog_data*)driver->data;
 	int rc;

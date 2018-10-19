@@ -575,8 +575,8 @@ td_valve_close(td_driver_t *driver)
 }
 
 static int
-td_valve_open(td_driver_t *driver,
-	      const char *name, td_flag_t flags)
+td_valve_open(td_driver_t *driver, const char *name,
+	      struct td_vbd_encryption *encryption, td_flag_t flags)
 {
 	td_valve_t *valve = driver->data;
 	int err;

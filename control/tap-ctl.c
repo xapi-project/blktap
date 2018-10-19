@@ -826,15 +826,20 @@ tap_cli_open(int argc, char **argv)
 			flags |= TAPDISK_MESSAGE_FLAG_ADD_LOG;
 			break;
 		case 'E':
+			if (encryption_key) {
+				fprintf(stderr, "Only supply -E once\n");
+				exit(1);
+			}
 			/* Allocate the space for the key, */
 			encryption_key = malloc(MAX_AES_XTS_PLAIN_KEYSIZE / sizeof(uint8_t));
 			if (!encryption_key) {
-				fprintf(stdout, "Failed to allocate space for encrpytion key\n");
+				fprintf(stderr, "Failed to allocate space for encrpytion key\n");
 				exit(1);
 			}
 			key_size = read(STDIN_FILENO, (void*)encryption_key, MAX_AES_XTS_PLAIN_KEYSIZE / sizeof(uint8_t));
 			if (key_size != 32 && key_size != 64){
-				fprintf(stdout, "Unsupported keysize, use either 256 bit or 512 bit key\n");
+				fprintf(stderr, "Unsupported keysize, use either 256 bit or 512 bit key\n");
+				free(encryption_key);
 				exit(1);
 			}
 			flags |= TAPDISK_MESSAGE_FLAG_OPEN_ENCRYPTED;

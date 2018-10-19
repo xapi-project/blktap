@@ -86,6 +86,7 @@ out:
 	return err;
 }
 
+#ifdef OPEN_XT
 static int
 find_keyfile(char **keyfile, const char *dirs,
 	     const char *basename, int keysize)
@@ -301,27 +302,60 @@ out:
     }
     return err;
 }
+#endif
 
 int
-vhd_open_crypto(vhd_context_t *vhd, const char *_name)
+vhd_open_crypto(vhd_context_t *vhd, struct td_vbd_encryption *encryption, const char *name)
 {
 	struct vhd_keyhash keyhash;
 	int err;
-        uint8_t key[MAX_AES_XTS_PLAIN_KEYSIZE / sizeof(uint8_t)] = { 0 };
-        int keysize = 0;
+#ifdef OPEN_XT
+	uint8_t key[MAX_AES_XTS_PLAIN_KEYSIZE / sizeof(uint8_t)] = { 0 };
+	int keysize = 0;
+#endif
 
 	if (vhd->xts_tfm)
 		return 0;
 
-        err = chain_find_keyed_vhd(vhd, key, &keysize, &keyhash);
-        if (err) {
-            DPRINTF("error in vhd chain: %d\n", err);
-            return err;
-        }
+#ifdef OPEN_XT
+	err = chain_find_keyed_vhd(vhd, key, &keysize, &keyhash);
+	if (err) {
+	    DPRINTF("error in vhd chain: %d\n", err);
+	    return err;
+	}
 
-        if (keyhash.cookie == 0) {
-            return 0;
-        }
+	if (keyhash.cookie == 0) {
+		return 0;
+	}
+#else
+	memset(&keyhash, 0, sizeof(keyhash));
+	err = vhd_get_keyhash(vhd, &keyhash);
+	if (err) {
+		EPRINTF("error getting keyhash: %d\n", err);
+		return err;
+	}
+
+	if (keyhash.cookie == 0) {
+		if (!encryption->encryption_key) {
+			DPRINTF("No crypto, not starting crypto\n");
+			return 0;
+		}
+
+		EPRINTF("VHD %s has no keyhash when encryption is requested\n", name);
+		return -EINVAL;
+	} else if (!encryption->encryption_key) {
+		EPRINTF("No encryption key supplied for encrypted VHD, %s\n", name);
+		return -EINVAL;
+	}
+
+	err = check_key(encryption->encryption_key, encryption->key_size * 8, &keyhash);
+	if (err) {
+		EPRINTF("Keyhash doesn't match vhd key for %s\n", name);
+		return err;
+	}
+
+	DPRINTF("Keyhash verified, starting crypto for %s\n", name);
+#endif
 
 	vhd->xts_tfm = xts_aes_setup();
 	if (vhd->xts_tfm == NULL) {
@@ -329,7 +363,7 @@ vhd_open_crypto(vhd_context_t *vhd, const char *_name)
 		return err;
 	}
 
-	xts_aes_setkey(vhd->xts_tfm, key, keysize / 8);
+	xts_aes_setkey(vhd->xts_tfm, encryption->encryption_key, encryption->key_size);
 	return 0;
 }
 

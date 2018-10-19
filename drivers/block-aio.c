@@ -111,7 +111,8 @@ static int tdaio_get_image_info(int fd, td_disk_info_t *info)
 }
 
 /* Open the disk file and initialize aio state. */
-int tdaio_open(td_driver_t *driver, const char *name, td_flag_t flags)
+int tdaio_open(td_driver_t *driver, const char *name,
+	       struct td_vbd_encryption *encryption, td_flag_t flags)
 {
 	int i, fd, ret, o_flags;
 	struct tdaio_state *prv;

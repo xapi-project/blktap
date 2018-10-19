@@ -739,7 +739,8 @@ tdnbd_connect_import_session(struct tdnbd_data *prv, td_driver_t* driver)
 static int tdnbd_close(td_driver_t*);
 
 static int
-tdnbd_open(td_driver_t* driver, const char* name, td_flag_t flags)
+tdnbd_open(td_driver_t* driver, const char* name,
+	   struct td_vbd_encryption *encryption, td_flag_t flags)
 {
 	struct tdnbd_data *prv;
 	char peer_ip[256];

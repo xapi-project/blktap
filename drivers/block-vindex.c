@@ -243,7 +243,8 @@ fail:
 }
 
 static int
-vhd_index_open(td_driver_t *driver, const char *name, td_flag_t flags)
+vhd_index_open(td_driver_t *driver, const char *name,
+	       struct td_vbd_encryption *encryption, td_flag_t flags)
 {
 	int err;
 	vhd_index_t *index;

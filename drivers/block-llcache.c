@@ -341,7 +341,8 @@ llpcache_close(td_driver_t *driver)
 }
 
 static int
-llpcache_open(td_driver_t *driver, const char *name, td_flag_t flags)
+llpcache_open(td_driver_t *driver, const char *name,
+	      struct td_vbd_encryption *encryption, td_flag_t flags)
 {
 	td_llpcache_t *s = driver->data;
 	int i, err;
@@ -351,7 +352,7 @@ llpcache_open(td_driver_t *driver, const char *name, td_flag_t flags)
 	for (i = 0; i < TD_LLPCACHE_MAX_REQ; i++)
 		llpcache_free_request(s, &s->reqv[i]);
 
-	err = tapdisk_image_open(DISK_TYPE_VHD, name, flags, &s->local);
+	err = tapdisk_image_open(DISK_TYPE_VHD, name, flags, encryption, &s->local);
 	if (err)
 		goto fail;
 
@@ -493,7 +494,8 @@ llecache_close(td_driver_t *driver)
 }
 
 static int
-llecache_open(td_driver_t *driver, const char *name, td_flag_t flags)
+llecache_open(td_driver_t *driver, const char *name,
+	      struct td_vbd_encryption *encryption, td_flag_t flags)
 {
 	td_llecache_t *s = driver->data;
 	int i, err;
@@ -503,7 +505,7 @@ llecache_open(td_driver_t *driver, const char *name, td_flag_t flags)
 	for (i = 0; i < TD_LLECACHE_MAX_REQ; i++)
 		llecache_free_request(s, &s->reqv[i]);
 
-	err = tapdisk_image_open(DISK_TYPE_VHD, name, flags, &s->shared);
+	err = tapdisk_image_open(DISK_TYPE_VHD, name, flags, encryption, &s->shared);
 	if (err)
 		goto fail;
 
