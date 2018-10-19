@@ -658,7 +658,8 @@ vhd_log_open(struct vhd_state *s)
 }
 
 static int
-__vhd_open(td_driver_t *driver, const char *name, vhd_flag_t flags)
+__vhd_open(td_driver_t *driver, const char *name,
+	   struct td_vbd_encryption *encryption, vhd_flag_t flags)
 {
         int i, o_flags, err;
 	struct vhd_state *s;
@@ -724,7 +725,7 @@ __vhd_open(td_driver_t *driver, const char *name, vhd_flag_t flags)
         DBG(TLOG_INFO, "vhd_open: done (sz:%"PRIu64", sct:%lu, inf:%u)\n",
 	    driver->info.size, driver->info.sector_size, driver->info.info);
 
-	err = vhd_open_crypto(&s->vhd, name);
+	err = vhd_open_crypto(&s->vhd, encryption, name);
 	if (err) {
 		DPRINTF("failed to init crypto: %d\n", err);
 		goto fail;
@@ -751,7 +752,8 @@ __vhd_open(td_driver_t *driver, const char *name, vhd_flag_t flags)
 }
 
 static int
-_vhd_open(td_driver_t *driver, const char *name, td_flag_t flags)
+_vhd_open(td_driver_t *driver, const char *name,
+	  struct td_vbd_encryption *encryption, td_flag_t flags)
 {
 	vhd_flag_t vhd_flags = 0;
 
@@ -778,7 +780,7 @@ _vhd_open(td_driver_t *driver, const char *name, td_flag_t flags)
 	    driver->storage != TAPDISK_STORAGE_TYPE_LVM)
 		vhd_flags |= VHD_FLAG_OPEN_PREALLOCATE;
 
-	return __vhd_open(driver, name, vhd_flags);
+	return __vhd_open(driver, name, encryption, vhd_flags);
 }
 
 static void

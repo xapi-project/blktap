@@ -775,7 +775,7 @@ tapdisk_control_open_image(struct tapdisk_ctl_conn *conn,
 			err = -EIO;
 			goto out;
 		}
-		DPRINTF("Encryption key for VHD is %d\n", key_size);
+		DPRINTF("Encryption key for VHD is %d bits\n", key_size * 8);
 		encryption_key = malloc(key_size);
 		if (!encryption_key) {
 			err = -ENOMEM;
@@ -788,8 +788,8 @@ tapdisk_control_open_image(struct tapdisk_ctl_conn *conn,
 			goto out;
 		}
 		DPRINTF("Read encryption key for VHD\n");
-		vbd->key_size = key_size;
-		vbd->encryption_key = encryption_key;
+		vbd->encryption.key_size = key_size;
+		vbd->encryption.encryption_key = encryption_key;
 	}
 
 	err = tapdisk_vbd_open_vdi(vbd, request->u.params.path, flags,

@@ -68,7 +68,7 @@ td_load(td_image_t *image)
 }
 
 int
-__td_open(td_image_t *image, td_disk_info_t *info)
+__td_open(td_image_t *image, struct td_vbd_encryption *encryption, td_disk_info_t *info)
 {
 	int err;
 	td_driver_t *driver;
@@ -86,7 +86,7 @@ __td_open(td_image_t *image, td_disk_info_t *info)
 	}
 
 	if (!td_flag_test(driver->state, TD_DRIVER_OPEN)) {
-		err = driver->ops->td_open(driver, image->name, image->flags);
+		err = driver->ops->td_open(driver, image->name, encryption, image->flags);
 		if (err) {
 			if (!image->driver)
 				tapdisk_driver_free(driver);
@@ -107,9 +107,9 @@ __td_open(td_image_t *image, td_disk_info_t *info)
 }
 
 int
-td_open(td_image_t *image)
+td_open(td_image_t *image, struct td_vbd_encryption *encryption)
 {
-	return __td_open(image, NULL);
+	return __td_open(image, encryption, NULL);
 }
 
 int

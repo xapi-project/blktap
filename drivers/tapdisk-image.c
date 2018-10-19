@@ -188,7 +188,8 @@ tapdisk_image_close(td_image_t *image)
 }
 
 int
-tapdisk_image_open(int type, const char *name, int flags, td_image_t **_image)
+tapdisk_image_open(int type, const char *name, int flags,
+		   struct td_vbd_encryption *encryption, td_image_t **_image)
 {
 	td_image_t *image;
 	int err;
@@ -211,7 +212,7 @@ tapdisk_image_open(int type, const char *name, int flags, td_image_t **_image)
 		goto fail;
 	}
 
-	err = td_open(image);
+	err = td_open(image, encryption);
 	if (err)
 		goto fail;
 
@@ -226,7 +227,8 @@ fail:
 }
 
 static int
-tapdisk_image_open_parent(td_image_t *image, td_image_t **_parent)
+tapdisk_image_open_parent(td_image_t *image, struct td_vbd_encryption *encryption,
+			  td_image_t **_parent)
 {
 	td_image_t *parent = NULL;
 	td_disk_id_t id;
@@ -243,10 +245,10 @@ tapdisk_image_open_parent(td_image_t *image, td_image_t **_parent)
 	if (err)
 		return err;
 
-    if (((id.flags & TD_OPEN_NO_O_DIRECT) == TD_OPEN_NO_O_DIRECT) &&
+	if (((id.flags & TD_OPEN_NO_O_DIRECT) == TD_OPEN_NO_O_DIRECT) &&
             ((id.flags & TD_OPEN_LOCAL_CACHE) == TD_OPEN_LOCAL_CACHE))
-        id.flags &= ~TD_OPEN_NO_O_DIRECT;
-	err = tapdisk_image_open(id.type, id.name, id.flags, &parent);
+		id.flags &= ~TD_OPEN_NO_O_DIRECT;
+	err = tapdisk_image_open(id.type, id.name, id.flags, encryption, &parent);
 	if (err)
 		return err;
 
@@ -256,13 +258,13 @@ out:
 }
 
 static int
-tapdisk_image_open_parents(td_image_t *image)
+tapdisk_image_open_parents(td_image_t *image, struct td_vbd_encryption *encryption)
 {
 	td_image_t *parent;
 	int err;
 
 	do {
-		err = tapdisk_image_open_parent(image, &parent);
+		err = tapdisk_image_open_parent(image, encryption, &parent);
 		if (err)
 			break;
 
@@ -296,13 +298,14 @@ tapdisk_image_close_chain(struct list_head *list)
  */
 static int
 __tapdisk_image_open_chain(int type, const char *name, int flags,
-			   struct list_head *_head, int prt_devnum)
+			   struct td_vbd_encryption *encryption, struct list_head *_head,
+			   int prt_devnum)
 {
 	struct list_head head = LIST_HEAD_INIT(head);
 	td_image_t *image;
 	int err;
 
-	err = tapdisk_image_open(type, name, flags, &image);
+	err = tapdisk_image_open(type, name, flags, encryption, &image);
 	if (err)
 		goto fail;
 
@@ -313,7 +316,7 @@ __tapdisk_image_open_chain(int type, const char *name, int flags,
 		snprintf(dev, sizeof(dev),
 			 "%s%d", BLKTAP2_IO_DEVICE, prt_devnum);
 		err = tapdisk_image_open(DISK_TYPE_AIO, dev,
-					 flags|TD_OPEN_RDONLY, &image);
+					 flags|TD_OPEN_RDONLY, encryption, &image);
 		if (err)
 			goto fail;
 
@@ -321,7 +324,7 @@ __tapdisk_image_open_chain(int type, const char *name, int flags,
 		goto done;
 	}
 
-	err = tapdisk_image_open_parents(image);
+	err = tapdisk_image_open_parents(image, encryption);
 	if (err)
 		goto fail;
 
@@ -372,7 +375,8 @@ fail:
 }
 
 static int
-tapdisk_image_open_x_chain(const char *path, struct list_head *_head)
+tapdisk_image_open_x_chain(const char *path, struct td_vbd_encryption *encryption,
+			   struct list_head *_head)
 {
 	struct list_head head = LIST_HEAD_INIT(head);
 	td_image_t *image = NULL, *next;
@@ -443,7 +447,7 @@ tapdisk_image_open_x_chain(const char *path, struct list_head *_head)
 				goto fail;
 		}
 
-		err = tapdisk_image_open(type, path, flags, &image);
+		err = tapdisk_image_open(type, path, flags, encryption, &image);
 		if (err)
 			goto fail;
 
@@ -455,7 +459,7 @@ tapdisk_image_open_x_chain(const char *path, struct list_head *_head)
 		goto fail;
 	}
 
-	err = tapdisk_image_open_parents(image);
+	err = tapdisk_image_open_parents(image, encryption);
 	if (err)
 		goto fail;
 
@@ -479,15 +483,15 @@ fail:
 
 int
 tapdisk_image_open_chain(const char *desc, int flags, int prt_devnum,
-			 struct list_head *head)
+			 struct td_vbd_encryption *encryption, struct list_head *head)
 {
 	const char *name;
 	int type, err;
 
 	type = tapdisk_disktype_parse_params(desc, &name);
 	if (type >= 0)
-		return __tapdisk_image_open_chain(type, name, flags, head,
-						  prt_devnum);
+		return __tapdisk_image_open_chain(type, name, flags, encryption,
+						  head, prt_devnum);
 
 	err = type;
 
@@ -495,7 +499,7 @@ tapdisk_image_open_chain(const char *desc, int flags, int prt_devnum,
 		switch (desc[2]) {
 		case 'c':
 			if (!strncmp(desc, "x-chain", strlen("x-chain")))
-				err = tapdisk_image_open_x_chain(name, head);
+				err = tapdisk_image_open_x_chain(name, encryption, head);
 			break;
 		}
 	}

@@ -185,6 +185,13 @@ struct td_request {
 	td_vbd_request_t            *vreq;
 };
 
+struct td_vbd_encryption
+{
+	/* key size in octets */
+	uint8_t                    key_size;
+	uint8_t                    *encryption_key;
+};
+
 /* 
  * Structure describing the interface to a virtual disk implementation.
  * See note at the top of this file describing this interface.
@@ -193,7 +200,7 @@ struct tap_disk {
 	const char                  *disk_type;
 	td_flag_t                    flags;
 	int                          private_data_size;
-	int (*td_open)               (td_driver_t *, const char *, td_flag_t);
+	int (*td_open)               (td_driver_t *, const char *, struct td_vbd_encryption *encryption, td_flag_t);
 	int (*td_close)              (td_driver_t *);
 	int (*td_get_parent_id)      (td_driver_t *, td_disk_id_t *);
 	int (*td_validate_parent)    (td_driver_t *, td_driver_t *, td_flag_t);

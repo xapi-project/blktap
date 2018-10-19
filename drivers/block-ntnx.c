@@ -242,7 +242,8 @@ queue_io(td_driver_t* driver, const td_request_t *treq, int write)
 /* -- interface -- */
 
 static int
-tdntnx_open(td_driver_t* driver, const char* name, td_flag_t flags)
+tdntnx_open(td_driver_t* driver, const char* name,
+	    struct td_vbd_encryption *encryption, td_flag_t flags)
 {
     struct tdntnx_data *prv = driver->data;
     static int initialized = 0;

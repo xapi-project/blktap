@@ -36,8 +36,8 @@
 #include "tapdisk-image.h"
 #include "tapdisk-driver.h"
 
-int td_open(td_image_t *);
-int __td_open(td_image_t *, td_disk_info_t *);
+int td_open(td_image_t *, struct td_vbd_encryption *);
+int __td_open(td_image_t *, struct td_vbd_encryption *, td_disk_info_t *);
 int td_load(td_image_t *);
 int td_close(td_image_t *);
 int td_get_parent_id(td_image_t *, td_disk_id_t *);

@@ -326,7 +326,7 @@ tapdisk_vbd_add_block_cache(td_vbd_t *vbd)
 	cache->driver->info = target->driver->info;
 
 	/* try to open new cache */
-	err = td_open(cache);
+	err = td_open(cache, &vbd->encryption);
 	if (!err)
 		goto done;
 
@@ -377,7 +377,7 @@ tapdisk_vbd_add_local_cache(td_vbd_t *vbd)
 	cache->driver->info = parent->driver->info;
 
 	/* try to open new cache */
-	err = td_open(cache);
+	err = td_open(cache, &vbd->encryption);
 	if (!err)
 		goto done;
 
@@ -420,7 +420,7 @@ tapdisk_vbd_add_secondary(td_vbd_t *vbd)
 		goto fail;
 	}
 
-	err = tapdisk_image_open(type, path, leaf->flags, &second);
+	err = tapdisk_image_open(type, path, leaf->flags, &vbd->encryption, &second);
 	if (err) {
 		if (type == DISK_TYPE_NBD)
 			vbd->nbd_mirror_failed = 1;
@@ -557,7 +557,7 @@ static int tapdisk_vbd_add_dirty_log(td_vbd_t *vbd)
 	driver->info = parent->driver->info;
 	log->driver  = driver;
 
-	err = td_open(log);
+	err = td_open(log, &vbd->encryption);
 	if (err)
 		goto fail;
 
@@ -594,7 +594,7 @@ tapdisk_vbd_open_vdi(td_vbd_t *vbd, const char *name, td_flag_t flags, int prt_d
 		}
 	}
 
-	err = tapdisk_image_open_chain(vbd->name, flags, prt_devnum, &vbd->images);
+	err = tapdisk_image_open_chain(vbd->name, flags, prt_devnum, &vbd->encryption, &vbd->images);
 	if (err)
 		goto fail;
 
