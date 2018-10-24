@@ -41,7 +41,7 @@ libvhd_la_SOURCES += xattr.h
 
 libvhd_la_LDFLAGS = -version-info 1:1:1
 
-libvhd_la_LIBADD = -luuid -lcrypto $(LIBICONV)  $(top_srcdir)/lvm/liblvmutil.la
+libvhd_la_LIBADD = -luuid -ldl $(LIBICONV)  $(top_srcdir)/lvm/liblvmutil.la
 
 libvhdio_la_SOURCES  = libvhdio.c
 libvhdio_la_SOURCES += ../../part/partition.c

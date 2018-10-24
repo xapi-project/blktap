@@ -66,6 +66,7 @@
 #include <libaio.h>
 #include <sys/mman.h>
 #include <limits.h>
+#include <dlfcn.h>
 
 #include "debug.h"
 #include "libvhd.h"
@@ -77,6 +78,8 @@
 #include "block-crypto.h"
 
 unsigned int SPB;
+
+#define LIBBLOCKCRYPTO_NAME "libblockcrypto.so"
 
 #define DEBUGGING   2
 #define MICROSOFT_COMPAT
@@ -263,6 +266,20 @@ struct vhd_state {
 	uint64_t                  writes;
 	uint64_t                  write_size;
 };
+
+/* Define access functions for VHD encryption */
+struct crypto_interface
+{
+	int (*vhd_open_crypto)(
+		vhd_context_t *vhd, struct td_vbd_encryption *encryption,
+		const char *name);
+	void (*vhd_crypto_encrypt)(
+		vhd_context_t *vhd, td_request_t *t, char *orig_buf);
+	void (*vhd_crypto_decrypt)(vhd_context_t *vhd, td_request_t *t);
+};
+
+static struct crypto_interface *crypto_interface = NULL;
+static void *crypto_handle;
 
 #define test_vhd_flag(word, flag)  ((word) & (flag))
 #define set_vhd_flag(word, flag)   ((word) |= (flag))
@@ -657,6 +674,74 @@ vhd_log_open(struct vhd_state *s)
 		allocated, full, s->next_db);
 }
 
+static int dummy_open_crypto(
+	vhd_context_t *vhd, struct td_vbd_encryption *encryption,
+	const char *name)
+{
+	if (encryption->encryption_key) {
+		EPRINTF("Encryption requested with no support library\n");
+		return -EINVAL;
+	}
+
+	return 0;
+}
+
+static int
+__load_crypto()
+{
+	crypto_interface = malloc(sizeof(struct crypto_interface));
+	if (!crypto_interface) {
+		EPRINTF("Failed to allocate memory\n");
+		return -ENOMEM;
+	}
+
+	crypto_handle = dlopen(LIBBLOCKCRYPTO_NAME, RTLD_LAZY);
+	if (crypto_handle == NULL) {
+		crypto_interface->vhd_open_crypto = dummy_open_crypto;
+		crypto_interface->vhd_crypto_encrypt = NULL;
+		crypto_interface->vhd_crypto_decrypt = NULL;
+	} else {
+		dlerror();
+		crypto_interface->vhd_open_crypto =
+			(int (*)(vhd_context_t *, struct td_vbd_encryption *,
+				 const char *))
+			dlsym (crypto_handle, "vhd_open_crypto");
+		crypto_interface->vhd_crypto_encrypt =
+			(void (*)(vhd_context_t *, td_request_t *,
+				  char *))
+			dlsym(crypto_handle, "vhd_crypto_encrypt");
+		crypto_interface->vhd_crypto_decrypt =
+			(void (*)(vhd_context_t *, td_request_t *))
+			dlsym(crypto_handle, "vhd_crypto_decrypt");
+
+		if (!crypto_interface->vhd_open_crypto ||
+		    !crypto_interface->vhd_crypto_encrypt ||
+		    !crypto_interface->vhd_crypto_decrypt) {
+			EPRINTF("Failed to load crypto routines from dynamic library. %s\n",
+				dlerror());
+			return -EINVAL;
+		}
+		DPRINTF("Loaded cryptography library\n");
+	}
+
+	return 0;
+}
+
+static int
+__load_and_open_crypto(vhd_context_t *vhd, struct td_vbd_encryption *encryption,
+		       const char *name)
+{
+	int ret = 0;
+
+	if (!crypto_interface) {
+		ret = __load_crypto();
+		if (ret)
+			return ret;
+	}
+
+	return crypto_interface->vhd_open_crypto(vhd, encryption, name);
+}
+
 static int
 __vhd_open(td_driver_t *driver, const char *name,
 	   struct td_vbd_encryption *encryption, vhd_flag_t flags)
@@ -725,7 +810,7 @@ __vhd_open(td_driver_t *driver, const char *name,
         DBG(TLOG_INFO, "vhd_open: done (sz:%"PRIu64", sct:%lu, inf:%u)\n",
 	    driver->info.size, driver->info.sector_size, driver->info.info);
 
-	err = vhd_open_crypto(&s->vhd, encryption, name);
+	err = __load_and_open_crypto(&s->vhd, encryption, name);
 	if (err) {
 		DPRINTF("failed to init crypto: %d\n", err);
 		goto fail;
@@ -1708,7 +1793,8 @@ schedule_data_write(struct vhd_state *s, td_request_t treq, vhd_flag_t flags)
 	if (vhd_is_encrypted(s)) {
 		req->orig_buf = req->treq.buf;
 		req->treq.buf = crypto_buf;
-		vhd_crypto_encrypt(&s->vhd, &req->treq, req->orig_buf);
+		crypto_interface->vhd_crypto_encrypt(
+			&s->vhd, &req->treq, req->orig_buf);
 	}
 
 	if (test_vhd_flag(flags, VHD_FLAG_REQ_UPDATE_BITMAP)) {
@@ -2034,7 +2120,8 @@ signal_completion(struct vhd_request *list, int error)
 		if (vhd_is_encrypted(s)) {
 			switch (r->op) {
 			case VHD_OP_DATA_READ:
-				vhd_crypto_decrypt(&s->vhd, &r->treq);
+				crypto_interface->vhd_crypto_decrypt(
+					&s->vhd, &r->treq);
 				break;
 			case VHD_OP_DATA_WRITE:
 				free(r->treq.buf);
