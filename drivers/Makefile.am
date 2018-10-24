@@ -7,16 +7,15 @@ AM_CFLAGS += $(if $(GCOV),-fprofile-dir=/tmp/coverage/blktap/drivers -fprofile-a
 
 AM_CPPFLAGS  = -D_GNU_SOURCE
 AM_CPPFLAGS += -I$(top_srcdir)/include
-CRYPTLIBS = -lcrypto -Lcrypto -lxts-aes
 
 libexec_PROGRAMS = tapdisk
 
 tapdisk_SOURCES = tapdisk2.c
-tapdisk_LDADD = libtapdisk.la crypto/libxts-aes.la $(CRYPTLIBS)
+tapdisk_LDADD = libtapdisk.la
 
 noinst_PROGRAMS = tapdisk-stream
 
-tapdisk_stream_LDADD = libtapdisk.la crypto/libxts-aes.la $(CRYPTLIBS)
+tapdisk_stream_LDADD = libtapdisk.la
 
 sbin_PROGRAMS  = td-util
 sbin_PROGRAMS += td-rated
@@ -85,8 +84,6 @@ libtapdisk_la_SOURCES += block-aio.c
 libtapdisk_la_SOURCES += block-aio.h
 libtapdisk_la_SOURCES += block-ram.c
 libtapdisk_la_SOURCES += block-cache.c
-libtapdisk_la_SOURCES += block-crypto.c
-libtapdisk_la_SOURCES += block-crypto.h
 libtapdisk_la_SOURCES += block-vhd.c
 libtapdisk_la_SOURCES += block-valve.c
 libtapdisk_la_SOURCES += block-valve.h
@@ -108,16 +105,24 @@ libtapdisk_la_SOURCES += td-ctx.h
 libtapdisk_la_SOURCES += td-stats.c
 libtapdisk_la_SOURCES += td-stats.h
 
-# encryption support
-libtapdisk_la_SOURCES += crypto/xts_aes.c
-libtapdisk_la_SOURCES += crypto/xts_aes.h
-
 libtapdisk_la_LIBADD  = ../vhd/lib/libvhd.la
 libtapdisk_la_LIBADD += -laio
 libtapdisk_la_LIBADD += -lxenctrl
 libtapdisk_la_LIBADD += -lz
 libtapdisk_la_LIBADD += -lrt
 libtapdisk_la_LIBADD += -ldl
+
+# encryption support
+lib_LTLIBRARIES = libblockcrypto.la
+
+libblockcrypto_la_SOURCES = block-crypto.c
+libblockcrypto_la_SOURCES += block-crypto.h
+libblockcrypto_la_SOURCES += crypto/xts_aes.c
+libblockcrypto_la_SOURCES += crypto/xts_aes.h
+
+libblockcrypto_la_LDLFAGS = -shared
+
+libblockcrypto_la_LIBADD = -lcrypto
 
 logrotatedir = $(sysconfdir)/logrotate.d
 dist_logrotate_DATA = blktap

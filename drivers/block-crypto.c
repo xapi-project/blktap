@@ -48,9 +48,48 @@
 
 #define MAX_AES_XTS_PLAIN_KEYSIZE 1024
 
-int __vhd_util_calculate_keyhash(struct vhd_keyhash *, const uint8_t *, size_t);
 char * vhd_util_get_vhd_basename(vhd_context_t *vhd);
 extern int CRYPTO_SUPPORTED_KEYSIZE[];
+
+/*
+ * calculates keyhash by taking a SHA256 hash of @keyhash->nonce + key
+ */
+int
+vhd_calculate_keyhash(struct vhd_keyhash *keyhash,
+		const uint8_t *key, size_t key_bytes)
+{
+	int err;
+	EVP_MD_CTX evp;
+
+	err = -1;
+	EVP_MD_CTX_init(&evp);
+	if (!EVP_DigestInit_ex(&evp, EVP_sha256(), NULL)) {
+		EPRINTF("failed to init sha256 context\n");
+		goto out;
+	}
+
+	if (!EVP_DigestUpdate(&evp, keyhash->nonce, sizeof(keyhash->nonce))) {
+		EPRINTF("failed to hash nonce\n");
+		goto cleanup;
+	}
+
+	if (!EVP_DigestUpdate(&evp, key, key_bytes)) {
+		EPRINTF("failed to hash key\n");
+		goto cleanup;
+	}
+
+	if (!EVP_DigestFinal_ex(&evp, keyhash->hash, NULL)) {
+		EPRINTF("failed to finalize hash\n");
+		goto cleanup;
+	}
+
+	err = 0;
+
+cleanup:
+	EVP_MD_CTX_cleanup(&evp);
+out:
+	return err;
+}
 
 static int
 check_key(const uint8_t *keybuf, unsigned int keysize,
@@ -66,7 +105,7 @@ check_key(const uint8_t *keybuf, unsigned int keysize,
 	}
 
 	memcpy(keyhash.nonce, vhdhash->nonce, sizeof(keyhash.nonce));
-	err = __vhd_util_calculate_keyhash(&keyhash, keybuf, keysize / 8);
+	err = vhd_calculate_keyhash(&keyhash, keybuf, keysize / 8);
 	if (err) {
 		DPRINTF("failed to calculate keyhash: %d\n", err);
 		goto out;

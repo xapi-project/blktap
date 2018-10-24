@@ -35,10 +35,11 @@
 #include <syslog.h>
 #include <sys/types.h>
 #include <sys/stat.h>
-
-#include <openssl/evp.h>
+#include <dlfcn.h>
 
 #include "libvhd.h"
+
+#define LIBBLOCKCRYPTO_NAME "libblockcrypto.so"
 
 #define MAX_KEY_SIZE 512
 int CRYPTO_SUPPORTED_KEYSIZE[] = { 512, 256, -1};
@@ -48,6 +49,30 @@ int CRYPTO_SUPPORTED_KEYSIZE[] = { 512, 256, -1};
 		syslog(LOG_INFO, "%s: " _f, __func__, ##_a);	\
 		fprintf(stderr, "%s: " _f, __func__, ##_a);	\
 	} while (0)
+
+
+typedef int (*vhd_calculate_keyhash)(struct vhd_keyhash *keyhash,
+				     const uint8_t *key, size_t key_byte);
+vhd_calculate_keyhash pvhd_calculate_keyhash;
+void *crypto_handle;
+
+static int
+__load_crypto()
+{
+	crypto_handle = dlopen(LIBBLOCKCRYPTO_NAME, RTLD_LAZY);
+	if (crypto_handle == NULL) {
+		ERR("Failed to load crypto support library\n");
+		return -EINVAL;
+	}
+	pvhd_calculate_keyhash = (int (*)(struct vhd_keyhash *,
+					  const uint8_t *, size_t))
+		dlsym(crypto_handle, "vhd_calculate_keyhash");
+	if (!pvhd_calculate_keyhash) {
+		ERR("Calculate keyhash function not loaded\n");
+		return -EINVAL;
+	}
+	return 0;
+}
 
 char *
 vhd_util_get_vhd_basename(vhd_context_t *vhd)
@@ -150,47 +175,6 @@ out:
 	return err;
 }
 
-/*
- * calculates keyhash by taking a SHA256 hash of @keyhash->nonce + key
- */
-int
-__vhd_util_calculate_keyhash(struct vhd_keyhash *keyhash,
-			     const uint8_t *key, size_t key_bytes)
-{
-	int err;
-	EVP_MD_CTX evp;
-
-	err = -1;
-	EVP_MD_CTX_init(&evp);
-	if (!EVP_DigestInit_ex(&evp, EVP_sha256(), NULL)) {
-		ERR("failed to init sha256 context\n");
-		goto out;
-	}
-
-	if (!EVP_DigestUpdate(&evp, keyhash->nonce, sizeof(keyhash->nonce))) {
-		ERR("failed to hash nonce\n");
-		goto cleanup;
-	}
-
-	if (!EVP_DigestUpdate(&evp, key, key_bytes)) {
-		ERR("failed to hash key\n");
-		goto cleanup;
-	}
-
-	if (!EVP_DigestFinal_ex(&evp, keyhash->hash, NULL)) {
-		ERR("failed to finalize hash\n");
-		goto cleanup;
-	}
-
-	err = 0;
-
-cleanup:
-	EVP_MD_CTX_cleanup(&evp);
-out:
-	return err;
-}
-
-
 static int
 vhd_util_calculate_keyhash(struct vhd_keyhash *keyhash, const char *keypath, size_t key_bytes)
 {
@@ -214,7 +198,13 @@ vhd_util_calculate_keyhash(struct vhd_keyhash *keyhash, const char *keypath, siz
 		goto out;
 	}
 
-	err = __vhd_util_calculate_keyhash(keyhash, key, read_bytes);
+	err = __load_crypto();
+	if (err) {
+		/* __load_crypto already logged the failure */
+		goto out;
+	}
+
+	err =  pvhd_calculate_keyhash(keyhash, key, read_bytes);
 	if (err) {
 		ERR("failed to calculate keyhash: %d\n", err);
 		goto out;
