@@ -548,7 +548,7 @@ usage:
 	fprintf(stderr,
 		"usage:\n"
 		"-C -k KEYPATH [-N NONCE]: calculate keyhash for KEYPATH\n"
-		"-s -n NAME <-k KEYPATH | -H HASH> [-N NONCE]: set keyhash for NAME\n"
+		"-s -n NAME <-k KEYPATH> | -H HASH> [-N NONCE]: set keyhash for NAME\n"
 		"-c -n NAME <-k KEYPATH>: check keyhash for NAME\n"
 		"-p -n NAME: print keyhash for NAME\n"
 		"-h help\n");
