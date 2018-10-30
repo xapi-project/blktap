@@ -660,6 +660,8 @@ out:
 /**
  * Creates (removes) a device depending on the existence (non-existence) of the
  * "backend/<backend name>/@domid/@devname" XenStore path.
+ * Also handles some device status change behaviour which is neither create nor
+ * remove.
  *
  * @param domid the ID of the domain where the VBD is created
  * @param devname device name
@@ -698,10 +700,15 @@ tapback_backend_probe_device(backend_t *backend,
     tapback_backend_find_device(backend, device,
             device->domid == domid && !strcmp(device->name, devname));
 
-    /*
-     * If XenStore says that the device should exist but it's not in our device
-     * list, we must create it. If it's the other way round, this is a removal.
-     */
+	/*
+	 * If XenStore says that the device should exist but it's not in our device
+	 * list, we must create it. If it's the other way round, this is a removal.
+	 *
+	 * It *is* possible for a device to be not in our device list *and* XenStore
+	 * does not say it should exist, in which case neither create nor remove
+	 * will be true. This needs to fall through to some additional behaviour
+	 * which records status changes.
+	*/
     remove = device && !should_exist;
     create = !device && should_exist;
 
@@ -742,7 +749,7 @@ tapback_backend_probe_device(backend_t *backend,
      * We don't set a XenStore watch on these paths in order to limit the
      * number of watches for performance reasons.
      */
-    if (!remove && comp) {
+    if (device && !remove && comp) {
         /*
          * TODO Replace this with a despatch table mapping XenStore keys to
          * callbacks.
