@@ -17,6 +17,7 @@ libvhd_la_SOURCES  = libvhd.c
 libvhd_la_SOURCES += libvhd-journal.c
 libvhd_la_SOURCES += libvhd-index.c
 libvhd_la_SOURCES += vhd-util-coalesce.c
+libvhd_la_SOURCES += vhd-util-copy.c
 libvhd_la_SOURCES += vhd-util-create.c
 libvhd_la_SOURCES += vhd-util-fill.c
 libvhd_la_SOURCES += vhd-util-modify.c

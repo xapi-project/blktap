@@ -271,11 +271,11 @@ struct vhd_state {
 struct crypto_interface
 {
 	int (*vhd_open_crypto)(
-		vhd_context_t *vhd, struct td_vbd_encryption *encryption,
-		const char *name);
+		vhd_context_t *, const uint8_t *, size_t,
+		const char *);
 	void (*vhd_crypto_encrypt)(
-		vhd_context_t *vhd, td_request_t *t, char *orig_buf);
-	void (*vhd_crypto_decrypt)(vhd_context_t *vhd, td_request_t *t);
+		vhd_context_t *, td_request_t *, char *);
+	void (*vhd_crypto_decrypt)(vhd_context_t *, td_request_t *);
 };
 
 static struct crypto_interface *crypto_interface = NULL;
@@ -675,10 +675,10 @@ vhd_log_open(struct vhd_state *s)
 }
 
 static int dummy_open_crypto(
-	vhd_context_t *vhd, struct td_vbd_encryption *encryption,
+	vhd_context_t *vhd, const uint8_t *key, size_t key_bytes,
 	const char *name)
 {
-	if (encryption->encryption_key) {
+	if (key) {
 		EPRINTF("Encryption requested with no support library\n");
 		return -EINVAL;
 	}
@@ -703,7 +703,7 @@ __load_crypto()
 	} else {
 		dlerror();
 		crypto_interface->vhd_open_crypto =
-			(int (*)(vhd_context_t *, struct td_vbd_encryption *,
+			(int (*)(vhd_context_t *, const uint8_t *, size_t,
 				 const char *))
 			dlsym (crypto_handle, "vhd_open_crypto");
 		crypto_interface->vhd_crypto_encrypt =
@@ -739,7 +739,8 @@ __load_and_open_crypto(vhd_context_t *vhd, struct td_vbd_encryption *encryption,
 			return ret;
 	}
 
-	return crypto_interface->vhd_open_crypto(vhd, encryption, name);
+	return crypto_interface->vhd_open_crypto(
+		vhd, encryption->encryption_key, encryption->key_size, name);
 }
 
 static int
