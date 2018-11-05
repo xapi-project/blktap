@@ -344,7 +344,7 @@ out:
 #endif
 
 int
-vhd_open_crypto(vhd_context_t *vhd, struct td_vbd_encryption *encryption, const char *name)
+vhd_open_crypto(vhd_context_t *vhd, const uint8_t *key, size_t key_bytes, const char *name)
 {
 	struct vhd_keyhash keyhash;
 	int err;
@@ -375,19 +375,19 @@ vhd_open_crypto(vhd_context_t *vhd, struct td_vbd_encryption *encryption, const 
 	}
 
 	if (keyhash.cookie == 0) {
-		if (!encryption->encryption_key) {
+		if (!key) {
 			DPRINTF("No crypto, not starting crypto\n");
 			return 0;
 		}
 
 		EPRINTF("VHD %s has no keyhash when encryption is requested\n", name);
 		return -EINVAL;
-	} else if (!encryption->encryption_key) {
+	} else if (!key) {
 		EPRINTF("No encryption key supplied for encrypted VHD, %s\n", name);
 		return -EINVAL;
 	}
 
-	err = check_key(encryption->encryption_key, encryption->key_size * 8, &keyhash);
+	err = check_key(key, key_bytes * 8, &keyhash);
 	if (err) {
 		EPRINTF("Keyhash doesn't match vhd key for %s\n", name);
 		return err;
@@ -402,7 +402,7 @@ vhd_open_crypto(vhd_context_t *vhd, struct td_vbd_encryption *encryption, const 
 		return err;
 	}
 
-	xts_aes_setkey(vhd->xts_tfm, encryption->encryption_key, encryption->key_size);
+	xts_aes_setkey(vhd->xts_tfm, key, key_bytes);
 	return 0;
 }
 
@@ -425,21 +425,28 @@ vhd_crypto_decrypt(vhd_context_t *vhd, td_request_t *t)
 	}
 }
 
+int
+vhd_crypto_encrypt_block(vhd_context_t *vhd, sector_t sector, uint8_t *source,
+			 uint8_t *dst, unsigned int block_size)
+{
+	return xts_aes_plain_encrypt(vhd->xts_tfm, sector, dst, source, block_size);
+}
+
 void
 vhd_crypto_encrypt(vhd_context_t *vhd, td_request_t *t, char *orig_buf)
 {
 	int sec, ret;
 
 	for (sec = 0; sec < t->secs; sec++) {
-		ret = xts_aes_plain_encrypt(vhd->xts_tfm, t->sec + sec,
-					    (uint8_t *)t->buf +
-					    sec * VHD_SECTOR_SIZE,
-					    (uint8_t *)orig_buf +
-					    sec * VHD_SECTOR_SIZE,
-					    VHD_SECTOR_SIZE);
+		ret = vhd_crypto_encrypt_block(
+			vhd, t->sec + sec,
+			(uint8_t *)orig_buf + sec * VHD_SECTOR_SIZE,
+			(uint8_t *)t->buf + sec * VHD_SECTOR_SIZE,
+			VHD_SECTOR_SIZE);
 		if (ret) {
 			DPRINTF("crypto encrypt failed: %d : TERMINATED\n", ret);
 			exit(1); /* XXX */
 		}
 	}
 }
+

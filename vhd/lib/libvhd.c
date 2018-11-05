@@ -4545,5 +4545,6 @@ vhd_set_keyhash(vhd_context_t *ctx, const struct vhd_keyhash *keyhash)
 		return err;
 
 	memcpy(&batmap.header.keyhash, keyhash, sizeof(*keyhash));
+	memcpy(&(ctx->batmap.header.keyhash), keyhash, sizeof(*keyhash));
 	return vhd_write_batmap_header(ctx, &batmap);
 }
