@@ -167,6 +167,7 @@ vhd_util_fill(int argc, char **argv)
 	init_bat     = 0;
 	from_sector  = ULLONG_MAX;
 	to_sector    = ULLONG_MAX;
+	ignore_2tb_limit = false;
 
 	if (!argc || !argv)
 		goto usage;
@@ -238,7 +239,7 @@ vhd_util_fill(int argc, char **argv)
 		if (to_sector != ULLONG_MAX)
 			to_extent = to_sector / vhd.spb;
 		else
-			to_extent = vhd.bat.entries;
+			to_extent = vhd.bat.entries - 1;
 		err = vhd_io_allocate_blocks_fast(&vhd, from_extent, to_extent,
 				ignore_2tb_limit);
 		if (err)
