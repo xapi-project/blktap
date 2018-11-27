@@ -327,7 +327,7 @@ vhd_util_copy(int argc, char **argv)
 
 	return copy_vhd(name, new_name, key_size, encryption_key);
 usage:
-	printf("options: <-n name> <-N new VHD name> "
+	printf("options: -n <name> -N <new VHD name> "
 	       "[-k <keyfile> | -E (pass encryption key on stdin)] "
 	       "[-h help] \n");
 	if (encryption_key) {
