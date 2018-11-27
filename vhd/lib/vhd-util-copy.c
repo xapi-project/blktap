@@ -320,6 +320,11 @@ vhd_util_copy(int argc, char **argv)
 		}
 	}
 
+	if (!name || !new_name) {
+		fprintf(stderr, "Must supply both existing and new VHD names\n");
+		goto usage;
+	}
+
 	return copy_vhd(name, new_name, key_size, encryption_key);
 usage:
 	printf("options: <-n name> <-N new VHD name> "
