@@ -1754,6 +1754,7 @@ schedule_data_write(struct vhd_state *s, td_request_t treq, vhd_flag_t flags)
 	}
 
 	blk    = treq.sec / s->spb;
+	ASSERT(blk < s->bat.bat.entries);
 	sec    = treq.sec % s->spb;
 	offset = bat_entry(s, blk);
 
@@ -1771,6 +1772,9 @@ schedule_data_write(struct vhd_state *s, td_request_t treq, vhd_flag_t flags)
 
 	offset += s->bm_secs + sec;
 	offset  = vhd_sectors_to_bytes(offset);
+
+	/* Make sure were not about to overwrite the header */
+	ASSERT(offset >= 1536);
 
  make_request:
 	if (vhd_is_encrypted(s)) {
