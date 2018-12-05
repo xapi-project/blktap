@@ -1116,13 +1116,14 @@ vhd_read_bat(vhd_context_t *ctx, vhd_bat_t *bat)
 	/* The BAT size is stored in ctx->header.max_bat_size. However, we
 	 * sometimes preallocate BAT + batmap for max VHD size, so only read in
 	 * the BAT entries that are in use for curr_size */
-	vhd_blks = ctx->footer.curr_size >> VHD_BLOCK_SHIFT;
+	vhd_blks = (ctx->footer.curr_size + ((1 << VHD_BLOCK_SHIFT) - 1)) >> VHD_BLOCK_SHIFT;
+	VHDLOG("Calculated entries for size %lu is %u", ctx->footer.curr_size, vhd_blks);
 	if (ctx->header.max_bat_size < vhd_blks) {
-        VHDLOG("more VHD blocks (%u) than possible (%u)\n",
-                vhd_blks, ctx->header.max_bat_size);
-        err = -EINVAL;
-        goto fail;
-    }
+		VHDLOG("more VHD blocks (%u) than possible (%u)\n",
+		       vhd_blks, ctx->header.max_bat_size);
+		err = -EINVAL;
+		goto fail;
+	}
 	size = vhd_bytes_padded(vhd_blks * sizeof(uint32_t));
 
 	err  = posix_memalign(&buf, VHD_SECTOR_SIZE, size);
