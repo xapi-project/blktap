@@ -687,7 +687,7 @@ static int dummy_open_crypto(
 }
 
 static int
-__load_crypto()
+__load_crypto(struct td_vbd_encryption *encryption)
 {
 	crypto_interface = malloc(sizeof(struct crypto_interface));
 	if (!crypto_interface) {
@@ -695,12 +695,19 @@ __load_crypto()
 		return -ENOMEM;
 	}
 
-	crypto_handle = dlopen(LIBBLOCKCRYPTO_NAME, RTLD_LAZY);
-	if (crypto_handle == NULL) {
+	if (encryption->encryption_key == NULL) {
 		crypto_interface->vhd_open_crypto = dummy_open_crypto;
 		crypto_interface->vhd_crypto_encrypt = NULL;
 		crypto_interface->vhd_crypto_decrypt = NULL;
 	} else {
+		dlerror();
+		crypto_handle = dlopen(LIBBLOCKCRYPTO_NAME, RTLD_LAZY);
+		if (crypto_handle == NULL) {
+			EPRINTF("Failed to load crypto library. %s\n",
+				dlerror());
+			return -EINVAL;
+		}
+
 		dlerror();
 		crypto_interface->vhd_open_crypto =
 			(int (*)(vhd_context_t *, const uint8_t *, size_t,
@@ -734,7 +741,7 @@ __load_and_open_crypto(vhd_context_t *vhd, struct td_vbd_encryption *encryption,
 	int ret = 0;
 
 	if (!crypto_interface) {
-		ret = __load_crypto();
+		ret = __load_crypto(encryption);
 		if (ret)
 			return ret;
 	}
