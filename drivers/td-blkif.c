@@ -81,6 +81,13 @@ tapdisk_xenblkif_stats_destroy(struct td_xenblkif *blkif)
     free(blkif->xenvbd_stats.io_ring.path);
     blkif->xenvbd_stats.io_ring.path = NULL;
 
+	/*
+	 * blkif->stats.xenvbd was initialised to blkif->xenvbd_stats.stats.mem
+	 * in tapdisk_xenblkif_stats_create(). That address will be unmapped
+	 * by the call to shm_destroy(), and an error return does not mean it
+	 * wasn't, so we must unconditionally NULL blkif->stats.xenvbd here.
+	 */
+	blkif->stats.xenvbd = NULL;
     err = shm_destroy(&blkif->xenvbd_stats.stats);
     if (unlikely(err))
         goto out;

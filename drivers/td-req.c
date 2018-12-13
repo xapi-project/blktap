@@ -495,11 +495,13 @@ tapdisk_xenblkif_complete_request(struct td_xenblkif * const blkif,
 			 * TODO stats should be collected after grant-copy for better
 			 * accuracy
 			 */
-			cnt = &blkif->stats.xenvbd->st_rd_cnt;
-			sum = &blkif->stats.xenvbd->st_rd_sum_usecs;
-			max = &blkif->stats.xenvbd->st_rd_max_usecs;
-                        blkif->vbd_stats.stats->read_reqs_completed++;
-                        ticks = &blkif->vbd_stats.stats->read_total_ticks;
+			if (likely(blkif->stats.xenvbd)) {
+				cnt = &blkif->stats.xenvbd->st_rd_cnt;
+				sum = &blkif->stats.xenvbd->st_rd_sum_usecs;
+				max = &blkif->stats.xenvbd->st_rd_max_usecs;
+			}
+			blkif->vbd_stats.stats->read_reqs_completed++;
+			ticks = &blkif->vbd_stats.stats->read_total_ticks;
 			if (likely(!err)) {
 				_err = guest_copy2(blkif, tapreq);
 				if (unlikely(_err)) {
@@ -509,11 +511,13 @@ tapdisk_xenblkif_complete_request(struct td_xenblkif * const blkif,
 				}
 			}
 		} else if (blkif_rq_wr(&tapreq->msg)) {
-			cnt = &blkif->stats.xenvbd->st_wr_cnt;
-			sum = &blkif->stats.xenvbd->st_wr_sum_usecs;
-			max = &blkif->stats.xenvbd->st_wr_max_usecs;
-                        blkif->vbd_stats.stats->write_reqs_completed++;
-                        ticks = &blkif->vbd_stats.stats->write_total_ticks;
+			if (likely(blkif->stats.xenvbd)) {
+				cnt = &blkif->stats.xenvbd->st_wr_cnt;
+				sum = &blkif->stats.xenvbd->st_wr_sum_usecs;
+				max = &blkif->stats.xenvbd->st_wr_max_usecs;
+			}
+			blkif->vbd_stats.stats->write_reqs_completed++;
+			ticks = &blkif->vbd_stats.stats->write_total_ticks;
 		}
 
 		if (likely(cnt)) {
@@ -696,10 +700,12 @@ tapdisk_xenblkif_parse_request(struct td_xenblkif * const blkif,
                     req->msg.id, strerror(-err));
             goto out;
         }
-        blkif->stats.xenvbd->st_wr_sect += nr_sect;
+		if (likely(blkif->stats.xenvbd))
+			blkif->stats.xenvbd->st_wr_sect += nr_sect;
         blkif->vbd_stats.stats->write_sectors += nr_sect;
     } else {
-        blkif->stats.xenvbd->st_rd_sect += nr_sect;
+		if (likely(blkif->stats.xenvbd))
+			blkif->stats.xenvbd->st_rd_sect += nr_sect;
         blkif->vbd_stats.stats->read_sectors += nr_sect;
     } 
 
@@ -746,14 +752,16 @@ tapdisk_xenblkif_make_vbd_request(struct td_xenblkif * const blkif,
 	tapreq->vma = NULL;
     switch (tapreq->msg.operation) {
     case BLKIF_OP_READ:
-        blkif->stats.xenvbd->st_rd_req++;
+        if (likely(blkif->stats.xenvbd))
+			blkif->stats.xenvbd->st_rd_req++;
         blkif->vbd_stats.stats->read_reqs_submitted++;
         tapreq->prot = PROT_WRITE;
         vreq->op = TD_OP_READ;
         break;
     case BLKIF_OP_WRITE:
     case BLKIF_OP_WRITE_BARRIER:
-        blkif->stats.xenvbd->st_wr_req++;
+        if (likely(blkif->stats.xenvbd))
+			blkif->stats.xenvbd->st_wr_req++;
         blkif->vbd_stats.stats->write_reqs_submitted++;
         tapreq->prot = PROT_READ;
         vreq->op = TD_OP_WRITE;
