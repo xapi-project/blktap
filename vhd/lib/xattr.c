@@ -91,7 +91,7 @@ int
 xattr_get(int fd, const char *name, void *value, size_t size)
 {
 	if (_fgetxattr(fd, name, value, size) == -1) {
-		if (errno == ENOATTR) {
+		if ((errno == ENOATTR) || (errno == ENOTSUP)) {
 			memset(value, 0, size);
 			return 0;
 		}
