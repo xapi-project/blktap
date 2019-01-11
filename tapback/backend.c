@@ -273,6 +273,8 @@ physical_device_changed(vbd_t *device) {
 
     ASSERT(device);
 
+    INFO(device, "physical_device_changed\n");
+
     /*
      * Get the minor.
      */
@@ -351,7 +353,7 @@ physical_device_changed(vbd_t *device) {
         goto out;
     }
 
-    DBG(device, "found tapdisk[%d]\n", device->tap->pid);
+    INFO(device, "found tapdisk[%d], for %d:%d\n", device->tap->pid, device->major, device->minor);
 
     /*
      * get the VBD parameters from the tapdisk
