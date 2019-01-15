@@ -287,6 +287,12 @@ physical_device_changed(vbd_t *device) {
         goto out;
     }
 
+    if (strlen(s) == 0) {
+	    /* empty string is a missing device */
+	    err = -ENOENT;
+	    goto out;
+    }
+
     /*
      * The XenStore key physical-device contains "major:minor" in hex.
      */
