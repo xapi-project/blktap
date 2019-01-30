@@ -3737,7 +3737,8 @@ static int
 vhd_cache_load(vhd_context_t *ctx)
 {
 	char *next;
-	int err, pflags;
+	int err, pflags, fd_flags;
+	int fcntl_res __attribute__((unused));
 	vhd_context_t *vhd;
 
 	err    = 1;
@@ -3774,8 +3775,9 @@ vhd_cache_load(vhd_context_t *ctx)
 			goto out;
 		}
 
-		fcntl(parent->fd, F_SETFL,
-		      fcntl(parent->fd, F_GETFL) & ~O_DIRECT);
+		fd_flags = fcntl(parent->fd, F_GETFL);
+		if (fd_flags > 0)
+			fcntl_res = fcntl(parent->fd, F_SETFL, fd_flags & ~O_DIRECT);
 		vhd_flag_set(parent->oflags, VHD_OPEN_CACHED);
 		list_add(&parent->next, &vhd->next);
 
