@@ -91,7 +91,7 @@ void test_cbt_util_get_parent(void **state)
 
 	assert_int_equal(result, 0);
 	uuid_unparse(parent, uuid_str);
-	strncat(uuid_str, "\n", 38);
+	strncat(uuid_str, "\n", 37);
 
 	assert_string_equal(output->buf, uuid_str);
 	free_printf_data(output);
@@ -123,7 +123,7 @@ void test_cbt_util_get_child(void **state)
 
 	assert_int_equal(result, 0);
 	uuid_unparse(child, uuid_str);
-	strncat(uuid_str, "\n", 38);
+	strncat(uuid_str, "\n", 37);
 
 	assert_string_equal(output->buf, uuid_str);
 	free_printf_data(output);
