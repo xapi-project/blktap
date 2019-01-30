@@ -14,6 +14,7 @@
 .libs
 cscope.*
 TAGS
+VERSION
 
 # ac/am
 Makefile.in
@@ -49,12 +50,14 @@ Makefile.in
 /vhd/lib/test/random-copy
 /vhd/lib/test/test-snapshot
 /tapback/tapback
+/test-driver
 
 # generated makefiles
 /Makefile
 /lvm/Makefile
 /part/Makefile
 /drivers/Makefile
+/drivers/crypto/Makefile
 /cbt/Makefile
 /control/Makefile
 /cpumond/Makefile
