@@ -159,19 +159,29 @@ wrap_vprintf(const char *format, va_list ap)
 int
 __wrap_printf(const char *format, ...)
 {
+	int ret;
 	va_list ap;
 	va_start(ap, format);
 
-	return wrap_vprintf(format, ap);
+	ret = wrap_vprintf(format, ap);
+
+	va_end(ap);
+
+	return ret;
 }
 
 int
 __wrap___printf_chk (int __flag, const char *format, ...)
 {
+	int ret;
 	va_list ap;
 	va_start(ap, format);
 
-	return wrap_vprintf(format, ap);
+	ret =  wrap_vprintf(format, ap);
+
+	va_end(ap);
+
+	return ret;
 }
 
 int
