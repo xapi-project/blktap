@@ -3761,8 +3761,11 @@ vhd_cache_load(vhd_context_t *ctx)
 			goto done;
 
 		err = vhd_parent_locator_get(vhd, &next);
-		if (err)
+		if (err) {
+			VHDLOG("%s: error reading parent locator for %s: %d\n",
+			       ctx->file, vhd->file, err);
 			goto out;
+		}
 
 		parent = calloc(1, sizeof(*parent));
 		if (!parent)
@@ -3770,6 +3773,7 @@ vhd_cache_load(vhd_context_t *ctx)
 
 		err = vhd_open(parent, next, pflags);
 		if (err) {
+			VHDLOG("%s: vhd_open failed: %d\n", next, err);
 			free(parent);
 			parent = NULL;
 			goto out;
