@@ -78,6 +78,8 @@ tap_ctl_prepare_directory(const char *dir)
 			break;
 		}
 
+		err = 0;
+
 		if (!ptr)
 			break;
 		else {
