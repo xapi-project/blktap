@@ -1117,7 +1117,6 @@ vhd_read_bat(vhd_context_t *ctx, vhd_bat_t *bat)
 	 * sometimes preallocate BAT + batmap for max VHD size, so only read in
 	 * the BAT entries that are in use for curr_size */
 	vhd_blks = (ctx->footer.curr_size + ((1 << VHD_BLOCK_SHIFT) - 1)) >> VHD_BLOCK_SHIFT;
-	VHDLOG("Calculated entries for size %lu is %u", ctx->footer.curr_size, vhd_blks);
 	if (ctx->header.max_bat_size < vhd_blks) {
 		VHDLOG("more VHD blocks (%u) than possible (%u)\n",
 		       vhd_blks, ctx->header.max_bat_size);
