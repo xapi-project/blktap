@@ -3559,9 +3559,9 @@ __vhd_io_fixed_write(vhd_context_t *ctx,
 }
 
 static int
-__vhd_io_allocate_block(vhd_context_t *ctx, uint32_t block)
+__vhd_io_allocate_block(vhd_context_t *ctx, uint32_t block, bool zero)
 {
-	char *buf;
+	char *buf = NULL;
 	size_t size;
 	off64_t off, max;
 	int err, gap, spp, secs;
@@ -3585,6 +3585,12 @@ __vhd_io_allocate_block(vhd_context_t *ctx, uint32_t block)
 	if (max > UINT32_MAX)
 		return -EIO;
 
+	/*
+	 * This seek is deliberately left here and not moved inside
+	 * the if (zero) {} block because if it is impossible to
+	 * seek to the block start we want the block allocation
+	 * to fail early.
+	 */
 	err = vhd_seek(ctx, off, SEEK_SET);
 	if (err)
 		return err;
@@ -3593,14 +3599,18 @@ __vhd_io_allocate_block(vhd_context_t *ctx, uint32_t block)
 	if (!vhd_flag_test(ctx->oflags, VHD_OPEN_IO_WRITE_SPARSE))
 		secs += ctx->spb;
 
-	size = vhd_sectors_to_bytes(secs);
-	buf  = mmap(0, size, PROT_READ, MAP_SHARED | MAP_ANONYMOUS, -1, 0);
-	if (buf == MAP_FAILED)
-		return -errno;
+	/* Fill the block with zeros if requested to do so */
+	if (zero) {
+		size = vhd_sectors_to_bytes(secs);
+		buf  = mmap(0, size, PROT_READ, MAP_SHARED | MAP_ANONYMOUS, -1, 0);
+		if (buf == MAP_FAILED)
+			return -errno;
 
-	err = vhd_write(ctx, buf, size);
-	if (err)
-		goto out;
+		err = vhd_write(ctx, buf, size);
+		munmap(buf, size);
+		if (err)
+			goto out;
+	}
 
 	ctx->bat.bat[block] = max;
 	err = vhd_write_bat(ctx, &ctx->bat);
@@ -3610,7 +3620,6 @@ __vhd_io_allocate_block(vhd_context_t *ctx, uint32_t block)
 	err = 0;
 
 out:
-	munmap(buf, size);
 	return err;
 }
 
@@ -3640,21 +3649,33 @@ __vhd_io_dynamic_write(vhd_context_t *ctx,
 		blk = sector / ctx->spb;
 		sec = sector % ctx->spb;
 
+		cnt = MIN(secs, ctx->spb - sec);
 		off = ctx->bat.bat[blk];
 		if (off == DD_BLK_UNUSED) {
-			err = __vhd_io_allocate_block(ctx, blk);
+			/*
+			 * When allocating a block, fill it with zeroes unless we
+			 * are about to write the entire block, in which case
+			 * don't bother.
+			 */
+			err = __vhd_io_allocate_block(ctx, blk, (cnt < ctx->spb)?true:false);
 			if (err)
 				return err;
 
 			off = ctx->bat.bat[blk];
 		}
 
+		/*
+		 * If we allocated a new block above this seek should not fail,
+		 * because it already succeeded once during the block allocation
+		 * even if we requested not to zero out the new allocation.
+		 * Thus we will get to the write and make sure to overwrite the
+		 * pre-existing contents, avoiding data leak.
+		 */
 		off += ctx->bm_secs + sec;
 		err  = vhd_seek(ctx, vhd_sectors_to_bytes(off), SEEK_SET);
 		if (err)
 			return err;
 
-		cnt = MIN(secs, ctx->spb - sec);
 		err = vhd_write(ctx, buf, vhd_sectors_to_bytes(cnt));
 		if (err)
 			return err;
@@ -4317,7 +4338,12 @@ __vhd_io_dynamic_write_bytes_aligned(vhd_context_t *ctx,
 
 		blk_start = ctx->bat.bat[blk];
 		if (blk_start == DD_BLK_UNUSED) {
-			err = __vhd_io_allocate_block(ctx, blk);
+			/*
+			 * When allocating a block, fill it with zeroes unless we
+			 * are about to write the entire block, in which case
+			 * don't bother.
+			 */
+			err = __vhd_io_allocate_block(ctx, blk, (bytes < blk_size)?true:false);
 			if (err)
 				goto fail;
 
