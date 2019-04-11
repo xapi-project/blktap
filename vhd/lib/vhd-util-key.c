@@ -103,7 +103,7 @@ vhd_util_validate_keypath(vhd_context_t *vhd, const char *keypath, size_t *key_b
 	int err, i;
 	char expected_basename[256] = { 0 };
 	char *vhd_basename = NULL;
-	char *keypath_basename = NULL;
+	const char *keypath_basename = NULL;
 
 	err = -1;
 
@@ -113,7 +113,11 @@ vhd_util_validate_keypath(vhd_context_t *vhd, const char *keypath, size_t *key_b
 		goto out;
 	}
 
-	keypath_basename = strrchr(keypath, '/')+1;
+	keypath_basename = strrchr(keypath, '/');
+	if (keypath_basename)
+		keypath_basename += 1;
+	else
+		keypath_basename = keypath;
 
 	/* Verify the filename */
 	/* <path>/<VHD-uuid>,aes-xts-plain,<key-length>.key */
