@@ -1375,8 +1375,8 @@ tapdisk_vbd_complete_td_request(td_request_t treq, int res)
 	if (res != 0 && image->type == DISK_TYPE_NBD && 
 			((image == vbd->secondary) || 
 			 (image == vbd->retired))) {
-		ERROR("Got non-zero res for NBD secondary - disabling "
-				"mirroring: %s",vreq->name);
+		ERROR("Got non-zero res %d for NBD secondary - disabling "
+		      "mirroring: %s", res, vreq->name);
 		vbd->nbd_mirror_failed = 1;
 		res = 0; /* Pretend the writes have completed successfully */
 
