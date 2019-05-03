@@ -374,6 +374,7 @@ tapdisk_nbdserver_newclient_fd(td_nbdserver_t *server, int new_fd)
 	tmp64 = htonll(NBD_NEGOTIATION_MAGIC);
 	memcpy(buffer + 8, &tmp64, sizeof(tmp64));
 	tmp64 = htonll(server->info.size * server->info.sector_size);
+	INFO("Sending size %"PRIu64"", ntohll(tmp64));
 	memcpy(buffer + 16, &tmp64, sizeof(tmp64));
 	tmp32 = htonl(0);
 	memcpy(buffer + 24, &tmp32, sizeof(tmp32));
@@ -403,7 +404,7 @@ tapdisk_nbdserver_newclient_fd(td_nbdserver_t *server, int new_fd)
 	INFO("Got an allocated client at %p", client);
 	client->client_fd = new_fd;
 
-	INFO("About to enable client");
+	INFO("About to enable client on fd %d", client->client_fd);
 	if (tapdisk_nbdserver_enable_client(client) < 0) {
 		ERR("Error enabling client");
 		tapdisk_nbdserver_free_client(client);
@@ -516,7 +517,7 @@ tapdisk_nbdserver_clientcb(event_id_t id, char mode, void *data)
 		tapdisk_nbdserver_free_client(client);
 		INFO("About to send initial connection message");
 		tapdisk_nbdserver_newclient_fd(server, fd);
-		INFO("Sent");
+		INFO("Sent initial connection message");
 		return;
 
 	default:
@@ -546,7 +547,7 @@ tapdisk_nbdserver_fdreceiver_cb(int fd, char *msg, void *data)
 	ASSERT(msg);
 	ASSERT(fd >= 0);
 
-	INFO("Received fd with msg: %s", msg);
+	INFO("Received fd %d with msg: %s", fd, msg);
 
 	tapdisk_nbdserver_newclient_fd(server, fd);
 }

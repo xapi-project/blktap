@@ -213,8 +213,8 @@ __cancel_req(int i, struct td_nbd_request *pos, int e)
 	char handle[9];
 	memcpy(handle, pos->nreq.handle, 8);
 	handle[8] = 0;
-	INFO("Entry %d: handle='%s' type=%d: %s",
-			i, handle, ntohl(pos->nreq.type), strerror(e));
+	INFO("Entry %d: handle='%s' type=%d, len=%d: %s",
+	     i, handle, ntohl(pos->nreq.type), ntohl(pos->nreq.len), strerror(e));
 
 	if (pos->timeout_event >= 0) {
 		tapdisk_server_unregister_event(pos->timeout_event);
@@ -235,9 +235,11 @@ tdnbd_disable(struct tdnbd_data *prv, int e)
 	tapdisk_server_unregister_event(prv->writer_event_id);
 	tapdisk_server_unregister_event(prv->reader_event_id);
 
+	INFO("NBD client cancelling sent reqs");
 	list_for_each_entry_safe(pos, q, &prv->sent_reqs, queue)
 		__cancel_req(i++, pos, e);
 
+	INFO("NBD client cancelling pending reqs");
 	list_for_each_entry_safe(pos, q, &prv->pending_reqs, queue)
 		__cancel_req(i++, pos, e);
 
@@ -317,7 +319,8 @@ static void
 tdnbd_timeout_cb(event_id_t eb, char mode, void *data)
 {
 	struct tdnbd_data *prv = data;
-	ERROR("Timeout!: %d", eb);
+	ERROR("Timeout!: %d, writer %d, reader %d", eb,
+	      prv->writer_event_id, prv->reader_event_id);
 	tdnbd_disable(prv, ETIMEDOUT);
 }
 
