@@ -301,6 +301,10 @@ __tapdisk_nbdserver_request_cb(td_vbd_request_t *vreq, int error,
 	gettimeofday(&now, NULL);
 	interval = timeval_to_us(&now) - timeval_to_us(&vreq->ts);
 
+	if (interval > 20 * 1000 * 1000) {
+		INFO("request took %llu seconds to complete", interval);
+	}
+
 	if (client->client_fd < 0) {
 		ERR("Finishing request for client that has disappeared");
 		goto finish;
