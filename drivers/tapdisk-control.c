@@ -1272,6 +1272,7 @@ out:
         image->sectors = vbd->disk_info.size;
         image->sector_size = vbd->disk_info.sector_size;
         image->info = vbd->disk_info.info;
+        image->discard_supported = vbd->disk_info.discard_supported;
     }
     return err;
 }

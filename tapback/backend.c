@@ -365,7 +365,7 @@ physical_device_changed(vbd_t *device) {
      * get the VBD parameters from the tapdisk
      */
     if ((err = tap_ctl_info(device->tap->pid, &device->sectors,
-                    &device->sector_size, &info,
+                    &device->sector_size, &info, &device->discard_supported,
                     device->minor))) {
         WARN(device, "error retrieving disk characteristics: %s\n",
                 strerror(-err));

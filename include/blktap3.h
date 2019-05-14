@@ -50,8 +50,7 @@
  */
 struct blkback_stats {
 	/**
-	 * BLKIF_OP_DISCARD, not currently supported in blktap3, should always
-	 * be zero
+	 * Received BLKIF_OP_DISCARD requests.
 	 */
 	unsigned long long st_ds_req;
 

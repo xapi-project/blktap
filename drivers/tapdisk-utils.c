@@ -38,11 +38,13 @@
 #include <string.h>
 #include <unistd.h>
 #include <linux/fs.h>
+#include <linux/magic.h>
 #include <sys/stat.h>
 #include <sys/mman.h>
 #include <sys/ioctl.h>
 #include <sys/resource.h>
 #include <sys/utsname.h>
+#include <sys/vfs.h>
 #include <arpa/inet.h>
 
 #ifdef __linux__
@@ -443,4 +445,40 @@ const long long USEC_PER_SEC = 1000000L;
 inline long long timeval_to_us(struct timeval *tv)
 {
 	return ((long long)tv->tv_sec * USEC_PER_SEC) + tv->tv_usec;
+}
+
+bool is_hole_punching_supported_for_fd(int fd) {
+        int rc;
+        int kernel_version;
+        struct statfs statfs_buf;
+
+        rc = fstatfs(fd, &statfs_buf);
+        if (rc)
+                return false;
+        kernel_version = tapdisk_linux_version();
+        if (-ENOSYS == kernel_version)
+                return false;
+
+        // Support matrix according to man fallocate(2)
+        switch (statfs_buf.f_type) {
+#ifdef BTRFS_SUPER_MAGIC
+                case BTRFS_SUPER_MAGIC:
+                        return (kernel_version >= KERNEL_VERSION(3, 7, 0));
+#endif
+#ifdef EXT4_SUPER_MAGIC
+                case EXT4_SUPER_MAGIC:
+                        return (kernel_version >= KERNEL_VERSION(3, 0, 0));
+#endif
+#ifdef TMPFS_SUPER_MAGIC
+                case TMPFS_SUPER_MAGIC:
+                        return (kernel_version >= KERNEL_VERSION(3, 5, 0));
+#endif
+#ifdef XFS_SUPER_MAGIC
+                case XFS_SUPER_MAGIC:
+                        return (kernel_version >= KERNEL_VERSION(2, 6, 38));
+#endif
+                default:
+                        break;
+        }
+        return false;
 }

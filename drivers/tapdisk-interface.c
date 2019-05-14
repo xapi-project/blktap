@@ -234,6 +234,42 @@ fail:
 	td_complete_request(treq, err);
 }
 
+
+void
+td_queue_discard(td_image_t *image, td_request_t treq)
+{
+        int err;
+        td_driver_t *driver;
+
+        driver = image->driver;
+        if (!driver) {
+                err = -ENODEV;
+                goto fail;
+        }
+
+        if (!td_flag_test(driver->state, TD_DRIVER_OPEN)) {
+                err = -EBADF;
+                goto fail;
+        }
+
+        if (!driver->ops->td_queue_discard) {
+                err = -EOPNOTSUPP;
+                goto fail;
+        }
+
+        err = tapdisk_image_check_td_request(image, treq);
+        if (err)
+                goto fail;
+
+        driver->ops->td_queue_discard(driver, treq);
+
+        return;
+
+fail:
+        td_complete_request(treq, err);
+}
+
+
 void
 td_forward_request(td_request_t treq)
 {
