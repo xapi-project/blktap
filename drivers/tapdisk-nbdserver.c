@@ -302,7 +302,7 @@ __tapdisk_nbdserver_request_cb(td_vbd_request_t *vreq, int error,
 	interval = timeval_to_us(&now) - timeval_to_us(&vreq->ts);
 
 	if (interval > 20 * 1000 * 1000) {
-		INFO("request took %llu seconds to complete", interval);
+		INFO("request took %llu microseconds to complete", interval);
 	}
 
 	if (client->client_fd < 0) {

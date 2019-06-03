@@ -316,15 +316,6 @@ tdnbd_read_some(int fd, struct nbd_queued_io *data)
 }
 
 static void
-tdnbd_timeout_cb(event_id_t eb, char mode, void *data)
-{
-	struct tdnbd_data *prv = data;
-	ERROR("Timeout!: %d, writer %d, reader %d", eb,
-	      prv->writer_event_id, prv->reader_event_id);
-	tdnbd_disable(prv, ETIMEDOUT);
-}
-
-static void
 tdnbd_writer_cb(event_id_t eb, char mode, void *data)
 {
 	struct td_nbd_request *pos, *q;
@@ -411,17 +402,8 @@ tdnbd_queue_request(struct tdnbd_data *prv, int type, uint64_t offset,
 	int id = global_id++;
 	snprintf(req->nreq.handle, 8, "td%05x", id % 0xffff);
 
-	/* No response from a disconnect, so no need for a timeout */
-	if (type != TAPDISK_NBD_CMD_DISC) { 
-		req->timeout_event = tapdisk_server_register_event(
-				SCHEDULER_POLL_TIMEOUT, 
-				-1, /* dummy */
-				TV_SECS(NBD_TIMEOUT),
-				tdnbd_timeout_cb,
-				prv);
-	} else {
-		req->timeout_event = -1;
-	}
+	/* Don't time the NBD requests out */
+	req->timeout_event = -1;
 
 	req->nreq.magic = htonl(NBD_REQUEST_MAGIC);
 	req->nreq.type = htonl(type);
