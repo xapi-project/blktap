@@ -1,6 +1,7 @@
 [Unit]
 Description=Tapback daemon for blktap3
-After=syslog.target network.target
+After=syslog.target network.target xenstored.service
+Requires=xenstored.service
 
 [Service]
 Type=forking
