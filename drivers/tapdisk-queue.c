@@ -458,8 +458,14 @@ tapdisk_lio_event(event_id_t id, char mode, void *private)
 	tapdisk_lio_ack_event(queue);
 
 	lio   = queue->tio_data;
-	ret   = io_getevents(lio->aio_ctx, 0,
-			     queue->size, lio->aio_events, NULL);
+	/* io_getevents() invoked via the libaio wrapper does not set errno but
+	 * instead returns -errno on error */
+	while ((ret = io_getevents(lio->aio_ctx, 0, queue->size, lio->aio_events, NULL)) < 0) {
+		/* Permit some errors to retry */
+		if (ret == -EINTR) continue;
+		ERR(ret, "io_getevents() non-retryable error");
+		return;
+	}
 	split = io_split(&queue->opioctx, lio->aio_events, ret);
 	tapdisk_filter_events(queue->filter, lio->aio_events, split);
 
