@@ -52,9 +52,9 @@ xts_aes_plain_encrypt(struct crypto_blkcipher *xts_tfm, sector_t sector,
 	int dstlen;
 	xts_aes_plain_iv_generate(iv, 16, sector);
 
-	if (!EVP_CipherInit_ex(&xts_tfm->en_ctx, NULL, NULL, NULL, iv, -1))
+	if (!EVP_CipherInit_ex(xts_tfm->en_ctx, NULL, NULL, NULL, iv, -1))
 		return -1;
-	if (!EVP_CipherUpdate(&xts_tfm->en_ctx, dst_buf, &dstlen, src_buf, nbytes))
+	if (!EVP_CipherUpdate(xts_tfm->en_ctx, dst_buf, &dstlen, src_buf, nbytes))
 		return -2;
 	/* no need to finalize with XTS when multiple of blocksize */
 	return 0;
@@ -68,9 +68,9 @@ xts_aes_plain_decrypt(struct crypto_blkcipher *xts_tfm, sector_t sector,
 	int dstlen;
 	xts_aes_plain_iv_generate(iv, 16, sector);
 
-	if (!EVP_CipherInit_ex(&xts_tfm->de_ctx, NULL, NULL, NULL, iv, -1))
+	if (!EVP_CipherInit_ex(xts_tfm->de_ctx, NULL, NULL, NULL, iv, -1))
 		return -1;
-	if (!EVP_CipherUpdate(&xts_tfm->de_ctx, dst_buf, &dstlen, src_buf, nbytes))
+	if (!EVP_CipherUpdate(xts_tfm->de_ctx, dst_buf, &dstlen, src_buf, nbytes))
 		return -2;
 	/* no need to finalize with XTS when multiple of blocksize */
 	return 0;

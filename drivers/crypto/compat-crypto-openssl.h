@@ -9,8 +9,8 @@
 
 struct crypto_blkcipher
 {
-	EVP_CIPHER_CTX de_ctx;
-	EVP_CIPHER_CTX en_ctx;
+	EVP_CIPHER_CTX *de_ctx;
+	EVP_CIPHER_CTX *en_ctx;
 };
 
 #endif
