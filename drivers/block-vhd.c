@@ -271,6 +271,7 @@ struct crypto_interface
 	int (*vhd_open_crypto)(
 		vhd_context_t *, const uint8_t *, size_t,
 		const char *);
+	void (*vhd_close_crypto)(vhd_context_t *);
 	void (*vhd_crypto_encrypt)(
 		vhd_context_t *, td_request_t *, char *);
 	void (*vhd_crypto_decrypt)(vhd_context_t *, td_request_t *);
@@ -684,6 +685,11 @@ static int dummy_open_crypto(
 	return 0;
 }
 
+void dummy_close_crypto(vhd_context_t *vhd)
+{
+
+}
+
 static int
 __load_crypto(struct td_vbd_encryption *encryption)
 {
@@ -695,6 +701,7 @@ __load_crypto(struct td_vbd_encryption *encryption)
 
 	if (encryption->encryption_key == NULL) {
 		crypto_interface->vhd_open_crypto = dummy_open_crypto;
+		crypto_interface->vhd_close_crypto = dummy_close_crypto;
 		crypto_interface->vhd_crypto_encrypt = NULL;
 		crypto_interface->vhd_crypto_decrypt = NULL;
 	} else {
@@ -711,6 +718,9 @@ __load_crypto(struct td_vbd_encryption *encryption)
 			(int (*)(vhd_context_t *, const uint8_t *, size_t,
 				 const char *))
 			dlsym (crypto_handle, "vhd_open_crypto");
+		crypto_interface->vhd_close_crypto =
+			(void (*)(vhd_context_t *))
+			dlsym(crypto_handle, "vhd_close_crypto");
 		crypto_interface->vhd_crypto_encrypt =
 			(void (*)(vhd_context_t *, td_request_t *,
 				  char *))
@@ -720,6 +730,7 @@ __load_crypto(struct td_vbd_encryption *encryption)
 			dlsym(crypto_handle, "vhd_crypto_decrypt");
 
 		if (!crypto_interface->vhd_open_crypto ||
+		    !crypto_interface->vhd_close_crypto ||
 		    !crypto_interface->vhd_crypto_encrypt ||
 		    !crypto_interface->vhd_crypto_decrypt) {
 			EPRINTF("Failed to load crypto routines from dynamic library. %s\n",
@@ -730,6 +741,14 @@ __load_crypto(struct td_vbd_encryption *encryption)
 	}
 
 	return 0;
+}
+
+static void
+__vhd_free_crypto(vhd_context_t *vhd)
+{
+	if (crypto_interface) {
+		crypto_interface->vhd_close_crypto(vhd);
+	}
 }
 
 static int
@@ -837,6 +856,7 @@ __vhd_open(td_driver_t *driver, const char *name,
  fail:
 	vhd_free_bat(s);
 	vhd_free_bitmap_cache(s);
+	__vhd_free_crypto(&s->vhd);
 	vhd_close(&s->vhd);
 	vhd_free(s);
 	return err;
@@ -938,6 +958,7 @@ _vhd_close(td_driver_t *driver)
 	vhd_log_close(s);
 	vhd_free_bat(s);
 	vhd_free_bitmap_cache(s);
+	__vhd_free_crypto(&s->vhd);
 	vhd_close(&s->vhd);
 	vhd_free(s);
 
