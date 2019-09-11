@@ -59,26 +59,26 @@ vhd_calculate_keyhash(struct vhd_keyhash *keyhash,
 		const uint8_t *key, size_t key_bytes)
 {
 	int err;
-	EVP_MD_CTX evp;
+	EVP_MD_CTX *evp = NULL;
 
 	err = -1;
-	EVP_MD_CTX_init(&evp);
-	if (!EVP_DigestInit_ex(&evp, EVP_sha256(), NULL)) {
+	evp = EVP_MD_CTX_new();
+	if (!EVP_DigestInit_ex(evp, EVP_sha256(), NULL)) {
 		EPRINTF("failed to init sha256 context\n");
-		goto out;
+		goto cleanup;
 	}
 
-	if (!EVP_DigestUpdate(&evp, keyhash->nonce, sizeof(keyhash->nonce))) {
+	if (!EVP_DigestUpdate(evp, keyhash->nonce, sizeof(keyhash->nonce))) {
 		EPRINTF("failed to hash nonce\n");
 		goto cleanup;
 	}
 
-	if (!EVP_DigestUpdate(&evp, key, key_bytes)) {
+	if (!EVP_DigestUpdate(evp, key, key_bytes)) {
 		EPRINTF("failed to hash key\n");
 		goto cleanup;
 	}
 
-	if (!EVP_DigestFinal_ex(&evp, keyhash->hash, NULL)) {
+	if (!EVP_DigestFinal_ex(evp, keyhash->hash, NULL)) {
 		EPRINTF("failed to finalize hash\n");
 		goto cleanup;
 	}
@@ -86,8 +86,7 @@ vhd_calculate_keyhash(struct vhd_keyhash *keyhash,
 	err = 0;
 
 cleanup:
-	EVP_MD_CTX_cleanup(&evp);
-out:
+	EVP_MD_CTX_free(evp);
 	return err;
 }
 
@@ -404,6 +403,17 @@ vhd_open_crypto(vhd_context_t *vhd, const uint8_t *key, size_t key_bytes, const 
 
 	xts_aes_setkey(vhd->xts_tfm, key, key_bytes);
 	return 0;
+}
+
+void
+vhd_close_crypto(vhd_context_t *vhd)
+{
+	if (vhd->xts_tfm)
+	{
+		EVP_CIPHER_CTX_free(vhd->xts_tfm->en_ctx);
+		EVP_CIPHER_CTX_free(vhd->xts_tfm->de_ctx);
+		free(vhd->xts_tfm);
+	}
 }
 
 void
