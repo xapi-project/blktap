@@ -77,9 +77,9 @@ struct td_xenblkif_req {
     /**
      * The scatter/gather list td_vbd_request_t.iov points to.
      */
-    struct td_iovec iov[BLKIF_MAX_SEGMENTS_PER_REQUEST];
+    struct td_iovec iov[BLKIF_MMAX_SEGMENTS_PER_REQUEST];
 
-    grant_ref_t gref[BLKIF_MAX_SEGMENTS_PER_REQUEST];
+    grant_ref_t gref[BLKIF_MMAX_SEGMENTS_PER_REQUEST];
     int prot;
 
 	struct gntdev_grant_copy_segment

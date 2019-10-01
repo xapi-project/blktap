@@ -121,7 +121,7 @@ td_xenblkif_bufcache_free(struct td_xenblkif * const blkif)
 
     while (blkif->n_reqs_bufcache_free > TD_REQS_BUFCACHE_MIN){
         munmap(blkif->reqs_bufcache[--blkif->n_reqs_bufcache_free],
-               BLKIF_MAX_SEGMENTS_PER_REQUEST << XC_PAGE_SHIFT);
+               BLKIF_MMAX_SEGMENTS_PER_REQUEST << XC_PAGE_SHIFT);
     }
 }
 
@@ -138,7 +138,7 @@ td_xenblkif_bufcache_get(struct td_xenblkif * const blkif)
     ASSERT(blkif);
 
     if (!blkif->n_reqs_bufcache_free) {
-        buf = mmap(NULL, BLKIF_MAX_SEGMENTS_PER_REQUEST << XC_PAGE_SHIFT,
+        buf = mmap(NULL, BLKIF_MMAX_SEGMENTS_PER_REQUEST << XC_PAGE_SHIFT,
                    PROT_READ | PROT_WRITE, MAP_SHARED | MAP_ANONYMOUS, -1, 0);
         if (unlikely(buf == MAP_FAILED))
             buf = NULL;
@@ -780,7 +780,7 @@ tapdisk_xenblkif_make_vbd_request(struct td_xenblkif * const blkif,
      */
     if (unlikely((tapreq->msg.nr_segments == 0 &&
                 tapreq->msg.operation != BLKIF_OP_WRITE_BARRIER) ||
-            tapreq->msg.nr_segments > BLKIF_MAX_SEGMENTS_PER_REQUEST)) {
+            tapreq->msg.nr_segments > BLKIF_MMAX_SEGMENTS_PER_REQUEST)) {
         RING_ERR(blkif, "req %lu: bad number of segments in request (%d)\n",
                 tapreq->msg.id, tapreq->msg.nr_segments);
         err = EINVAL;

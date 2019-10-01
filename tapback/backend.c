@@ -39,6 +39,7 @@
 #include <unistd.h>
 #include <signal.h>
 #include <stdlib.h>
+#include "xen_blkif.h"
 
 extern int tapdev_major;
 
@@ -215,6 +216,15 @@ tapback_backend_create_device(backend_t *backend,
 
     if (!(device->name = strdup(name))) {
         err = -errno;
+        goto out;
+    }
+
+    /* Enable multi-page rings */
+    err = tapback_device_printf(device, XBT_NULL, "max-ring-page-order",
+                                true, "%d", MAX_RING_PAGE_ORDER);
+    if (unlikely(err)) {
+        WARN(device, "failed to write max-ring-page-order: %s\n",
+             strerror(-err));
         goto out;
     }
 

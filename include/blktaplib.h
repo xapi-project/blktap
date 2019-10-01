@@ -227,10 +227,10 @@ typedef struct msg_lock {
 
 /* Accessing attached data page mappings */
 #define MMAP_PAGES                                                    \
-    (MAX_PENDING_REQS * BLKIF_MAX_SEGMENTS_PER_REQUEST)
+    (MAX_PENDING_REQS * BLKIF_MMAX_SEGMENTS_PER_REQUEST)
 #define MMAP_VADDR(_vstart,_req,_seg)                                 \
     ((_vstart) +                                                      \
-     ((_req) * BLKIF_MAX_SEGMENTS_PER_REQUEST * getpagesize()) +      \
+     ((_req) * BLKIF_MMAX_SEGMENTS_PER_REQUEST * getpagesize()) +      \
      ((_seg) * getpagesize()))
 
 /* Defines that are only used by library clients */
