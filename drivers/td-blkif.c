@@ -362,6 +362,8 @@ tapdisk_start_polling(struct td_xenblkif *blkif)
 
         /* Schedule the future 'stop polling' event */
         tapdisk_xenblkif_sched_stoppolling(blkif);
+
+	tapdisk_server_mask_event(tapdisk_xenblkif_evtchn_event_id(blkif), 1);
     }
 }
 
@@ -383,6 +385,8 @@ tapdisk_xenblkif_cb_stoppolling(event_id_t id __attribute__((unused)),
 
         /* Make the 'stop polling' event not fire again */
         tapdisk_xenblkif_unsched_stoppolling(blkif);
+
+	tapdisk_server_mask_event(tapdisk_xenblkif_evtchn_event_id(blkif), 0);
     }
 }
 
