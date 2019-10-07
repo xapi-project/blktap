@@ -79,8 +79,6 @@
 
 unsigned int SPB;
 
-#define LIBBLOCKCRYPTO_NAME "libblockcrypto.so"
-
 #define DEBUGGING   2
 #define MICROSOFT_COMPAT
 
