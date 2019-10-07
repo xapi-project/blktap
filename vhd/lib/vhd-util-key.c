@@ -39,8 +39,6 @@
 
 #include "libvhd.h"
 
-#define LIBBLOCKCRYPTO_NAME "libblockcrypto.so"
-
 #define MAX_KEY_SIZE 512
 int CRYPTO_SUPPORTED_KEYSIZE[] = { 512, 256, -1};
 

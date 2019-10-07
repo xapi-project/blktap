@@ -46,8 +46,6 @@
 
 #include "libvhd.h"
 
-#define LIBBLOCKCRYPTO_NAME "libblockcrypto.so"
-
 typedef int (*vhd_calculate_keyhash)(struct vhd_keyhash *keyhash,
 					     const uint8_t *key, size_t key_byte);
 typedef int (*vhd_open_crypto)(vhd_context_t *, const uint8_t *, size_t,
