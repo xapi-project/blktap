@@ -86,7 +86,7 @@
 #define vhd_flag_clear(word, flag)       ((word) &= ~(flag))
 #define vhd_flag_test(word, flag)        ((word) & (flag))
 
-#define LIBBLOCKCRYPTO_NAME "libblockcrypto.so"
+#define LIBBLOCKCRYPTO_NAME "libblockcrypto.so.0"
 
 #define CRYPTO_DEFAULT_KEYDIR "/var/xen/blktap/keys"
 extern int CRYPTO_SUPPORTED_KEYSIZE[];
