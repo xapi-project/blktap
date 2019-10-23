@@ -2641,7 +2641,6 @@ vhd_open(vhd_context_t *ctx, const char *file, int flags)
 			goto fail;
 		}
 
-		posix_fadvise(ctx->fd, 0, 0, POSIX_FADV_RANDOM);
 	}
 
 	err = vhd_test_file_fixed(ctx->file, &ctx->is_block);
