@@ -118,11 +118,7 @@ restore_iocb(struct opio *op)
 static inline int
 iocb_optimized(struct opioctx *ctx, struct iocb *io)
 {
-	unsigned long iop   = (unsigned long)io->data;
-	unsigned long start = (unsigned long)ctx->opios;
-	unsigned long end   = start + (ctx->num_opios * sizeof(struct opio));
-
-	return (iop >= start && iop < end);
+	return iocb_vectorized(io->aio_lio_opcode) == io->aio_lio_opcode;
 }
 
 static inline int
@@ -132,17 +128,10 @@ contiguous_sectors(struct iocb *l, struct iocb *r)
 }
 
 static inline int
-contiguous_buffers(struct iocb *l, struct iocb *r)
-{
-	return (iocb_buf(l) + iocb_nbytes(l) == iocb_buf(r));
-}
-
-static inline int
 contiguous_iocbs(struct iocb *l, struct iocb *r)
 {
 	return ((l->aio_fildes == r->aio_fildes) &&
-		contiguous_sectors(l, r) &&
-		contiguous_buffers(l, r));
+		contiguous_sectors(l, r));
 }
 
 static inline void
@@ -182,6 +171,7 @@ static int
 merge_tail(struct opioctx *ctx, struct iocb *head, struct iocb *io)
 {
 	struct opio *ophead, *opio;
+	struct iovec *iovec;
 
 	ophead = opio_get(ctx, head);
 	if (!ophead)
@@ -192,7 +182,34 @@ merge_tail(struct opioctx *ctx, struct iocb *head, struct iocb *io)
 		return -ENOMEM;
 
 	opio->head        = ophead;
-	head->u.c.nbytes += iocb_nbytes(io);
+	if (!iocb_optimized(ctx, head)) {
+		void *data = head->data;
+		/* convert PREAD/PWRITE into PREADV/PWRITEV with 1 element */
+		iovec = &ophead->iov[0];
+		iovec->iov_base = iocb_buf(head);
+		iovec->iov_len = iocb_nbytes(head);
+		ASSERT(iovec->iov_len > 0);
+
+		switch(io->aio_lio_opcode) {
+			case IO_CMD_PREAD:
+				io_prep_preadv(head, head->aio_fildes, iovec, 1, iocb_offset(head));
+				break;
+			case IO_CMD_PWRITE:
+				io_prep_pwritev(head, head->aio_fildes, iovec, 1, iocb_offset(head));
+				break;
+			default:
+				ASSERT(0);
+		}
+		/* prep above wipes this, restore it */
+		head->data = data;
+		ASSERT(head->data == ophead);
+	}
+	ASSERT(iocb_optimized(ctx, head));
+        ASSERT(head->u.v.nr < sizeof(ophead->iov)/sizeof(ophead->iov[0]));
+	iovec = &ophead->iov[head->u.v.nr++];
+	iovec->iov_base = iocb_buf(io);
+	iovec->iov_len = iocb_nbytes(io);
+
 	ophead->list.tail = ophead->list.tail->next = opio;
 
 	return 0;
@@ -201,11 +218,15 @@ merge_tail(struct opioctx *ctx, struct iocb *head, struct iocb *io)
 static int
 merge(struct opioctx *ctx, struct iocb *head, struct iocb *io)
 {
-	if (head->aio_lio_opcode != io->aio_lio_opcode)
+	if (iocb_vectorized(head->aio_lio_opcode) != iocb_vectorized(io->aio_lio_opcode))
 		return -EINVAL;
 
 	if (!contiguous_iocbs(head, io))
 		return -EINVAL;
+
+	/* otherwise we overflow and overwrite other values in the record */
+	if(iocb_optimized(ctx, head) && head->u.v.nr == UIO_FASTIOV)
+	    return -EINVAL;
 
 	return merge_tail(ctx, head, io);		
 }
@@ -217,10 +238,11 @@ debug print functions
 static inline void
 __print_iocb(struct opioctx *ctx, struct iocb *io, char *prefix)
 {
-
+	const void* buf = iocb_vectorized(io->aio_lio_opcode) == io->aio_lio_opcode ?
+		io->u.v.vec : iocb_buf(io);
 	DBG(ctx, "%soff: %08llx, nbytes: %04lx, buf: %p, type: %s, data: %08lx,"
 	    " optimized: %d\n", prefix, iocb_offset(io), iocb_nbytes(io),
-	    iocb_buf(io), iocb_opcode(io),
+	    buf, iocb_opcode(io),
 	    (unsigned long)io->data, iocb_optimized(ctx, io));
 }
 

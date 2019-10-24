@@ -42,7 +42,10 @@ struct opio_list {
 	struct opio        *tail;
 };
 
+#define UIO_FASTIOV 8
+
 struct opio {
+	struct iovec       iov[UIO_FASTIOV];
 	struct iocb        orig_iocb;
 	struct iocb        *iocb;
 	struct io_event     event;
@@ -144,6 +147,18 @@ static inline const char* iocb_opcode(const struct iocb* io)
 			return "pwritev";
 		default:
 			ASSERT(0);
+	}
+}
+
+static inline int iocb_vectorized(io_iocb_cmd_t op)
+{
+	switch (op) {
+		case IO_CMD_PREAD:
+			return IO_CMD_PREADV;
+		case IO_CMD_PWRITE:
+			return IO_CMD_PWRITEV;
+		default:
+			return op;
 	}
 }
 
