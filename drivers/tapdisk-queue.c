@@ -129,7 +129,7 @@ complete_tiocb(struct tqueue *queue, struct tiocb *tiocb, unsigned long res)
 	int err;
 	struct iocb *iocb = &tiocb->iocb;
 
-	if (res == iocb->u.c.nbytes)
+	if (res == iocb_nbytes(iocb))
 		err = 0;
 	else if ((int)res < 0)
 		err = (int)res;
@@ -577,9 +577,8 @@ tapdisk_debug_queue(struct tqueue *queue)
 		for (; tiocb != NULL; tiocb = tiocb->next) {
 			struct iocb *io = &tiocb->iocb;
 			WARN("%s of %lu bytes at %lld\n",
-			     (io->aio_lio_opcode == IO_CMD_PWRITE ?
-			      "write" : "read"),
-			     io->u.c.nbytes, io->u.c.offset);
+			     iocb_opcode(io),
+			     iocb_nbytes(io), iocb_offset(io));
 		}
 	}
 }

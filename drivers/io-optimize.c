@@ -128,13 +128,13 @@ iocb_optimized(struct opioctx *ctx, struct iocb *io)
 static inline int
 contiguous_sectors(struct iocb *l, struct iocb *r)
 {
-	return (l->u.c.offset + l->u.c.nbytes == r->u.c.offset);
+	return (iocb_offset(l) + iocb_nbytes(l) == iocb_offset(r));
 }
 
 static inline int
 contiguous_buffers(struct iocb *l, struct iocb *r)
 {
-	return (l->u.c.buf + l->u.c.nbytes == r->u.c.buf);
+	return (iocb_buf(l) + iocb_nbytes(l) == iocb_buf(r));
 }
 
 static inline int
@@ -192,9 +192,9 @@ merge_tail(struct opioctx *ctx, struct iocb *head, struct iocb *io)
 		return -ENOMEM;
 
 	opio->head        = ophead;
-	head->u.c.nbytes += io->u.c.nbytes;
+	head->u.c.nbytes += iocb_nbytes(io);
 	ophead->list.tail = ophead->list.tail->next = opio;
-	
+
 	return 0;
 }
 
@@ -217,9 +217,10 @@ debug print functions
 static inline void
 __print_iocb(struct opioctx *ctx, struct iocb *io, char *prefix)
 {
+
 	DBG(ctx, "%soff: %08llx, nbytes: %04lx, buf: %p, type: %s, data: %08lx,"
-	    " optimized: %d\n", prefix, io->u.c.offset, io->u.c.nbytes,
-	    io->u.c.buf, (io->aio_lio_opcode == IO_CMD_PREAD ? "read" : "write"),
+	    " optimized: %d\n", prefix, iocb_offset(io), iocb_nbytes(io),
+	    iocb_buf(io), iocb_opcode(io),
 	    (unsigned long)io->data, iocb_optimized(ctx, io));
 }
 
@@ -346,7 +347,7 @@ expand_event(struct opioctx *ctx,
 	ophead = (struct opio *)io->data;
 	op     = ophead;
 
-	if (event->res == io->u.c.nbytes)
+	if (event->res == iocb_nbytes(io))
 		err = 0;
 	else if ((int)event->res < 0)
 		err = (int)event->res;
@@ -357,7 +358,7 @@ expand_event(struct opioctx *ctx,
 		next    = op->next;
 		ep      = &queue[idx++];
 		ep->obj = op->iocb;
-		ep->res = (err ? err : op->orig_iocb.u.c.nbytes);
+		ep->res = (err ? err : iocb_nbytes(&op->orig_iocb));
 		restore_iocb(op);
 		free_opio(ctx, op);
 		op      = next;
@@ -498,7 +499,7 @@ simulate_io(struct iocb **iocbs, struct io_event *events, int num_iocbs)
 		io      = iocbs[i];
 		ep      = &events[i];
 		ep->obj = io;
-		ep->res = (random() % 10 < 8 ? io->u.c.nbytes : 0);
+		ep->res = (random() % 10 < 8 ? iocb_nbytes(io) : 0);
 	}
 
 	return done;
@@ -520,7 +521,7 @@ process_events(struct opioctx *ctx,
 			exit(-1);
 		}
 		if (data_is_head(io->data) || data_is_sparse(io->data))
-			xfree(io->u.c.buf);
+			xfree(iocb_buf(io));
 		memset(io, 0, sizeof(struct iocb));
 	}
 }
