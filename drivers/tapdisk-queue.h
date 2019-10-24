@@ -97,7 +97,6 @@ struct tio {
 
 enum {
 	TIO_DRV_LIO     = 1,
-	TIO_DRV_RWIO    = 2,
 };
 
 /*

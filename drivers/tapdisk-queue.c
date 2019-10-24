@@ -178,100 +178,6 @@ fail_tiocbs(struct tqueue *queue, int succeeded, int total, int err)
 }
 
 /*
- * rwio
- */
-
-struct rwio {
-	struct io_event *aio_events;
-};
-
-static void
-tapdisk_rwio_destroy(struct tqueue *queue)
-{
-	struct rwio *rwio = queue->tio_data;
-
-	if (rwio->aio_events) {
-		free(rwio->aio_events);
-		rwio->aio_events = NULL;
-	}
-}
-
-static int
-tapdisk_rwio_setup(struct tqueue *queue, int size)
-{
-	struct rwio *rwio = queue->tio_data;
-
-	rwio->aio_events = calloc(size, sizeof(struct io_event));
-	if (!rwio->aio_events)
-		return -errno;
-
-	return 0;
-}
-
-static inline ssize_t
-tapdisk_rwio_rw(const struct iocb *iocb)
-{
-	int fd        = iocb->aio_fildes;
-	char *buf     = iocb->u.c.buf;
-	long long off = iocb->u.c.offset;
-	size_t size   = iocb->u.c.nbytes;
-	ssize_t (*func)(int, void *, size_t) = 
-		(iocb->aio_lio_opcode == IO_CMD_PWRITE ? vwrite : read);
-
-	if (lseek64(fd, off, SEEK_SET) == (off64_t)-1)
-		return -errno;
-
-	if (atomicio(func, fd, buf, size) != size)
-		return -errno;
-
-	return size;
-}
-
-static int
-tapdisk_rwio_submit(struct tqueue *queue)
-{
-	struct rwio *rwio = queue->tio_data;
-	int i, merged, split;
-	struct iocb *iocb;
-	struct tiocb *tiocb;
-	struct io_event *ep;
-
-	if (!queue->queued)
-		return 0;
-
-	merged = io_merge(&queue->opioctx, queue->iocbs, queue->queued);
-
-	queue->queued = 0;
-
-	for (i = 0; i < merged; i++) {
-		ep      = rwio->aio_events + i;
-		iocb    = queue->iocbs[i];
-		ep->obj = iocb;
-		ep->res = tapdisk_rwio_rw(iocb);
-	}
-
-	split = io_split(&queue->opioctx, rwio->aio_events, merged);
-
-	for (i = split, ep = rwio->aio_events; i-- > 0; ep++) {
-		iocb  = ep->obj;
-		tiocb = iocb->data;
-		complete_tiocb(queue, tiocb, ep->res);
-	}
-
-	queue_deferred_tiocbs(queue);
-
-	return split;
-}
-
-static const struct tio td_tio_rwio = {
-	.name        = "rwio",
-	.data_size   = 0,
-	.tio_setup   = tapdisk_rwio_setup,
-	.tio_destroy = tapdisk_rwio_destroy,
-	.tio_submit  = tapdisk_rwio_submit
-};
-
-/*
  * libaio
  */
 
@@ -578,9 +484,6 @@ tapdisk_queue_init_io(struct tqueue *queue, int drv)
 	switch (drv) {
 	case TIO_DRV_LIO:
 		tio = &td_tio_lio;
-		break;
-	case TIO_DRV_RWIO:
-		tio = &td_tio_rwio;
 		break;
 	default:
 		err = -EINVAL;
