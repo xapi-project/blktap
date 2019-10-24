@@ -2515,7 +2515,7 @@ vhd_complete(void *arg, struct tiocb *tiocb, int err)
 		ERR(s, req->error, "%s: op: %u, lsec: %"PRIu64", secs: %u, "
 		    "nbytes: %lu, blk: %"PRIu64", blk_offset: %u",
 		    s->vhd.file, req->op, req->treq.sec, req->treq.secs,
-		    io->u.c.nbytes, req->treq.sec / s->spb,
+		    iocb_nbytes(io), req->treq.sec / s->spb,
 		    bat_entry(s, req->treq.sec / s->spb));
 
 	switch (req->op) {
