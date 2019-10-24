@@ -218,6 +218,24 @@ merge(struct opioctx *ctx, struct iocb *head, struct iocb *io)
 }
 
 #if (defined(TEST) || defined(DEBUG))
+/******************************************************************************
+debug print functions
+******************************************************************************/
+static inline void
+__print_iocb(struct opioctx *ctx, struct iocb *io, char *prefix)
+{
+	DBG(ctx, "%soff: %08llx, nbytes: %04lx, buf: %p, type: %s, data: %08lx,"
+	    " optimized: %d\n", prefix, io->u.c.offset, io->u.c.nbytes,
+	    io->u.c.buf, (io->aio_lio_opcode == IO_CMD_PREAD ? "read" : "write"),
+	    (unsigned long)io->data, iocb_optimized(ctx, io));
+}
+
+#define print_iocb(ctx, io) __print_iocb(ctx, io, "")
+
+/******************************************************************************
+end debug print functions
+******************************************************************************/
+
 static void
 print_optimized_iocbs(struct opioctx *ctx, struct opio *op, int *cnt)
 {
@@ -379,24 +397,6 @@ io_split(struct opioctx *ctx, struct io_event *events, int num)
 
 	return on_queue;
 }
-
-/******************************************************************************
-debug print functions
-******************************************************************************/
-static inline void
-__print_iocb(struct opioctx *ctx, struct iocb *io, char *prefix)
-{
-	DBG(ctx, "%soff: %08llx, nbytes: %04lx, buf: %p, type: %s, data: %08lx,"
-	    " optimized: %d\n", prefix, io->u.c.offset, io->u.c.nbytes, 
-	    io->u.c.buf, (io->aio_lio_opcode == IO_CMD_PREAD ? "read" : "write"),
-	    (unsigned long)io->data, iocb_optimized(ctx, io));
-}
-
-#define print_iocb(ctx, io) __print_iocb(ctx, io, "")
-
-/******************************************************************************
-end debug print functions
-******************************************************************************/
 
 #if defined(TEST)
 
