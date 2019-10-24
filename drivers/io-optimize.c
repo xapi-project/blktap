@@ -112,11 +112,7 @@ free_opio(struct opioctx *ctx, struct opio *op)
 static inline void
 restore_iocb(struct opio *op)
 {
-	struct iocb *io = op->iocb;
-
-	io->data        = op->data;
-	io->u.c.buf     = op->buf;
-	io->u.c.nbytes  = op->nbytes;
+	*op->iocb = op->orig_iocb;
 }
 
 static inline int
@@ -164,10 +160,7 @@ opio_iocb_init(struct opioctx *ctx, struct iocb *io)
 	if (!op)
 		return NULL;
 
-	op->buf    = io->u.c.buf;
-	op->nbytes = io->u.c.nbytes;
-	op->offset = io->u.c.offset;
-	op->data   = io->data;
+	op->orig_iocb = *io;
 	op->iocb   = io;
 	io->data   = op;
 
@@ -364,7 +357,7 @@ expand_event(struct opioctx *ctx,
 		next    = op->next;
 		ep      = &queue[idx++];
 		ep->obj = op->iocb;
-		ep->res = (err ? err : op->nbytes);
+		ep->res = (err ? err : op->orig_iocb.u.c.nbytes);
 		restore_iocb(op);
 		free_opio(ctx, op);
 		op      = next;

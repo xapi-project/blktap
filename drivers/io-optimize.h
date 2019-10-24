@@ -41,10 +41,7 @@ struct opio_list {
 };
 
 struct opio {
-	char               *buf;
-	unsigned long       nbytes;
-	long long           offset;
-	void               *data;
+	struct iocb        orig_iocb;
 	struct iocb        *iocb;
 	struct io_event     event;
 	struct opio        *head;
