@@ -36,6 +36,7 @@
 #include <stdlib.h>
 #include <unistd.h>
 #include <libaio.h>
+#include <sys/eventfd.h>
 #ifdef __linux__
 #include <linux/version.h>
 #endif
@@ -48,7 +49,6 @@
 #include "tapdisk-utils.h"
 #include "timeout-math.h"
 
-#include "libaio-compat.h"
 #include "atomicio.h"
 #include "aio_getevents.h"
 
@@ -356,7 +356,7 @@ __lio_setup_aio_eventfd(struct tqueue *queue, int qlen)
 		return err;
 	}
 
-	lio->event_fd = tapdisk_sys_eventfd(0);
+	lio->event_fd = eventfd(0, 0);
 	if (lio->event_fd < 0)
 		return  -errno;
 
@@ -431,7 +431,7 @@ tapdisk_lio_set_eventfd(struct tqueue *queue, int n, struct iocb **iocbs)
 
 	if (lio->flags & LIO_FLAG_EVENTFD)
 		for (i = 0; i < n; ++i)
-			__io_set_eventfd(iocbs[i], lio->event_fd);
+			io_set_eventfd(iocbs[i], lio->event_fd);
 }
 
 static void

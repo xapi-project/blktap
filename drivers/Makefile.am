@@ -50,7 +50,6 @@ libtapdisk_la_SOURCES += tapdisk-server.c
 libtapdisk_la_SOURCES += tapdisk-server.h
 libtapdisk_la_SOURCES += tapdisk-queue.c
 libtapdisk_la_SOURCES += tapdisk-queue.h
-libtapdisk_la_SOURCES += libaio-compat.h
 libtapdisk_la_SOURCES += tapdisk-filter.c
 libtapdisk_la_SOURCES += tapdisk-filter.h
 libtapdisk_la_SOURCES += tapdisk-logfile.c
