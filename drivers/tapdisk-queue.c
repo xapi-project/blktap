@@ -50,6 +50,7 @@
 
 #include "libaio-compat.h"
 #include "atomicio.h"
+#include "aio_getevents.h"
 
 #define WARN(_f, _a...) tlog_write(TLOG_WARN, _f, ##_a)
 #define DBG(_f, _a...) tlog_write(TLOG_DBG, _f, ##_a)
@@ -460,7 +461,7 @@ tapdisk_lio_event(event_id_t id, char mode, void *private)
 	lio   = queue->tio_data;
 	/* io_getevents() invoked via the libaio wrapper does not set errno but
 	 * instead returns -errno on error */
-	while ((ret = io_getevents(lio->aio_ctx, 0, queue->size, lio->aio_events, NULL)) < 0) {
+	while ((ret = user_io_getevents(lio->aio_ctx, queue->size, lio->aio_events)) < 0) {
 		/* Permit some errors to retry */
 		if (ret == -EINTR) continue;
 		ERR(ret, "io_getevents() non-retryable error");
