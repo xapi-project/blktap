@@ -39,6 +39,7 @@ blktap/
    |-- driver/
    |      |-- atomicio.c
    |      |-- atomicio.h
+   |      |-- aio_getevents.c
    |      |-- md5.c
    |      |-- md5.h
    |

@@ -81,6 +81,7 @@ libtapdisk_la_SOURCES += ../cpumond/cpumond.h
 libtapdisk_la_SOURCES += log.h
 
 libtapdisk_la_SOURCES += block-aio.c
+libtapdisk_la_SOURCES += aio_getevents.c
 libtapdisk_la_SOURCES += block-aio.h
 libtapdisk_la_SOURCES += block-ram.c
 libtapdisk_la_SOURCES += block-cache.c
