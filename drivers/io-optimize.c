@@ -522,7 +522,7 @@ process_events(struct opioctx *ctx,
 		io = events[i].obj;
 		print_iocb(ctx, io);
 		if (data_idx(io->data) != (io - iocb_list)) {
-			printf("corrupt data! data_idx = %d, io = %d\n",
+			printf("corrupt data! data_idx = %d, io = %ld\n",
 			       data_idx(io->data), (io - iocb_list));
 			exit(-1);
 		}
@@ -608,7 +608,7 @@ main(int argc, char **argv)
 		}
 	}
 
-	printf("Running %d tests with %d iocbs on %llu sectors, seed = %d\n",
+	printf("Running %d tests with %d iocbs on %lu sectors, seed = %d\n",
 	       num_runs, num_iocbs, num_secs, seed);
 
 	srand(seed);
