@@ -123,4 +123,6 @@ int tapdisk_cancel_all_tiocbs(struct tqueue *);
 void tapdisk_prep_tiocb(struct tiocb *, int, int, char *, size_t,
 			long long, td_queue_callback_t, void *);
 
+void tapdisk_lio_start_polling(struct tqueue *queue);
+void tapdisk_lio_stop_polling(struct tqueue *queue);
 #endif

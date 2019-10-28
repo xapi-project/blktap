@@ -188,11 +188,13 @@ struct lio {
 
 	int              event_fd;
 	int              event_id;
+	int              event_poll_id;
 
 	int              flags;
 };
 
 #define LIO_FLAG_EVENTFD        (1<<0)
+#define LIO_FLAG_POLL		(1<<1)
 
 static int
 tapdisk_lio_check_resfd(void)
@@ -217,37 +219,6 @@ tapdisk_lio_destroy_aio(struct tqueue *queue)
 }
 
 static int
-__lio_setup_aio_poll(struct tqueue *queue, int qlen)
-{
-	struct lio *lio = queue->tio_data;
-	int err, fd;
-
-	lio->aio_ctx = REQUEST_ASYNC_FD;
-
-	fd = io_setup(qlen, &lio->aio_ctx);
-	if (fd < 0) {
-		lio->aio_ctx = 0;
-		err = -errno;
-
-		if (err == -EINVAL)
-			goto fail_fd;
-
-		goto fail;
-	}
-
-	lio->event_fd = fd;
-
-	return 0;
-
-fail_fd:
-	DPRINTF("Couldn't get fd for AIO poll support. This is probably "
-		"because your kernel does not have the aio-poll patch "
-		"applied.\n");
-fail:
-	return err;
-}
-
-static int
 __lio_setup_aio_eventfd(struct tqueue *queue, int qlen)
 {
 	struct lio *lio = queue->tio_data;
@@ -268,6 +239,22 @@ __lio_setup_aio_eventfd(struct tqueue *queue, int qlen)
 	return 0;
 }
 
+void tapdisk_lio_start_polling(struct tqueue *queue)
+{
+    struct lio *lio = queue->tio_data;
+    tapdisk_server_mask_event(lio->event_id, 1);
+    lio->flags |= LIO_FLAG_POLL;
+    tapdisk_server_event_set_timeout(lio->event_poll_id, TV_ZERO);
+}
+
+void tapdisk_lio_stop_polling(struct tqueue *queue)
+{
+    struct lio *lio = queue->tio_data;
+    tapdisk_server_event_set_timeout(lio->event_poll_id, TV_INF);
+    tapdisk_server_mask_event(lio->event_id, 0);
+    lio->flags &= ~LIO_FLAG_POLL;
+}
+
 static int
 tapdisk_lio_setup_aio(struct tqueue *queue, int qlen)
 {
@@ -285,8 +272,6 @@ tapdisk_lio_setup_aio(struct tqueue *queue, int qlen)
 	err = !tapdisk_lio_check_resfd();
 	if (!err)
 		err = old_err = __lio_setup_aio_eventfd(queue, qlen);
-	if (err)
-		err = __lio_setup_aio_poll(queue, qlen);
 
 	/* __lio_setup_aio_poll seems to always fail with EINVAL on newer systems,
 	 * probably because it initializes the output parameter of io_setup to a
@@ -317,6 +302,10 @@ tapdisk_lio_destroy(struct tqueue *queue)
 		tapdisk_server_unregister_event(lio->event_id);
 		lio->event_id = -1;
 	}
+	if (lio->event_poll_id >= 0) {
+		tapdisk_server_unregister_event(lio->event_poll_id);
+		lio->event_poll_id = -1;
+	}
 
 	tapdisk_lio_destroy_aio(queue);
 
@@ -343,6 +332,8 @@ tapdisk_lio_ack_event(struct tqueue *queue)
 	struct lio *lio = queue->tio_data;
 	uint64_t val;
 
+	if (lio->flags & LIO_FLAG_POLL)
+		return;
 	if (lio->flags & LIO_FLAG_EVENTFD) {
 		int gcc = read(lio->event_fd, &val, sizeof(val));
 		if (gcc) {};
@@ -404,6 +395,15 @@ tapdisk_lio_setup(struct tqueue *queue, int qlen)
 					      tapdisk_lio_event,
 					      queue);
 	err = lio->event_id;
+	if (err < 0)
+		goto fail;
+
+	lio->event_poll_id =
+		tapdisk_server_register_event(SCHEDULER_POLL_TIMEOUT,
+					      -1, TV_INF,
+					      tapdisk_lio_event,
+					      queue);
+	err = lio->event_poll_id;
 	if (err < 0)
 		goto fail;
 

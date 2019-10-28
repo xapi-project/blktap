@@ -163,6 +163,18 @@ tapdisk_server_queue_tiocb(struct tiocb *tiocb)
 }
 
 void
+tapdisk_server_start_polling(void)
+{
+    tapdisk_lio_start_polling(&server.aio_queue);
+}
+
+void
+tapdisk_server_stop_polling(void)
+{
+    tapdisk_lio_stop_polling(&server.aio_queue);
+}
+
+void
 tapdisk_server_debug(void)
 {
 	td_vbd_t *vbd, *tmp;
