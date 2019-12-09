@@ -29,7 +29,6 @@
  */
 
 #include <errno.h>
-#include <xenctrl.h>
 #include <stdlib.h>
 #include <unistd.h>
 #include <sys/types.h>
@@ -37,6 +36,7 @@
 #include <fcntl.h>
 #include <alloca.h>
 
+#include "blktap-xenif.h"
 #include "debug.h"
 #include "tapdisk-server.h"
 #include "td-ctx.h"
@@ -62,12 +62,12 @@ tapdisk_xenio_ctx_close(struct td_xenio_ctx * const ctx)
     }
 
     if (ctx->xce_handle) {
-        xc_evtchn_close(ctx->xce_handle);
+        xenevtchn_close(ctx->xce_handle);
         ctx->xce_handle = NULL;
     }
 
     if (ctx->xcg_handle) {
-        xc_gnttab_close(ctx->xcg_handle);
+        xengnttab_close(ctx->xcg_handle);
         ctx->xcg_handle = NULL;
     }
 
@@ -87,7 +87,7 @@ tapdisk_xenio_ctx_close(struct td_xenio_ctx * const ctx)
 static inline struct td_xenblkif *
 xenio_pending_blkif(struct td_xenio_ctx * const ctx)
 {
-    evtchn_port_or_error_t port;
+    xenevtchn_port_or_error_t port;
     struct td_xenblkif *blkif;
     int err;
 
@@ -96,7 +96,7 @@ xenio_pending_blkif(struct td_xenio_ctx * const ctx)
     /*
      * Get the local port for which there is a pending event.
      */
-    port = xc_evtchn_pending(ctx->xce_handle);
+    port = xenevtchn_pending(ctx->xce_handle);
     if (port == -1) {
         /* TODO log error */
         return NULL;
@@ -108,7 +108,7 @@ xenio_pending_blkif(struct td_xenio_ctx * const ctx)
     tapdisk_xenio_ctx_find_blkif(ctx, blkif,
             blkif->port == port);
     if (blkif) {
-        err = xc_evtchn_unmask(ctx->xce_handle, port);
+        err = xenevtchn_unmask(ctx->xce_handle, port);
         if (err) {
             /* TODO log error */
             return NULL;
@@ -435,7 +435,7 @@ tapdisk_xenio_ctx_open(const char *pool)
         goto fail;
     }
 
-    ctx->xce_handle = xc_evtchn_open(NULL, 0);
+    ctx->xce_handle = xenevtchn_open(NULL, 0);
     if (!ctx->xce_handle) {
         err = -errno;
         ERROR("failed to open the event channel driver: %s\n",
@@ -443,7 +443,7 @@ tapdisk_xenio_ctx_open(const char *pool)
         goto fail;
     }
 
-    ctx->xcg_handle = xc_gnttab_open(NULL, 0);
+    ctx->xcg_handle = xengnttab_open(NULL, 0);
     if (!ctx->xcg_handle) {
         err = -errno;
         ERROR("failed to open the grant table driver: %s\n",
@@ -451,7 +451,7 @@ tapdisk_xenio_ctx_open(const char *pool)
         goto fail;
     }
 
-    fd = xc_evtchn_fd(ctx->xce_handle);
+    fd = xenevtchn_fd(ctx->xce_handle);
     if (fd < 0) {
         err = -errno;
         ERROR("failed to get the event channel file descriptor: %s\n",

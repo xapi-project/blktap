@@ -31,6 +31,8 @@
 #ifndef __TD_BLKIF_H__
 #define __TD_BLKIF_H__
 
+#include "blktap-xenif.h"
+
 #include <inttypes.h> /* required by xen/event_channel.h */
 
 #include <xen/xen.h>

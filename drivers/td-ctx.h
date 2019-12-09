@@ -31,7 +31,7 @@
 #ifndef __TD_CTX_H__
 #define __TD_CTX_H__
 
-#include <xenctrl.h>
+#include "blktap-xenif.h"
 #include "td-blkif.h"
 #include "scheduler.h"
 
@@ -55,12 +55,12 @@ struct td_xenio_ctx {
     /**
      * Handle to the grant table driver.
      */
-    xc_gnttab *xcg_handle;
+    xengnttab_handle *xcg_handle;
 
     /**
      * Handle to the event channel driver.
      */
-    xc_evtchn *xce_handle;
+    xenevtchn_handle *xce_handle;
 
     /**
      * Return value of tapdisk_server_register_event, we use this to tell

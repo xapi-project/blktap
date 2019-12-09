@@ -32,6 +32,7 @@
 #define __TD_REQ_H__
 
 #include "tapdisk.h"
+#include "blktap-xenif.h"
 #include <sys/types.h>
 #include <xen/io/blkif.h>
 #include <xen/gntdev.h>
@@ -62,7 +63,7 @@ struct td_xenblkif_req {
 
     /**
      * Pointer to memory-mapped grant refs. We keep this around because we need
-     * to pass it to xc_gnttab_munmap when the requests is completed.
+     * to pass it to xengnttab_munmap when the requests is completed.
      */
     void *vma;
 

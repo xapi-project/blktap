@@ -105,7 +105,8 @@ libtapdisk_la_SOURCES += td-stats.h
 
 libtapdisk_la_LIBADD  = ../vhd/lib/libvhd.la
 libtapdisk_la_LIBADD += -laio
-libtapdisk_la_LIBADD += -lxenctrl
+libtapdisk_la_LIBADD += -lxenevtchn
+libtapdisk_la_LIBADD += -lxengnttab
 libtapdisk_la_LIBADD += -lz
 libtapdisk_la_LIBADD += -lrt
 libtapdisk_la_LIBADD += -ldl
