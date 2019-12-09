@@ -31,11 +31,12 @@
 #include <stdlib.h>
 #include <errno.h>
 #include <sys/mman.h>
-#include <xenctrl.h>
 #include <unistd.h>
+#include <stdio.h>
 #include <libgen.h>
 #include <zlib.h>
 
+#include "blktap-xenif.h"
 #include "debug.h"
 #include "blktap3.h"
 #include "tapdisk.h"
@@ -234,10 +235,10 @@ tapdisk_xenblkif_destroy(struct td_xenblkif * blkif)
 
     if (blkif->ctx) {
         if (blkif->port >= 0)
-            xc_evtchn_unbind(blkif->ctx->xce_handle, blkif->port);
+            xenevtchn_unbind(blkif->ctx->xce_handle, blkif->port);
 
         if (blkif->rings.common.sring) {
-            err = xc_gnttab_munmap(blkif->ctx->xcg_handle,
+            err = xengnttab_unmap(blkif->ctx->xcg_handle,
 					blkif->rings.common.sring, blkif->ring_n_pages);
 			if (unlikely(err)) {
 				err = errno;
@@ -299,7 +300,7 @@ tapdisk_xenblkif_disconnect(const domid_t domid, const int devid)
         list_move(&blkif->entry, &blkif->vbd->dead_rings);
         blkif->dead = true;
         if (blkif->ctx && blkif->port >= 0) {
-            xc_evtchn_unbind(blkif->ctx->xce_handle, blkif->port);
+            xenevtchn_unbind(blkif->ctx->xce_handle, blkif->port);
             blkif->port = -1;
         }
 
@@ -517,7 +518,7 @@ tapdisk_xenblkif_connect(domid_t domid, int devid, const grant_ref_t * grefs,
     /*
      * Map the grant references that will be holding the request descriptors.
      */
-    sring = xc_gnttab_map_domain_grant_refs(td_blkif->ctx->xcg_handle,
+    sring = xengnttab_map_domain_grant_refs(td_blkif->ctx->xcg_handle,
             td_blkif->ring_n_pages, td_blkif->domid, td_blkif->ring_ref,
             PROT_READ | PROT_WRITE);
     if (!sring) {
@@ -530,7 +531,7 @@ tapdisk_xenblkif_connect(domid_t domid, int devid, const grant_ref_t * grefs,
     /*
      * Size of the ring, in bytes.
      */
-    sz = XC_PAGE_SIZE << order;
+    sz = PAGE_SIZE << order;
 
     /*
      * Initialize the mapped address into the shared ring.
@@ -566,7 +567,7 @@ tapdisk_xenblkif_connect(domid_t domid, int devid, const grant_ref_t * grefs,
      * Bind to the remote port.
      * TODO elaborate
      */
-    td_blkif->port = xc_evtchn_bind_interdomain(td_blkif->ctx->xce_handle,
+    td_blkif->port = xenevtchn_bind_interdomain(td_blkif->ctx->xce_handle,
             td_blkif->domid, port);
     if (td_blkif->port == -1) {
         err = -errno;

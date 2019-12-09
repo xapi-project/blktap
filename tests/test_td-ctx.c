@@ -29,7 +29,6 @@
  */
 
 #include "unity.h"
-#include <xenctrl.h>
 #include "drivers/td-ctx.h"
 #include "mock_tapdisk-server.h"
 #include "mock_tapdisk-log.h"

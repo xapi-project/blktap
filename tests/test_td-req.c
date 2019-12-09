@@ -32,7 +32,6 @@
 #include "drivers/tapdisk.h"
 #include "mock_tapdisk-stats.h"
 #include "mock_tapdisk-interface.h"
-#include <xenctrl.h>
 #include "drivers/td-req.h"
 #include "drivers/tapdisk-utils.h"
 #include "mock_td-ctx.h"

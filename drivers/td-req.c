@@ -28,9 +28,8 @@
  * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#include <xenctrl.h>
-
 #include <stdlib.h>
+#include <stdio.h>
 #include <errno.h>
 #include <syslog.h>
 #include <inttypes.h>
@@ -42,6 +41,7 @@
 #include <linux/version.h>
 #endif
 
+#include "blktap-xenif.h"
 #include "debug.h"
 #include "td-req.h"
 #include "td-blkif.h"
@@ -121,7 +121,7 @@ td_xenblkif_bufcache_free(struct td_xenblkif * const blkif)
 
     while (blkif->n_reqs_bufcache_free > TD_REQS_BUFCACHE_MIN){
         munmap(blkif->reqs_bufcache[--blkif->n_reqs_bufcache_free],
-               BLKIF_MMAX_SEGMENTS_PER_REQUEST << XC_PAGE_SHIFT);
+               BLKIF_MMAX_SEGMENTS_PER_REQUEST << PAGE_SHIFT);
     }
 }
 
@@ -138,7 +138,7 @@ td_xenblkif_bufcache_get(struct td_xenblkif * const blkif)
     ASSERT(blkif);
 
     if (!blkif->n_reqs_bufcache_free) {
-        buf = mmap(NULL, BLKIF_MMAX_SEGMENTS_PER_REQUEST << XC_PAGE_SHIFT,
+        buf = mmap(NULL, BLKIF_MMAX_SEGMENTS_PER_REQUEST << PAGE_SHIFT,
                    PROT_READ | PROT_WRITE, MAP_SHARED | MAP_ANONYMOUS, -1, 0);
         if (unlikely(buf == MAP_FAILED))
             buf = NULL;
@@ -303,7 +303,7 @@ xenio_blkif_put_response(struct td_xenblkif * const blkif,
         int notify;
         RING_PUSH_RESPONSES_AND_CHECK_NOTIFY(ring, notify);
         if (notify) {
-            int err = xc_evtchn_notify(blkif->ctx->xce_handle, blkif->port);
+            int err = xenevtchn_notify(blkif->ctx->xce_handle, blkif->port);
             if (err < 0) {
                 err = -errno;
                 if (req) {
@@ -685,7 +685,7 @@ tapdisk_xenblkif_parse_request(struct td_xenblkif * const blkif,
             iov->secs += size;
 
         last = iov->base + (iov->secs << SECTOR_SHIFT);
-        page += XC_PAGE_SIZE;
+        page += PAGE_SIZE;
         nr_sect += size;
     }
 

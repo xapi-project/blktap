@@ -34,6 +34,7 @@
 
 #include <errno.h>
 
+#include "blktap-xenif.h"
 #include "tapdisk-ring.h"
 
 static int

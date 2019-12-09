@@ -29,7 +29,6 @@
  */
 
 #include <stdlib.h>
-#include <xenctrl.h>
 
 #include "debug.h"
 #include "tapdisk-log.h"
