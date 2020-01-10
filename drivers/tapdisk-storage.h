@@ -35,7 +35,6 @@
 #define TAPDISK_STORAGE_TYPE_EXT       2
 #define TAPDISK_STORAGE_TYPE_LVM       3
 
-int tapdisk_storage_type(const char *path);
 const char *tapdisk_storage_name(int type);
 
 #endif

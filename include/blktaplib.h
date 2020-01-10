@@ -140,7 +140,6 @@ typedef struct blkif {
 typedef struct blkif_info {
 	char *params;
 	int   readonly;
-	int   storage;
 } blkif_info_t;
 
 typedef struct tapdev_info {
@@ -174,7 +173,6 @@ typedef struct msg_params {
 	uint8_t    readonly;
 	int        path_off;
 	int        path_len;
-	int        storage;
 } msg_params_t;
 
 typedef struct msg_newdev {
