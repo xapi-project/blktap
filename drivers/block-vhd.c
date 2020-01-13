@@ -123,7 +123,6 @@ unsigned int SPB;
 #define VHD_OP_BITMAP_READ           3
 #define VHD_OP_BITMAP_WRITE          4
 #define VHD_OP_ZERO_BM_WRITE         5
-#define VHD_OP_REDUNDANT_BM_WRITE    6
 
 #define VHD_BM_BAT_LOCKED            0
 #define VHD_BM_BAT_CLEAR             1
@@ -250,12 +249,6 @@ struct vhd_state {
 	struct vhd_request       *vreq_free[VHD_REQS_DATA];
 	struct vhd_request        vreq_list[VHD_REQS_DATA];
 
-	/* for redundant bitmap writes */
-	int                       padbm_size;
-	char                     *padbm_buf;
-	long int                  debug_skipped_redundant_writes;
-	long int                  debug_done_redundant_writes;
-
 	td_driver_t              *driver;
 
 	uint64_t                  queued;
@@ -342,7 +335,6 @@ vhd_free(struct vhd_state *s)
 	if (_vhd_master != s || !_vhd_zeros)
 		return;
 
-	free(s->padbm_buf);
 	munmap(_vhd_zeros, _vhd_zsize);
 	_vhd_zsize  = 0;
 	_vhd_zeros  = NULL;
@@ -572,8 +564,6 @@ fail:
 static int
 vhd_initialize_dynamic_disk(struct vhd_state *s)
 {
-	uint32_t bm_size;
-	void *buf;
 	int err;
 
 	err = vhd_get_header(&s->vhd);
@@ -592,21 +582,6 @@ vhd_initialize_dynamic_disk(struct vhd_state *s)
 	s->spp     = getpagesize() >> VHD_SECTOR_SHIFT;
 	s->spb     = s->vhd.header.block_size >> VHD_SECTOR_SHIFT;
 	s->bm_secs = secs_round_up_no_zero(s->spb >> 3);
-
-	s->padbm_size = (s->bm_secs / getpagesize()) * getpagesize();
-	if (s->bm_secs % getpagesize())
-		s->padbm_size += getpagesize();
-
-	err = posix_memalign(&buf, 512, s->padbm_size);
-	if (err)
-		return -err;
-
-	s->padbm_buf = buf;
-	bm_size = s->bm_secs << VHD_SECTOR_SHIFT;
-	memset(s->padbm_buf, 0, s->padbm_size - bm_size);
-	memset(s->padbm_buf + (s->padbm_size - bm_size), ~0, bm_size);
-	s->debug_skipped_redundant_writes = 0;
-	s->debug_done_redundant_writes = 0;
 
 	if (test_vhd_flag(s->flags, VHD_FLAG_OPEN_NO_CACHE))
 		return 0;
@@ -899,10 +874,6 @@ _vhd_close(td_driver_t *driver)
 	
 	DBG(TLOG_WARN, "vhd_close\n");
 	s = (struct vhd_state *)driver->data;
-
-	DPRINTF("gaps written/skipped: %ld/%ld\n", 
-			s->debug_done_redundant_writes,
-			s->debug_skipped_redundant_writes);
 
 	/* don't write footer if tapdisk is read-only */
 	if (test_vhd_flag(s->flags, VHD_FLAG_OPEN_RDONLY))
@@ -1527,56 +1498,6 @@ schedule_zero_bm_write(struct vhd_state *s,
 	add_to_transaction(&bm->tx, req);
 	aio_write(s, req, offset);
 }
-
-/* This is a performance optimization. When writing sequentially into full 
- * blocks, skipping (up-to-date) bitmaps causes an approx. 25% reduction in 
- * throughput. To prevent skipping, we issue redundant writes into the (padded) 
- * bitmap area just to make all writes sequential. This will help VHDs on raw 
- * block devices, while the FS-based VHDs shouldn't suffer much.
- *
- * Note that it only makes sense to perform this reduntant bitmap write if the 
- * block is completely full (i.e. the batmap entry is set). If the block is not 
- * completely full then one of the following two things will be true:
- *  1. we'll either be allocating new sectors in this block and writing its
- *     bitmap transactionally, which will be slow anyways; or
- *  2. the IO will be skipping over the unallocated sectors again, so the
- *     pattern will not be sequential anyways
- * In either case a redundant bitmap write becomes pointless. This fact 
- * simplifies the implementation of redundant writes: since we know the bitmap 
- * cannot be updated by anyone else, we don't have to worry about transactions 
- * or potential write conflicts.
- * */
-static void
-schedule_redundant_bm_write(struct vhd_state *s, uint32_t blk)
-{
-	uint64_t offset;
-	struct vhd_request *req;
-
-	ASSERT(s->vhd.footer.type != HD_TYPE_FIXED);
-	ASSERT(test_batmap(s, blk));
-
-	req = alloc_vhd_request(s);
-	if (!req) 
-		return;
-
-	req->treq.buf = s->padbm_buf;
-
-	offset = bat_entry(s, blk);
-	ASSERT(offset != DD_BLK_UNUSED);
-	offset <<= VHD_SECTOR_SHIFT;
-	offset -= s->padbm_size - (s->bm_secs << VHD_SECTOR_SHIFT);
-
-	req->op        = VHD_OP_REDUNDANT_BM_WRITE;
-	req->treq.sec  = blk * s->spb;
-	req->treq.secs = s->padbm_size >> VHD_SECTOR_SHIFT;
-	req->next      = NULL;
-
-	DBG(TLOG_DBG, "blk: %u, writing redundant bitmap at %" PRIu64 "\n",
-	    blk, offset);
-
-	aio_write(s, req, offset);
-}
-
 static int
 update_bat(struct vhd_state *s, uint32_t blk)
 {
@@ -1812,11 +1733,7 @@ schedule_data_write(struct vhd_state *s, td_request_t treq, vhd_flag_t flags)
 			set_vhd_flag(req->flags, VHD_FLAG_REQ_QUEUED);
 		} else
 			add_to_transaction(&bm->tx, req);
-	} else if (sec == 0 && 	/* first sector inside data block */
-		   s->vhd.footer.type != HD_TYPE_FIXED && 
-		   bat_entry(s, blk) != s->first_db &&
-		   test_batmap(s, blk))
-		schedule_redundant_bm_write(s, blk);
+	}
 
 	aio_write(s, req, offset);
 
@@ -2346,26 +2263,6 @@ finish_zero_bm_write(struct vhd_request *req)
 		finish_data_transaction(s, bm);
 }
 
-static int
-finish_redundant_bm_write(struct vhd_request *req)
-{
-	/* uint32_t blk; */
-	struct vhd_state *s = (struct vhd_state *) req->state;
-
-	s->returned++;
-	TRACE(s);	
-	/* blk = req->treq.sec / s->spb;
-	   DBG(TLOG_DBG, "blk: %u\n", blk); */
-
-	if (req->error) {
-		ERR(s, req->error, "lsec: 0x%08"PRIx64, req->treq.sec);
-	}
-	free_vhd_request(s, req);
-	s->debug_done_redundant_writes++;
-	return 0;
-}
-
-
 static void
 finish_bitmap_read(struct vhd_request *req)
 {
@@ -2532,10 +2429,6 @@ vhd_complete(void *arg, struct tiocb *tiocb, int err)
 
 	case VHD_OP_ZERO_BM_WRITE:
 		finish_zero_bm_write(req);
-		break;
-
-	case VHD_OP_REDUNDANT_BM_WRITE:
-		finish_redundant_bm_write(req);
 		break;
 
 	case VHD_OP_BAT_WRITE:
