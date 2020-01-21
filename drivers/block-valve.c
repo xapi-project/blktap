@@ -658,7 +658,7 @@ td_valve_stats(td_driver_t *driver, td_stats_t *st)
 	int n_reqs;
 
 	tapdisk_stats_field(st, "bridge", "d", valve->brname);
-	tapdisk_stats_field(st, "flags", "#x", valve->flags);
+	tapdisk_stats_field(st, "flags", "lu", valve->flags);
 
 	tapdisk_stats_field(st, "cred", "d", valve->cred);
 	tapdisk_stats_field(st, "need", "d", valve->need);
