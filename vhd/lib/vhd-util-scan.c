@@ -929,7 +929,7 @@ iterator_add_volume(struct iterator *itr,
 		}
 	}
 
-	if (err && err != FNM_PATHNAME)
+	if (err && err != FNM_NOMATCH)
 		return err;
 
 	if (!lv)
