@@ -922,7 +922,7 @@ iterator_add_volume(struct iterator *itr,
 			return -EEXIST;
 
 	for (i = 0; i < vg.lv_cnt; i++) {
-		err = fnmatch(parent, vg.lvs[i].name, FNM_PATHNAME);
+		err = fnmatch(parent, vg.lvs[i].name, FNM_PATHNAME | FNM_EXTMATCH);
 		if (err != FNM_NOMATCH) {
 			lv = vg.lvs + i;
 			break;
@@ -1122,7 +1122,7 @@ vhd_util_scan_find_file_targets(int cnt, char **names,
 	memset(&g, 0, sizeof(g));
 
 	if (filter) {
-		int gflags = ((flags & VHD_SCAN_FAST) ? GLOB_NOSORT : 0);
+		int gflags = ((flags & VHD_SCAN_FAST) ? GLOB_NOSORT : 0) | GLOB_BRACE;
 
 		errno = 0;
 		err   = glob(filter, gflags, vhd_util_scan_error, &g);
@@ -1221,7 +1221,8 @@ vhd_util_scan_sort_volumes(struct lv *lvs, int cnt,
 	for (i = 0; i < cnt; i++) {
 		lv  = lvs + i;
 
-		err = fnmatch(filter, lv->name, FNM_PATHNAME);
+		err = fnmatch(filter, lv->name, FNM_PATHNAME | FNM_EXTMATCH);
+
 		if (err) {
 			if (err != FNM_NOMATCH) {
 				EPRINTF("fnmatch failed: '%s', '%s'\n", 
