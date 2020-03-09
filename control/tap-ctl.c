@@ -551,7 +551,7 @@ usage:
 static void
 tap_cli_close_usage(FILE *stream)
 {
-	fprintf(stream, "usage: close <-p pid> <-m minor> [-f force]\n");
+	fprintf(stream, "usage: close <-p pid> <-m minor> [-f force] [-t timeout secs]\n");
 }
 
 static int
