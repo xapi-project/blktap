@@ -362,20 +362,16 @@ usage:
 static void
 tap_cli_destroy_usage(FILE *stream)
 {
-	fprintf(stream, "usage: destroy <-p pid> <-m minor>\n");
+	fprintf(stream, "usage: destroy <-p pid> <-m minor> [-t timeout secs]\n");
 }
 
 static struct timeval*
 tap_cli_timeout(const char *optarg)
 {
 	static struct timeval tv;
-	struct timeval now;
 
 	tv.tv_sec  = atoi(optarg);
 	tv.tv_usec = 0;
-
-	gettimeofday(&now, NULL);
-	timeradd(&tv, &now, &tv);
 
 	return &tv;
 }
@@ -603,7 +599,7 @@ usage:
 static void
 tap_cli_pause_usage(FILE *stream)
 {
-	fprintf(stream, "usage: pause <-p pid> <-m minor>\n");
+	fprintf(stream, "usage: pause <-p pid> <-m minor> [-t timeout secs]\n");
 }
 
 static int
