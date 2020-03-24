@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2016, Citrix Systems, Inc.
+ * Copyright (c) 2020, Citrix Systems, Inc.
  *
  * All rights reserved.
  *
@@ -28,35 +28,15 @@
  * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifdef HAVE_CONFIG_H
-#include "config.h"
-#endif
+#ifndef __CONTROL_WRAPPERS_H__
+#define __CONTROL_WRAPPERS_H__
 
 #include <stdio.h>
-#include <errno.h>
-#include <fcntl.h>
-#include <stdlib.h>
-#include <unistd.h>
-#include <getopt.h>
-#include <sys/ioctl.h>
+#include <stdbool.h>
 
-#include "tap-ctl.h"
-#include "blktap2.h"
+void enable_mock_fdopen();
+void enable_mock_open();
 
-int
-tap_ctl_free(const int minor)
-{
-	int fd, err;
+void disable_control_mocks();
 
-	fd = open(BLKTAP2_CONTROL_DEVICE, O_RDONLY);
-	if (fd == -1) {
-		EPRINTF("failed to open control device: %d\n", errno);
-		return errno;
-	}
-
-	err = ioctl(fd, BLKTAP2_IOCTL_FREE_TAP, minor);
-	err = (err == -1) ? -errno : 0;
-	close(fd);
-
-	return err;
-}
+#endif /* __CONTROL_WRAPPERS_H__ */

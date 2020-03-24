@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2016, Citrix Systems, Inc.
+ * Copyright (c) 2020, Citrix Systems, Inc.
  *
  * All rights reserved.
  *
@@ -28,35 +28,73 @@
  * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifdef HAVE_CONFIG_H
-#include "config.h"
-#endif
-
-#include <stdio.h>
+#include <stddef.h>
+#include <stdarg.h>
+#include <setjmp.h>
+#include <cmocka.h>
 #include <errno.h>
-#include <fcntl.h>
-#include <stdlib.h>
-#include <unistd.h>
-#include <getopt.h>
-#include <sys/ioctl.h>
+
+#include <wrappers.h>
+#include "control-wrappers.h"
+#include "test-suites.h"
 
 #include "tap-ctl.h"
 #include "blktap2.h"
 
-int
-tap_ctl_free(const int minor)
+void test_tap_ctl_free_open_fail(void **state)
 {
-	int fd, err;
+	int dev_fd = -1;
+	int result;
 
-	fd = open(BLKTAP2_CONTROL_DEVICE, O_RDONLY);
-	if (fd == -1) {
-		EPRINTF("failed to open control device: %d\n", errno);
-		return errno;
-	}
+	enable_mock_open();
 
-	err = ioctl(fd, BLKTAP2_IOCTL_FREE_TAP, minor);
-	err = (err == -1) ? -errno : 0;
-	close(fd);
+	will_return(__wrap_open, dev_fd);
 
-	return err;
+	result = tap_ctl_free(0);
+
+	assert_int_equal(result, ENOENT);
+
+	disable_control_mocks();
+}
+
+void test_tap_ctl_free_success(void **state)
+{
+	int dev_fd = 12;
+	int result;
+
+	enable_mock_open();
+
+	will_return(__wrap_open, dev_fd);
+	will_return(__wrap_ioctl, 0);
+	will_return(__wrap_close, 0);
+	expect_value(__wrap_ioctl, fd, dev_fd);
+	expect_value(__wrap_ioctl, request, BLKTAP2_IOCTL_FREE_TAP);
+	expect_value(__wrap_close, fd, dev_fd);
+
+	result = tap_ctl_free(0);
+
+	assert_int_equal(result, 0);
+
+	disable_control_mocks();
+}
+
+void test_tap_ctl_free_ioctl_busy(void **state)
+{
+	int dev_fd = 12;
+	int result;
+
+	enable_mock_open();
+
+	will_return(__wrap_open, dev_fd);
+	will_return(__wrap_ioctl, EBUSY);
+	will_return(__wrap_close, 0);
+	expect_value(__wrap_ioctl, fd, dev_fd);
+	expect_value(__wrap_ioctl, request, BLKTAP2_IOCTL_FREE_TAP);
+	expect_value(__wrap_close, fd, dev_fd);
+
+	result = tap_ctl_free(0);
+
+	assert_int_equal(result, -EBUSY);
+
+	disable_control_mocks();
 }

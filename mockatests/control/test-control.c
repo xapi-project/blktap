@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2016, Citrix Systems, Inc.
+ * Copyright (c) 2020, Citrix Systems, Inc.
  *
  * All rights reserved.
  *
@@ -28,35 +28,24 @@
  * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifdef HAVE_CONFIG_H
-#include "config.h"
-#endif
+#include <stddef.h>
+#include <stdarg.h>
+#include <setjmp.h>
+#include <cmocka.h>
 
-#include <stdio.h>
-#include <errno.h>
-#include <fcntl.h>
-#include <stdlib.h>
-#include <unistd.h>
-#include <getopt.h>
-#include <sys/ioctl.h>
+#include <wrappers.h>
+#include "control-wrappers.h"
+#include "test-suites.h"
 
-#include "tap-ctl.h"
-#include "blktap2.h"
-
-int
-tap_ctl_free(const int minor)
+int main(void)
 {
-	int fd, err;
+	int result =
+		cmocka_run_group_tests_name("Free tests", tap_ctl_free_tests, NULL, NULL);
 
-	fd = open(BLKTAP2_CONTROL_DEVICE, O_RDONLY);
-	if (fd == -1) {
-		EPRINTF("failed to open control device: %d\n", errno);
-		return errno;
-	}
+	/* Need to flag that the tests are done so that the fclose mock goes quiescent */
+	disable_mocks();
 
-	err = ioctl(fd, BLKTAP2_IOCTL_FREE_TAP, minor);
-	err = (err == -1) ? -errno : 0;
-	close(fd);
+	fprintf(stderr, "control tests result %d\n", result);
 
-	return err;
+	return result;
 }

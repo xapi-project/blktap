@@ -43,6 +43,7 @@ Makefile.in
 /part/part-util
 /lvm/lvm-util
 /mockatests/cbt/test-cbt-util
+/mockatests/control/test-control
 /mockatests/drivers/test-drivers
 /vhd/vhd-index
 /vhd/vhd-update
@@ -64,6 +65,7 @@ Makefile.in
 /include/Makefile
 /mockatests/Makefile
 /mockatests/cbt/Makefile
+/mockatests/control/Makefile
 /mockatests/drivers/Makefile
 /mockatests/wrappers/Makefile
 /vhd/Makefile

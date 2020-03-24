@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2016, Citrix Systems, Inc.
+ * Copyright (c) 2017, Citrix Systems, Inc.
  *
  * All rights reserved.
  *
@@ -28,35 +28,25 @@
  * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifdef HAVE_CONFIG_H
-#include "config.h"
-#endif
+#ifndef __TEST_SUITES_H__
+#define __TEST_SUITES_H__
 
-#include <stdio.h>
-#include <errno.h>
-#include <fcntl.h>
-#include <stdlib.h>
-#include <unistd.h>
-#include <getopt.h>
-#include <sys/ioctl.h>
+#include <setjmp.h>
+#include <cmocka.h>
+#include <uuid/uuid.h>
+#include <stdint.h>
+#include <cbt-util.h>
 
-#include "tap-ctl.h"
-#include "blktap2.h"
 
-int
-tap_ctl_free(const int minor)
-{
-	int fd, err;
+/* tap-ctl free tests */
+void test_tap_ctl_free_open_fail(void **state);
+void test_tap_ctl_free_success(void **state);
+void test_tap_ctl_free_ioctl_busy(void **state);
 
-	fd = open(BLKTAP2_CONTROL_DEVICE, O_RDONLY);
-	if (fd == -1) {
-		EPRINTF("failed to open control device: %d\n", errno);
-		return errno;
-	}
+static const struct CMUnitTest tap_ctl_free_tests[] = {
+	cmocka_unit_test(test_tap_ctl_free_open_fail),
+	cmocka_unit_test(test_tap_ctl_free_success),
+	cmocka_unit_test(test_tap_ctl_free_ioctl_busy)
+};
 
-	err = ioctl(fd, BLKTAP2_IOCTL_FREE_TAP, minor);
-	err = (err == -1) ? -errno : 0;
-	close(fd);
-
-	return err;
-}
+#endif /* __TEST_SUITES_H__ */
