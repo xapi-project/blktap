@@ -96,18 +96,17 @@ int
 __wrap_fwrite(const void *ptr, size_t size, size_t nmemb, FILE *stream)
 {
 	if (mock_fwrite) {
+		struct fwrite_data *data = mock();
 
-	struct fwrite_data *data = mock();
+		size_t remaining = data->size - data->offset;
+		size_t len = size * nmemb;
 
-	size_t remaining = data->size - data->offset;
-	size_t len = size * nmemb;
+		assert_in_range(len, 0, remaining);
+		memcpy(data->buf + data->offset, ptr, len);
 
-	assert_in_range(len, 0, remaining);
-	memcpy(data->buf + data->offset, ptr, len);
-	
-	data->offset += len;
+		data->offset += len;
 
-	return len;
+		return len;
 	}
 	return __real_fwrite(ptr, size, nmemb, stream);
 }
