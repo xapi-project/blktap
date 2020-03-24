@@ -3,3 +3,4 @@
 SUBDIRS  = wrappers
 SUBDIRS += drivers
 SUBDIRS += cbt
+SUBDIRS += control

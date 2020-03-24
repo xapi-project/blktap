@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2016, Citrix Systems, Inc.
+ * Copyright (c) 2020, Citrix Systems, Inc.
  *
  * All rights reserved.
  *
@@ -28,35 +28,115 @@
  * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifdef HAVE_CONFIG_H
-#include "config.h"
-#endif
-
-#include <stdio.h>
+#include <string.h>
+#include <stdbool.h>
+#include <stdint.h>
+#include <stdarg.h>
+#include <stddef.h>
+#include <setjmp.h>
+#include <cmocka.h>
 #include <errno.h>
-#include <fcntl.h>
-#include <stdlib.h>
-#include <unistd.h>
-#include <getopt.h>
-#include <sys/ioctl.h>
 
-#include "tap-ctl.h"
-#include "blktap2.h"
+#include "control-wrappers.h"
 
-int
-tap_ctl_free(const int minor)
+static int mock_fdopen = 0;
+static int mock_open = 0;
+
+
+FILE *
+__real_fdopen(int fd, const char *mode);
+
+FILE *
+__wrap_fdopen(int fd, const char *mode)
 {
-	int fd, err;
+	if (mock_fdopen) {
+		FILE *file = (FILE*)mock();
+		if (file == NULL) {
+			errno = ENOENT;
+		}
 
-	fd = open(BLKTAP2_CONTROL_DEVICE, O_RDONLY);
-	if (fd == -1) {
-		EPRINTF("failed to open control device: %d\n", errno);
-		return errno;
+		return file;
 	}
 
-	err = ioctl(fd, BLKTAP2_IOCTL_FREE_TAP, minor);
-	err = (err == -1) ? -errno : 0;
-	close(fd);
+	return __real_fdopen(fd, mode);
+}
 
-	return err;
+/*
+ * Enable the wrapping function for fdopen
+ */
+void enable_mock_fdopen()
+{
+	mock_fdopen = 1;
+}
+
+int
+__wrap_ioctl(int fd, int request, ...)
+{
+	int result;
+
+	check_expected(fd);
+	check_expected(request);
+
+	result = (int)mock();
+
+	if (result != 0) {
+		errno = result;
+		result = -1;
+	}
+
+	return result;
+}
+
+int
+__real_open(const char *pathname, int flags);
+
+int
+__wrap_open(const char *pathname, int flags)
+{
+	int result;
+
+	if (mock_open) {
+		result = mock();
+		if (result == -1)
+			errno = ENOENT;
+		return result;
+	}
+
+	return __real_open(pathname, flags);
+}
+
+int
+__real_close(int fd);
+
+int
+__wrap_close(int fd)
+{
+	int result;
+
+	if (mock_open) {
+		check_expected(fd);
+		result = mock();
+		if (result != 0)
+		{
+			errno = result;
+			result = 1;
+		}
+		return result;
+	}
+
+	return __real_close(fd);
+}
+
+/*
+ * Enable the wrapping of open
+ */
+void enable_mock_open()
+{
+	mock_open = true;
+}
+
+void disable_control_mocks()
+{
+	mock_open = 0;
+	mock_fdopen = 0;
 }
