@@ -37,10 +37,24 @@
 #include "control-wrappers.h"
 #include "test-suites.h"
 
+
+static int testSetup (void** state)
+{
+	enable_control_mocks();
+	return 0;
+}
+
+static int testTeardown (void** state)
+{
+	disable_control_mocks();
+	return 0;
+}
+
 int main(void)
 {
 	int result =
-		cmocka_run_group_tests_name("Free tests", tap_ctl_free_tests, NULL, NULL);
+		cmocka_run_group_tests_name("Allocate tests", tap_ctl_allocate_tests, testSetup, testTeardown) +
+		cmocka_run_group_tests_name("Free tests", tap_ctl_free_tests, testSetup, testTeardown);
 
 	/* Need to flag that the tests are done so that the fclose mock goes quiescent */
 	disable_mocks();

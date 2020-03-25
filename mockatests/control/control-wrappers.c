@@ -36,11 +36,11 @@
 #include <setjmp.h>
 #include <cmocka.h>
 #include <errno.h>
+#include <sys/socket.h>
 
 #include "control-wrappers.h"
 
-static int mock_fdopen = 0;
-static int mock_open = 0;
+static int enable_mocks = 0;
 
 
 FILE *
@@ -49,7 +49,7 @@ __real_fdopen(int fd, const char *mode);
 FILE *
 __wrap_fdopen(int fd, const char *mode)
 {
-	if (mock_fdopen) {
+	if (enable_mocks) {
 		FILE *file = (FILE*)mock();
 		if (file == NULL) {
 			errno = ENOENT;
@@ -59,14 +59,6 @@ __wrap_fdopen(int fd, const char *mode)
 	}
 
 	return __real_fdopen(fd, mode);
-}
-
-/*
- * Enable the wrapping function for fdopen
- */
-void enable_mock_fdopen()
-{
-	mock_fdopen = 1;
 }
 
 int
@@ -95,7 +87,8 @@ __wrap_open(const char *pathname, int flags)
 {
 	int result;
 
-	if (mock_open) {
+	if (enable_mocks) {
+		check_expected(pathname);
 		result = mock();
 		if (result == -1)
 			errno = ENOENT;
@@ -113,7 +106,7 @@ __wrap_close(int fd)
 {
 	int result;
 
-	if (mock_open) {
+	if (enable_mocks) {
 		check_expected(fd);
 		result = mock();
 		if (result != 0)
@@ -127,16 +120,170 @@ __wrap_close(int fd)
 	return __real_close(fd);
 }
 
-/*
- * Enable the wrapping of open
- */
-void enable_mock_open()
+int
+__real_access(const char *pathname, int mode);
+
+int
+__wrap_access(const char *pathname, int mode)
 {
-	mock_open = true;
+	int result;
+
+	if (enable_mocks) {
+		check_expected(pathname);
+
+		result = mock();
+		if (result != 0) {
+			errno = result;
+			result = -1;
+		}
+		return result;
+	}
+	return __real_access(pathname, mode);
+}
+
+size_t
+__real_read(int fd, void *buf, size_t count);
+
+size_t
+__wrap_read(int fd, void *buf, size_t count)
+{
+	fprintf(stderr, "__wrap_read\n");
+
+	if (enable_mocks) {
+		return -1;
+	}
+
+	return __real_read(fd, buf, count);
+}
+
+size_t
+__real_write(int fd, const void *buf, size_t count);
+
+size_t
+__wrap_write(int fd, const void *buf, size_t count)
+{
+	fprintf(stderr, "__wrap_write\n");
+	if (enable_mocks) {
+		return -1;
+	}
+
+	return __real_write(fd, buf, count);
+}
+
+int
+__real_connect(int sockfd, const struct sockaddr *addr, socklen_t addrlen);
+
+int
+__wrap_connect(int sockfd, const struct sockaddr *addr, socklen_t addrlen)
+{
+	fprintf(stderr, "__wrap_connect\n");
+	if (enable_mocks) {
+		return -1;
+	}
+	return __real_connect(sockfd, addr, addrlen);
+}
+
+int
+__real_select(int nfds, fd_set *readfds, fd_set *writefds,
+	      fd_set *exceptfds, struct timeval *timeout);
+
+int
+__wrap_select(int nfds, fd_set *readfds, fd_set *writefds,
+	      fd_set *exceptfds, struct timeval *timeout)
+{
+	if (enable_mocks) {
+		return -1;
+	}
+
+	return __real_select(nfds, readfds, writefds, exceptfds, timeout);
+}
+
+int
+__real_mkdir(const char *pathname, mode_t mode);
+
+int
+__wrap_mkdir(const char *pathname, mode_t mode)
+{
+	int result;
+	if (enable_mocks) {
+		check_expected(pathname);
+		result = mock();
+		if (result != 0){
+			errno = result;
+			result = -1;
+		}
+		return result;
+	}
+	return __real_mkdir(pathname, mode);
+}
+
+int
+__real_flock(int fd, int operation);
+
+int
+__wrap_flock(int fd, int operation)
+{
+	int result;
+	if (enable_mocks) {
+		check_expected(fd);
+		result = mock();
+		if (result != 0) {
+			errno = result;
+			result = -1;
+		}
+		return result;
+	}
+	return __real_flock(fd, operation);
+}
+
+int
+__real___xmknod(int ver, const char * path, mode_t mode, dev_t * dev);
+
+int
+__wrap___xmknod(int ver, const char *pathname, mode_t mode, dev_t * dev)
+{
+	int result;
+	if (enable_mocks)
+	{
+		check_expected(pathname);
+		result = mock();
+		if (result != 0)
+		{
+			errno = result;
+			result = -1;
+		}
+		return result;
+	}
+	return __real___xmknod(ver, pathname, mode, dev);
+}
+
+int
+__real_unlink(const char *pathname);
+
+int
+__wrap_unlink(const char *pathname)
+{
+	int result;
+	if (enable_mocks)
+	{
+		check_expected(pathname);
+		result = mock();
+		if (result != 0)
+		{
+			errno = result;
+			result = -1;
+		}
+		return result;
+	}
+	return __real_unlink(pathname);
+}
+
+void enable_control_mocks()
+{
+	enable_mocks = true;
 }
 
 void disable_control_mocks()
 {
-	mock_open = 0;
-	mock_fdopen = 0;
+	enable_mocks = 0;
 }

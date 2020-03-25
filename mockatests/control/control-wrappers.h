@@ -34,9 +34,7 @@
 #include <stdio.h>
 #include <stdbool.h>
 
-void enable_mock_fdopen();
-void enable_mock_open();
-
+void enable_control_mocks();
 void disable_control_mocks();
 
 #endif /* __CONTROL_WRAPPERS_H__ */
