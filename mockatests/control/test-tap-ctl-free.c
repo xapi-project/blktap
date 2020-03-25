@@ -46,15 +46,12 @@ void test_tap_ctl_free_open_fail(void **state)
 	int dev_fd = -1;
 	int result;
 
-	enable_mock_open();
-
 	will_return(__wrap_open, dev_fd);
+	expect_string(__wrap_open, pathname, "/dev/xen/blktap-2/control");
 
 	result = tap_ctl_free(0);
 
 	assert_int_equal(result, ENOENT);
-
-	disable_control_mocks();
 }
 
 void test_tap_ctl_free_success(void **state)
@@ -62,20 +59,19 @@ void test_tap_ctl_free_success(void **state)
 	int dev_fd = 12;
 	int result;
 
-	enable_mock_open();
-
 	will_return(__wrap_open, dev_fd);
+	expect_string(__wrap_open, pathname, "/dev/xen/blktap-2/control");
+
 	will_return(__wrap_ioctl, 0);
-	will_return(__wrap_close, 0);
 	expect_value(__wrap_ioctl, fd, dev_fd);
 	expect_value(__wrap_ioctl, request, BLKTAP2_IOCTL_FREE_TAP);
+
+	will_return(__wrap_close, 0);
 	expect_value(__wrap_close, fd, dev_fd);
 
 	result = tap_ctl_free(0);
 
 	assert_int_equal(result, 0);
-
-	disable_control_mocks();
 }
 
 void test_tap_ctl_free_ioctl_busy(void **state)
@@ -83,18 +79,17 @@ void test_tap_ctl_free_ioctl_busy(void **state)
 	int dev_fd = 12;
 	int result;
 
-	enable_mock_open();
-
 	will_return(__wrap_open, dev_fd);
+	expect_string(__wrap_open, pathname, "/dev/xen/blktap-2/control");
+
 	will_return(__wrap_ioctl, EBUSY);
-	will_return(__wrap_close, 0);
 	expect_value(__wrap_ioctl, fd, dev_fd);
 	expect_value(__wrap_ioctl, request, BLKTAP2_IOCTL_FREE_TAP);
+
+	will_return(__wrap_close, 0);
 	expect_value(__wrap_close, fd, dev_fd);
 
 	result = tap_ctl_free(0);
 
 	assert_int_equal(result, -EBUSY);
-
-	disable_control_mocks();
 }

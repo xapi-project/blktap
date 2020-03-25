@@ -38,10 +38,27 @@
 #include <cbt-util.h>
 
 
+/* tap-ctl allocation tests */
+void test_tap_ctl_allocate_prep_dir_no_access(void **state);
+void test_tap_ctl_allocate_no_device_info(void **state);
+void test_tap_ctl_allocate_make_device_fail(void **state);
+void test_tap_ctl_allocate_ring_create_fail(void **state);
+void test_tap_ctl_allocate_io_device_fail(void **state);
+void test_tap_ctl_allocate_success(void **state);
+
 /* tap-ctl free tests */
 void test_tap_ctl_free_open_fail(void **state);
 void test_tap_ctl_free_success(void **state);
 void test_tap_ctl_free_ioctl_busy(void **state);
+
+static const struct CMUnitTest tap_ctl_allocate_tests[] = {
+	cmocka_unit_test(test_tap_ctl_allocate_prep_dir_no_access),
+	cmocka_unit_test(test_tap_ctl_allocate_no_device_info),
+	cmocka_unit_test(test_tap_ctl_allocate_make_device_fail),
+	cmocka_unit_test(test_tap_ctl_allocate_ring_create_fail),
+	cmocka_unit_test(test_tap_ctl_allocate_io_device_fail),
+	cmocka_unit_test(test_tap_ctl_allocate_success)
+};
 
 static const struct CMUnitTest tap_ctl_free_tests[] = {
 	cmocka_unit_test(test_tap_ctl_free_open_fail),
