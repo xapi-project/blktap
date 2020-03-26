@@ -147,10 +147,23 @@ __real_read(int fd, void *buf, size_t count);
 size_t
 __wrap_read(int fd, void *buf, size_t count)
 {
-	fprintf(stderr, "__wrap_read\n");
+	int result = -1;
+	struct mock_read_params *params;
 
 	if (enable_mocks) {
-		return -1;
+		check_expected(fd);
+		params = (struct mock_read_params *)mock();
+
+		if (params->result > 0) {
+			memcpy(buf, params->data, params->result);
+			result = params->result;
+		}
+		else if (params->result < 0) {
+			errno = -params->result;
+			result = -1;
+		}
+
+		return result;
 	}
 
 	return __real_read(fd, buf, count);
@@ -159,12 +172,31 @@ __wrap_read(int fd, void *buf, size_t count)
 size_t
 __real_write(int fd, const void *buf, size_t count);
 
+/*
+ * Wrap the write call.
+ *
+ * Checks the passed FD is expected
+ * Mock result is amount of written data to report
+ * limited to count, negative values are errnos to
+ * set and return -1.
+ */
 size_t
 __wrap_write(int fd, const void *buf, size_t count)
 {
-	fprintf(stderr, "__wrap_write\n");
+	int result;
+
 	if (enable_mocks) {
-		return -1;
+		check_expected(fd);
+		check_expected(buf);
+		result = mock();
+
+		if (result > (int)count)
+			result = count;
+		else if (result < 0) {
+			errno = -result;
+			result = -1;
+		}
+		return result;
 	}
 
 	return __real_write(fd, buf, count);
@@ -176,9 +208,16 @@ __real_connect(int sockfd, const struct sockaddr *addr, socklen_t addrlen);
 int
 __wrap_connect(int sockfd, const struct sockaddr *addr, socklen_t addrlen)
 {
-	fprintf(stderr, "__wrap_connect\n");
+	int result;
 	if (enable_mocks) {
-		return -1;
+		check_expected(sockfd);
+		check_expected(addr);
+		result = mock();
+		if (result) {
+			errno = result;
+			result = -1;
+		}
+		return result;
 	}
 	return __real_connect(sockfd, addr, addrlen);
 }
@@ -191,8 +230,17 @@ int
 __wrap_select(int nfds, fd_set *readfds, fd_set *writefds,
 	      fd_set *exceptfds, struct timeval *timeout)
 {
+	struct mock_select_params *params;
 	if (enable_mocks) {
-		return -1;
+		check_expected(timeout);
+		params = (struct mock_select_params *)mock();
+		if (readfds)
+			memcpy(readfds, &params->readfds, sizeof(fd_set));
+		if (writefds)
+			memcpy(writefds, &params->writefds, sizeof(fd_set));
+		if (exceptfds)
+			memcpy(exceptfds, &params->exceptfds, sizeof(fd_set));
+		return params->result;
 	}
 
 	return __real_select(nfds, readfds, writefds, exceptfds, timeout);
@@ -276,6 +324,24 @@ __wrap_unlink(const char *pathname)
 		return result;
 	}
 	return __real_unlink(pathname);
+}
+
+int
+__wrap_socket(int domain, int type, int protocol)
+{
+	int result;
+
+	check_expected(domain);
+	check_expected(type);
+	check_expected(protocol);
+
+	result = mock();
+
+	if (result < 0) {
+		errno = -result;
+		result = -1;
+	}
+	return result;
 }
 
 void enable_control_mocks()

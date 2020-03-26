@@ -38,13 +38,23 @@
 #include <cbt-util.h>
 
 
-/* tap-ctl allocation tests */
+/* tap-ctl allocate tests */
 void test_tap_ctl_allocate_prep_dir_no_access(void **state);
 void test_tap_ctl_allocate_no_device_info(void **state);
 void test_tap_ctl_allocate_make_device_fail(void **state);
 void test_tap_ctl_allocate_ring_create_fail(void **state);
 void test_tap_ctl_allocate_io_device_fail(void **state);
 void test_tap_ctl_allocate_success(void **state);
+
+/* tap-ctl close tests */
+void test_tap_ctl_close_success(void **state);
+void test_tap_ctl_force_close_success(void **state);
+void test_tap_ctl_close_connect_fail(void **state);
+void test_tap_ctl_close_write_error(void **state);
+void test_tap_ctl_close_read_error(void **state);
+void test_tap_ctl_close_write_select_timeout(void **state);
+void test_tap_ctl_close_read_select_timeout(void **state);
+void test_tap_ctl_close_error_response(void **state);
 
 /* tap-ctl free tests */
 void test_tap_ctl_free_open_fail(void **state);
@@ -58,6 +68,17 @@ static const struct CMUnitTest tap_ctl_allocate_tests[] = {
 	cmocka_unit_test(test_tap_ctl_allocate_ring_create_fail),
 	cmocka_unit_test(test_tap_ctl_allocate_io_device_fail),
 	cmocka_unit_test(test_tap_ctl_allocate_success)
+};
+
+static const struct CMUnitTest tap_ctl_close_tests[] = {
+	cmocka_unit_test(test_tap_ctl_close_success),
+	cmocka_unit_test(test_tap_ctl_force_close_success),
+	cmocka_unit_test(test_tap_ctl_close_connect_fail),
+	cmocka_unit_test(test_tap_ctl_close_write_error),
+	cmocka_unit_test(test_tap_ctl_close_read_error),
+	cmocka_unit_test(test_tap_ctl_close_write_select_timeout),
+	cmocka_unit_test(test_tap_ctl_close_read_select_timeout),
+	cmocka_unit_test(test_tap_ctl_close_error_response)
 };
 
 static const struct CMUnitTest tap_ctl_free_tests[] = {

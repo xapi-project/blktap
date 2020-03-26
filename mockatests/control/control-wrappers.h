@@ -32,7 +32,20 @@
 #define __CONTROL_WRAPPERS_H__
 
 #include <stdio.h>
-#include <stdbool.h>
+#include <sys/select.h>
+
+struct mock_select_params {
+	int result;
+	fd_set readfds;
+	fd_set writefds;
+	fd_set exceptfds;
+};
+
+struct mock_read_params
+{
+	int result;
+	void * data;
+};
 
 void enable_control_mocks();
 void disable_control_mocks();
