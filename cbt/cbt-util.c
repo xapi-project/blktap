@@ -283,7 +283,7 @@ int
 cbt_util_set(int argc, char **argv)
 {
 	char *name, *parent, *child, *buf;
-	int err, c, consistent, flag = 0, ret; 
+	int err, c, consistent = 0, flag = 0, ret; 
 	FILE *f = NULL;
 	uint64_t size, bmsize, old_bmsize;
 
