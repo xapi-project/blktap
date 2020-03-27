@@ -61,6 +61,13 @@ void test_tap_ctl_free_open_fail(void **state);
 void test_tap_ctl_free_success(void **state);
 void test_tap_ctl_free_ioctl_busy(void **state);
 
+/* tap-ctl list tests */
+void test_tap_ctl_list_success_no_results(void **state);
+void test_tap_ctl_list_success_one_minor_no_td(void **state);
+void test_tap_ctl_list_success_one_td_no_minor_no_path(void **state);
+void test_tap_ctl_list_success_one_td_one_minor_no_path(void **state);
+void test_tap_ctl_list_success(void **state);
+
 static const struct CMUnitTest tap_ctl_allocate_tests[] = {
 	cmocka_unit_test(test_tap_ctl_allocate_prep_dir_no_access),
 	cmocka_unit_test(test_tap_ctl_allocate_no_device_info),
@@ -85,6 +92,14 @@ static const struct CMUnitTest tap_ctl_free_tests[] = {
 	cmocka_unit_test(test_tap_ctl_free_open_fail),
 	cmocka_unit_test(test_tap_ctl_free_success),
 	cmocka_unit_test(test_tap_ctl_free_ioctl_busy)
+};
+
+static const struct CMUnitTest tap_ctl_list_tests[] = {
+	cmocka_unit_test(test_tap_ctl_list_success_no_results),
+	cmocka_unit_test(test_tap_ctl_list_success_one_minor_no_td),
+	cmocka_unit_test(test_tap_ctl_list_success_one_td_no_minor_no_path),
+	cmocka_unit_test(test_tap_ctl_list_success_one_td_one_minor_no_path),
+	cmocka_unit_test(test_tap_ctl_list_success)
 };
 
 #endif /* __TEST_SUITES_H__ */

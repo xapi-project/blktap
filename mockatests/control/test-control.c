@@ -61,7 +61,10 @@ int main(void)
 			tap_ctl_close_tests, testSetup, testTeardown) +
 		cmocka_run_group_tests_name(
 			"Free tests",
-			tap_ctl_free_tests, testSetup, testTeardown);
+			tap_ctl_free_tests, testSetup, testTeardown) +
+		cmocka_run_group_tests_name(
+			"List tests",
+			tap_ctl_list_tests, testSetup, testTeardown);
 
 	/* Need to flag that the tests are done so that the fclose mock goes quiescent */
 	disable_mocks();

@@ -8,7 +8,7 @@ AM_CPPFLAGS = -I$(top_srcdir)/include -I$(top_srcdir)/control -I../include
 check_PROGRAMS = test-control
 TESTS = test-control
 
-test_control_SOURCES = test-control.c test-tap-ctl-free.c test-tap-ctl-allocate.c test-tap-ctl-close.c control-wrappers.c
+test_control_SOURCES = test-control.c test-tap-ctl-free.c test-tap-ctl-allocate.c test-tap-ctl-close.c test-tap-ctl-list.c control-wrappers.c util.c
 test_control_LDFLAGS = $(top_srcdir)/control/.libs/libblktapctl.a -lcmocka -luuid
 
 test_control_LDFLAGS += ../wrappers/libwrappers.la
@@ -16,5 +16,6 @@ test_control_LDFLAGS += ../wrappers/libwrappers.la
 #test_control_LDFLAGS += -Wl,--wrap=malloc,--wrap=free
 test_control_LDFLAGS += -Wl,--wrap=socket,--wrap=connect,--wrap=read,--wrap=select,--wrap=write,--wrap=fdopen
 test_control_LDFLAGS += -Wl,--wrap=open,--wrap=ioctl,--wrap=close,--wrap=access,--wrap=mkdir,--wrap=flock,--wrap=unlink,--wrap=__xmknod
-test_control_LDFLAGS += -Wl,--wrap=execl,--wrap=waitpid
+#test_control_LDFLAGS += -Wl,--wrap=execl,--wrap=waitpid
+test_control_LDFLAGS += -Wl,--wrap=glob,--wrap=globfree
 test_control_LDFLAGS += -Wl,--wrap=fopen,--wrap=fclose,--wrap=fseek,--wrap=fwrite
