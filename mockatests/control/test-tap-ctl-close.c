@@ -42,17 +42,11 @@
 
 #include <wrappers.h>
 #include "control-wrappers.h"
+#include "util.h"
 #include "test-suites.h"
 
 #include "tap-ctl.h"
 #include "blktap2.h"
-
-void initialise_select_params(struct mock_select_params *params)
-{
-	FD_ZERO(&params->readfds);
-	FD_ZERO(&params->writefds);
-	FD_ZERO(&params->exceptfds);
-}
 
 void test_tap_ctl_close_success(void **state)
 {

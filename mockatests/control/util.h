@@ -5,14 +5,14 @@
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
- * 
+ *
  *  1. Redistributions of source code must retain the above copyright
  *     notice, this list of conditions and the following disclaimer.
  *  2. Redistributions in binary form must reproduce the above copyright
  *     notice, this list of conditions and the following disclaimer in the
  *     documentation and/or other materials provided with the distribution.
- *  3. Neither the name of the copyright holder nor the names of its 
- *     contributors may be used to endorse or promote products derived from 
+ *  3. Neither the name of the copyright holder nor the names of its
+ *     contributors may be used to endorse or promote products derived from
  *     this software without specific prior written permission.
  *
  * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
@@ -28,27 +28,17 @@
  * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef __CONTROL_WRAPPERS_H__
-#define __CONTROL_WRAPPERS_H__
+#include "control-wrappers.h"
+#include "tap-ctl.h"
+#include "blktap2.h"
 
-#include <stdio.h>
-#include <sys/select.h>
-#include <glob.h>
+struct mock_ipc_params;
 
-struct mock_select_params {
-	int result;
-	fd_set readfds;
-	fd_set writefds;
-	fd_set exceptfds;
-};
+void initialise_select_params(struct mock_select_params *params);
 
-struct mock_read_params
-{
-	int result;
-	void * data;
-};
+struct mock_ipc_params *setup_ipc(
+	char *ipc_socket_name, int ipc_socket_fd,
+	tapdisk_message_t *write_message, tapdisk_message_t *read_message,
+	int read_message_count);
 
-void enable_control_mocks();
-void disable_control_mocks();
-
-#endif /* __CONTROL_WRAPPERS_H__ */
+void free_ipc_params(struct mock_ipc_params *params);

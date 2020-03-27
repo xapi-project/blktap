@@ -344,6 +344,30 @@ __wrap_socket(int domain, int type, int protocol)
 	return result;
 }
 
+int
+__wrap_glob(const char *pattern, int flags,
+	    int (*errfunc) (const char *epath, int eerrno),
+	    glob_t *pglob)
+{
+	check_expected(pattern);
+	int result = mock();
+	if (result == 0)
+	{
+		pglob->gl_pathc = mock();
+		pglob->gl_pathv = (char **)mock();
+	}
+	return result;
+}
+
+void
+__wrap_globfree(glob_t *pglob)
+{
+	if (pglob->gl_pathv) {
+		test_free(*(pglob->gl_pathv));
+	}
+}
+
+
 void enable_control_mocks()
 {
 	enable_mocks = true;
