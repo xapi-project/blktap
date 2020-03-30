@@ -156,7 +156,7 @@ _tap_ctl_find_minors(struct list_head *list)
 			goto fail;
 		}
 
-		n = sscanf(glbuf.gl_pathv[i], BLKTAP2_SYSFS_DIR"/blktap%d", &tl->minor);
+		n = sscanf(glbuf.gl_pathv[i], BLKTAP2_SYSFS_DIR"/blktap!blktap%d", &tl->minor);
 		if (n != 1) {
 			_tap_list_free(tl);
 			continue;
