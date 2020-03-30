@@ -106,18 +106,14 @@ __wrap_close(int fd)
 {
 	int result;
 
-	if (enable_mocks) {
-		check_expected(fd);
-		result = mock();
-		if (result != 0)
-		{
-			errno = result;
-			result = 1;
-		}
-		return result;
+	check_expected(fd);
+	result = mock();
+	if (result != 0)
+	{
+		errno = result;
+		result = 1;
 	}
-
-	return __real_close(fd);
+	return result;
 }
 
 int
@@ -142,35 +138,25 @@ __wrap_access(const char *pathname, int mode)
 }
 
 size_t
-__real_read(int fd, void *buf, size_t count);
-
-size_t
 __wrap_read(int fd, void *buf, size_t count)
 {
 	int result = -1;
 	struct mock_read_params *params;
 
-	if (enable_mocks) {
-		check_expected(fd);
-		params = (struct mock_read_params *)mock();
+	check_expected(fd);
+	params = (struct mock_read_params *)mock();
 
-		if (params->result > 0) {
-			memcpy(buf, params->data, params->result);
-			result = params->result;
-		}
-		else if (params->result < 0) {
-			errno = -params->result;
-			result = -1;
-		}
-
-		return result;
+	if (params->result > 0) {
+		memcpy(buf, params->data, params->result);
+		result = params->result;
+	}
+	else if (params->result < 0) {
+		errno = -params->result;
+		result = -1;
 	}
 
-	return __real_read(fd, buf, count);
+	return result;
 }
-
-size_t
-__real_write(int fd, const void *buf, size_t count);
 
 /*
  * Wrap the write call.
@@ -185,65 +171,47 @@ __wrap_write(int fd, const void *buf, size_t count)
 {
 	int result;
 
-	if (enable_mocks) {
-		check_expected(fd);
-		check_expected(buf);
-		result = mock();
+	check_expected(fd);
+	check_expected(buf);
+	result = mock();
 
-		if (result > (int)count)
-			result = count;
-		else if (result < 0) {
-			errno = -result;
-			result = -1;
-		}
-		return result;
+	if (result > (int)count)
+		result = count;
+	else if (result < 0) {
+		errno = -result;
+		result = -1;
 	}
-
-	return __real_write(fd, buf, count);
+	return result;
 }
-
-int
-__real_connect(int sockfd, const struct sockaddr *addr, socklen_t addrlen);
 
 int
 __wrap_connect(int sockfd, const struct sockaddr *addr, socklen_t addrlen)
 {
 	int result;
-	if (enable_mocks) {
-		check_expected(sockfd);
-		check_expected(addr);
-		result = mock();
-		if (result) {
-			errno = result;
-			result = -1;
-		}
-		return result;
+	check_expected(sockfd);
+	check_expected(addr);
+	result = mock();
+	if (result) {
+		errno = result;
+		result = -1;
 	}
-	return __real_connect(sockfd, addr, addrlen);
+	return result;
 }
-
-int
-__real_select(int nfds, fd_set *readfds, fd_set *writefds,
-	      fd_set *exceptfds, struct timeval *timeout);
 
 int
 __wrap_select(int nfds, fd_set *readfds, fd_set *writefds,
 	      fd_set *exceptfds, struct timeval *timeout)
 {
 	struct mock_select_params *params;
-	if (enable_mocks) {
-		check_expected(timeout);
-		params = (struct mock_select_params *)mock();
-		if (readfds)
-			memcpy(readfds, &params->readfds, sizeof(fd_set));
-		if (writefds)
-			memcpy(writefds, &params->writefds, sizeof(fd_set));
-		if (exceptfds)
-			memcpy(exceptfds, &params->exceptfds, sizeof(fd_set));
-		return params->result;
-	}
-
-	return __real_select(nfds, readfds, writefds, exceptfds, timeout);
+	check_expected(timeout);
+	params = (struct mock_select_params *)mock();
+	if (readfds)
+		memcpy(readfds, &params->readfds, sizeof(fd_set));
+	if (writefds)
+		memcpy(writefds, &params->writefds, sizeof(fd_set));
+	if (exceptfds)
+		memcpy(exceptfds, &params->exceptfds, sizeof(fd_set));
+	return params->result;
 }
 
 int
@@ -266,64 +234,44 @@ __wrap_mkdir(const char *pathname, mode_t mode)
 }
 
 int
-__real_flock(int fd, int operation);
-
-int
 __wrap_flock(int fd, int operation)
 {
 	int result;
-	if (enable_mocks) {
-		check_expected(fd);
-		result = mock();
-		if (result != 0) {
-			errno = result;
-			result = -1;
-		}
-		return result;
+	check_expected(fd);
+	result = mock();
+	if (result != 0) {
+		errno = result;
+		result = -1;
 	}
-	return __real_flock(fd, operation);
+	return result;
 }
-
-int
-__real___xmknod(int ver, const char * path, mode_t mode, dev_t * dev);
 
 int
 __wrap___xmknod(int ver, const char *pathname, mode_t mode, dev_t * dev)
 {
 	int result;
-	if (enable_mocks)
+	check_expected(pathname);
+	result = mock();
+	if (result != 0)
 	{
-		check_expected(pathname);
-		result = mock();
-		if (result != 0)
-		{
-			errno = result;
-			result = -1;
-		}
-		return result;
+		errno = result;
+		result = -1;
 	}
-	return __real___xmknod(ver, pathname, mode, dev);
+	return result;
 }
-
-int
-__real_unlink(const char *pathname);
 
 int
 __wrap_unlink(const char *pathname)
 {
 	int result;
-	if (enable_mocks)
+	check_expected(pathname);
+	result = mock();
+	if (result != 0)
 	{
-		check_expected(pathname);
-		result = mock();
-		if (result != 0)
-		{
-			errno = result;
-			result = -1;
-		}
-		return result;
+		errno = result;
+		result = -1;
 	}
-	return __real_unlink(pathname);
+	return result;
 }
 
 int
