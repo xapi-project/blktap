@@ -255,6 +255,7 @@ td_metrics_vbd_stop(stats_t *vbd_stats)
 
     free(vbd_stats->shm.path);
     vbd_stats->shm.path = NULL;
+    vbd_stats->stats = NULL;
 
 end:
     return err;
