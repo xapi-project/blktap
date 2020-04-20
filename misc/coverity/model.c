@@ -116,6 +116,11 @@ int vasprintf(char **strp, const char *fmt, va_list ap)
     }
 }
 
+int *__errno_location()
+{
+    return __errno_location;
+}
+
 /*
  * Local variables:
  * mode: C
