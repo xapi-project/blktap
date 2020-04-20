@@ -58,7 +58,7 @@ tapdisk_stats_init(td_stats_t *st, char *buf, size_t size)
 	st->size = size;
 }
 
-static inline size_t
+static inline ssize_t
 tapdisk_stats_length(td_stats_t *st)
 {
 	if (st->err)
