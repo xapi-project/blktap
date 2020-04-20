@@ -1058,6 +1058,7 @@ tapdisk_control_resume_vbd(struct tapdisk_ctl_conn *conn,
 			free(logpath);
 			goto out;
 		}
+		*(logpath + TAPDISK_MESSAGE_MAX_PATH_LENGTH) = '\0';
 		vbd->logpath = logpath;
 		vbd->flags |= TD_OPEN_ADD_LOG;
 	} else {
