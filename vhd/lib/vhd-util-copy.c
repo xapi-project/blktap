@@ -164,7 +164,8 @@ copy_vhd(const char *name, const char *new_name, int key_size, const uint8_t *en
 	if (access(new_name, F_OK) != -1) {
 		printf("VHD file %s already exists, chose a different name\n",
 		       new_name);
-		return -EINVAL;
+		err = -EINVAL;
+		goto out1;
 	}
 
 	err = vhd_create(new_name, source_vhd.footer.curr_size,
@@ -172,7 +173,7 @@ copy_vhd(const char *name, const char *new_name, int key_size, const uint8_t *en
 
 	if (err) {
 		printf("error creating %s: %d\n", new_name, err);
-		goto out;
+		goto out1;
 	}
 
 	err = vhd_open(&target_vhd, new_name, VHD_OPEN_RDWR);
@@ -228,8 +229,9 @@ copy_vhd(const char *name, const char *new_name, int key_size, const uint8_t *en
 	}
 
 out:
-	vhd_close(&source_vhd);
 	vhd_close(&target_vhd);
+out1:
+	vhd_close(&source_vhd);
 
 	return err;
 }
@@ -323,7 +325,9 @@ vhd_util_copy(int argc, char **argv)
 		goto usage;
 	}
 
-	return copy_vhd(name, new_name, key_size, encryption_key);
+	err =  copy_vhd(name, new_name, key_size, encryption_key);
+	free(encryption_key);
+	return err;
 usage:
 	printf("options: -n <name> -N <new VHD name> "
 	       "[-k <keyfile> | -E (pass encryption key on stdin)] "
