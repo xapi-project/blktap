@@ -738,13 +738,14 @@ tapdisk_control_open_image(struct tapdisk_ctl_conn *conn,
 	if (request->u.params.flags & TAPDISK_MESSAGE_FLAG_VHD_INDEX)
 		flags |= TD_OPEN_VHD_INDEX;
 	if (request->u.params.flags & TAPDISK_MESSAGE_FLAG_ADD_LOG) {
-		char *logpath = malloc(TAPDISK_MESSAGE_MAX_PATH_LENGTH);
+		char *logpath = malloc(TAPDISK_MESSAGE_MAX_PATH_LENGTH + 1);
 		ret = read(conn->fd, logpath, TAPDISK_MESSAGE_MAX_PATH_LENGTH);
 		if (ret < 0) {
 			err = -EIO;
 			free(logpath);
 			goto out;
 		}
+		*(logpath + TAPDISK_MESSAGE_MAX_PATH_LENGTH) = '\0';
 		vbd->logpath = logpath;
 		flags |= TD_OPEN_ADD_LOG;
 	}
@@ -1051,7 +1052,7 @@ tapdisk_control_resume_vbd(struct tapdisk_ctl_conn *conn,
 	}
 
 	if (request->u.params.flags & TAPDISK_MESSAGE_FLAG_ADD_LOG) {
-		char *logpath = malloc(TAPDISK_MESSAGE_MAX_PATH_LENGTH);
+		char *logpath = malloc(TAPDISK_MESSAGE_MAX_PATH_LENGTH + 1);
 		ret = read(conn->fd, logpath, TAPDISK_MESSAGE_MAX_PATH_LENGTH);
 		if (ret < 0) {
 			err = -EIO;
