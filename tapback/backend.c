@@ -162,6 +162,37 @@ out:
     return err;
 }
 
+static inline int
+find_tapdisk_by_pid(const pid_t pid, const int minor, tap_list_t *tap)
+{
+	struct list_head list = LIST_HEAD_INIT(list);
+	tap_list_t *entry;
+	int err;
+
+	err = tap_ctl_list_pid(pid, &list);
+	if (err) {
+		WARN(NULL, "error listing tapdisks: %s\n", strerror(-err));
+		goto out;
+	}
+
+	err = -ESRCH;
+	if (!list_empty(&list)) {
+		tap_list_for_each_entry(entry, &list) {
+			if (entry->minor == minor && entry->pid == pid) {
+				err = 0;
+				memcpy(tap, entry, sizeof(*tap));
+				break;
+			}
+		}
+        	tap_ctl_list_free(&list);
+        } else {
+		DBG(NULL, "no tapdisks\n");
+	}
+
+out:
+	return err;
+}
+
 /**
  * Creates a device and adds it to the list of devices.
  *
@@ -260,6 +291,95 @@ device_set_mode(vbd_t *device, const char *mode) {
 	}
 
 	return 0;
+}
+
+int
+physical_device_path_changed(vbd_t *device) {
+	int err = 0, minor = -1;
+	pid_t pid = -1;
+	char *s = NULL;
+
+	/*
+	 * Assume there will never be an OS with pid_t larger than long.
+	 */
+	const char *nbd_pattern = "/run/blktap-control/nbd%ld.%d";
+	device->tap = NULL;
+
+	s = tapback_device_read(device, XBT_NULL, PHYS_DEV_PATH_KEY);
+	if (!s) {
+		err = -errno;
+		WARN(device, "Failed to read the %s: %s\n",
+		     PHYS_DEV_PATH_KEY, strerror(-err));
+		goto done;
+	}
+
+	if (sscanf(s, nbd_pattern, &pid, &minor) != 2) {	
+		err = -EINVAL;
+		WARN(device, "Malformed %s: '%s'\n", PHYS_DEV_PATH_KEY, s);
+		goto out;
+	}
+
+	device->tap = malloc(sizeof(*device->tap));
+	if (!device->tap) {
+		err = -ENOMEM;
+		goto out;
+	}
+
+	err = find_tapdisk_by_pid(pid, minor, device->tap);
+	if (err) {
+		WARN(device, "Error looking for tapdisk: %s\n", strerror(-err));
+		goto out;
+	}
+	INFO(device, "Found tapdisk[%d]\n", device->tap->pid);
+	device->minor = minor;
+
+	/*
+	 * get the VBD parameters from the tapdisk
+	 */
+	if ((err = tap_ctl_info(device->tap->pid, &device->sectors,
+					&device->sector_size, &device->info,
+					device->minor))) {
+		WARN(device, "error retrieving disk characteristics: %s\n",
+		     strerror(-err));
+		goto out;
+	}
+
+	err = tapback_device_printf(device, XBT_NULL, "kthread-pid", false, "%d",
+		device->tap->pid);
+	if (unlikely(err)) {
+		WARN(device, "warning: failed to write kthread-pid: %s\n",
+		     strerror(-err));
+		goto out;
+	}
+
+	if (device->sector_size & 0x1ff || device->sectors <= 0) {
+		WARN(device, "warning: unexpected device characteristics: sector "
+		     "size=%d, sectors=%llu\n", device->sector_size,
+		     device->sectors);
+	}
+
+	/*
+	 * The front-end might have switched to state Connected before
+	 * physical-device is written. Check it's state and connect if necessary.
+	 *
+	 * TODO blkback ignores connection errors, let's do the same until we
+	 * know better.
+	 */
+	err = -frontend_changed(device, device->frontend_state);
+	if (err) {
+		WARN(device, "failed to switch state: %s (error ignored)\n",
+		     strerror(-err));
+	}
+	err = 0;
+out:
+	if (err) {
+		free(device->tap);
+		device->tap = NULL;
+		device->sector_size = device->sectors = device->info = 0;
+	}
+	free(s);
+done:
+	return err;
 }
 
 /**
@@ -778,6 +898,8 @@ tapback_backend_probe_device(backend_t *backend,
          */
         if (!strcmp(PHYS_DEV_KEY, comp))
             err = physical_device_changed(device);
+        if (!strcmp(PHYS_DEV_PATH_KEY, comp))
+            err = physical_device_path_changed(device);
         else if (!strcmp(FRONTEND_KEY, comp))
             err = frontend(device);
 		else if (!strcmp(HOTPLUG_STATUS_KEY, comp))
