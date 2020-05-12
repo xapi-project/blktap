@@ -107,7 +107,7 @@ tapdisk_image_check_td_request(td_image_t *image, td_request_t treq)
 	info   = &image->info;
 	rdonly = td_flag_test(image->flags, TD_OPEN_RDONLY);
 
-	if (treq.op != TD_OP_READ && treq.op != TD_OP_WRITE)
+	if (treq.op != TD_OP_READ && treq.op != TD_OP_WRITE && treq.op != TD_OP_BLOCK_STATUS)
 		goto fail;
 
 	if (treq.op == TD_OP_WRITE && rdonly) {
@@ -159,7 +159,8 @@ tapdisk_image_check_request(td_image_t *image, td_vbd_request_t *vreq)
 			goto fail;
 		}
 		/* continue */
-	case TD_OP_READ:
+	case TD_OP_READ: /* fall through */
+	case TD_OP_BLOCK_STATUS:
 		if (vreq->sec + secs > info->size) {
 			err = -EINVAL;
 			goto fail;

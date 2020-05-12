@@ -47,8 +47,13 @@ typedef struct td_nbdserver_client td_nbdserver_client_t;
 
 enum {
 	TAPDISK_NBD_CMD_READ = 0,
-	TAPDISK_NBD_CMD_WRITE = 1,
-	TAPDISK_NBD_CMD_DISC = 2
+	TAPDISK_NBD_CMD_WRITE,
+	TAPDISK_NBD_CMD_DISC,
+	TAPDISK_NBD_CMD_FLUSH,
+	TAPDISK_NBD_CMD_TRIM,
+	TAPDISK_NBD_CMD_CACHE,
+	TAPDISK_NBD_CMD_WRITE_ZEROES,
+	TAPDISK_NBD_CMD_BLOCK_STATUS
 };
 
 struct nbd_request {
@@ -91,6 +96,11 @@ struct td_nbdserver {
 	 * Listening file descriptor for the NBD server on the UNIX domain socket.
 	 */
 	int                     unix_listening_fd;
+
+	/**
+	 * Socket opened during handshake negotiation.
+	 */
+	int                     handshake_fd;
 
 	/**
 	 * Event ID for the file descriptor receiver.
@@ -176,5 +186,8 @@ void tapdisk_nbdserver_free_request(td_nbdserver_client_t *client,
  * Tells how many requests are pending.
  */
 int tapdisk_nbdserver_reqs_pending(td_nbdserver_client_t *client);
+
+int tapdisk_nbdserver_new_protocol_handshake(td_nbdserver_t*, int);
+void tapdisk_nbdserver_handshake_cb(event_id_t, char, void*);
 
 #endif /* _TAPDISK_NBDSERVER_H_ */

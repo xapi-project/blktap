@@ -122,6 +122,7 @@ unsigned int SPB;
 #define VHD_OP_BITMAP_WRITE          4
 #define VHD_OP_ZERO_BM_WRITE         5
 #define VHD_OP_REDUNDANT_BM_WRITE    6
+#define VHD_OP_BLOCK_STATUS          7
 
 #define VHD_BM_BAT_LOCKED            0
 #define VHD_BM_BAT_CLEAR             1
@@ -1979,6 +1980,73 @@ __vhd_queue_request(struct vhd_state *s, uint8_t op, td_request_t treq)
 }
 
 static void
+vhd_queue_block_status(td_driver_t *driver, td_request_t treq)
+{
+	struct vhd_state *s = (struct vhd_state *)driver->data;
+
+	DBG(TLOG_DBG, "block status: %s: lsec: 0x%08"PRIx64", secs: 0x%04x (seg: %d)\n",
+	    s->vhd.file, treq.sec, treq.secs, treq.sidx);
+
+	while (treq.secs) {
+		int err;
+		td_request_t clone;
+
+		err   = 0;
+		clone = treq;
+
+		switch (read_bitmap_cache(s, clone.sec, VHD_OP_BLOCK_STATUS)) {
+		case -EINVAL:
+			err = -EINVAL;
+			goto fail;
+
+		case VHD_BM_BAT_CLEAR:
+			clone.secs = MIN(clone.secs, s->spb - (clone.sec % s->spb));
+			td_forward_request(clone);
+			break;
+
+		case VHD_BM_BIT_CLEAR:
+			clone.secs = read_bitmap_cache_span(s, clone.sec, clone.secs, 0);
+			td_forward_request(clone);
+			break;
+
+		case VHD_BM_BIT_SET:
+			clone.secs = read_bitmap_cache_span(s, clone.sec, clone.secs, 1);
+			clone.status = TD_BLOCK_STATE_NONE;
+			td_complete_request(clone, 0);
+			break;
+
+		case VHD_BM_NOT_CACHED:
+			clone.secs = MIN(clone.secs, s->spb - (clone.sec % s->spb));
+			clone.status = TD_BLOCK_STATE_NONE;
+			td_complete_request(clone, 0);
+			break;
+
+		case VHD_BM_READ_PENDING:
+			clone.secs = MIN(clone.secs, s->spb - (clone.sec % s->spb));
+			err = __vhd_queue_request(s, VHD_OP_BLOCK_STATUS, clone);
+			if (err)
+				goto fail;
+			break;
+
+		case VHD_BM_BAT_LOCKED:
+		default:
+			ASSERT(0);
+			break;
+		}
+
+		treq.sec  += clone.secs;
+		treq.secs -= clone.secs;
+		treq.buf  += vhd_sectors_to_bytes(clone.secs);
+		continue;
+
+	fail:
+		clone.secs = treq.secs;
+		td_complete_request(clone, err);
+		break;
+	}
+}
+
+static void
 vhd_queue_read(td_driver_t *driver, td_request_t treq)
 {
 	struct vhd_state *s = (struct vhd_state *)driver->data;
@@ -2659,6 +2727,8 @@ struct tap_disk tapdisk_vhd = {
 	.td_open            = _vhd_open,
 	.td_close           = _vhd_close,
 	.td_queue_read      = vhd_queue_read,
+	.td_queue_block_status
+			    = vhd_queue_block_status,
 	.td_queue_write     = vhd_queue_write,
 	.td_get_parent_id   = vhd_get_parent_id,
 	.td_validate_parent = vhd_validate_parent,

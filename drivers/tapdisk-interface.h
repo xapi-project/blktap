@@ -45,6 +45,7 @@ int td_validate_parent(td_image_t *, td_image_t *);
 
 void td_queue_write(td_image_t *, td_request_t);
 void td_queue_read(td_image_t *, td_request_t);
+void td_queue_block_status(td_image_t*, td_request_t*);
 void td_forward_request(td_request_t);
 void td_complete_request(td_request_t, int);
 

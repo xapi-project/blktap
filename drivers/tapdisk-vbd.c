@@ -70,6 +70,8 @@
 #define TD_VBD_EIO_SLEEP            1
 #define TD_VBD_WATCHDOG_TIMEOUT     10
 
+char* op_strings[TD_OPS_END] ={"read", "write", "block_status"};
+
 static void tapdisk_vbd_complete_vbd_request(td_vbd_t *, td_vbd_request_t *);
 static int  tapdisk_vbd_queue_ready(td_vbd_t *);
 static void tapdisk_vbd_check_queue_state(td_vbd_t *);
@@ -1233,7 +1235,7 @@ __tapdisk_vbd_complete_td_request(td_vbd_t *vbd, td_vbd_request_t *vreq,
 				tlog_drv_error(image->driver, err,
 					       "req %s: %s 0x%04x secs @ 0x%08"PRIx64" - %s",
 					       vreq->name,
-					       (treq.op == TD_OP_WRITE ? "write" : "read"),
+					       op_strings[treq.op],
 					       treq.secs, treq.sec, strerror(abs(err)));
 			vbd->errors++;
 		}
@@ -1242,11 +1244,13 @@ __tapdisk_vbd_complete_td_request(td_vbd_t *vbd, td_vbd_request_t *vreq,
 
         interval = timeval_to_us(&vbd->ts) - timeval_to_us(&vreq->ts);
 
-        if(treq.op == TD_OP_READ){
+        if(treq.op == TD_OP_READ) {
             vbd->vdi_stats.stats->read_reqs_completed++;
             vbd->vdi_stats.stats->read_sectors += treq.secs;
             vbd->vdi_stats.stats->read_total_ticks += interval;
-        }else{
+        }
+
+        if(treq.op == TD_OP_WRITE) {
             vbd->vdi_stats.stats->write_reqs_completed++;
             vbd->vdi_stats.stats->write_sectors += treq.secs;
             vbd->vdi_stats.stats->write_total_ticks += interval;
@@ -1268,7 +1272,11 @@ __tapdisk_vbd_reissue_td_request(td_vbd_t *vbd,
 	vreq->submitting++;
 
 	if (tapdisk_vbd_is_last_image(vbd, image)) {
-		memset(treq.buf, 0, (size_t)treq.secs << SECTOR_SHIFT);
+		if (unlikely(treq.op == TD_OP_BLOCK_STATUS)) {
+			treq.status = TD_BLOCK_STATE_HOLE;
+		} else {
+			memset(treq.buf, 0, (size_t)treq.secs << SECTOR_SHIFT);
+		}
 		td_complete_request(treq, 0);
 		goto done;
 	}
@@ -1311,6 +1319,9 @@ __tapdisk_vbd_reissue_td_request(td_vbd_t *vbd,
 	case TD_OP_READ:
 		td_queue_read(parent, treq);
 		break;
+	case TD_OP_BLOCK_STATUS:
+		td_queue_block_status(parent, &treq);
+		break;
 	}
 
 done:
@@ -1336,6 +1347,75 @@ tapdisk_vbd_forward_request(td_request_t treq)
 		__tapdisk_vbd_reissue_td_request(vbd, image, treq);
 	else
 		__tapdisk_vbd_complete_td_request(vbd, vreq, treq, -EBUSY);
+}
+
+int
+add_extent(tapdisk_extents_t *extents, td_request_t *vreq)
+{
+	tapdisk_extent_t *extent;
+	extent  = (tapdisk_extent_t*)malloc(sizeof(*extent));
+	if(extent == NULL)
+		return -1;
+
+	extent->start = vreq->sec;
+	extent->length = vreq->secs;
+	extent->flag = vreq->status;
+	extent->next = NULL;
+
+	if(extents->head != NULL && extents->tail != NULL) {
+		extents->tail->next = extent;
+		extents->tail = extent;
+	} else {
+		extents->tail = extent;
+		extents->head = extent;
+	}
+
+	extents->count += 1;
+	return 0;
+}
+
+int
+block_status_add_extent(tapdisk_extents_t *extents, td_request_t *vreq)
+{
+	int ret  = 0;
+	if(extents->tail == NULL) {
+		ret = add_extent(extents, vreq);
+	} else {
+		if(extents->tail->flag == vreq->status) {
+			extents->tail->length += vreq->secs;
+		} else {
+			ret = add_extent(extents, vreq);
+		}
+	}
+	return ret;
+}
+
+void
+tapdisk_vbd_complete_block_status_request(td_request_t treq, int res)
+{
+	td_vbd_t *vbd;
+	td_image_t *image;
+	td_vbd_request_t *vreq;
+
+	image = treq.image;
+	vreq  = treq.vreq;
+	vbd   = vreq->vbd;
+	tapdisk_vbd_mark_progress(vbd);
+
+	/* Record this extents in the vreqs data */
+	tapdisk_extents_t* extents = (tapdisk_extents_t*)vreq->data;
+	if( block_status_add_extent(extents, &treq) != 0) {
+		ERROR("Could not allocate extent structure");
+		/* Propagate the ENOMEM */
+		res = -ENOMEM;
+	}
+
+	DBG(TLOG_DBG, "%s: req %s seg %d sec 0x%08"PRIx64
+	    " secs 0x%04x buf %p op %d res %d\n", image->name,
+	    vreq->name, treq.sidx, treq.sec, treq.secs,
+	    treq.buf, vreq->op, res);
+
+	__tapdisk_vbd_complete_td_request(vbd, vreq, treq, res);
 }
 
 void
@@ -1403,11 +1483,12 @@ queue_mirror_req(td_vbd_t *vbd, td_request_t clone)
 	td_queue_write(vbd->secondary, clone);
 }
 
-static int
+int
 tapdisk_vbd_issue_request(td_vbd_t *vbd, td_vbd_request_t *vreq)
 {
 	td_image_t *image;
 	td_request_t treq;
+	bzero(&treq, sizeof(treq));
 	td_sector_t sec;
 	int i, err;
 
@@ -1476,6 +1557,11 @@ tapdisk_vbd_issue_request(td_vbd_t *vbd, td_vbd_request_t *vreq)
 			treq.op = TD_OP_READ;
                         vbd->vdi_stats.stats->read_reqs_submitted++;
 			td_queue_read(treq.image, treq);
+			break;
+		case TD_OP_BLOCK_STATUS:
+			treq.op = TD_OP_BLOCK_STATUS;
+			treq.cb = tapdisk_vbd_complete_block_status_request;
+			td_queue_block_status(treq.image, &treq);
 			break;
 		}
 
