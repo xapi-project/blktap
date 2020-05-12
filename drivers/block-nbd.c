@@ -50,6 +50,7 @@
 #include "tapdisk-fdreceiver.h"
 #include "timeout-math.h"
 #include "tapdisk-nbdserver.h"
+#include "tapdisk-protocol-new.h"
 
 #ifdef HAVE_CONFIG_H
 #include "config.h"
@@ -63,12 +64,51 @@
 
 #define MAX_NBD_REQS TAPDISK_DATA_REQUESTS
 #define NBD_TIMEOUT 30
+#define RECV_BUFFER_SIZE 256
+
+static const int CLIENT_USE_OLD_HANDSHAKE = 1;
 
 /*
  * We'll only ever have one nbdclient fd receiver per tapdisk process, so let's 
  * just store it here globally. We'll also keep track of the passed fds here
  * too.
  */
+
+void readit(int f, void *buf, size_t len) {
+	ssize_t res;
+	int err = 0;
+	while (len > 0) {
+		res = recv(f, buf, len, 0);
+		if (res > 0) {
+			len -= res;
+			buf += res;
+		} else {
+			err = errno;
+			if(err != EAGAIN) {
+				ERROR("Read failed: %s", strerror(err));
+			}
+		}
+	}
+}
+
+void sendit(int f, void *buf, size_t len) {
+	ssize_t res;
+	int err = 0;
+	while (len > 0) {
+		res = send(f, buf, len, 0);
+		if (res > 0) {
+			len -= res;
+			buf += res;
+		} else {
+			err = errno;
+			if(err != EAGAIN) {
+				ERROR("Send failed: %s", strerror(err));
+				break;
+			} 
+		}
+	}
+}
+
 
 struct td_fdreceiver *fdreceiver = NULL;
 
@@ -540,10 +580,44 @@ tdnbd_wait_read(int fd)
 	return rc;
 }
 
-static int
-tdnbd_nbd_negotiate(struct tdnbd_data *prv, td_driver_t *driver)
+int 
+negotiate_client_newstyle_options(int sock, td_driver_t *driver)
 {
-#define RECV_BUFFER_SIZE 256
+	struct nbd_new_option new_option;
+	char exportname[] = "tapdisk_client"; /* Hard code could make this unique */
+	new_option.version = htobe64(NBD_OPT_MAGIC);
+	new_option.optlen = htobe32(sizeof(exportname));
+	new_option.option = htobe32( NBD_OPT_EXPORT_NAME);
+
+	/* Send EXPORTNAME_NAME option request */
+	sendit(sock, &new_option, sizeof(new_option));
+	/* Send exportname name */
+	sendit(sock, exportname, sizeof(exportname));
+
+	/* Collect the results in the handshake finished */
+	struct nbd_export_name_option_reply handshake_finish;
+	static const size_t NO_ZERO_HANDSHAKE_FINISH_SIZE = 10;
+	readit(sock, &handshake_finish, NO_ZERO_HANDSHAKE_FINISH_SIZE);
+	driver->info.size = be64toh(handshake_finish.exportsize) >> SECTOR_SHIFT;
+	driver->info.sector_size = DEFAULT_SECTOR_SIZE;
+	driver->info.info = 0;
+
+	int rc = fcntl(sock, F_SETFL, O_NONBLOCK);
+
+	if (rc != 0) {
+		ERROR("Could not set O_NONBLOCK flag");
+		close(sock);
+		return -1;
+	}
+
+	INFO("Successfully connected to NBD server");
+
+	return 0;
+}
+
+static int
+tdnbd_nbd_negotiate_old(struct tdnbd_data *prv, td_driver_t *driver)
+{
 	int rc;
 	char buffer[RECV_BUFFER_SIZE];
 	uint64_t magic;
@@ -656,11 +730,90 @@ tdnbd_nbd_negotiate(struct tdnbd_data *prv, td_driver_t *driver)
 		padbytes -= rc;
 	}
 
+	rc = fcntl(sock, F_SETFL, O_NONBLOCK);
+
+	if (rc != 0) {
+		ERROR("Could not set O_NONBLOCK flag");
+		close(sock);
+		return -1;
+	}
 	INFO("Successfully connected to NBD server");
 
-	fcntl(sock, F_SETFL, O_NONBLOCK);
-
 	return 0;
+}
+
+static int
+tdnbd_nbd_negotiate_new(struct tdnbd_data *prv, td_driver_t *driver)
+{
+	int rc;
+	uint64_t magic_version;
+	uint16_t gflags;
+	uint32_t cflags = htobe32(NBD_FLAG_FIXED_NEWSTYLE | NBD_FLAG_NO_ZEROES);
+	int sock = prv->socket;
+	char buffer[RECV_BUFFER_SIZE];
+
+	if (tdnbd_wait_read(sock) <= 0) {
+		ERROR("Timeout in nbd_negotiate");
+		close(sock);
+                return -1;
+        }
+
+        rc = recv(sock, buffer, 8, 0);
+        if (rc < 8) {
+		ERROR("Short read in negotiation(1) (%d)\n", rc);
+		close(sock);
+		return -1;
+        }
+
+	if (memcmp(buffer, "NBDMAGIC", 8) != 0) {
+	  buffer[8] = 0;
+	  ERROR("Error in NBD negotiation: got '%s'", buffer);
+	  close(sock);
+	  return -1;
+	}
+
+	if (tdnbd_wait_read(sock) <= 0) {
+	  ERROR("Timeout in nbd_negotiate");
+	  close(sock);
+	  return -1;
+	}
+
+	/* Receive NBD magic_version */
+	readit(sock, &magic_version, sizeof(magic_version));
+
+	if (ntohll(magic_version) != NBD_NEW_VERSION) {
+		ERROR("Not enough magic in negotiation(2) (%"PRIu64")\n",
+				ntohll(magic_version));
+		close(sock);
+		return -1;
+	}
+
+	/* Receive NBD flags */
+	rc = recv(sock, &gflags, sizeof(gflags), 0);
+	if (rc < sizeof(gflags)) {
+		ERROR("Short read in negotiation(2) (%d)\n", rc);
+
+		return -1;
+	}
+
+	/* Send back flags*/
+	rc = send(sock, &cflags, sizeof(cflags), 0);
+	if (rc < sizeof(cflags)) {
+		ERROR("Failed to send client flags");
+		return -1;
+	}
+
+	return negotiate_client_newstyle_options(sock, driver);
+}
+
+static int
+tdnbd_nbd_negotiate(struct tdnbd_data *prv, td_driver_t *driver)
+{
+	if(CLIENT_USE_OLD_HANDSHAKE) {
+		return tdnbd_nbd_negotiate_old(prv, driver);
+	} else {
+		return tdnbd_nbd_negotiate_new(prv, driver);
+	}
 }
 
 static int

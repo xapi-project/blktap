@@ -85,8 +85,12 @@ extern unsigned int PAGE_SHIFT;
 
 #define MAX_RAMDISK_SIZE             1024000 /*500MB disk limit*/
 
-#define TD_OP_READ                   0
-#define TD_OP_WRITE                  1
+enum TD_OPS{
+	TD_OP_READ = 0,
+	TD_OP_WRITE,
+	TD_OP_BLOCK_STATUS,
+	TD_OPS_END
+};
 
 #define TD_OPEN_QUIET                0x00001
 #define TD_OPEN_QUERY                0x00002
@@ -109,6 +113,10 @@ extern unsigned int PAGE_SHIFT;
 #define td_flag_set(word, flag)      ((word) |= (flag))
 #define td_flag_clear(word, flag)    ((word) &= ~(flag))
 #define td_flag_test(word, flag)     ((word) & (flag))
+
+#define TD_BLOCK_STATE_NONE  0
+#define TD_BLOCK_STATE_HOLE  (1 <<0)
+#define TD_BLOCK_STATE_ZERO  (1 <<1)
 
 typedef uint16_t                     td_uuid_t;
 typedef uint32_t                     td_flag_t;
@@ -153,6 +161,7 @@ struct td_vbd_request {
 
 	td_vreq_callback_t          cb;
 	void                       *token;
+	void			   *data;
 	const char                 *name;
 
 	int                         error;
@@ -173,6 +182,7 @@ struct td_request {
 	int                          op;
 	void                        *buf;
 
+	int                          status;
 	td_sector_t                  sec;
 	int                          secs;
 
@@ -205,6 +215,7 @@ struct tap_disk {
 	int (*td_get_parent_id)      (td_driver_t *, td_disk_id_t *);
 	int (*td_validate_parent)    (td_driver_t *, td_driver_t *, td_flag_t);
 	void (*td_queue_read)        (td_driver_t *, td_request_t);
+	void (*td_queue_block_status)(td_driver_t *, td_request_t);
 	void (*td_queue_write)       (td_driver_t *, td_request_t);
 	void (*td_debug)             (td_driver_t *);
 	void (*td_stats)             (td_driver_t *, td_stats_t *);
@@ -234,5 +245,20 @@ td_sector_count_add(td_sector_count_t *s, td_sector_t v, int write)
 }
 
 void td_panic(void);
+
+typedef struct tapdisk_extent
+{
+	td_sector_t		start;
+	td_sector_t		length;
+	int			flag;
+	struct tapdisk_extent  *next;
+} tapdisk_extent_t;
+
+typedef struct tapdisk_extents
+{
+	tapdisk_extent_t       *head;
+	tapdisk_extent_t       *tail;
+	size_t			count;
+} tapdisk_extents_t;
 
 #endif

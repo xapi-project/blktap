@@ -36,6 +36,7 @@ libtapdisk_la_SOURCES += tapdisk-vbd.h
 libtapdisk_la_SOURCES += linux-blktap.h
 libtapdisk_la_SOURCES += tapdisk-blktap.c
 libtapdisk_la_SOURCES += tapdisk-blktap.h
+libtapdisk_la_SOURCES += tapdisk-protocol-new.h
 libtapdisk_la_SOURCES += tapdisk-nbdserver.c
 libtapdisk_la_SOURCES += tapdisk-nbdserver.h
 libtapdisk_la_SOURCES += tapdisk-image.c

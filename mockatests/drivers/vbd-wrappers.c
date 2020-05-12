@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2017, Citrix Systems, Inc.
+ * Copyright (c) 2020, Citrix Systems, Inc.
  *
  * All rights reserved.
  *
@@ -28,39 +28,42 @@
  * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef __TEST_SUITES_H__
-#define __TEST_SUITES_H__
-
+#include <stdarg.h>
+#include <stddef.h>
 #include <setjmp.h>
 #include <cmocka.h>
-#include <uuid/uuid.h>
-#include <stdint.h>
 
-void test_stats_normal_buffer(void **state);
-void test_stats_realloc_buffer(void **state);
-void test_stats_realloc_buffer_edgecase(void **state);
+#include "tapdisk.h"
+#include "tapdisk-interface.h"
 
-static const struct CMUnitTest tapdisk_stats_tests[] = {
-	cmocka_unit_test(test_stats_normal_buffer),
-	cmocka_unit_test(test_stats_realloc_buffer),
-	cmocka_unit_test(test_stats_realloc_buffer_edgecase)
-};
+int
+__wrap_tapdisk_image_check_request(td_image_t *image, td_vbd_request_t *vreq)
+{
+	return (int)mock();
+}
 
-void test_vbd_linked_list(void **state);
-void test_vbd_complete_td_request(void **state);
-void test_vbd_issue_request(void **stat);
-void test_vbd_complete_block_status_request(void **stat);
+void
+__wrap_td_queue_block_status(td_image_t *image, td_request_t *treq)
+{
+	check_expected(treq);
+}
 
-static const struct CMUnitTest tapdisk_vbd_tests[] = {
-	cmocka_unit_test(test_vbd_linked_list),
-	cmocka_unit_test(test_vbd_issue_request),
-	cmocka_unit_test(test_vbd_complete_block_status_request)
-};
+int
+__wrap_send(int fd, void* buf, size_t size, int flags)
+{
+	check_expected(buf);
+	check_expected(fd);
+	check_expected(size);
+	check_expected(flags);
+	return (int)mock();
+}
 
-void test_nbdserver_new_protocol_handshake(void **state);
-void test_nbdserver_new_protocol_handshake_send_fails(void **state);
-static const struct CMUnitTest tapdisk_nbdserver_tests[] = {
-	cmocka_unit_test(test_nbdserver_new_protocol_handshake)
-};
+event_id_t
+__wrap_tapdisk_server_register_event(char mode, int fd,
+                              struct timeval timeout, event_cb_t cb, void *data)
+{
+	check_expected(mode);
+	check_expected_ptr(cb);
+	return 0;
+}
 
-#endif /* __TEST_SUITES_H__ */

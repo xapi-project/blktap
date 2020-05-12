@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2017, Citrix Systems, Inc.
+ * Copyright (c) 2020, Citrix Systems, Inc.
  *
  * All rights reserved.
  *
@@ -28,39 +28,39 @@
  * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef __TEST_SUITES_H__
-#define __TEST_SUITES_H__
-
+#include <stddef.h>
+#include <stdarg.h>
 #include <setjmp.h>
 #include <cmocka.h>
-#include <uuid/uuid.h>
-#include <stdint.h>
+#include <stdlib.h>
 
-void test_stats_normal_buffer(void **state);
-void test_stats_realloc_buffer(void **state);
-void test_stats_realloc_buffer_edgecase(void **state);
+#include "test-suites.h"
+#include "tapdisk.h"
+#include "tapdisk-nbdserver.h"
+#include "tapdisk-protocol-new.h"
 
-static const struct CMUnitTest tapdisk_stats_tests[] = {
-	cmocka_unit_test(test_stats_normal_buffer),
-	cmocka_unit_test(test_stats_realloc_buffer),
-	cmocka_unit_test(test_stats_realloc_buffer_edgecase)
-};
+void
+test_nbdserver_new_protocol_handshake(void **state)
+{
+	td_nbdserver_t server;
+	int new_fd =123 ;
 
-void test_vbd_linked_list(void **state);
-void test_vbd_complete_td_request(void **state);
-void test_vbd_issue_request(void **stat);
-void test_vbd_complete_block_status_request(void **stat);
+	uint16_t gflags = (NBD_FLAG_FIXED_NEWSTYLE | NBD_FLAG_NO_ZEROES);
+	struct nbd_new_handshake handshake;
+	bzero(&handshake, sizeof(handshake));
+	handshake.nbdmagic = htobe64 (NBD_MAGIC);
+	handshake.version = htobe64 (NBD_NEW_VERSION);
+	handshake.gflags = htobe16 (gflags);
 
-static const struct CMUnitTest tapdisk_vbd_tests[] = {
-	cmocka_unit_test(test_vbd_linked_list),
-	cmocka_unit_test(test_vbd_issue_request),
-	cmocka_unit_test(test_vbd_complete_block_status_request)
-};
+	/* Check input to send */
+	expect_memory(__wrap_send, buf, &handshake, sizeof(handshake));
+	expect_value(__wrap_send, fd, new_fd);
+	expect_value(__wrap_send, size, sizeof(handshake));
+	expect_value(__wrap_send, flags, 0);
+	will_return(__wrap_send, sizeof(handshake));
 
-void test_nbdserver_new_protocol_handshake(void **state);
-void test_nbdserver_new_protocol_handshake_send_fails(void **state);
-static const struct CMUnitTest tapdisk_nbdserver_tests[] = {
-	cmocka_unit_test(test_nbdserver_new_protocol_handshake)
-};
-
-#endif /* __TEST_SUITES_H__ */
+	expect_value(__wrap_tapdisk_server_register_event, cb, tapdisk_nbdserver_handshake_cb);
+	expect_value(__wrap_tapdisk_server_register_event, mode, SCHEDULER_POLL_READ_FD);
+	int err = tapdisk_nbdserver_new_protocol_handshake(&server, new_fd);
+	assert_int_equal(err, 0);
+}
