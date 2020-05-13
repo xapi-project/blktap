@@ -184,8 +184,8 @@ find_tapdisk_by_pid(const pid_t pid, const int minor, tap_list_t *tap)
 				break;
 			}
 		}
-        	tap_ctl_list_free(&list);
-        } else {
+		tap_ctl_list_free(&list);
+	} else {
 		DBG(NULL, "no tapdisks\n");
 	}
 
