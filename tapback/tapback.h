@@ -105,11 +105,11 @@ int pretty_time(char *buf, unsigned char buf_len);
 /*
  * Pre-defined XenStore path components used for running the XenBus protocol.
  */
-#define XENSTORE_BACKEND			"backend"
-#define PHYS_DEV_KEY                "physical-device"
+#define XENSTORE_BACKEND	"backend"
+#define PHYS_DEV_KEY		"physical-device"
 #define PHYS_DEV_PATH_KEY	"physical-device-path"
-#define HOTPLUG_STATUS_KEY			"hotplug-status"
-#define MODE_KEY					"mode"
+#define HOTPLUG_STATUS_KEY	"hotplug-status"
+#define MODE_KEY		"mode"
 #define POLLING_DURATION	"polling-duration"
 #define POLLING_IDLE_THRESHOLD	"polling-idle-threshold"
 
