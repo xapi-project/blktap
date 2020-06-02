@@ -4,3 +4,4 @@ SUBDIRS  = wrappers
 SUBDIRS += drivers
 SUBDIRS += cbt
 SUBDIRS += control
+SUBDIRS += vhd
