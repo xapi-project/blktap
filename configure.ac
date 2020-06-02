@@ -88,5 +88,6 @@ mockatests/wrappers/Makefile
 mockatests/cbt/Makefile
 mockatests/drivers/Makefile
 mockatests/control/Makefile
+mockatests/vhd/Makefile
 ])
 AC_OUTPUT
