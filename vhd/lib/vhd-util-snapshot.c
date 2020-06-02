@@ -223,14 +223,22 @@ vhd_util_snapshot(int argc, char **argv)
 	}
 
 	err = vhd_snapshot(name, size, backing, msize << 20, flags);
+	if(err)
+		goto out;
 
 	/* Set keyhash if it exists in parent */
 	struct vhd_keyhash vhdhash;
 	err = vhd_open(&vhd, backing, VHD_OPEN_RDONLY);
+	if(err)
+		goto out;
 	err = vhd_get_keyhash(&vhd, &vhdhash);
 	vhd_close(&vhd);
+	if(err)
+		goto out;
 	if (vhdhash.cookie == 1){
 		err = vhd_open(&vhd, name, VHD_OPEN_RDWR);
+		if(err)
+			goto out;
 		err = vhd_set_keyhash(&vhd, &vhdhash);
 		vhd_close(&vhd);
 	}
