@@ -13,3 +13,6 @@ lvm_util_SOURCES = main.c
 lvm_util_LDADD = liblvmutil.la
 
 liblvmutil_la_CPPFLAGS  = -D_GNU_SOURCE
+
+clean-local:
+	-rm -rf *.gc??

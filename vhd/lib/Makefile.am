@@ -60,3 +60,6 @@ endif
 if ENABLE_TESTS
 MAYBE_test = test
 endif
+
+clean-local:
+	-rm -rf *.gc??

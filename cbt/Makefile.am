@@ -12,3 +12,6 @@ libcbtutil_la_SOURCES = cbt-util.c
 
 cbt_util_SOURCES  = main.c
 cbt_util_LDADD  = -lrt -luuid libcbtutil.la
+
+clean-local:
+	-rm -rf *.gc??

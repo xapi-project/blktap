@@ -19,3 +19,6 @@ test_cbt_util_LDFLAGS += -Wl,--wrap=printf,--wrap=__printf_chk
 test_cbt_util_LDFLAGS += -Wl,--wrap=puts
 test_cbt_util_LDFLAGS += -Wl,--wrap=fwrite
 test_cbt_util_LDFLAGS += -Wl,--wrap=fseek
+
+clean-local:
+	-rm -rf *.gc??

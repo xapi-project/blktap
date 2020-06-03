@@ -19,3 +19,6 @@ test_control_LDFLAGS += -Wl,--wrap=open,--wrap=ioctl,--wrap=close,--wrap=access,
 #test_control_LDFLAGS += -Wl,--wrap=execl,--wrap=waitpid
 test_control_LDFLAGS += -Wl,--wrap=glob,--wrap=globfree
 test_control_LDFLAGS += -Wl,--wrap=fopen,--wrap=fclose,--wrap=fseek,--wrap=fwrite
+
+clean-local:
+	-rm -rf *.gc??

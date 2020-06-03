@@ -13,3 +13,6 @@ part_util_SOURCES += partition.c
 part_util_SOURCES += partition.h
 
 dist_sbin_SCRIPTS  = vhdpartx
+
+clean-local:
+	-rm -rf *.gc??

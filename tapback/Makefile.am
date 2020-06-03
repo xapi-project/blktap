@@ -28,3 +28,6 @@ install-exec-local:
 	mkdir -p $(DESTDIR)$(SYSTEMD_SERVICE_DIR)
 	install -m 644 tapback.service \
 	  $(DESTDIR)$(SYSTEMD_SERVICE_DIR)
+
+clean-local:
+	-rm -rf *.gc??

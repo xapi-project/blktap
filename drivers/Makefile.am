@@ -131,3 +131,6 @@ dist_bugtool_DATA = tapdisk-logs.xml
 
 bugtooltddir = $(sysconfdir)/xensource/bugtool/tapdisk-logs
 dist_bugtooltd_DATA = tapdisk-logs/description.xml
+
+clean-local:
+	-rm -rf *.gc??
