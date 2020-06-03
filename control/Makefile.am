@@ -35,3 +35,6 @@ libblktapctl_la_SOURCES += tap-ctl-xen.c
 libblktapctl_la_SOURCES += tap-ctl-info.c
 
 libblktapctl_la_LDFLAGS = -version-info 1:1:1
+
+clean-local:
+	-rm -rf *.gc??

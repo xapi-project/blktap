@@ -10,3 +10,6 @@ TESTS = test-drivers
 
 test_drivers_SOURCES = test-drivers.c test-tapdisk-stats.c
 test_drivers_LDFLAGS = $(top_srcdir)/drivers/libtapdisk.la -lcmocka -luuid
+
+clean-local:
+	-rm -rf *.gc??
