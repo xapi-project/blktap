@@ -35,6 +35,7 @@
 #ifndef _GNU_SOURCE
 #define _GNU_SOURCE
 #endif
+#include <dirent.h>
 #include <stdio.h>
 #include <errno.h>
 #include <fcntl.h>
@@ -117,6 +118,91 @@ static inline void
 old_clear_bit(volatile char *addr, int nr)
 {
 	((uint32_t *)addr)[nr >> 5] &= ~(1 << (nr & 31));
+}
+
+static int
+makedev_from_file(const char *file, dev_t *dev) {
+	*dev = 0;
+
+	FILE *f = fopen(file, "r");
+	if (!f)
+		return -1;
+
+	unsigned int dev_major;
+	unsigned int dev_minor;
+	const int ret = fscanf(f, "%u:%u", &dev_major, &dev_minor);
+	fclose(f);
+
+	if (ret != 2)
+		return -1;
+
+	*dev = makedev(dev_major, dev_minor);
+	return 0;
+}
+
+static int
+drbd_to_mapper(const struct stat *stats, dev_t *dev) {
+	static const int drbd_major = 147;
+
+	*dev = 0;
+
+	/* Check if it's a DRBD device. */
+	if (!S_ISBLK(stats->st_mode))
+		return -1;
+
+	const unsigned int dev_major = major(stats->st_rdev);
+	if (dev_major != drbd_major)
+		return -1;
+
+	/* Ok we can try to search a valid slave device. */
+	/* Note: If it's a diskless DRBD device, there is no slave. */
+	const unsigned int dev_minor = minor(stats->st_rdev);
+	char slaves_dir[PATH_MAX];
+	snprintf(slaves_dir, sizeof slaves_dir, "/sys/dev/block/%u:%u/slaves", dev_major, dev_minor);
+
+	DIR *dir = opendir(slaves_dir);
+	if (!dir)
+		return -1;
+
+	struct dirent *ent;
+	while ((ent = readdir(dir))) {
+		/* Find a valid symlink to a slave. */
+		#ifdef _DIRENT_HAVE_D_TYPE
+			if (ent->d_type == DT_LNK) {
+				/* Ok here, we have a symlink! */
+			} else if (ent->d_type != DT_UNKNOWN)
+				continue;
+			else
+		#endif
+		{
+			struct stat slave_stats;
+			if (stat(ent->d_name, &slave_stats) == -1)
+				continue;
+			if (!S_ISLNK(slave_stats.st_mode))
+				continue;
+		}
+
+		/* Check if this entry is a valid device mapper. */
+		static const char dm_prefix[] = "dm-";
+		if (strncmp(dm_prefix, ent->d_name, sizeof dm_prefix - 1))
+			continue;
+
+		char *p;
+		char *dm_number = ent->d_name + sizeof dm_prefix - 1;
+		strtol(dm_number, &p, 10);
+		if (p == dm_number || errno == ERANGE || *p != '\0')
+			continue;
+
+		/* Use this device mapper. */
+		char dev_path[PATH_MAX];
+		snprintf(dev_path, sizeof dev_path, "/sys/block/%s/dev", ent->d_name);
+
+		closedir(dir);
+		return makedev_from_file(dev_path, dev);
+	}
+
+	closedir(dir);
+	return -1;
 }
 
 int
@@ -2598,6 +2684,24 @@ vhd_open(vhd_context_t *ctx, const char *file, int flags)
 	ctx->fd     = -1;
 	ctx->oflags = flags;
 
+	char bypass_file[PATH_MAX] = "";
+	if (flags & VHD_OPEN_RDONLY) {
+		struct stat stats;
+		err = stat(file, &stats);
+		if (err == -1)
+			return -errno;
+
+		/* If a DRBD path is used, we try to use the real physical device. */
+		/* Why? Because the device can be locked by any program. */
+		/* Note: We can't use the physical data if the DRBD is a diskless device... */
+		/* Logic but annoying. */
+		dev_t mapper_dev;
+		if (drbd_to_mapper(&stats, &mapper_dev) == 0) {
+			if (snprintf(bypass_file, sizeof bypass_file, "/dev/block/%u:%u", major(mapper_dev), minor(mapper_dev)) == -1)
+				return -errno;
+		}
+	}
+
 	err = namedup(&ctx->file, file);
 	if (err)
 		return err;
@@ -2619,7 +2723,7 @@ vhd_open(vhd_context_t *ctx, const char *file, int flags)
 	if (flags & VHD_OPEN_RDWR)
 		oflags |= O_RDWR;
 
-	ctx->fd = open_optional_odirect(ctx->file, oflags, 0644);
+	ctx->fd = open_optional_odirect(*bypass_file ? bypass_file : ctx->file, oflags, 0644);
 	if (ctx->fd == -1) {
 		err = -errno;
 		VHDLOG("failed to open %s: %d\n", ctx->file, err);
