@@ -32,7 +32,6 @@
 #define __BLOCK_AIO_H__
 
 #include "tapdisk.h"
-#include "tapdisk-queue.h"
 
 
 #define MAX_AIO_REQS         TAPDISK_DATA_REQUESTS

@@ -188,7 +188,7 @@ void tdaio_queue_read(td_driver_t *driver, td_request_t treq)
 	aio->treq  = treq;
 	aio->state = prv;
 
-	td_prep_read(&aio->tiocb, prv->fd, treq.buf,
+	td_prep_read(driver, &aio->tiocb, prv->fd, treq.buf,
 		     size, offset, tdaio_complete, aio);
 	td_queue_tiocb(driver, &aio->tiocb);
 
@@ -216,7 +216,7 @@ void tdaio_queue_write(td_driver_t *driver, td_request_t treq)
 	aio->treq  = treq;
 	aio->state = prv;
 
-	td_prep_write(&aio->tiocb, prv->fd, treq.buf,
+	td_prep_write(driver, &aio->tiocb, prv->fd, treq.buf,
 		      size, offset, tdaio_complete, aio);
 	td_queue_tiocb(driver, &aio->tiocb);
 

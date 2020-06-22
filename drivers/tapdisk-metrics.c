@@ -41,7 +41,6 @@
 #include "tapdisk-metrics.h"
 #include "tapdisk-log.h"
 #include "debug.h"
-#include "tapdisk-queue.h"
 #include "td-req.h"
 
 #define VBD_STATS_VERSION 0x00000001

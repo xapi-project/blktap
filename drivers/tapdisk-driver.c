@@ -100,6 +100,8 @@ tapdisk_driver_allocate(int type, const char *name, td_flag_t flags)
 
 	if (td_flag_test(flags, TD_OPEN_RDONLY))
 		td_flag_set(driver->state, TD_DRIVER_RDONLY);
+	driver->prep_func = tapdisk_server_prep_tiocb;
+	driver->queue_func = tapdisk_server_queue_tiocb;
 
 	tapdisk_loglimit_init(&driver->loglimit,
 			      16 /* msgs */,
@@ -133,11 +135,17 @@ tapdisk_driver_free(td_driver_t *driver)
 	free(driver->data);
 	free(driver);
 }
+void
+tapdisk_driver_prep_tiocb(td_driver_t *driver, struct tiocb *tiocb, int fd, int rw, char *buf, size_t size,
+		   long long offset, td_queue_callback_t cb, void *arg)
+{
+	driver->prep_func(tiocb, fd, rw, buf, size, offset, cb, arg);
+}
 
 void
 tapdisk_driver_queue_tiocb(td_driver_t *driver, struct tiocb *tiocb)
 {
-	tapdisk_server_queue_tiocb(tiocb);
+	driver->queue_func(tiocb);
 }
 
 void
