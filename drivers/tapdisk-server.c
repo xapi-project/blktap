@@ -49,6 +49,7 @@
 #include "tapdisk-syslog.h"
 #include "tapdisk-server.h"
 #include "tapdisk-driver.h"
+#include "posixaio-backend.h"
 #include "libaio-backend.h"
 #include "tapdisk-interface.h"
 #include "tapdisk-log.h"
@@ -69,6 +70,8 @@ typedef struct tapdisk_server {
 	struct list_head             vbds;
 	scheduler_t                  scheduler;
 	tqueue                       rw_queue;
+	tqueue                       ro_queue;
+	struct backend              *ro_backend;
 	struct backend              *rw_backend;
 	char                        *name;
 	char                        *ident;
@@ -172,11 +175,25 @@ tapdisk_server_queue_tiocb(struct tiocb *tiocb)
 }
 
 void
+tapdisk_server_prep_tiocb_ro(struct tiocb *tiocb, int fd, int rw, char *buf, size_t size,
+	long long offset, td_queue_callback_t cb, void *arg)
+{
+	server.ro_backend->prep(tiocb, fd, rw, buf, size, offset, cb, arg);
+}
+
+void
+tapdisk_server_queue_tiocb_ro(struct tiocb *tiocb)
+{
+	server.ro_backend->queue(server.ro_queue, tiocb);
+}
+
+void
 tapdisk_server_debug(void)
 {
 	td_vbd_t *vbd, *tmp;
 
 	server.rw_backend->debug(server.rw_queue);
+	server.ro_backend->debug(server.ro_queue);
 
 	tapdisk_server_for_each_vbd(vbd, tmp)
 		tapdisk_vbd_debug(vbd);
@@ -252,6 +269,7 @@ static void
 tapdisk_server_submit_tiocbs(void)
 {
 	server.rw_backend->submit_all(server.rw_queue);
+	server.ro_backend->submit_all(server.ro_queue);
 }
 
 static void
@@ -300,6 +318,12 @@ tapdisk_server_stop_vbds(void)
 static int
 tapdisk_server_init_aio(void)
 {
+	int err;
+       	err = server.ro_backend->init(&server.ro_queue, TAPDISK_TIOCBS,
+				  TIO_DRV_LIO, NULL);
+	if(err)
+		return err;
+	
 	return server.rw_backend->init(&server.rw_queue, TAPDISK_TIOCBS,
 				  TIO_DRV_LIO, NULL);
 }
@@ -308,6 +332,7 @@ static void
 tapdisk_server_close_aio(void)
 {
 	server.rw_backend->free_queue(&server.rw_queue);
+	server.ro_backend->free_queue(&server.ro_queue);
 }
 
 int
@@ -754,6 +779,8 @@ int
 tapdisk_server_complete(void)
 {
 	int err;
+	server.rw_backend = get_libaio_backend();
+	server.ro_backend = get_posix_aio_backend();
 
 	server.rw_backend = get_libaio_backend();
 	err = tapdisk_server_init_aio();
