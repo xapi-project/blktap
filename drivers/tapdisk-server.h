@@ -65,6 +65,9 @@ typedef void (*q_tiocb)(struct tiocb *);
 typedef void (*p_tiocb)(struct tiocb *, int, int, char *, size_t,
 	long long, td_queue_callback_t, void *);
 
+void tapdisk_server_queue_tiocb_ro(struct tiocb *);
+void tapdisk_server_prep_tiocb_ro(struct tiocb *, int, int, char *, size_t,
+	long long, td_queue_callback_t, void *);
 void tapdisk_server_queue_tiocb(struct tiocb *);
 void tapdisk_server_prep_tiocb(struct tiocb *, int, int, char *, size_t,
 	long long, td_queue_callback_t, void *);
