@@ -49,6 +49,7 @@
 #include "tapdisk-syslog.h"
 #include "tapdisk-server.h"
 #include "tapdisk-driver.h"
+#include "libaio-backend.h"
 #include "tapdisk-interface.h"
 #include "tapdisk-log.h"
 #include "td-blkif.h"
@@ -67,7 +68,8 @@ typedef struct tapdisk_server {
 	int                          run;
 	struct list_head             vbds;
 	scheduler_t                  scheduler;
-	struct tqueue                aio_queue;
+	tqueue                       rw_queue;
+	struct backend              *rw_backend;
 	char                        *name;
 	char                        *ident;
 	int                          facility;
@@ -157,9 +159,16 @@ tapdisk_server_remove_vbd(td_vbd_t *vbd)
 }
 
 void
+tapdisk_server_prep_tiocb(struct tiocb *tiocb, int fd, int rw, char *buf, size_t size,
+	long long offset, td_queue_callback_t cb, void *arg)
+{
+	server.rw_backend->prep(tiocb, fd, rw, buf, size, offset, cb, arg);
+}
+
+void
 tapdisk_server_queue_tiocb(struct tiocb *tiocb)
 {
-	tapdisk_queue_tiocb(&server.aio_queue, tiocb);
+	server.rw_backend->queue(server.rw_queue, tiocb);
 }
 
 void
@@ -167,7 +176,7 @@ tapdisk_server_debug(void)
 {
 	td_vbd_t *vbd, *tmp;
 
-	tapdisk_debug_queue(&server.aio_queue);
+	server.rw_backend->debug(server.rw_queue);
 
 	tapdisk_server_for_each_vbd(vbd, tmp)
 		tapdisk_vbd_debug(vbd);
@@ -242,7 +251,7 @@ tapdisk_server_check_progress(void)
 static void
 tapdisk_server_submit_tiocbs(void)
 {
-	tapdisk_submit_all_tiocbs(&server.aio_queue);
+	server.rw_backend->submit_all(server.rw_queue);
 }
 
 static void
@@ -291,14 +300,14 @@ tapdisk_server_stop_vbds(void)
 static int
 tapdisk_server_init_aio(void)
 {
-	return tapdisk_init_queue(&server.aio_queue, TAPDISK_TIOCBS,
+	return server.rw_backend->init(&server.rw_queue, TAPDISK_TIOCBS,
 				  TIO_DRV_LIO, NULL);
 }
 
 static void
 tapdisk_server_close_aio(void)
 {
-	tapdisk_free_queue(&server.aio_queue);
+	server.rw_backend->free_queue(&server.rw_queue);
 }
 
 int
@@ -746,6 +755,7 @@ tapdisk_server_complete(void)
 {
 	int err;
 
+	server.rw_backend = get_libaio_backend();
 	err = tapdisk_server_init_aio();
 	if (err)
 		goto fail;

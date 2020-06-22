@@ -28,34 +28,45 @@
  * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef _TAPDISK_INTERFACE_H_
-#define _TAPDISK_INTERFACE_H_
+#ifndef IO_BACKEND_H
+#define IO_BACKEND_H
 
-#include "tapdisk.h"
-#include "io-backend.h"
-#include "tapdisk-image.h"
-#include "tapdisk-driver.h"
+struct tiocb;
+struct tfilter;
+typedef void* tqueue;
+typedef void (*td_queue_callback_t)(void *arg, struct tiocb *, int err);
 
-int td_open(td_image_t *, struct td_vbd_encryption *);
-int __td_open(td_image_t *, struct td_vbd_encryption *, td_disk_info_t *);
-int td_load(td_image_t *);
-int td_close(td_image_t *);
-int td_get_parent_id(td_image_t *, td_disk_id_t *);
-int td_validate_parent(td_image_t *, td_image_t *);
+struct tiocb {
+	td_queue_callback_t   cb;
+	void                 *arg;
 
-void td_queue_write(td_image_t *, td_request_t);
-void td_queue_read(td_image_t *, td_request_t);
-void td_queue_block_status(td_image_t*, td_request_t*);
-void td_forward_request(td_request_t);
-void td_complete_request(td_request_t, int);
+        void		     *iocb;
+	struct tiocb         *next;
+};
 
-void td_debug(td_image_t *);
+struct tlist {
+	struct tiocb         *head;
+	struct tiocb         *tail;
+};
 
-void td_queue_tiocb(td_driver_t *, struct tiocb *);
-void td_prep_read(td_driver_t *, struct tiocb *, int, char *, size_t,
-	long long, td_queue_callback_t, void *);
-void td_prep_write(td_driver_t *, struct tiocb *, int, char *, size_t,
-	long long, td_queue_callback_t, void *);
-void td_panic(void) __noreturn;
 
-#endif
+typedef void (*debug_queue)(tqueue );
+typedef int (*init_queue)(tqueue* , int size, int drv, struct tfilter *);
+typedef	void (*free_queue)(tqueue* );
+typedef	void (*up_queue)(tqueue , struct tiocb *);
+typedef	int  (*submit_all_queue)(tqueue );
+typedef	int (*submit_tiocbs_queue)(tqueue );
+typedef	void (*prep_tiocb_queue)(struct tiocb *, int, int, char *, size_t,
+			long long, td_queue_callback_t, void *);
+
+struct backend {
+	debug_queue debug;
+	init_queue init;
+	free_queue free_queue;
+	up_queue queue;
+	submit_all_queue submit_all;
+	submit_tiocbs_queue submit_tiocbs;
+	prep_tiocb_queue prep;
+};
+
+#endif /*IO_BACKEND_H*/

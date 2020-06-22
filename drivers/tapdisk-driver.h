@@ -33,8 +33,9 @@
 
 #include "tapdisk.h"
 #include "scheduler.h"
-#include "tapdisk-queue.h"
+#include "io-backend.h"
 #include "tapdisk-loglimit.h"
+#include "tapdisk-server.h"
 
 #define TD_DRIVER_OPEN               0x0001
 #define TD_DRIVER_RDONLY             0x0002
@@ -56,6 +57,8 @@ struct td_driver_handle {
 
 	td_loglimit_t                loglimit;
 	struct list_head             next;
+	q_tiocb                      queue_func;
+	p_tiocb                      prep_func;
 };
 
 td_driver_t *tapdisk_driver_allocate(int, const char *, td_flag_t);
@@ -63,6 +66,8 @@ void tapdisk_driver_free(td_driver_t *);
 
 void tapdisk_driver_queue_tiocb(td_driver_t *, struct tiocb *);
 
+void tapdisk_driver_prep_tiocb(td_driver_t *, struct tiocb *, int, int, char *, size_t,
+	long long, td_queue_callback_t, void *);
 void tapdisk_driver_debug(td_driver_t *);
 
 void tapdisk_driver_stats(td_driver_t *, td_stats_t *);

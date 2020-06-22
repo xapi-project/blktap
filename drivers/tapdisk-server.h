@@ -33,7 +33,7 @@
 
 #include "list.h"
 #include "tapdisk-vbd.h"
-#include "tapdisk-queue.h"
+#include "io-backend.h"
 
 enum memory_mode_t {NORMAL_MEMORY_MODE, LOW_MEMORY_MODE};
 
@@ -61,7 +61,13 @@ void tapdisk_server_add_vbd(td_vbd_t *);
  */
 void tapdisk_server_remove_vbd(td_vbd_t *);
 
+typedef void (*q_tiocb)(struct tiocb *);
+typedef void (*p_tiocb)(struct tiocb *, int, int, char *, size_t,
+	long long, td_queue_callback_t, void *);
+
 void tapdisk_server_queue_tiocb(struct tiocb *);
+void tapdisk_server_prep_tiocb(struct tiocb *, int, int, char *, size_t,
+	long long, td_queue_callback_t, void *);
 
 void tapdisk_server_check_state(void);
 

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2016, Citrix Systems, Inc.
+ * Copyright (c) 2020, Citrix Systems, Inc.
  *
  * All rights reserved.
  *
@@ -43,7 +43,7 @@
 
 #include "tapdisk.h"
 #include "tapdisk-log.h"
-#include "tapdisk-queue.h"
+#include "libaio-backend.h"
 #include "tapdisk-server.h"
 #include "tapdisk-utils.h"
 #include "timeout-math.h"
@@ -55,6 +55,51 @@
 #define DBG(_f, _a...) tlog_write(TLOG_DBG, _f, ##_a)
 #define ERR(_err, _f, _a...) tlog_error(_err, _f, ##_a)
 
+#define libaio_backend_queue_count(q) ((q)->queued)
+#define libaio_backend_queue_empty(q) ((q)->queued == 0)
+#define libaio_backend_queue_full(q)  \
+	(((q)->tiocbs_pending + (q)->queued) >= (q)->size)
+typedef struct _libaio_queue {
+	int                   size;
+
+	const struct tio     *tio;
+	void                 *tio_data;
+
+	struct opioctx        opioctx;
+
+	int                   queued;
+	struct iocb         **iocbs;
+
+	/* number of iocbs pending in the aio layer */
+	int                   iocbs_pending;
+
+	/* number of tiocbs pending in the queue -- 
+	 * this is likely to be larger than iocbs_pending 
+	 * due to request coalescing */
+	int                   tiocbs_pending;
+
+	/* iocbs may be deferred if the aio ring is full.
+	 * libaio_backend_queue_complete will ensure deferred
+	 * iocbs are queued as slots become available. */
+	struct tlist          deferred;
+	int                   tiocbs_deferred;
+
+	/* optional tapdisk filter */
+	struct tfilter       *filter;
+
+	uint64_t              deferrals;
+} libaio_queue;
+
+struct tio {
+	const char           *name;
+	size_t                data_size;
+
+	int  (*tio_setup)    (libaio_queue *queue, int qlen);
+	void (*tio_destroy)  (libaio_queue *queue);
+	int  (*tio_submit)   (libaio_queue *queue);
+};
+
+
 /*
  * We used a kernel patch to return an fd associated with the AIO context
  * so that we can concurrently poll on synchronous and async descriptors.
@@ -63,9 +108,9 @@
 #define REQUEST_ASYNC_FD ((io_context_t)1)
 
 static inline void
-queue_tiocb(struct tqueue *queue, struct tiocb *tiocb)
+queue_tiocb(libaio_queue *queue, struct tiocb *tiocb)
 {
-	struct iocb *iocb = &tiocb->iocb;
+	struct iocb *iocb = (struct iocb*)tiocb->iocb;
 
 	if (queue->queued) {
 		struct tiocb *prev = (struct tiocb *)
@@ -77,13 +122,13 @@ queue_tiocb(struct tqueue *queue, struct tiocb *tiocb)
 }
 
 static inline int
-deferred_tiocbs(struct tqueue *queue)
+deferred_tiocbs(libaio_queue *queue)
 {
 	return (queue->deferred.head != NULL);
 }
 
 static inline void
-defer_tiocb(struct tqueue *queue, struct tiocb *tiocb)
+defer_tiocb(libaio_queue *queue, struct tiocb *tiocb)
 {
 	struct tlist *list = &queue->deferred;
 
@@ -97,7 +142,7 @@ defer_tiocb(struct tqueue *queue, struct tiocb *tiocb)
 }
 
 static inline void
-queue_deferred_tiocb(struct tqueue *queue)
+queue_deferred_tiocb(libaio_queue *queue)
 {
 	struct tlist *list = &queue->deferred;
 
@@ -114,9 +159,9 @@ queue_deferred_tiocb(struct tqueue *queue)
 }
 
 static inline void
-queue_deferred_tiocbs(struct tqueue *queue)
+queue_deferred_tiocbs(libaio_queue *queue)
 {
-	while (!tapdisk_queue_full(queue) && deferred_tiocbs(queue))
+	while (!libaio_backend_queue_full(queue) && deferred_tiocbs(queue))
 		queue_deferred_tiocb(queue);
 }
 
@@ -124,10 +169,10 @@ queue_deferred_tiocbs(struct tqueue *queue)
  * td_complete may queue more tiocbs
  */
 static void
-complete_tiocb(struct tqueue *queue, struct tiocb *tiocb, unsigned long res)
+complete_tiocb(libaio_queue *queue, struct tiocb *tiocb, unsigned long res)
 {
 	int err;
-	struct iocb *iocb = &tiocb->iocb;
+	struct iocb *iocb = (struct iocb*)tiocb->iocb;
 
 	if (res == iocb_nbytes(iocb))
 		err = 0;
@@ -137,10 +182,11 @@ complete_tiocb(struct tqueue *queue, struct tiocb *tiocb, unsigned long res)
 		err = -EIO;
 
 	tiocb->cb(tiocb->arg, tiocb, err);
+	free(iocb);
 }
 
 static int
-cancel_tiocbs(struct tqueue *queue, int err)
+cancel_tiocbs(libaio_queue *queue, int err)
 {
 	int queued;
 	struct tiocb *tiocb;
@@ -165,7 +211,7 @@ cancel_tiocbs(struct tqueue *queue, int err)
 }
 
 static int
-fail_tiocbs(struct tqueue *queue, int succeeded, int total, int err)
+fail_tiocbs(libaio_queue *queue, int succeeded, int total, int err)
 {
 	ERR(err, "io_submit error: %d of %d failed",
 	    total - succeeded, total);
@@ -195,13 +241,13 @@ struct lio {
 #define LIO_FLAG_EVENTFD        (1<<0)
 
 static int
-tapdisk_lio_check_resfd(void)
+libaio_backend_lio_check_resfd(void)
 {
 	return tapdisk_linux_version() >= KERNEL_VERSION(2, 6, 22);
 }
 
 static void
-tapdisk_lio_destroy_aio(struct tqueue *queue)
+libaio_backend_lio_destroy_aio(libaio_queue *queue)
 {
 	struct lio *lio = queue->tio_data;
 
@@ -217,7 +263,7 @@ tapdisk_lio_destroy_aio(struct tqueue *queue)
 }
 
 static int
-__lio_setup_aio_poll(struct tqueue *queue, int qlen)
+__lio_setup_aio_poll(libaio_queue *queue, int qlen)
 {
 	struct lio *lio = queue->tio_data;
 	int err, fd;
@@ -248,7 +294,7 @@ fail:
 }
 
 static int
-__lio_setup_aio_eventfd(struct tqueue *queue, int qlen)
+__lio_setup_aio_eventfd(libaio_queue *queue, int qlen)
 {
 	struct lio *lio = queue->tio_data;
 	int err;
@@ -269,7 +315,7 @@ __lio_setup_aio_eventfd(struct tqueue *queue, int qlen)
 }
 
 static int
-tapdisk_lio_setup_aio(struct tqueue *queue, int qlen)
+libaio_backend_lio_setup_aio(libaio_queue *queue, int qlen)
 {
 	struct lio *lio = queue->tio_data;
 	int err, old_err = 0;
@@ -282,7 +328,7 @@ tapdisk_lio_setup_aio(struct tqueue *queue, int qlen)
 	 * if not, fall back to the poll fd patch.
 	 */
 
-	err = !tapdisk_lio_check_resfd();
+	err = !libaio_backend_lio_check_resfd();
 	if (!err)
 		err = old_err = __lio_setup_aio_eventfd(queue, qlen);
 	if (err)
@@ -306,7 +352,7 @@ fail_rsv:
 
 
 static void
-tapdisk_lio_destroy(struct tqueue *queue)
+libaio_backend_lio_destroy(libaio_queue *queue)
 {
 	struct lio *lio = queue->tio_data;
 
@@ -318,7 +364,7 @@ tapdisk_lio_destroy(struct tqueue *queue)
 		lio->event_id = -1;
 	}
 
-	tapdisk_lio_destroy_aio(queue);
+	libaio_backend_lio_destroy_aio(queue);
 
 	if (lio->aio_events) {
 		free(lio->aio_events);
@@ -327,7 +373,7 @@ tapdisk_lio_destroy(struct tqueue *queue)
 }
 
 static void
-tapdisk_lio_set_eventfd(struct tqueue *queue, int n, struct iocb **iocbs)
+libaio_backend_lio_set_eventfd(libaio_queue *queue, int n, struct iocb **iocbs)
 {
 	struct lio *lio = queue->tio_data;
 	int i;
@@ -338,7 +384,7 @@ tapdisk_lio_set_eventfd(struct tqueue *queue, int n, struct iocb **iocbs)
 }
 
 static void
-tapdisk_lio_ack_event(struct tqueue *queue)
+libaio_backend_lio_ack_event(libaio_queue *queue)
 {
 	struct lio *lio = queue->tio_data;
 	uint64_t val;
@@ -350,16 +396,16 @@ tapdisk_lio_ack_event(struct tqueue *queue)
 }
 
 static void
-tapdisk_lio_event(event_id_t id, char mode, void *private)
+libaio_backend_lio_event(event_id_t id, char mode, void *private)
 {
-	struct tqueue *queue = private;
+	libaio_queue *queue = private;
 	struct lio *lio;
 	int i, ret, split;
 	struct iocb *iocb;
 	struct tiocb *tiocb;
 	struct io_event *ep;
 
-	tapdisk_lio_ack_event(queue);
+	libaio_backend_lio_ack_event(queue);
 
 	lio   = queue->tio_data;
 	/* io_getevents() invoked via the libaio wrapper does not set errno but
@@ -387,21 +433,21 @@ tapdisk_lio_event(event_id_t id, char mode, void *private)
 }
 
 static int
-tapdisk_lio_setup(struct tqueue *queue, int qlen)
+libaio_backend_lio_setup(libaio_queue *queue, int qlen)
 {
 	struct lio *lio = queue->tio_data;
 	int err;
 
 	lio->event_id = -1;
 
-	err = tapdisk_lio_setup_aio(queue, qlen);
+	err = libaio_backend_lio_setup_aio(queue, qlen);
 	if (err)
 		goto fail;
 
 	lio->event_id =
 		tapdisk_server_register_event(SCHEDULER_POLL_READ_FD,
 					      lio->event_fd, TV_ZERO,
-					      tapdisk_lio_event,
+					      libaio_backend_lio_event,
 					      queue);
 	err = lio->event_id;
 	if (err < 0)
@@ -416,12 +462,12 @@ tapdisk_lio_setup(struct tqueue *queue, int qlen)
 	return 0;
 
 fail:
-	tapdisk_lio_destroy(queue);
+	libaio_backend_lio_destroy(queue);
 	return err;
 }
 
 static int
-tapdisk_lio_submit(struct tqueue *queue)
+libaio_backend_lio_submit(libaio_queue *queue)
 {
 	struct lio *lio = queue->tio_data;
 	int merged, submitted, err = 0;
@@ -430,7 +476,7 @@ tapdisk_lio_submit(struct tqueue *queue)
 		return 0;
 
 	merged    = io_merge(&queue->opioctx, queue->iocbs, queue->queued);
-	tapdisk_lio_set_eventfd(queue, merged, queue->iocbs);
+	libaio_backend_lio_set_eventfd(queue, merged, queue->iocbs);
 	submitted = io_submit(lio->aio_ctx, merged, queue->iocbs);
 
 	DBG("queued: %d, merged: %d, submitted: %d\n",
@@ -456,13 +502,13 @@ tapdisk_lio_submit(struct tqueue *queue)
 static const struct tio td_tio_lio = {
 	.name        = "lio",
 	.data_size   = sizeof(struct lio),
-	.tio_setup   = tapdisk_lio_setup,
-	.tio_destroy = tapdisk_lio_destroy,
-	.tio_submit  = tapdisk_lio_submit,
+	.tio_setup   = libaio_backend_lio_setup,
+	.tio_destroy = libaio_backend_lio_destroy,
+	.tio_submit  = libaio_backend_lio_submit,
 };
 
 static void
-tapdisk_queue_free_io(struct tqueue *queue)
+libaio_backend_queue_free_io(libaio_queue *queue)
 {
 	if (queue->tio) {
 		if (queue->tio->tio_destroy)
@@ -477,7 +523,7 @@ tapdisk_queue_free_io(struct tqueue *queue)
 }
 
 static int
-tapdisk_queue_init_io(struct tqueue *queue, int drv)
+libaio_backend_queue_init_io(libaio_queue *queue, int drv)
 {
 	const struct tio *tio;
 	int err;
@@ -511,17 +557,39 @@ tapdisk_queue_init_io(struct tqueue *queue, int drv)
 	return 0;
 
 fail:
-	tapdisk_queue_free_io(queue);
+	libaio_backend_queue_free_io(queue);
 	return err;
 }
 
-int
-tapdisk_init_queue(struct tqueue *queue, int size,
-		   int drv, struct tfilter *filter)
+static void
+libaio_backend_free_queue(tqueue *q)
 {
-	int err;
+	libaio_queue *queue = (libaio_queue*)*q;
+	libaio_backend_queue_free_io(queue);
 
-	memset(queue, 0, sizeof(struct tqueue));
+	free(queue->iocbs);
+	queue->iocbs = NULL;
+	opio_free(&queue->opioctx);
+	free(queue);
+	*q = NULL;
+}
+
+
+
+
+static int
+libaio_backend_init_queue(tqueue *q, int size,
+	int drv, struct tfilter *filter)
+{
+
+	int err;
+	libaio_queue *queue = malloc(sizeof(libaio_queue));
+	if(queue == NULL)
+		return ENOMEM;
+
+	*q = queue;
+
+	memset(queue, 0, sizeof(libaio_queue));
 
 	queue->size   = size;
 	queue->filter = filter;
@@ -529,7 +597,7 @@ tapdisk_init_queue(struct tqueue *queue, int size,
 	if (!size)
 		return 0;
 
-	err = tapdisk_queue_init_io(queue, drv);
+	err = libaio_backend_queue_init_io(queue, drv);
 	if (err)
 		goto fail;
 
@@ -546,27 +614,18 @@ tapdisk_init_queue(struct tqueue *queue, int size,
 	return 0;
 
  fail:
-	tapdisk_free_queue(queue);
+	libaio_backend_free_queue(q);
 	return err;
 }
 
-void
-tapdisk_free_queue(struct tqueue *queue)
+
+static void 
+libaio_backend_debug_queue(tqueue q)
 {
-	tapdisk_queue_free_io(queue);
-
-	free(queue->iocbs);
-	queue->iocbs = NULL;
-
-	opio_free(&queue->opioctx);
-}
-
-void 
-tapdisk_debug_queue(struct tqueue *queue)
-{
+	libaio_queue* queue = (libaio_queue*)q; 
 	struct tiocb *tiocb = queue->deferred.head;
 
-	WARN("TAPDISK QUEUE:\n");
+	WARN("LIBAIO QUEUE:\n");
 	WARN("size: %d, tio: %s, queued: %d, iocbs_pending: %d, "
 	     "tiocbs_pending: %d, tiocbs_deferred: %d, deferrals: %"PRIx64"\n",
 	     queue->size, queue->tio->name, queue->queued, queue->iocbs_pending,
@@ -575,7 +634,7 @@ tapdisk_debug_queue(struct tqueue *queue)
 	if (tiocb) {
 		WARN("deferred:\n");
 		for (; tiocb != NULL; tiocb = tiocb->next) {
-			struct iocb *io = &tiocb->iocb;
+			struct iocb *io = (struct iocb*)tiocb->iocb;
 			WARN("%s of %lu bytes at %lld\n",
 			     iocb_opcode(io),
 			     iocb_nbytes(io), iocb_offset(io));
@@ -583,11 +642,12 @@ tapdisk_debug_queue(struct tqueue *queue)
 	}
 }
 
-void
-tapdisk_prep_tiocb(struct tiocb *tiocb, int fd, int rw, char *buf, size_t size,
-		   long long offset, td_queue_callback_t cb, void *arg)
+static void
+libaio_backend_prep_tiocb(struct tiocb *tiocb, int fd, int rw, char *buf, size_t size,
+	long long offset, td_queue_callback_t cb, void *arg)
 {
-	struct iocb *iocb = &tiocb->iocb;
+	tiocb->iocb = malloc(sizeof(struct iocb));
+	struct iocb *iocb = (struct iocb*)tiocb->iocb;
 
 	if (rw)
 		io_prep_pwrite(iocb, fd, buf, size, offset);
@@ -600,10 +660,12 @@ tapdisk_prep_tiocb(struct tiocb *tiocb, int fd, int rw, char *buf, size_t size,
 	tiocb->next = NULL;
 }
 
-void
-tapdisk_queue_tiocb(struct tqueue *queue, struct tiocb *tiocb)
+static void
+libaio_backend_queue_tiocb(tqueue q, struct tiocb *tiocb)
 {
-	if (!tapdisk_queue_full(queue))
+	libaio_queue* queue = (libaio_queue*)q;
+
+	if (!libaio_backend_queue_full(queue))
 		queue_tiocb(queue, tiocb);
 	else
 		defer_tiocb(queue, tiocb);
@@ -613,20 +675,22 @@ tapdisk_queue_tiocb(struct tqueue *queue, struct tiocb *tiocb)
 /*
  * fail_tiocbs may queue more tiocbs
  */
-int
-tapdisk_submit_tiocbs(struct tqueue *queue)
+static int
+libaio_backend_submit_tiocbs(tqueue q)
 {
+	libaio_queue* queue = (libaio_queue*)q;
 	return queue->tio->tio_submit(queue);
 }
 
-int
-tapdisk_submit_all_tiocbs(struct tqueue *queue)
+static int
+libaio_backend_submit_all_tiocbs(tqueue q)
 {
 	int submitted = 0;
 
+	libaio_queue* queue = (libaio_queue*)q;
 	do {
-		submitted += tapdisk_submit_tiocbs(queue);
-	} while (!tapdisk_queue_empty(queue));
+		submitted += libaio_backend_submit_tiocbs(queue);
+	} while (!libaio_backend_queue_empty(queue));
 
 	return submitted;
 }
@@ -635,19 +699,36 @@ tapdisk_submit_all_tiocbs(struct tqueue *queue)
  * cancel_tiocbs may queue more tiocbs
  */
 int
-tapdisk_cancel_tiocbs(struct tqueue *queue)
+libaio_backend_cancel_tiocbs(tqueue q)
 {
+	libaio_queue* queue = (libaio_queue*)q;
 	return cancel_tiocbs(queue, -EIO);
 }
 
 int
-tapdisk_cancel_all_tiocbs(struct tqueue *queue)
+libaio_backend_cancel_all_tiocbs(tqueue q)
 {
 	int cancelled = 0;
+	libaio_queue* queue = (libaio_queue*)q;
 
 	do {
-		cancelled += tapdisk_cancel_tiocbs(queue);
-	} while (!tapdisk_queue_empty(queue));
+		cancelled += libaio_backend_cancel_tiocbs(queue);
+	} while (!libaio_backend_queue_empty(queue));
 
 	return cancelled;
 }
+
+struct backend* get_libaio_backend()
+{
+	static struct backend  lib_aio_backend = {
+		.debug=libaio_backend_debug_queue,
+		.init=libaio_backend_init_queue,
+		.free_queue=libaio_backend_free_queue,
+		.queue=libaio_backend_queue_tiocb,
+		.submit_all=libaio_backend_submit_all_tiocbs,
+		.submit_tiocbs=libaio_backend_submit_tiocbs,
+		.prep=libaio_backend_prep_tiocb
+	};
+	return &lib_aio_backend;
+}
+

@@ -1439,11 +1439,11 @@ free_vhd_request(struct vhd_state *s, struct vhd_request *req)
 }
 
 static inline void
-aio_read(struct vhd_state *s, struct vhd_request *req, uint64_t offset)
+do_aio_read(struct vhd_state *s, struct vhd_request *req, uint64_t offset)
 {
 	struct tiocb *tiocb = &req->tiocb;
 
-	td_prep_read(tiocb, s->vhd.fd, req->treq.buf,
+	td_prep_read(s->driver, tiocb, s->vhd.fd, req->treq.buf,
 		     vhd_sectors_to_bytes(req->treq.secs),
 		     offset, vhd_complete, req);
 	td_queue_tiocb(s->driver, tiocb);
@@ -1455,11 +1455,11 @@ aio_read(struct vhd_state *s, struct vhd_request *req, uint64_t offset)
 }
 
 static inline void
-aio_write(struct vhd_state *s, struct vhd_request *req, uint64_t offset)
+do_aio_write(struct vhd_state *s, struct vhd_request *req, uint64_t offset)
 {
 	struct tiocb *tiocb = &req->tiocb;
 
-	td_prep_write(tiocb, s->vhd.fd, req->treq.buf,
+	td_prep_write(s->driver, tiocb, s->vhd.fd, req->treq.buf,
 		      vhd_sectors_to_bytes(req->treq.secs),
 		      offset, vhd_complete, req);
 	td_queue_tiocb(s->driver, tiocb);
@@ -1527,7 +1527,7 @@ schedule_bat_write(struct vhd_state *s)
 	req->op        = VHD_OP_BAT_WRITE;
 	req->next      = NULL;
 
-	aio_write(s, req, offset);
+	do_aio_write(s, req, offset);
 	set_vhd_flag(s->bat.status, VHD_FLAG_BAT_WRITE_STARTED);
 
 	DBG(TLOG_DBG, "blk: 0x%04x, pbwo: 0x%08"PRIx64", "
@@ -1557,7 +1557,7 @@ schedule_zero_bm_write(struct vhd_state *s,
 
 	lock_bitmap(bm);
 	add_to_transaction(&bm->tx, req);
-	aio_write(s, req, offset);
+	do_aio_write(s, req, offset);
 }
 
 /* This is a performance optimization. When writing sequentially into full 
@@ -1606,7 +1606,7 @@ schedule_redundant_bm_write(struct vhd_state *s, uint32_t blk)
 	DBG(TLOG_DBG, "blk: %u, writing redundant bitmap at %" PRIu64 "\n",
 	    blk, offset);
 
-	aio_write(s, req, offset);
+	do_aio_write(s, req, offset);
 }
 
 static int
@@ -1754,7 +1754,7 @@ schedule_data_read(struct vhd_state *s, td_request_t treq, vhd_flag_t flags)
 	req->op    = VHD_OP_DATA_READ;
 	req->next  = NULL;
 
-	aio_read(s, req, offset);
+	do_aio_read(s, req, offset);
 
 	DBG(TLOG_DBG, "%s: lsec: 0x%08"PRIx64", blk: 0x%04x, sec: 0x%04x, "
 	    "nr_secs: 0x%04x, offset: 0x%08"PRIx64", flags: 0x%08x, buf: %p\n",
@@ -1850,7 +1850,7 @@ schedule_data_write(struct vhd_state *s, td_request_t treq, vhd_flag_t flags)
 		   test_batmap(s, blk))
 		schedule_redundant_bm_write(s, blk);
 
-	aio_write(s, req, offset);
+	do_aio_write(s, req, offset);
 
 	DBG(TLOG_DBG, "%s: lsec: 0x%08"PRIx64", blk: 0x%04x, sec: 0x%04x, "
 	    "nr_secs: 0x%04x, offset: 0x%08"PRIx64", flags: 0x%08x\n",
@@ -1890,7 +1890,7 @@ schedule_bitmap_read(struct vhd_state *s, uint32_t blk)
 	req->op        = VHD_OP_BITMAP_READ;
 	req->next      = NULL;
 
-	aio_read(s, req, offset);
+	do_aio_read(s, req, offset);
 	lock_bitmap(bm);
 	install_bitmap(s, bm);
 	set_vhd_flag(bm->status, VHD_FLAG_BM_READ_PENDING);
@@ -1933,7 +1933,7 @@ schedule_bitmap_write(struct vhd_state *s, uint32_t blk)
 	req->op        = VHD_OP_BITMAP_WRITE;
 	req->next      = NULL;
 
-	aio_write(s, req, offset);
+	do_aio_write(s, req, offset);
 	lock_bitmap(bm);
 	touch_bitmap(s, bm);     /* bump lru count */
 	set_vhd_flag(bm->status, VHD_FLAG_BM_WRITE_PENDING);
@@ -2598,7 +2598,6 @@ vhd_complete(void *arg, struct tiocb *tiocb, int err)
 {
 	struct vhd_request *req = (struct vhd_request *)arg;
 	struct vhd_state *s = req->state;
-	struct iocb *io = &tiocb->iocb;
 
 	s->completed++;
 	TRACE(s);
@@ -2607,9 +2606,9 @@ vhd_complete(void *arg, struct tiocb *tiocb, int err)
 
 	if (req->error)
 		ERR(s, req->error, "%s: op: %u, lsec: %"PRIu64", secs: %u, "
-		    "nbytes: %lu, blk: %"PRIu64", blk_offset: %u",
+		    "blk: %"PRIu64", blk_offset: %u",
 		    s->vhd.file, req->op, req->treq.sec, req->treq.secs,
-		    iocb_nbytes(io), req->treq.sec / s->spb,
+		    req->treq.sec / s->spb,
 		    bat_entry(s, req->treq.sec / s->spb));
 
 	switch (req->op) {
