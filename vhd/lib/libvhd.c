@@ -121,7 +121,8 @@ old_clear_bit(volatile char *addr, int nr)
 }
 
 static int
-makedev_from_file(const char *file, dev_t *dev) {
+makedev_from_file(const char *file, dev_t *dev)
+{
 	*dev = 0;
 
 	FILE *f = fopen(file, "r");
@@ -141,21 +142,58 @@ makedev_from_file(const char *file, dev_t *dev) {
 }
 
 static int
-drbd_to_mapper(const struct stat *stats, dev_t *dev) {
+is_drbd_device(const struct stat *stats)
+{
 	static const int drbd_major = 147;
 
-	*dev = 0;
-
-	/* Check if it's a DRBD device. */
 	if (!S_ISBLK(stats->st_mode))
-		return -1;
+		return 0;
 
 	const unsigned int dev_major = major(stats->st_rdev);
 	if (dev_major != drbd_major)
+		return 0;
+
+	return 1;
+}
+
+static int
+drbd_is_up_to_date(const struct stat *stats)
+{
+	static const char up_to_date_prefix[] = "UpToDate";
+
+	if (!is_drbd_device(stats))
+		return 0;
+
+	char cmd[64];
+	snprintf(cmd, sizeof cmd, "drbdsetup dstate %u 2> /dev/null", minor(stats->st_rdev));
+
+	int ok = 0;
+
+	FILE *stream = popen(cmd, "r");
+	char line[1024] = {0};
+	if (
+		stream && fscanf(stream, "%1023[^\n]", line) == 1 &&
+		!strncmp(line, up_to_date_prefix, sizeof up_to_date_prefix - 1)
+	)
+		ok = 1;
+
+	if (stream)
+		pclose(stream);
+
+	return ok;
+}
+
+static int
+drbd_to_mapper(const struct stat *stats, dev_t *dev)
+{
+	*dev = 0;
+
+	if (!is_drbd_device(stats))
 		return -1;
 
 	/* Ok we can try to search a valid slave device. */
 	/* Note: If it's a diskless DRBD device, there is no slave. */
+	const unsigned int dev_major = major(stats->st_rdev);
 	const unsigned int dev_minor = minor(stats->st_rdev);
 	char slaves_dir[PATH_MAX];
 	snprintf(slaves_dir, sizeof slaves_dir, "/sys/dev/block/%u:%u/slaves", dev_major, dev_minor);
@@ -2694,9 +2732,9 @@ vhd_open(vhd_context_t *ctx, const char *file, int flags)
 		/* If a DRBD path is used, we try to use the real physical device. */
 		/* Why? Because the device can be locked by any program. */
 		/* Note: We can't use the physical data if the DRBD is a diskless device... */
-		/* Logic but annoying. */
+		/* Logic but annoying. Same idea: if the disk is not up to date we can't use it. */
 		dev_t mapper_dev;
-		if (drbd_to_mapper(&stats, &mapper_dev) == 0) {
+		if (drbd_is_up_to_date(&stats) && drbd_to_mapper(&stats, &mapper_dev) == 0) {
 			if (snprintf(bypass_file, sizeof bypass_file, "/dev/block/%u:%u", major(mapper_dev), minor(mapper_dev)) == -1)
 				return -errno;
 		}
