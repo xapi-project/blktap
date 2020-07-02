@@ -843,7 +843,7 @@ _libvhd_io_pwrite(vhd_partition_t *vhd_part,
 	ret   = (ssize_t)-1;
 	psize = vhd_part->size << VHD_SECTOR_SHIFT;
 
-	if (vhd_part->flags & O_RDONLY) {
+	if ((vhd_part->flags & O_ACCMODE) == O_RDONLY) {
 		errno = EPERM;
 		goto out;
 	}
