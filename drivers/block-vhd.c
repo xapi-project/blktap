@@ -443,8 +443,8 @@ find_next_free_block(struct vhd_state *s)
 		if (entry != DD_BLK_UNUSED && entry >= s->next_db)
 			s->next_db = (uint64_t)entry + (uint64_t)s->spb
 				+ (uint64_t)s->bm_secs;
-			if (s->next_db > UINT_MAX)
-				break;
+		if (s->next_db > UINT_MAX)
+			break;
 	}
 
 	return 0;
