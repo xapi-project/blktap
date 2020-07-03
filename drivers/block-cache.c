@@ -599,10 +599,10 @@ block_cache_close(td_driver_t *driver)
 static inline uint64_t
 block_cache_hash(block_cache_t *cache, char *buf)
 {
+	return 0;
+#if 0
 	int i, n;
 	uint64_t cksm, *data;
-
-	return 0;
 
 	cksm = 0;
 	data = (uint64_t *)buf;
@@ -612,6 +612,7 @@ block_cache_hash(block_cache_t *cache, char *buf)
 		cksm += data[i];
 
 	return ~cksm;
+#endif
 }
 
 static void
