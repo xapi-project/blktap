@@ -47,6 +47,7 @@
 #include "tapdisk-driver.h"
 #include "tapdisk-server.h"
 #include "tapdisk-interface.h"
+#include "tapdisk-disktype.h"
 
 #define DEBUG 1
 
@@ -359,8 +360,22 @@ static int
 lcache_validate_parent(td_driver_t *driver,
 		       td_driver_t *pdriver, td_flag_t flags)
 {
+	/* Check types for both */
+	if (driver->type != DISK_TYPE_LCACHE ||
+	    pdriver->type != DISK_TYPE_VHD) {
+		EPRINTF("Unexpected driver types. %s:%d, parent %s:%d",
+			tapdisk_disk_types[driver->type]->name,
+			driver->type,
+			tapdisk_disk_types[pdriver->type]->name,
+			pdriver->type);
+		return -EINVAL;
+	}
+
+	/*
+	  Checking names needs to be more selective if required
 	if (strcmp(driver->name, pdriver->name))
 		return -EINVAL;
+	*/
 
 	return 0;
 }
