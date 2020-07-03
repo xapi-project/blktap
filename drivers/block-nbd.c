@@ -140,7 +140,7 @@ tdnbd_stash_passed_fd(int fd, char *msg, void *data)
 		 * names so that we never try to compare against the name
 		 * of an unused slot */
 		if (passed_fds[i].fd == -1 || strncmp(msg, passed_fds[i].id,
-					sizeof(passed_fds[i].id)) == 0) {
+					sizeof(passed_fds[i].id) - 1) == 0) {
 			free_index = i;
 			break;
 		}
@@ -160,7 +160,8 @@ tdnbd_stash_passed_fd(int fd, char *msg, void *data)
 
 	passed_fds[free_index].fd = fd;
 	strncpy(passed_fds[free_index].id, msg,
-			sizeof(passed_fds[free_index].id));
+		sizeof(passed_fds[free_index].id) - 1);
+	passed_fds[free_index].id[sizeof(passed_fds[free_index].id) - 1] = '\0';
 }
 
 static int
@@ -170,7 +171,7 @@ tdnbd_retrieve_passed_fd(const char *name)
 
 	for (i = 0; i < N_PASSED_FDS; i++) {
 		if (strncmp(name, passed_fds[i].id,
-					sizeof(passed_fds[i].id)) == 0) {
+					sizeof(passed_fds[i].id) - 1) == 0) {
 			fd = passed_fds[i].fd;
 			passed_fds[i].fd = -1;
 			return fd;
