@@ -974,12 +974,17 @@ vhd_validate_parent(td_driver_t *child_driver,
 	struct vhd_state *child  = (struct vhd_state *)child_driver->data;
 	struct vhd_state *parent;
 
-	if (parent_driver->type != DISK_TYPE_VHD) {
+	DPRINTF("vhd_validate_parent. ptype %d, ctype %d",
+		parent_driver->type, child_driver->type);
+	if (parent_driver->type != DISK_TYPE_VHD)
+	{
 		if (child_driver->type != DISK_TYPE_VHD)
 			return -EINVAL;
 		if (child->vhd.footer.type != HD_TYPE_DIFF)
 			return -EINVAL;
-		if (!vhd_parent_raw(&child->vhd))
+		if (!vhd_parent_raw(&child->vhd) &&
+		    !(parent_driver->type == DISK_TYPE_LCACHE ||
+		      parent_driver->type == DISK_TYPE_AIO))
 			return -EINVAL;
 		return 0;
 	}
