@@ -415,7 +415,6 @@ backend_close(vbd_t * const device)
 		if (err) {
 			if (err == ESRCH) {/* tapdisk might have died :-( */
 				WARN(device, "tapdisk[%d] not running\n", device->tap->pid);
-				err = 0;
 			} else {
 				WARN(device, "error disconnecting tapdisk[%d] minor=%d from "
 						"the ring: %s\n", device->tap->pid, device->minor,

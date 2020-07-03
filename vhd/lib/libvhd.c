@@ -3754,7 +3754,6 @@ vhd_cache_load(vhd_context_t *ctx)
 	int fcntl_res __attribute__((unused));
 	vhd_context_t *vhd;
 
-	err    = 1;
 	pflags = ctx->oflags;
 	vhd    = ctx;
 	next   = NULL;
@@ -3788,7 +3787,6 @@ vhd_cache_load(vhd_context_t *ctx)
 		if (err) {
 			VHDLOG("%s: vhd_open failed: %d\n", next, err);
 			free(parent);
-			parent = NULL;
 			goto out;
 		}
 

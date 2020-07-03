@@ -254,7 +254,7 @@ tapdisk_image_open_parent(td_image_t *image, struct td_vbd_encryption *encryptio
 
 out:
 	*_parent = parent;
-	return 0;
+	return err;
 }
 
 static int
