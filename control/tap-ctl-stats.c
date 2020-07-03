@@ -76,7 +76,7 @@ tap_ctl_stats(pid_t pid, int minor, char *buf, size_t size)
 
 	err = tap_ctl_read_message(sfd, &message, NULL);
 	if (err)
-		return err;
+		goto out;
 
 	len = message.u.info.length;
 	if (size < len + 1)
