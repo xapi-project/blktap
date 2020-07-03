@@ -67,8 +67,7 @@
 #define __RD32(_x) (((_x) & 0xffff0000) ? __RD16((_x)>>16)<<16 : __RD16(_x))
 
 #define BLKTAP_RD32(_n)      __RD32(_n)
-#define BLKTAP_RING_SIZE     __BLKTAP_RING_SIZE(BLKTAP_PAGE_SIZE)
-#define BLKTAP_PAGE_SIZE     sysconf(_SC_PAGE_SIZE)
+#define BLKTAP_RING_SIZE     __BLKTAP_RING_SIZE(PAGE_SIZE)
 
 #define BLKTAP_GET_RESPONSE(_tap, _idx) \
 	(&(_tap)->sring->entry[(_idx) % BLKTAP_RING_SIZE].rsp)
@@ -285,7 +284,7 @@ tapdisk_blktap_vector_request(td_blktap_t *tap,
 	last  = NULL;
 
 	page  = tap->vstart;
-	page += msg->id * BLKTAP_SEGMENT_MAX * BLKTAP_PAGE_SIZE;
+	page += msg->id * BLKTAP_SEGMENT_MAX * PAGE_SIZE;
 
 	for (i = 0; i < msg->nr_segments; i++) {
 		seg  = &msg->seg[i];
@@ -301,7 +300,7 @@ tapdisk_blktap_vector_request(td_blktap_t *tap,
 			iov->secs += size;
 
 		last  = iov->base + (iov->secs << SECTOR_SHIFT);
-		page += BLKTAP_PAGE_SIZE;
+		page += PAGE_SIZE;
                 nr_sect += size;
 	}
 
@@ -507,7 +506,7 @@ tapdisk_blktap_map(td_blktap_t *tap)
 
 	tap->vma_size =
 		1 + (BLKTAP_RING_SIZE *
-		     BLKTAP_SEGMENT_MAX * BLKTAP_PAGE_SIZE);
+		     BLKTAP_SEGMENT_MAX * PAGE_SIZE);
 
 	prot  = PROT_READ | PROT_WRITE;
 	flags = MAP_SHARED;
@@ -519,7 +518,7 @@ tapdisk_blktap_map(td_blktap_t *tap)
 	}
 
 	tap->vma    = vma;
-	tap->vstart = vma + BLKTAP_PAGE_SIZE;
+	tap->vstart = vma + PAGE_SIZE;
 
 	tap->req_cons     = 0;
 	tap->rsp_prod_pvt = 0;
