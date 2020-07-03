@@ -58,7 +58,7 @@ td_fdreceiver_recv_fd(event_id_t id, char mode, void *data)
 	struct td_fdreceiver *fdreceiver = data;
 	int ret,  cv_flags = 0, *fdp, fd = -1;
 	long numbytes;
-	char iobuf[UNIX_BUFFER_SIZE];
+	char *iobuf;
 	char buf[CMSG_SPACE(sizeof(fd))];
 	struct sockaddr_un unix_socket_name;
 
@@ -67,7 +67,11 @@ td_fdreceiver_recv_fd(event_id_t id, char mode, void *data)
 	struct cmsghdr *cmsg;
 
 	numbytes = UNIX_BUFFER_SIZE;
-
+	iobuf = malloc(numbytes);
+	if (!iobuf) {
+		ERROR("Failed to allocate iobuf");
+		return;
+	}
 	bzero(iobuf, numbytes);
 
 	msg.msg_name = &unix_socket_name;
@@ -85,7 +89,7 @@ td_fdreceiver_recv_fd(event_id_t id, char mode, void *data)
 
 	if (ret == -1) {
 		ERROR("Failed to receive the message: %d", ret);
-		return;
+		goto out;
 	}
 
 	if (ret > 0 && msg.msg_controllen > 0) {
@@ -121,6 +125,8 @@ td_fdreceiver_recv_fd(event_id_t id, char mode, void *data)
 	 * the fd is eventually closed
 	 */
 	fdreceiver->callback(fd, iobuf, fdreceiver->callback_data);
+out:
+	free(iobuf);
 }
 
 static void
