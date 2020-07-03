@@ -115,17 +115,17 @@ scheduler_prepare_events(scheduler_t *s)
 		if (event->masked || event->dead)
 			continue;
 
-		if (event->mode & SCHEDULER_POLL_READ_FD) {
+		if ((event->mode & SCHEDULER_POLL_READ_FD) && event->fd >= 0) {
 			FD_SET(event->fd, &s->read_fds);
 			s->max_fd = MAX(event->fd, s->max_fd);
 		}
 
-		if (event->mode & SCHEDULER_POLL_WRITE_FD) {
+		if ((event->mode & SCHEDULER_POLL_WRITE_FD) && event->fd >= 0) {
 			FD_SET(event->fd, &s->write_fds);
 			s->max_fd = MAX(event->fd, s->max_fd);
 		}
 
-		if (event->mode & SCHEDULER_POLL_EXCEPT_FD) {
+		if ((event->mode & SCHEDULER_POLL_EXCEPT_FD) && event->fd >= 0) {
 			FD_SET(event->fd, &s->except_fds);
 			s->max_fd = MAX(event->fd, s->max_fd);
 		}
