@@ -680,6 +680,7 @@ tdnbd_connect_import_session(struct tdnbd_data *prv, td_driver_t* driver)
 			sizeof(opt));
 	if (rc < 0) {
 		ERROR("Could not set TCP_NODELAY: %s\n", strerror(errno));
+		close(sock);
 		return -1;
 	}
 
