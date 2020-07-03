@@ -1754,6 +1754,7 @@ vhd_parent_locator_write_at(vhd_context_t *ctx,
 	char *absolute_path, *relative_path, *encoded;
 	char __parent[PATH_MAX];
 	void *block;
+	int (*encode_location_fn)(char*, char**, int*);
 
 	memset(loc, 0, sizeof(vhd_parent_locator_t));
 
@@ -1769,8 +1770,11 @@ vhd_parent_locator_write_at(vhd_context_t *ctx,
 
 	switch (code) {
 	case PLAT_CODE_MACX:
+		encode_location_fn = &vhd_macx_encode_location;
+		break;
 	case PLAT_CODE_W2KU:
 	case PLAT_CODE_W2RU:
+		encode_location_fn = &vhd_w2u_encode_location;
 		break;
 	default:
 		return -EINVAL;
@@ -1799,17 +1803,7 @@ vhd_parent_locator_write_at(vhd_context_t *ctx,
 		goto out;
 	}
 
-	switch (code) {
-	case PLAT_CODE_MACX:
-		err = vhd_macx_encode_location(relative_path, &encoded, &len);
-		break;
-	case PLAT_CODE_W2KU:
-	case PLAT_CODE_W2RU:
-		err = vhd_w2u_encode_location(relative_path, &encoded, &len);
-		break;
-	default:
-		err = -EINVAL;
-	}
+	err = encode_location_fn(relative_path, &encoded, &len);
 
 	if (err)
 		goto out;
