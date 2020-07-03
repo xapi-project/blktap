@@ -207,6 +207,7 @@ swap(vhd_block_t *list, int a, int b)
 	list[b] = tmp;
 }
 
+#if 0
 static int
 partition(vhd_block_t *list, int left, int right, int pidx)
 {
@@ -226,7 +227,9 @@ partition(vhd_block_t *list, int left, int right, int pidx)
 	swap(list, right, sidx);
 	return sidx;
 }
+#endif
 
+#if 0
 static void
 quicksort(vhd_block_t *list, int left, int right)
 {
@@ -240,6 +243,7 @@ quicksort(vhd_block_t *list, int left, int right)
 	quicksort(list, left, new_pidx - 1);
 	quicksort(list, new_pidx + 1, right);
 }
+#endif
 
 static int
 vhd_move_block(vhd_journal_t *journal, uint32_t src, off64_t offset)
@@ -304,6 +308,7 @@ out:
 	return err;
 }
 
+#if 0
 static int
 vhd_clobber_block(vhd_journal_t *journal, uint32_t src, uint32_t dest)
 {
@@ -327,7 +332,9 @@ vhd_clobber_block(vhd_journal_t *journal, uint32_t src, uint32_t dest)
 
 	return 0;
 }
+#endif
 
+#if 0
 /*
  * remove a list of blocks from the vhd file
  * if a block to be removed:
@@ -406,7 +413,9 @@ out:
 
 	return err;
 }
+#endif
 
+#if 0
 static int
 vhd_clear_bat_entries(vhd_journal_t *journal, uint32_t entries)
 {
@@ -477,18 +486,19 @@ vhd_clear_bat_entries(vhd_journal_t *journal, uint32_t entries)
 
 	return 0;
 }
+#endif
 
 static int
 vhd_dynamic_shrink(vhd_journal_t *journal, uint64_t secs)
 {
+	printf("dynamic shrink not fully implemented\n");
+	return -ENOSYS;
+#if 0
 	off64_t eof;
 	uint32_t blocks;
 	vhd_context_t *vhd;
 	int i, j, err, free_cnt;
 	struct vhd_block *free_list;
-
-	printf("dynamic shrink not fully implemented\n");
-	return -ENOSYS;
 
 	eof       = 0;
 	free_cnt  = 0;
@@ -545,6 +555,7 @@ vhd_dynamic_shrink(vhd_journal_t *journal, uint64_t secs)
 out:
 	free(free_list);
 	return err;
+#endif
 }
 
 static inline void
