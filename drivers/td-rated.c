@@ -1629,7 +1629,7 @@ rlb_openlog(const char *name, int facility)
 int
 main(int argc, char **argv)
 {
-	td_rlb_t _rlb, *rlb;
+	td_rlb_t *rlb;
 	const char *prog, *type;
 	int err;
 
@@ -1686,11 +1686,15 @@ main(int argc, char **argv)
 	if (err)
 		goto fail;
 
-	err = rlb_create(&_rlb, argv[optind++]);
+	rlb = malloc(sizeof(td_rlb_t));
+	if (!rlb) {
+		err = -errno;
+		goto fail;
+	}
+
+	err = rlb_create(rlb, argv[optind++]);
 	if (err)
 		goto fail;
-
-	rlb = &_rlb;
 
 	rlb_argv_shift(&optind, &argc, &argv);
 
@@ -1714,14 +1718,16 @@ main(int argc, char **argv)
 
 	rlb_info(rlb);
 
-	err = rlb_main_run(rlb);
+ 	err = rlb_main_run(rlb);
 
 	if (err)
 		INFO("Exiting with status %d", -err);
 
 fail:
-	if (rlb)
+	if (rlb) {
 		rlb_destroy(rlb);
+		free(rlb);
+	}
 
 	return -err;
 
