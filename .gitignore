@@ -67,6 +67,7 @@ Makefile.in
 /mockatests/cbt/Makefile
 /mockatests/control/Makefile
 /mockatests/drivers/Makefile
+/mockatests/vhd/Makefile
 /mockatests/wrappers/Makefile
 /vhd/Makefile
 /vhd/lib/Makefile
