@@ -28,6 +28,7 @@
  * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
+#include <assert.h>
 #include <errno.h>
 #include <stdlib.h>
 #include <unistd.h>
@@ -484,14 +485,12 @@ fail:
 static inline int
 __td_xenio_ctx_match(struct td_xenio_ctx * ctx, const char *pool)
 {
-    if (unlikely(!pool)) {
-        if (NULL != TD_XENBLKIF_DEFAULT_POOL)
-            return !strcmp(ctx->pool, TD_XENBLKIF_DEFAULT_POOL);
-        else
-            return !ctx->pool;
-    }
+	if (unlikely(!pool)) {
+		assert(TD_XENBLKIF_DEFAULT_POOL);
+		return !strcmp(ctx->pool, TD_XENBLKIF_DEFAULT_POOL);
+	}
 
-    return !strcmp(ctx->pool, pool);
+	return !strcmp(ctx->pool, pool);
 }
 
 #define tapdisk_xenio_find_ctx(_ctx, _cond)	\
