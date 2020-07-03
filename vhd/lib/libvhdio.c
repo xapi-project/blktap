@@ -1432,7 +1432,7 @@ __lxstat64(int version, const char *path, struct stat64 *buf)
 
 #ifdef __x86_64__
 #define IOCTL_REQUEST long long
-#define IOCTL_REQUEST_FMT "%Lx"
+#define IOCTL_REQUEST_FMT "%llx"
 #else
 #define IOCTL_REQUEST int
 #define IOCTL_REQUEST_FMT "%x"
