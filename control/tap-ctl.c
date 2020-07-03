@@ -104,7 +104,7 @@ tap_cli_list_dict(tap_list_t *entry)
 
 	if (entry->type && entry->path) {
 		if (d) putc(' ', stdout);
-		d = printf("args=%s:%s", entry->type, entry->path);
+		printf("args=%s:%s", entry->type, entry->path);
 	}
 
 	putc('\n', stdout);

@@ -156,7 +156,7 @@ out:
 int cpumond_loop(cpumond_entry_t *cpumond_entry){
     long long      idle1  = 0, idle2;
     long long      total1 = 0, total2;
-    int            statfd = -1;
+    int            statfd;
     int            err    =  0;
 
     statfd = open("/proc/stat", O_RDONLY);

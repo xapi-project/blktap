@@ -105,9 +105,6 @@ td_fdreceiver_recv_fd(event_id_t id, char mode, void *data)
 		fd = -1;
 	}
 
-	if (ret < numbytes)
-		numbytes = ret;
-
 	INFO("Received fd %d with message: %s", fd, iobuf);
 
 	/*

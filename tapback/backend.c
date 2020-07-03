@@ -1096,7 +1096,7 @@ tapback_backend_handle_backend_watch(backend_t *backend,
                  * TODO we're hard-coding the name of the binary, better let
                  * the build system supply it.
                  */
-                err = execvp(tapback_name, args);
+                execvp(tapback_name, args);
                 err = -errno;
                 WARN(NULL, "failed to replace master process with slave: %s\n",
                         strerror(-err));

@@ -1077,7 +1077,6 @@ vhd_util_check_vhd(struct vhd_util_check_ctx *ctx, const char *name)
 	struct stat stats;
 	vhd_footer_t footer;
 
-	fd = -1;
 	memset(&vhd, 0, sizeof(vhd));
 	memset(&footer, 0, sizeof(footer));
 
