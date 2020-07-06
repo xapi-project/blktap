@@ -712,6 +712,7 @@ tdnbd_connect_import_session(struct tdnbd_data *prv, td_driver_t* driver)
 	if (connect(sock, (struct sockaddr *)prv->remote,
 				sizeof(struct sockaddr)) < 0) {
 		ERROR("Could not connect to peer: %s\n", strerror(errno));
+		free(prv->remote);
 		close(sock);
 		return -1;
 	}
