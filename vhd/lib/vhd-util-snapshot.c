@@ -150,6 +150,7 @@ vhd_util_snapshot(int argc, char **argv)
 			break;
 		case 'S':
 			msize = strtoull(optarg, NULL, 10);
+			break;
 		case 'l':
 			limit = strtol(optarg, NULL, 10);
 			break;
