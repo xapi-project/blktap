@@ -38,9 +38,9 @@
 #include "libvhd.h"
 #include "vhd-wrappers.h"
 
-#define ARGS_SIZE 9
+#define RAW_PRT_ARGS_SIZE 9
 
-char* args[ARGS_SIZE] = {
+char* raw_prt_args[RAW_PRT_ARGS_SIZE] = {
 		"--debug",
 		"-n",
 		"test1.vhdcache",
@@ -51,6 +51,18 @@ char* args[ARGS_SIZE] = {
 		"-e",
 		"-m"};
 
+#define ARGS_SIZE 8
+
+char* args[ARGS_SIZE] = {
+		"--debug",
+		"-n",
+		"test1.vhdcache",
+		"-p",
+		"test2.vhdcache",
+		"-S",
+		"71680",
+		"-e"};
+
 /*
  * Tests to ensure errors are propagated by vhd-util-snapshot.
  */
@@ -59,7 +71,7 @@ void test_vhd_util_snapshot_enospc_from_vhd_snapshot(void **state)
 	will_return(__wrap_canonpath, "testing");
 	will_return(__wrap_vhd_snapshot, ENOSPC);
 	expect_any(__wrap_free, in);
-	int res = vhd_util_snapshot(ARGS_SIZE, args);
+	int res = vhd_util_snapshot(RAW_PRT_ARGS_SIZE, raw_prt_args);
 	assert_int_equal(get_close_count(), 0);
 	assert_int_equal(res, ENOSPC);
 }
