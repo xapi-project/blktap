@@ -161,7 +161,8 @@ tap_ctl_send_and_receive(int sfd, tapdisk_message_t *message,
 
 int
 tap_ctl_send_and_receive_ex(int sfd, tapdisk_message_t *message,
-			    const char *logpath, uint8_t key_size,
+			    const char *logpath, const char *sockpath,
+			    uint8_t key_size,
 			    const uint8_t *encryption_key,
 			    struct timeval *timeout)
 {
@@ -200,6 +201,19 @@ tap_ctl_send_and_receive_ex(int sfd, tapdisk_message_t *message,
 			EPRINTF("Failed to send encryption key with '%s' message\n",
 				tapdisk_message_name(message->type));
 			return EIO;
+		}
+	}
+
+	if (message->u.params.flags & TAPDISK_MESSAGE_FLAG_RATED) {
+		DPRINTF("Sending socket for td-rated\n");
+		char buf[TAPDISK_MESSAGE_MAX_PATH_LENGTH];
+		snprintf(buf, TAPDISK_MESSAGE_MAX_PATH_LENGTH - 1, "%s", sockpath);
+
+		ret = write(sfd,  &buf, sizeof(buf));
+
+		if (ret == -1) {
+			EPRINTF("Failed to send sockpath with '%s' message\n",
+				tapdisk_message_name(message->type));
 		}
 	}
 
@@ -309,7 +323,9 @@ tap_ctl_connect_send_and_receive(int id, tapdisk_message_t *message,
 
 int
 tap_ctl_connect_send_receive_ex(int id, tapdisk_message_t *message,
-				const char *logpath, uint8_t key_size,
+				const char *logpath,
+				const char *sockpath,
+				uint8_t key_size,
 				const uint8_t *encryption_key,
 				struct timeval *timeout)
 {
@@ -319,7 +335,7 @@ tap_ctl_connect_send_receive_ex(int id, tapdisk_message_t *message,
 	if (err)
 		return err;
 
-	err = tap_ctl_send_and_receive_ex(sfd, message, logpath, key_size, encryption_key, timeout);
+	err = tap_ctl_send_and_receive_ex(sfd, message, logpath, sockpath, key_size, encryption_key, timeout);
 
 	close(sfd);
 	return err;

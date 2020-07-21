@@ -1070,6 +1070,25 @@ tapdisk_control_resume_vbd(struct tapdisk_ctl_conn *conn,
 		vbd->flags &= ~TD_OPEN_ADD_LOG;
 	}
 
+	if (request->u.params.flags & TAPDISK_MESSAGE_FLAG_RATED) {
+		char *sockpath = malloc(TAPDISK_MESSAGE_MAX_PATH_LENGTH + 1);
+		ret = read(conn->fd, sockpath, TAPDISK_MESSAGE_MAX_PATH_LENGTH);
+		if (ret < 0) {
+			err = -EIO;
+			free(sockpath);
+			goto out;
+		}
+		*(sockpath + TAPDISK_MESSAGE_MAX_PATH_LENGTH) = '\0';
+		vbd->rated_sockpath = sockpath;
+		vbd->flags |= TD_OPEN_RATED;
+	} else {
+		if (vbd->rated_sockpath) {
+			free (vbd->rated_sockpath);
+			vbd->rated_sockpath = NULL;
+		}
+		vbd->flags &= ~TD_OPEN_RATED;
+	}
+
 	if (request->u.params.path[0])
 		desc = request->u.params.path;
 

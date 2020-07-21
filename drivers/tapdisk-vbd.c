@@ -570,6 +570,55 @@ fail:
 	return err;
 }
 
+static int tapdisk_vbd_add_rated(td_vbd_t *vbd)
+{
+	int err;
+	td_driver_t *driver;
+	td_image_t *valve, *parent;
+
+	driver = NULL;
+	valve = NULL;
+
+	DPRINTF("VALVE:tapdisk_vbd_add_rated called for %s with %s\n",
+		vbd->name, vbd->rated_sockpath);
+
+	parent = tapdisk_vbd_first_image(vbd);
+
+	if (!parent)
+		return -EINVAL;
+
+	valve = tapdisk_image_allocate(vbd->rated_sockpath,
+				       DISK_TYPE_VALVE,
+				       parent->flags);
+
+	if (!valve)
+		return -ENOMEM;
+
+	driver = tapdisk_driver_allocate(valve->type,
+					 valve->name,
+					 valve->flags);
+
+	if (!driver) {
+		err = -ENOMEM;
+		goto fail;
+	}
+
+	driver->info = parent->driver->info;
+	valve->driver = driver;
+
+	err = td_open(valve, &vbd->encryption);
+	if (err)
+		goto fail;
+
+	list_add(&valve->next, parent->next.prev);
+	tapdisk_vbd_debug(vbd);
+	return 0;
+
+fail:
+	tapdisk_image_free(valve);
+	return err;
+}
+
 int 
 tapdisk_vbd_open_vdi(td_vbd_t *vbd, const char *name, td_flag_t flags, int prt_devnum)
 {
@@ -623,9 +672,25 @@ tapdisk_vbd_open_vdi(td_vbd_t *vbd, const char *name, td_flag_t flags, int prt_d
 			goto fail;
 	}
 
+	if (td_flag_test(vbd->flags, TD_OPEN_RATED)) {
+		if (!vbd->rated_sockpath) {
+			err = -EINVAL;
+			goto fail;
+		}
+		err = tapdisk_vbd_add_rated(vbd);
+		if (err) {
+			EPRINTF("VBD %d Error adding valve, %s\n",
+				vbd->uuid, strerror(-err));
+			goto fail;
+		}
+	}
+
 	err = tapdisk_vbd_validate_chain(vbd);
-	if (err)
+	if (err) {
+		EPRINTF("VBD: failed to validate chain %s\n",
+			strerror(-err));
 		goto fail;
+	}
 
 	if (td_flag_test(vbd->flags, TD_OPEN_SECONDARY)) {
 		err = tapdisk_vbd_add_secondary(vbd);
@@ -637,13 +702,13 @@ tapdisk_vbd_open_vdi(td_vbd_t *vbd, const char *name, td_flag_t flags, int prt_d
 		}
 	}
 
-    err = vbd_stats_create(vbd);
-    if (err)
-        goto fail;
+	err = vbd_stats_create(vbd);
+	if (err)
+		goto fail;
 
-    err = td_metrics_vdi_start(vbd->tap->minor, &vbd->vdi_stats);
-    if (err)
-        goto fail;
+	err = td_metrics_vdi_start(vbd->tap->minor, &vbd->vdi_stats);
+	if (err)
+		goto fail;
 	if (tmp != vbd->name)
 		free(tmp);
 
@@ -764,6 +829,10 @@ tapdisk_vbd_shutdown(td_vbd_t *vbd)
 	tapdisk_vbd_detach(vbd);
 	tapdisk_server_remove_vbd(vbd);
 	free(vbd->name);
+	if (vbd->logpath)
+		free(vbd->logpath);
+	if (vbd->rated_sockpath)
+		free(vbd->rated_sockpath);
 	free(vbd);
 
 	return 0;
