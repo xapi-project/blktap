@@ -647,7 +647,7 @@ static int
 td_valve_validate_parent(td_driver_t *driver,
 			 td_driver_t *parent_driver, td_flag_t flags)
 {
-	return -EINVAL;
+	return 0;
 }
 
 static void
