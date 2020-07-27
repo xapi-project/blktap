@@ -111,11 +111,11 @@ int tap_ctl_allocate(int *minor, char **devname);
 int tap_ctl_free(const int minor);
 
 int tap_ctl_create(const char *params, char **devname, int flags, 
-		int prt_minor, char *secondary, int timeout, const char *slice, const char *logpath);
+		   int prt_minor, char *secondary, int timeout, const char *logpath);
 int tap_ctl_destroy(const int id, const int minor, int force,
 		    struct timeval *timeout);
 
-int tap_ctl_spawn(const char *slice);
+int tap_ctl_spawn(void);
 pid_t tap_ctl_get_pid(const int id);
 
 int tap_ctl_attach(const int id, const int minor);

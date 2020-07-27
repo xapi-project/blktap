@@ -43,7 +43,7 @@
 
 int
 tap_ctl_create(const char *params, char **devname, int flags, int parent_minor,
-		char *secondary, int timeout, const char *slice, const char *logpath)
+		char *secondary, int timeout, const char *logpath)
 {
 	int err, id, minor;
 
@@ -51,7 +51,7 @@ tap_ctl_create(const char *params, char **devname, int flags, int parent_minor,
 	if (err)
 		return err;
 
-	id = tap_ctl_spawn(slice);
+	id = tap_ctl_spawn();
 	if (id < 0) {
 		err = id;
 		goto destroy;
