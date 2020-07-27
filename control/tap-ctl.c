@@ -273,7 +273,6 @@ tap_cli_create_usage(FILE *stream)
 		"use secondary image (in mirror mode if no -s)] [-s "
 		"fail over to the secondary image on ENOSPC] "
 		"[-t request timeout in seconds] [-D no O_DIRECT] "
-		"[-c <cgroup-slice>] "
 		"[-C <path/to/logfile> insert log layer to track changed blocks]\n");
 }
 
@@ -282,7 +281,6 @@ tap_cli_create(int argc, char **argv)
 {
 	int c, err, flags, prt_minor, timeout;
 	char *args, *devname, *secondary;
-	char *slice = NULL;
 	char d_flag = 0;
 	char *logpath = NULL;
 
@@ -294,13 +292,10 @@ tap_cli_create(int argc, char **argv)
 	timeout   = 0;
 
 	optind = 0;
-	while ((c = getopt(argc, argv, "a:c:RDd:e:r2:st:C:h")) != -1) {
+	while ((c = getopt(argc, argv, "a:RDd:e:r2:st:C:h")) != -1) {
 		switch (c) {
 		case 'a':
 			args = optarg;
-			break;
-		case 'c':
-			slice = optarg;
 			break;
 		case 'd':
 			devname = optarg;
@@ -345,7 +340,7 @@ tap_cli_create(int argc, char **argv)
 		goto usage;
 
 	err = tap_ctl_create(args, &devname, flags, prt_minor, secondary,
-			timeout, slice, logpath);
+			timeout, logpath);
 	if (!err)
 		printf("%s\n", devname);
 
@@ -421,7 +416,7 @@ usage:
 static void
 tap_cli_spawn_usage(FILE *stream)
 {
-	fprintf(stream, "usage: spawn [ -c <cgroup-slice> ]\n");
+	fprintf(stream, "usage: spawn\n");
 }
 
 static int
@@ -429,14 +424,10 @@ tap_cli_spawn(int argc, char **argv)
 {
 	int c, tty;
 	pid_t pid;
-	char *slice = NULL;
 
 	optind = 0;
-	while ((c = getopt(argc, argv, "c:h")) != -1) {
+	while ((c = getopt(argc, argv, "h")) != -1) {
 		switch (c) {
-		case 'c':
-			slice = optarg;
-			break;
 		case '?':
 			goto usage;
 		case 'h':
@@ -445,7 +436,7 @@ tap_cli_spawn(int argc, char **argv)
 		}
 	}
 
-	pid = tap_ctl_spawn(slice);
+	pid = tap_ctl_spawn();
 	if (pid < 0)
 		return pid;
 
