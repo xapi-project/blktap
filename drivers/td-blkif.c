@@ -376,6 +376,11 @@ tapdisk_xenblkif_cb_stoppolling(event_id_t id __attribute__((unused)),
 
     ASSERT(blkif);
 
+    /* Unmask the event channel before checking the ring contents to ensure we
+       don't miss any events
+    */
+    tapdisk_server_mask_event(tapdisk_xenblkif_evtchn_event_id(blkif), 0);
+
     /* Process the ring one final time, setting the event counter */
     if (!tapdisk_xenio_ctx_process_ring(blkif, blkif->ctx, 1)) {
         /* If there were no new requests this time, then stop polling */
@@ -386,8 +391,9 @@ tapdisk_xenblkif_cb_stoppolling(event_id_t id __attribute__((unused)),
 
         /* Make the 'stop polling' event not fire again */
         tapdisk_xenblkif_unsched_stoppolling(blkif);
-
-	tapdisk_server_mask_event(tapdisk_xenblkif_evtchn_event_id(blkif), 0);
+    } else {
+	    /* Still in polling so re-mask the event channel */
+	    tapdisk_server_mask_event(tapdisk_xenblkif_evtchn_event_id(blkif), 1);
     }
 }
 
