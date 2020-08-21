@@ -144,6 +144,7 @@ struct vhd_context {
 	int                        oflags;
 	int                        is_block;
 
+	off64_t                    offset;
 	uint32_t                   spb;
 	uint32_t                   bm_secs;
 

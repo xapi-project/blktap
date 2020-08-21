@@ -2397,22 +2397,16 @@ vhd_atomic_pio(ssize_t (*f) (int, void *, size_t, off_t),
 }
 
 static ssize_t
-vhd_atomic_io(ssize_t (*f) (int, void *, size_t), int fd, void *_s, size_t n)
+vhd_atomic_io(ssize_t (*f) (int, void *, size_t), vhd_context_t *ctx, void *_s, size_t n)
 {
-	off64_t off;
 	ssize_t res;
 	ssize_t (*pf) (int, void *, size_t, off_t);
 
-	off = lseek64(fd, 0, SEEK_CUR);
-	if (off == (off_t)-1)
-		return -1;
-
 	pf = (f == read ? pread : vpwrite);
-	res = vhd_atomic_pio(pf, fd, _s, n, off);
+	res = vhd_atomic_pio(pf, ctx->fd, _s, n, ctx->offset);
 
 	if (res > 0)
-		if (lseek64(fd, off + res, SEEK_SET) == (off64_t)-1)
-			return -1;
+		ctx->offset += res;
 
 	return res;
 }
@@ -2429,13 +2423,15 @@ vhd_seek(vhd_context_t *ctx, off64_t offset, int whence)
 		return -errno;
 	}
 
+	ctx->offset = off;
+
 	return 0;
 }
 
 off64_t
 vhd_position(vhd_context_t *ctx)
 {
-	return lseek64(ctx->fd, 0, SEEK_CUR);
+	return ctx->offset;
 }
 
 int
@@ -2445,7 +2441,7 @@ vhd_read(vhd_context_t *ctx, void *buf, size_t size)
 
 	errno = 0;
 
-	ret = vhd_atomic_io(read, ctx->fd, buf, size);
+	ret = vhd_atomic_io(read, ctx, buf, size);
 	if (ret == size)
 		return 0;
 
@@ -2462,7 +2458,7 @@ vhd_write(vhd_context_t *ctx, void *buf, size_t size)
 
 	errno = 0;
 
-	ret = vhd_atomic_io(vwrite, ctx->fd, buf, size);
+	ret = vhd_atomic_io(vwrite, ctx, buf, size);
 	if (ret == size)
 		return 0;
 
