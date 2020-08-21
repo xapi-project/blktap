@@ -1861,7 +1861,7 @@ vhd_footer_offset_at_eof(vhd_context_t *ctx, off64_t *off)
 {
 	int err;
 	if ((err = vhd_seek(ctx, 0, SEEK_END)))
-		return errno;
+		return err;
 	*off = vhd_position(ctx) - sizeof(vhd_footer_t);
 	return 0;
 }
