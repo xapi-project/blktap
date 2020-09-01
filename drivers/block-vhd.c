@@ -1520,7 +1520,7 @@ schedule_bat_write(struct vhd_state *s)
 	for (i = 0; i < 128; i++)
 		BE32_OUT(&((uint32_t *)buf)[i]);
 
-	offset         = s->vhd.header.table_offset + (blk - (blk % 128)) * 4;
+	offset         = s->vhd.header.table_offset + ((uint64_t)blk - (blk % 128)) * 4;
 	req->treq.secs = 1;
 	req->treq.buf  = buf;
 	req->op        = VHD_OP_BAT_WRITE;
@@ -1546,7 +1546,7 @@ schedule_zero_bm_write(struct vhd_state *s,
 
 	offset         = vhd_sectors_to_bytes(lb_end);
 	req->op        = VHD_OP_ZERO_BM_WRITE;
-	req->treq.sec  = s->bat.pbw_blk * s->spb;
+	req->treq.sec  = (td_sector_t)s->bat.pbw_blk * s->spb;
 	req->treq.secs = (s->bat.pbw_offset - lb_end) + s->bm_secs;
 	req->treq.buf  = vhd_zeros(vhd_sectors_to_bytes(req->treq.secs));
 	req->next      = NULL;
@@ -1598,7 +1598,7 @@ schedule_redundant_bm_write(struct vhd_state *s, uint32_t blk)
 	offset -= s->padbm_size - (s->bm_secs << VHD_SECTOR_SHIFT);
 
 	req->op        = VHD_OP_REDUNDANT_BM_WRITE;
-	req->treq.sec  = blk * s->spb;
+	req->treq.sec  = (td_sector_t)blk * s->spb;
 	req->treq.secs = s->padbm_size >> VHD_SECTOR_SHIFT;
 	req->next      = NULL;
 
@@ -1810,7 +1810,7 @@ schedule_data_write(struct vhd_state *s, td_request_t treq, vhd_flag_t flags)
  make_request:
 	if (vhd_is_encrypted(s)) {
 		err = posix_memalign((void **)&crypto_buf, VHD_SECTOR_SIZE,
-				     treq.secs * VHD_SECTOR_SIZE);
+				     (size_t)treq.secs * VHD_SECTOR_SIZE);
 		if (err)
 			return -EBUSY;
 	}
@@ -1882,7 +1882,7 @@ schedule_bitmap_read(struct vhd_state *s, uint32_t blk)
 	req = &bm->req;
 	init_vhd_request(s, req);
 
-	req->treq.sec  = blk * s->spb;
+	req->treq.sec  = (td_sector_t)blk * s->spb;
 	req->treq.secs = s->bm_secs;
 	req->treq.buf  = bm->map;
 	req->treq.cb   = NULL;
@@ -1925,7 +1925,7 @@ schedule_bitmap_write(struct vhd_state *s, uint32_t blk)
 	req = &bm->req;
 	init_vhd_request(s, req);
 
-	req->treq.sec  = blk * s->spb;
+	req->treq.sec  = (td_sector_t)blk * s->spb;
 	req->treq.secs = s->bm_secs;
 	req->treq.buf  = bm->shadow;
 	req->treq.cb   = NULL;

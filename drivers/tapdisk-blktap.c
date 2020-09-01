@@ -505,7 +505,7 @@ tapdisk_blktap_map(td_blktap_t *tap)
 	void *vma;
 
 	tap->vma_size =
-		1 + (BLKTAP_RING_SIZE *
+		1 + ((size_t)BLKTAP_RING_SIZE *
 		     BLKTAP_SEGMENT_MAX * PAGE_SIZE);
 
 	prot  = PROT_READ | PROT_WRITE;

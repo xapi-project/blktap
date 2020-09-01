@@ -622,7 +622,7 @@ vhd_index_schedule_meta_read(vhd_index_t *index, uint32_t blk)
 
 	req            = &block->req;
 	req->index     = index;
-	req->treq.sec  = blk * index->vhdi.spb;
+	req->treq.sec  = (td_sector_t)blk * index->vhdi.spb;
 	req->treq.secs = block->table_size >> VHD_SECTOR_SHIFT;
 
 	td_prep_read(&req->tiocb, index->vhdi.fd,

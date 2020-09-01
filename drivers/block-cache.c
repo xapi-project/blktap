@@ -372,7 +372,7 @@ radix_tree_add_leaves(radix_tree_t *tree, char *buf,
 
 	for (i = 0; i < sectors; i++)
 		if (!radix_tree_add_leaf(tree, sector + i, 
-					 page, (i << RADIX_TREE_NODE_SHIFT)))
+					 page, ((off_t)i << RADIX_TREE_NODE_SHIFT)))
 			goto fail;
 
 	return 0;
@@ -627,7 +627,7 @@ block_cache_hit(block_cache_t *cache, td_request_t treq, char *iov[])
 		DBG("%s: block cache hit: sec 0x%08llx, hash: 0x%08llx\n",
 		    cache->name, treq.sec + i, block_cache_hash(cache, iov[i]));
 
-		off = i << RADIX_TREE_NODE_SHIFT;
+		off = (off_t)i << RADIX_TREE_NODE_SHIFT;
 		memcpy(treq.buf + off, iov[i], RADIX_TREE_NODE_SIZE);
 	}
 
@@ -657,7 +657,7 @@ block_cache_populate_cache(td_request_t clone, int err)
 	}
 
 	for (i = 0; i < breq->treq.secs; i++) {
-		off_t off = i << RADIX_TREE_NODE_SHIFT;
+		off_t off = (off_t)i << RADIX_TREE_NODE_SHIFT;
 		DBG("%s: populating sec 0x%08llx\n",
 		    cache->name, breq->treq.sec + i);
 		memcpy(breq->treq.buf + off,
@@ -686,7 +686,7 @@ block_cache_miss(block_cache_t *cache, td_request_t treq)
 
 	clone = treq;
 	tree  = &cache->tree;
-	size  = treq.secs << RADIX_TREE_NODE_SHIFT;
+	size  = (size_t)treq.secs << RADIX_TREE_NODE_SHIFT;
 
 	cache->stats.misses += treq.secs;
 
