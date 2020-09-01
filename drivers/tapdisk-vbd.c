@@ -1268,7 +1268,7 @@ __tapdisk_vbd_reissue_td_request(td_vbd_t *vbd,
 	vreq->submitting++;
 
 	if (tapdisk_vbd_is_last_image(vbd, image)) {
-		memset(treq.buf, 0, treq.secs << SECTOR_SHIFT);
+		memset(treq.buf, 0, (size_t)treq.secs << SECTOR_SHIFT);
 		td_complete_request(treq, 0);
 		goto done;
 	}
@@ -1296,7 +1296,7 @@ __tapdisk_vbd_reissue_td_request(td_vbd_t *vbd,
 		} else
 			treq.secs   = 0;
 
-		memset(clone.buf, 0, clone.secs << SECTOR_SHIFT);
+		memset(clone.buf, 0, (size_t)clone.secs << SECTOR_SHIFT);
 		td_complete_request(clone, 0);
 
 		if (!treq.secs)

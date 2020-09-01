@@ -137,7 +137,7 @@ static void valve_kill(td_valve_t *);
 	__cond;						\
 })
 
-#define TREQ_SIZE(_treq) ((unsigned int)(_treq.secs) << 9)
+#define TREQ_SIZE(_treq) ((unsigned long)(_treq.secs) << 9)
 
 static td_valve_request_t *
 valve_alloc_request(td_valve_t *valve)

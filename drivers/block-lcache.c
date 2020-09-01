@@ -295,7 +295,7 @@ static void
 lcache_complete_read(td_lcache_t *cache, td_lcache_req_t *req)
 {
 	if (likely(!req->err)) {
-		size_t sz = req->treq.secs << SECTOR_SHIFT;
+		size_t sz = (size_t)req->treq.secs << SECTOR_SHIFT;
 		memcpy(req->treq.buf, req->buf, sz);
 	}
 

@@ -121,7 +121,7 @@ td_xenblkif_bufcache_free(struct td_xenblkif * const blkif)
 
     while (blkif->n_reqs_bufcache_free > TD_REQS_BUFCACHE_MIN){
         munmap(blkif->reqs_bufcache[--blkif->n_reqs_bufcache_free],
-               BLKIF_MMAX_SEGMENTS_PER_REQUEST << PAGE_SHIFT);
+               (size_t)BLKIF_MMAX_SEGMENTS_PER_REQUEST << PAGE_SHIFT);
     }
 }
 
@@ -138,7 +138,7 @@ td_xenblkif_bufcache_get(struct td_xenblkif * const blkif)
     ASSERT(blkif);
 
     if (!blkif->n_reqs_bufcache_free) {
-        buf = mmap(NULL, BLKIF_MMAX_SEGMENTS_PER_REQUEST << PAGE_SHIFT,
+	    buf = mmap(NULL, (size_t)BLKIF_MMAX_SEGMENTS_PER_REQUEST << PAGE_SHIFT,
                    PROT_READ | PROT_WRITE, MAP_SHARED | MAP_ANONYMOUS, -1, 0);
         if (unlikely(buf == MAP_FAILED))
             buf = NULL;

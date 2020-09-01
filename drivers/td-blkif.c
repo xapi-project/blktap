@@ -531,7 +531,7 @@ tapdisk_xenblkif_connect(domid_t domid, int devid, const grant_ref_t * grefs,
     /*
      * Size of the ring, in bytes.
      */
-    sz = PAGE_SIZE << order;
+    sz = (size_t)PAGE_SIZE << order;
 
     /*
      * Initialize the mapped address into the shared ring.
