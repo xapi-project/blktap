@@ -45,8 +45,10 @@ main(int argc, char *argv[])
 
 	ret = 0;
 
-	if (argc < 2)
+	if (argc < 2) {
 		help();
+		exit(EINVAL);
+	}
 
 	cargc = argc - 1;
 	cmd   = get_command(argv[1]);
