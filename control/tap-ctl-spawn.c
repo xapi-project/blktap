@@ -47,7 +47,6 @@ static pid_t
 __tap_ctl_spawn(int *readfd)
 {
 	int child, channel[2];
-	char *tapdisk;
 
 	if (pipe(channel)) {
 		EPRINTF("pipe failed: %d\n", errno);
@@ -78,21 +77,8 @@ __tap_ctl_spawn(int *readfd)
 	close(channel[0]);
 	close(channel[1]);
 
-	tapdisk = getenv("TAPDISK");
-	if (!tapdisk)
-		tapdisk = getenv("TAPDISK2");
-
-	if (tapdisk) {
-		execlp(tapdisk, tapdisk, NULL);
-		exit(errno);
-	}
-
 	execl(TAPDISK_EXECDIR "/" TAPDISK_EXEC, TAPDISK_EXEC,
 	      NULL);
-
-	if (errno == ENOENT)
-		execl(TAPDISK_BUILDDIR "/" TAPDISK_EXEC, TAPDISK_EXEC,
-		      NULL);
 
 	exit(errno);
 }
