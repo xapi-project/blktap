@@ -116,11 +116,6 @@ int vasprintf(char **strp, const char *fmt, va_list ap)
     }
 }
 
-int *__errno_location()
-{
-    return __errno_location;
-}
-
 int posix_memalign (void **__memptr, size_t __alignment, size_t __size)
 {
     *__memptr = __coverity_alloc__(__size);
