@@ -360,6 +360,7 @@ int vhd_write_header_at(vhd_context_t *, vhd_header_t *, off64_t);
 int vhd_write_bat(vhd_context_t *, vhd_bat_t *);
 int vhd_write_batmap(vhd_context_t *, vhd_batmap_t *);
 int vhd_write_bitmap(vhd_context_t *, uint32_t block, char *bitmap);
+int vhd_write_block(vhd_context_t *, uint32_t block, char *data);
 
 int vhd_io_read(vhd_context_t *, char *, uint64_t, uint32_t);
 int vhd_io_write(vhd_context_t *, char *, uint64_t, uint32_t);

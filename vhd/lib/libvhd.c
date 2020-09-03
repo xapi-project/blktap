@@ -2298,6 +2298,45 @@ vhd_write_bitmap(vhd_context_t *ctx, uint32_t block, char *bitmap)
 	return 0;
 }
 
+int
+vhd_write_block(vhd_context_t *ctx, uint32_t block, char *data)
+{
+	int err;
+	off64_t off;
+	size_t size;
+	uint64_t blk;
+
+	if (!vhd_type_dynamic(ctx))
+		return -EINVAL;
+
+	err = vhd_validate_bat(&ctx->bat);
+	if (err)
+		return err;
+
+	if (block >= ctx->bat.entries)
+		return -ERANGE;
+
+	if ((unsigned long)data & ~(VHD_SECTOR_SIZE -1))
+		return -EINVAL;
+
+	blk  = ctx->bat.bat[block];
+	if (blk == DD_BLK_UNUSED)
+		return -EINVAL;
+
+	off  = vhd_sectors_to_bytes(blk + ctx->bm_secs);
+	size = vhd_sectors_to_bytes(ctx->spb);
+
+	err  = vhd_seek(ctx, off, SEEK_SET);
+	if (err)
+		return err;
+
+	err  = vhd_write(ctx, data, size);
+	if (err)
+		return err;
+
+	return 0;
+}
+
 static inline int
 namedup(char **dup, const char *name)
 {
