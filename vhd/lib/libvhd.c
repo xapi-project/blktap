@@ -2717,7 +2717,8 @@ vhd_open(vhd_context_t *ctx, const char *file, int flags)
 		struct stat stats;
 		err = stat(file, &stats);
 		if (err == -1)
-			return -errno;
+			/* Coverity seems not understand that stat sets errno. */
+			return errno ? -errno : -EINVAL;
 
 		/* If a DRBD path is used, we try to use the real physical device. */
 		/* Why? Because the device can be locked by any program. */
@@ -2726,7 +2727,7 @@ vhd_open(vhd_context_t *ctx, const char *file, int flags)
 		dev_t mapper_dev;
 		if (drbd_is_up_to_date(&stats) && drbd_to_mapper(&stats, &mapper_dev) == 0) {
 			if (snprintf(bypass_file, sizeof bypass_file, "/dev/block/%u:%u", major(mapper_dev), minor(mapper_dev)) == -1)
-				return -errno;
+				return -EINVAL;
 		}
 	}
 
