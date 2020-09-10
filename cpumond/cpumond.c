@@ -38,6 +38,7 @@
 #include <fcntl.h>
 #include <unistd.h>
 #include <errno.h>
+#include "compiler.h"
 #include "cpumond.h"
 
 #ifndef DEBUG
@@ -169,6 +170,11 @@ int cpumond_loop(cpumond_entry_t *cpumond_entry){
     while(run){
         if (statread(statfd, &total2, &idle2) != 0)
             goto out;
+
+	if (unlikely(total2 == total1)) {
+		sleep(1);
+		continue;
+	}
 
         cpumond_entry->mm->curr = 100.0 *
             ((total2-total1)-(idle2-idle1))/(total2-total1);
