@@ -62,7 +62,8 @@ normalize_path(const char *path, size_t path_len)
 			return NULL;
 
 		res_len = strlen(wd);
-		if (!(normalized_path = realloc(wd, res_len + path_len + 1))) {
+		/* Add 2 to accomodate the / and the \0 */
+		if (!(normalized_path = realloc(wd, res_len + path_len + 2))) {
 			free(wd);
 			return NULL;
 		}
