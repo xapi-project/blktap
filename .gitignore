@@ -45,6 +45,7 @@ Makefile.in
 /mockatests/cbt/test-cbt-util
 /mockatests/control/test-control
 /mockatests/drivers/test-drivers
+/mockatests/vhd/test-vhd-util
 /vhd/vhd-index
 /vhd/vhd-update
 /vhd/vhd-util

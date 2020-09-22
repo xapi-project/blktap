@@ -61,4 +61,11 @@ static const struct CMUnitTest vhd_snapshot_tests[] = {
 	cmocka_unit_test_setup(test_vhd_util_snapshot_einval_from_vhd_set_keyhash, setup)
 };
 
+/* 'canonpath' tests */
+void test_vhd_util_canon_path_relative_success(void **state);
+
+static const struct CMUnitTest canonpath_tests[] = {
+	cmocka_unit_test(test_vhd_util_canon_path_relative_success)
+};
+
 #endif /* __TEST_SUITES_H__ */

@@ -42,6 +42,9 @@ static int	*open_return_errs = NULL;
 static int	n_return_errs = 0;
 static int	open_call_count = 0;
 
+static bool     mock_malloc = false;
+static bool     use_real_allocator = false;
+
 void reset_flags()
 {
 	close_count = 0;
@@ -65,11 +68,6 @@ void set_open_errors(int nerrs, int* errs)
 void set_cookie()
 {
 	cookie = 1;
-}
-
-void __wrap_free(void* in)
-{
-	check_expected(in);
 }
 
 char *__wrap_canonpath(const char *path, char *resolved_path)
@@ -115,3 +113,71 @@ int __wrap_vhd_set_keyhash(vhd_context_t *ctx, struct vhd_keyhash* hash)
 {
 	return (int)mock();
 }
+
+void *
+__real_malloc(size_t size);
+
+void *
+__wrap_malloc(size_t size)
+{
+	if (!use_real_allocator) {
+		bool succeed = true;
+		if (mock_malloc) {
+			succeed = (bool) mock();
+		}
+		if (succeed) {
+			void * result = test_malloc(size);
+			/*fprintf(stderr, "Allocated block of %zu bytes at %p\n", size, result);*/
+			return result;
+		}
+		return NULL;
+	}
+	return __real_malloc(size);
+}
+
+void *
+__wrap_realloc(void *ptr, size_t size)
+{
+	bool succeed = true;
+	if (mock_malloc) {
+		succeed = (bool) mock();
+	}
+	if (succeed) {
+		void * result = test_realloc(ptr, size);
+		/*fprintf(stderr, "Reallocated %p to %zu bytes at %p\n", ptr, size, result);*/
+		return result;
+	}
+	return NULL;
+}
+
+
+void __real_free(void *ptr);
+
+void
+__wrap_free(void *ptr)
+{
+	if (!use_real_allocator) {
+		/*fprintf(stderr, "Freeing block at %p\n", ptr);*/
+		test_free(ptr);
+	} else {
+		check_expected(ptr);
+		__real_free(ptr);
+	}
+}
+
+char *__wrap_get_current_dir_name(void)
+{
+	return (char *)mock();
+}
+
+char *__wrap_realpath(const char *path, char *resolved_path)
+{
+	return (char *)mock();
+}
+
+
+void set_use_real_allocator(bool val)
+{
+	use_real_allocator = val;
+}
+

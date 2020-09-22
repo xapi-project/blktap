@@ -37,5 +37,6 @@ void set_cookie();
 void set_open_errors(int, int*);
 void enable_control_mocks();
 void disable_control_mocks();
+void set_use_real_allocator(bool val);
 
 #endif /* __VHD_WRAPPERS_H__ */
