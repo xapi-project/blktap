@@ -70,7 +70,7 @@ void test_vhd_util_snapshot_enospc_from_vhd_snapshot(void **state)
 {
 	will_return(__wrap_canonpath, "testing");
 	will_return(__wrap_vhd_snapshot, ENOSPC);
-	expect_any(__wrap_free, in);
+	expect_any(__wrap_free, ptr);
 	int res = vhd_util_snapshot(RAW_PRT_ARGS_SIZE, raw_prt_args);
 	assert_int_equal(get_close_count(), 0);
 	assert_int_equal(res, ENOSPC);
@@ -81,7 +81,7 @@ void test_vhd_util_snapshot_einval_from_vhd_open(void **state)
 	will_return(__wrap_canonpath, "testing");
 	will_return(__wrap_vhd_snapshot, 0);
 	will_return(__wrap_vhd_open, EINVAL);
-	expect_any(__wrap_free, in);
+	expect_any(__wrap_free, ptr);
 	int res = vhd_util_snapshot(ARGS_SIZE, args);
 	assert_int_equal(get_close_count(), 0);
 	assert_int_equal(res, EINVAL);
@@ -95,7 +95,7 @@ void test_vhd_util_snapshot_einval_from_vhd_get_keyhash(void **state)
 	will_return(__wrap_vhd_get_keyhash, EINVAL);
 	will_return(__wrap_vhd_close, 0);
 	expect_any(__wrap_vhd_close, ctx);
-	expect_any(__wrap_free, in);
+	expect_any(__wrap_free, ptr);
 	int res = vhd_util_snapshot(ARGS_SIZE, args);
 	assert_int_equal(get_close_count(), 1);
 	assert_int_equal(res, EINVAL);
@@ -111,7 +111,7 @@ void test_vhd_util_snapshot_einval_from_vhd_open_cookie(void **state)
 	expect_any(__wrap_vhd_close, ctx);
 	int err[] = {0, EINVAL};
 	set_open_errors(2, err);
-	expect_any(__wrap_free, in);
+	expect_any(__wrap_free, ptr);
 	int res = vhd_util_snapshot(ARGS_SIZE, args);
 	assert_int_equal(get_close_count(), 1);
 	assert_int_equal(res, EINVAL);
@@ -127,7 +127,7 @@ void test_vhd_util_snapshot_einval_from_vhd_set_keyhash(void **state)
 	will_return_always(__wrap_vhd_close, 0);
 	will_return(__wrap_vhd_set_keyhash, EINVAL);
 	expect_any_count(__wrap_vhd_close, ctx, 2);
-	expect_any(__wrap_free, in);
+	expect_any(__wrap_free, ptr);
 	int res = vhd_util_snapshot(ARGS_SIZE, args);
 	assert_int_equal(get_close_count(), 2);
 	assert_int_equal(res, EINVAL);
