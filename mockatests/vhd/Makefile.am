@@ -9,7 +9,7 @@ AM_CPPFLAGS = -I$(top_srcdir)/include -I$(top_srcdir)/cbt -I../include
 check_PROGRAMS = test-vhd-util
 TESTS = test-vhd-util
 
-test_vhd_util_SOURCES = test-vhd-util.c test-vhd-util-snapshot.c test-canonpath.c vhd-wrappers.c
+test_vhd_util_SOURCES = test-vhd-util.c test-vhd-util-snapshot.c test-canonpath.c test-vhd-util-utilities.c vhd-wrappers.c
 test_vhd_util_LDFLAGS = $(top_srcdir)/vhd/lib/libvhd.la -lcmocka -luuid
 test_vhd_util_LDFLAGS += -static-libtool-libs
 test_vhd_util_LDFLAGS += -Wl,--wrap=free,--wrap=malloc,--wrap=realloc

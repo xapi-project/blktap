@@ -52,7 +52,8 @@ int main(void)
 {
 	int result =
 		cmocka_run_group_tests_name("Snapshot tests", vhd_snapshot_tests, setupRealAllocator, teardownRealAllocator) +
-		cmocka_run_group_tests_name("Canonpath tests", canonpath_tests, NULL, NULL);
+		cmocka_run_group_tests_name("Canonpath tests", canonpath_tests, NULL, NULL) +
+		cmocka_run_group_tests_name("Utility tests", utility_tests, NULL, NULL);
 
 	return result;
 }
