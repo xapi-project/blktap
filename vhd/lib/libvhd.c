@@ -468,6 +468,12 @@ vhd_checksum_header(vhd_header_t *header)
 	return ~checksum;
 }
 
+bool
+isPowerOf2(uint32_t value)
+{
+	return value && ((value & (value - 1)) == 0);
+}
+
 int
 vhd_validate_header(vhd_header_t *header)
 {
@@ -490,6 +496,13 @@ vhd_validate_header(vhd_header_t *header)
 	if (header->data_offset != 0xFFFFFFFFFFFFFFFFULL) {
 		VHDLOG("invalid header data_offset 0x%016"PRIx64"\n",
 		       header->data_offset);
+		return -EINVAL;
+	}
+
+	if (header->block_size > VHD_BLOCK_SIZE ||
+	    !isPowerOf2(header->block_size)) {
+		VHDLOG("invalid header blocksize 0x%u\n",
+			header->block_size);
 		return -EINVAL;
 	}
 

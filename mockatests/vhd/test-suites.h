@@ -68,4 +68,21 @@ static const struct CMUnitTest canonpath_tests[] = {
 	cmocka_unit_test(test_vhd_util_canon_path_relative_success)
 };
 
+/* Utility function test */
+void test_vhd_validate_header_bad_cookie(void **state);
+void test_vhd_validate_header_bad_version(void **state);
+void test_vhd_validate_header_bad_offset(void **state);
+void test_vhd_validate_header_bad_blocksize(void **state);
+void test_vhd_validate_header_bad_checksum(void **state);
+void test_vhd_validate_header_success(void **state);
+
+static const struct CMUnitTest utility_tests[] = {
+	cmocka_unit_test(test_vhd_validate_header_bad_cookie),
+	cmocka_unit_test(test_vhd_validate_header_bad_version),
+	cmocka_unit_test(test_vhd_validate_header_bad_offset),
+	cmocka_unit_test(test_vhd_validate_header_bad_blocksize),
+	cmocka_unit_test(test_vhd_validate_header_bad_checksum),
+	cmocka_unit_test(test_vhd_validate_header_success)
+};
+
 #endif /* __TEST_SUITES_H__ */
