@@ -780,6 +780,13 @@ tapdisk_control_open_image(struct tapdisk_ctl_conn *conn,
 			err = -EIO;
 			goto out;
 		}
+
+		if (key_size == 0 || key_size > 128) {
+			EPRINTF("Invalid encryption key size %d\n", key_size * 8);
+			err = -EINVAL;
+			goto out;
+		}
+
 		DPRINTF("Encryption key for VHD is %d bits\n", key_size * 8);
 		encryption_key = malloc(key_size);
 		if (!encryption_key) {
