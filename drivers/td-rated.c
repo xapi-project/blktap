@@ -304,7 +304,7 @@ fail:
 static int
 sysctl_scanf(const char *name, const char *fmt, ...)
 {
-	va_list(ap);
+	va_list ap;
 	int rv;
 
 	va_start(ap, fmt);
