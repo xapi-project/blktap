@@ -1095,7 +1095,7 @@ tapdisk_control_stats(struct tapdisk_ctl_conn *conn,
 {
 	td_stats_t _st, *st = &_st;
 	td_vbd_t *vbd;
-	size_t rv;
+	ssize_t rv;
 	void *buf;
 	int new_size;
 
@@ -1133,6 +1133,9 @@ tapdisk_control_stats(struct tapdisk_ctl_conn *conn,
 	}
 
 	rv = tapdisk_stats_length(st);
+	if (rv < 0) {
+		goto out;
+	}
 
 	if (rv > conn->out.bufsz - sizeof(*response)) {
 		ASSERT(conn->out.prod == conn->out.buf);
