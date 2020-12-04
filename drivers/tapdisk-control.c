@@ -1098,7 +1098,7 @@ tapdisk_control_stats(struct tapdisk_ctl_conn *conn,
 	buf = malloc(TD_CTL_SEND_BUFSZ);
 	if (!buf) {
 		rv = -ENOMEM;
-		goto out;
+		return rv;
 	}
 
 	tapdisk_stats_init(st, buf, TD_CTL_SEND_BUFSZ);
