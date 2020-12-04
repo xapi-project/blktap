@@ -1343,6 +1343,10 @@ struct tapdisk_control_info message_infos[] = {
 		.handler = tapdisk_control_stats,
 		.flags   = TAPDISK_MSG_REENTER,
 	},
+	[TAPDISK_MESSAGE_EXIT] = {
+		.handler = NULL,
+		.flags = 0
+	}
 };
 
 static int
