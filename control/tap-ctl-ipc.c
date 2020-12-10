@@ -120,7 +120,7 @@ tap_ctl_write_message(int fd, tapdisk_message_t *message, struct timeval *timeou
 		if (ret == -1)
 			break;
 		else if (FD_ISSET(fd, &writefds)) {
-			ret = write(fd, message + offset, len - offset);
+			ret = write(fd, (uint8_t*)message + offset, len - offset);
 			if (ret <= 0)
 				break;
 			offset += ret;
