@@ -837,12 +837,12 @@ tapdisk_nbdserver_listen_unix(td_nbdserver_t *server)
 {
 	size_t len = 0;
 	int err = 0;
-
+	int new_fd;
 	ASSERT(server);
 	ASSERT(server->unix_listening_fd == -1);
 
-	server->unix_listening_fd = socket(AF_UNIX, SOCK_STREAM, 0);
-	if (server->unix_listening_fd == -1) {
+	new_fd = socket(AF_UNIX, SOCK_STREAM, 0);
+	if (new_fd == -1) {
 		err = -errno;
 		ERR("failed to create UNIX domain socket: %s\n", strerror(-err));
 		goto out;
@@ -866,7 +866,7 @@ tapdisk_nbdserver_listen_unix(td_nbdserver_t *server)
 		goto out;
 	}
 	len = strlen(server->local.sun_path) + sizeof(server->local.sun_family);
-	err = bind(server->unix_listening_fd, (struct sockaddr *)&server->local,
+	err = bind(new_fd, (struct sockaddr *)&server->local,
 			len);
 	if (err == -1) {
 		err = -errno;
@@ -874,7 +874,7 @@ tapdisk_nbdserver_listen_unix(td_nbdserver_t *server)
 		goto out;
 	}
 
-	err = listen(server->unix_listening_fd, 10);
+	err = listen(new_fd, 10);
 	if (err == -1) {
 		err = -errno;
 		ERR("failed to listen: %s\n", strerror(-err));
@@ -891,9 +891,10 @@ tapdisk_nbdserver_listen_unix(td_nbdserver_t *server)
 	INFO("Successfully started NBD server on %s\n", server->sockpath);
 
 out:
-	if (err && (server->unix_listening_fd != -1)) {
-		close(server->unix_listening_fd);
-		server->unix_listening_fd = -1;
+	if (err && (new_fd != -1)) {
+		close(new_fd);
+	} else {
+		server->unix_listening_fd = new_fd;
 	}
 	return err;
 }
