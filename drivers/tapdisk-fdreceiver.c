@@ -139,6 +139,11 @@ td_fdreceiver_accept_fd(event_id_t id, char mode, void *data)
 	new_fd = accept(fdreceiver->fd,
 			(struct sockaddr *)&their_addr, &sin_size);
 
+	if (new_fd == -1) {
+		ERROR("td_receiver_accept_fd: failed to accept (errno=%d)", errno);
+		return;
+	}
+
 	if (fdreceiver->client_fd != -1) {
 		ERROR("td_fdreceiver_accept_fd: can only cope with one connec"
 				"tion at once to the unix domain socket!");
@@ -146,11 +151,9 @@ td_fdreceiver_accept_fd(event_id_t id, char mode, void *data)
 		return;
 	}
 
-	fdreceiver->client_fd = new_fd;
-
 	fdreceiver->client_event_id =
 		tapdisk_server_register_event(SCHEDULER_POLL_READ_FD,
-				fdreceiver->client_fd, TV_ZERO,
+				new_fd, TV_ZERO,
 				td_fdreceiver_recv_fd,
 				fdreceiver);
 
@@ -158,7 +161,8 @@ td_fdreceiver_accept_fd(event_id_t id, char mode, void *data)
 		ERROR("td_fdreceiver_accept_fd: failed to register event "
 				"(errno=%d)", errno);
 		close(new_fd);
-		fdreceiver->client_fd = -1;
+	} else {
+		fdreceiver->client_fd = new_fd;
 	}
 }
 
