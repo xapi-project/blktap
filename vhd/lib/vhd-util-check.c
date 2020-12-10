@@ -614,7 +614,8 @@ check_backup:
 		    !strncmp(backup.crtr_app, "tap", 3) &&
 		    (backup.crtr_ver == VHD_VERSION(0, 1) ||
 		     backup.crtr_ver == VHD_VERSION(1, 1))) {
-			char cmp, tmp = backup.hidden;
+			int cmp;
+			char tmp = backup.hidden;
 			backup.hidden = 0;
 			cmp = memcmp(&primary, &backup, sizeof(primary));
 			backup.hidden = tmp;
