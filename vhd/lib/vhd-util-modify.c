@@ -81,7 +81,6 @@ vhd_util_modify(int argc, char **argv)
 	int err, c, size, parent, parent_raw, kill_data;
 	off64_t newsize = 0;
 	char *newparent = NULL;
-	char *cpath, __cpath[PATH_MAX];
 
 	name       = NULL;
 	size       = 0;
@@ -151,11 +150,10 @@ vhd_util_modify(int argc, char **argv)
 
 	if (parent) {
 		TEST_FAIL_AT(FAIL_REPARENT_BEGIN);
-		cpath = canonpath(newparent, __cpath);
-		err = vhd_change_parent(&vhd, cpath, parent_raw);
+		err = vhd_change_parent(&vhd, newparent, parent_raw);
 		if (err) {
 			printf("failed to set parent to '%s': %d\n",
-					cpath, err);
+					newparent, err);
 			goto done;
 		}
 		TEST_FAIL_AT(FAIL_REPARENT_END);
