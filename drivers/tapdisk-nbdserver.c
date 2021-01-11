@@ -1435,7 +1435,10 @@ tapdisk_nbdserver_unpause(td_nbdserver_t *server)
 
 	list_for_each_entry_safe(pos, q, &server->clients, clientlist){
 		if (pos->paused == 1) {
-			tapdisk_nbdserver_enable_client(pos);
+			if((err = tapdisk_nbdserver_enable_client(pos)) < 0) {
+				ERR("Failed to enable nbd client after pause");
+				return err;
+			}
 			pos->paused = 0;
 		}
 	}
