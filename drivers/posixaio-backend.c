@@ -94,7 +94,7 @@ enum {
 static inline void
 queue_tiocb(posix_aio_queue *queue, struct tiocb *tiocb)
 {
-	queue->aiocbList[queue->queued] = (struct aiocb*)tiocb->iocb;
+	queue->aiocbList[queue->queued] = &(tiocb->uiocb.aio);
 	queue->tiocbList[queue->queued] = tiocb;
 	queue->queued++;
 }
@@ -201,7 +201,7 @@ complete_tiocb(posix_aio_queue *queue, struct tiocb *tiocb)
 {
 	int err;
 	unsigned long actual_res;
-	struct aiocb *aiocb = tiocb->iocb;
+	struct aiocb *aiocb = &(tiocb->uiocb.aio);
 	unsigned long res = aiocb->aio_nbytes;
 
 	/*TO DO THIS IS WRONG IN NORMAL QUEUE*/
@@ -213,7 +213,6 @@ complete_tiocb(posix_aio_queue *queue, struct tiocb *tiocb)
 		err = -EIO;
 
 	tiocb->cb(tiocb->arg, tiocb, err);
-	free(tiocb->iocb);
 }
 
 struct lio {
@@ -302,7 +301,7 @@ posixaio_backend_lio_event(event_id_t id, char mode, void *private)
 	list_init(&list);
 
 	while((tiocb = pop_pending_tiocb(queue))) {
-		if ( EINPROGRESS != aio_error(tiocb->iocb)) {
+		if ( EINPROGRESS != aio_error(&(tiocb->uiocb.aio))) {
                 	complete_tiocb(queue, tiocb);
 		} else {
 			push_list(&list, tiocb);
@@ -486,13 +485,13 @@ posixaio_backend_init_queue(tqueue *pqueue, int size,
 		goto fail;
 	}
 
-	queue->aiocbList = calloc(size, sizeof(struct aiocb));
+	queue->aiocbList = calloc(size, sizeof(struct aiocb*));
 	if (!queue->aiocbList) {
 		WARN("could not alloc aiocblist\n");
 		err = -errno;
 		goto fail;
 	}
-	queue->tiocbList = calloc(size, sizeof(struct tiocb));
+	queue->tiocbList = calloc(size, sizeof(struct tiocb*));
 	if (!queue->tiocbList) {
 		WARN("could not alloc tiocblist\n");
 		err = -errno;
@@ -521,7 +520,7 @@ posixaio_backend_debug_queue(tqueue q)
 	if (tiocb) {
 		WARN("deferred:\n");
 		for (; tiocb != NULL; tiocb = tiocb->next) {
-			struct aiocb *aiocb = (struct aiocb*)tiocb->iocb;
+			struct aiocb *aiocb = &(tiocb->uiocb.aio);
 			char* op = aiocb->aio_lio_opcode == LIO_WRITE ? "read" : "write";
 			WARN("%s of %lu bytes at %jd\n",
 			     op, aiocb->aio_nbytes,			     
@@ -534,8 +533,7 @@ void
 posixaio_backend_prep_tiocb(struct tiocb *tiocb, int fd, int rw, char *buf, size_t size,
 		   long long offset, td_queue_callback_t cb, void *arg)
 {
-	tiocb->iocb = malloc(sizeof(struct aiocb));
-	struct aiocb *aiocb = tiocb->iocb;
+	struct aiocb *aiocb = &(tiocb->uiocb.aio);
 
 	aiocb->aio_fildes = fd;
 	aiocb->aio_buf = buf; 
