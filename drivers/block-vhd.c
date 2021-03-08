@@ -1905,7 +1905,7 @@ schedule_bitmap_read(struct vhd_state *s, uint32_t blk)
 	return 0;
 }
 
-static void
+static bool
 schedule_bitmap_write(struct vhd_state *s, uint32_t blk)
 {
 	uint64_t offset;
@@ -1919,11 +1919,16 @@ schedule_bitmap_write(struct vhd_state *s, uint32_t blk)
 	ASSERT(bm && bitmap_valid(bm) &&
 	       !test_vhd_flag(bm->status, VHD_FLAG_BM_WRITE_PENDING));
 
+	if (memcmp(bm->map, bm->shadow, vhd_sectors_to_bytes(s->bm_secs)) == 0) {
+		/* Bitmap unchanged */
+		return true;
+	}
+
 	if (offset == DD_BLK_UNUSED) {
 		ASSERT(bat_locked(s) && s->bat.pbw_blk == blk);
 		offset = s->bat.pbw_offset;
 	}
-	
+
 	offset = vhd_sectors_to_bytes(offset);
 
 	req = &bm->req;
@@ -1944,6 +1949,7 @@ schedule_bitmap_write(struct vhd_state *s, uint32_t blk)
 	DBG(TLOG_DBG, "%s: blk: 0x%04x, sec: 0x%08"PRIx64", nr_secs: 0x%04x, "
 	    "offset: 0x%"PRIx64"\n", s->vhd.file, blk, req->treq.sec,
 	    req->treq.secs, offset);
+	return false;
 }
 
 /* 
@@ -2362,15 +2368,18 @@ static void
 finish_data_transaction(struct vhd_state *s, struct vhd_bitmap *bm)
 {
 	struct vhd_transaction *tx = &bm->tx;
+	bool finish_transaction = true;
 
 	DBG(TLOG_DBG, "blk: 0x%04x\n", bm->blk);
 
 	tx->closed = 1;
 
 	if (!tx->error)
-		return schedule_bitmap_write(s, bm->blk);
+		finish_transaction = schedule_bitmap_write(s, bm->blk);
 
-	return finish_bitmap_transaction(s, bm, 0);
+	if (finish_transaction) {
+		return finish_bitmap_transaction(s, bm, 0);
+	}
 }
 
 static void
