@@ -110,7 +110,7 @@ struct tio {
 static inline void
 queue_tiocb(libaio_queue *queue, struct tiocb *tiocb)
 {
-	struct iocb *iocb = (struct iocb*)tiocb->iocb;
+	struct iocb *iocb = &(tiocb->uiocb.io);
 
 	if (queue->queued) {
 		struct tiocb *prev = (struct tiocb *)
@@ -172,7 +172,7 @@ static void
 complete_tiocb(libaio_queue *queue, struct tiocb *tiocb, unsigned long res)
 {
 	int err;
-	struct iocb *iocb = (struct iocb*)tiocb->iocb;
+	struct iocb *iocb = &(tiocb->uiocb.io);
 
 	if (res == iocb_nbytes(iocb))
 		err = 0;
@@ -182,7 +182,6 @@ complete_tiocb(libaio_queue *queue, struct tiocb *tiocb, unsigned long res)
 		err = -EIO;
 
 	tiocb->cb(tiocb->arg, tiocb, err);
-	free(iocb);
 }
 
 static int
@@ -634,7 +633,7 @@ libaio_backend_debug_queue(tqueue q)
 	if (tiocb) {
 		WARN("deferred:\n");
 		for (; tiocb != NULL; tiocb = tiocb->next) {
-			struct iocb *io = (struct iocb*)tiocb->iocb;
+			struct iocb *io = &(tiocb->uiocb.io);
 			WARN("%s of %lu bytes at %lld\n",
 			     iocb_opcode(io),
 			     iocb_nbytes(io), iocb_offset(io));
@@ -646,8 +645,7 @@ static void
 libaio_backend_prep_tiocb(struct tiocb *tiocb, int fd, int rw, char *buf, size_t size,
 	long long offset, td_queue_callback_t cb, void *arg)
 {
-	tiocb->iocb = malloc(sizeof(struct iocb));
-	struct iocb *iocb = (struct iocb*)tiocb->iocb;
+	struct iocb *iocb = &(tiocb->uiocb.io);
 
 	if (rw)
 		io_prep_pwrite(iocb, fd, buf, size, offset);

@@ -31,16 +31,24 @@
 #ifndef IO_BACKEND_H
 #define IO_BACKEND_H
 
+#include <aio.h>
+#include <libaio.h>
+
 struct tiocb;
 struct tfilter;
 typedef void* tqueue;
 typedef void (*td_queue_callback_t)(void *arg, struct tiocb *, int err);
 
+union uioc {
+	struct aiocb aio;
+	struct iocb io;
+};
+
 struct tiocb {
 	td_queue_callback_t   cb;
 	void                 *arg;
 
-        void		     *iocb;
+        union uioc	      uiocb;
 	struct tiocb         *next;
 };
 
