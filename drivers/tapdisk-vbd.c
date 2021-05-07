@@ -1107,6 +1107,7 @@ void watchdog_cleared(td_vbd_t *vbd)
 		DBG(TLOG_WARN, "%s: watchdog timeout: requests were blocked\n", vbd->name);
 		/* Ideally want a direct way to flush the log */
 		tlog_precious(1);
+		td_flag_clear(vbd->state, TD_VBD_LOG_DROPPED);
 	}
 	vbd->watchdog_warned = false;
 }
