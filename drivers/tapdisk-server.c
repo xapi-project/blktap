@@ -547,7 +547,9 @@ static void lowmem_timeout(event_id_t id, char mode, void *data)
 
 	tapdisk_server_for_each_vbd(vbd, tmpv)
 		tapdisk_vbd_for_each_blkif(vbd, blkif, tmpb) {
+		if (likely(blkif->stats.xenvbd))
 			td_flag_clear(blkif->stats.xenvbd->flags, BT3_LOW_MEMORY_MODE);
+		if (likely(blkif->vbd_stats.stats))
 			td_flag_clear(blkif->vbd_stats.stats->flags, BT3_LOW_MEMORY_MODE);
 	}
 
@@ -613,7 +615,9 @@ static void lowmem_event(event_id_t id, char mode, void *data)
 
 	tapdisk_server_for_each_vbd(vbd, tmpv)
 		tapdisk_vbd_for_each_blkif(vbd, blkif, tmpb) {
+		if (likely(blkif->stats.xenvbd))
 			td_flag_set(blkif->stats.xenvbd->flags, BT3_LOW_MEMORY_MODE);
+		if (likely(blkif->vbd_stats.stats))
 			td_flag_set(blkif->vbd_stats.stats->flags, BT3_LOW_MEMORY_MODE);
 	}
 
