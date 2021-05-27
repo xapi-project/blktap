@@ -702,11 +702,13 @@ tapdisk_xenblkif_parse_request(struct td_xenblkif * const blkif,
         }
 		if (likely(blkif->stats.xenvbd))
 			blkif->stats.xenvbd->st_wr_sect += nr_sect;
-        blkif->vbd_stats.stats->write_sectors += nr_sect;
+		if (likely(blkif->vbd_stats.stats))
+			blkif->vbd_stats.stats->write_sectors += nr_sect;
     } else {
 		if (likely(blkif->stats.xenvbd))
 			blkif->stats.xenvbd->st_rd_sect += nr_sect;
-        blkif->vbd_stats.stats->read_sectors += nr_sect;
+		if (likely(blkif->vbd_stats.stats))
+			blkif->vbd_stats.stats->read_sectors += nr_sect;
     } 
 
     /*
