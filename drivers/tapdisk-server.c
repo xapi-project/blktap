@@ -784,7 +784,7 @@ tapdisk_server_complete(void)
 {
 	int err;
 	server.rw_backend = get_libaio_backend();
-	server.ro_backend = get_posix_aio_backend();
+	server.ro_backend = get_libaio_backend();
 
 	server.rw_backend = get_libaio_backend();
 	err = tapdisk_server_init_aio();
