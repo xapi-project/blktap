@@ -36,12 +36,10 @@ The files licensed under other/different licenses are:
 
 blktap/
    |-- autogen.sh
-   |-- driver/
+   |-- drivers/
    |      |-- atomicio.c
    |      |-- atomicio.h
    |      |-- aio_getevents.c
-   |      |-- md5.c
-   |      |-- md5.h
    |
    |--include/
    |      |-- list.h 
