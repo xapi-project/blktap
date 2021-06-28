@@ -192,8 +192,10 @@ tapdisk_server_debug(void)
 {
 	td_vbd_t *vbd, *tmp;
 
-	server.rw_backend->debug(server.rw_queue);
-	server.ro_backend->debug(server.ro_queue);
+	if (likely(server.rw_queue))
+		server.rw_backend->debug(server.rw_queue);
+	if (likely(server.ro_queue))
+		server.ro_backend->debug(server.ro_queue);
 
 	tapdisk_server_for_each_vbd(vbd, tmp)
 		tapdisk_vbd_debug(vbd);
