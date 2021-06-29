@@ -1255,13 +1255,17 @@ vhd_util_scan_find_volume_targets(int cnt, char **names,
 	targets   = NULL;
 
 	err = lvm_scan_vg(volume, &vg);
-	if (err)
+	if (err) {
+		fprintf(stderr, "lvm_scan_vg failed %d\n", err);
 		return err;
+	}
 
 	err = vhd_util_scan_sort_volumes(vg.lvs, vg.lv_cnt,
 					 filter, &matches);
-	if (err)
+	if (err) {
+		fprintf(stderr, "vhd_util_scan_sort_volumes failed %d\n", err);
 		goto out;
+	}
 
 	total = matches;
 	for (i = 0; i < cnt; i++) {
@@ -1375,7 +1379,7 @@ vhd_util_scan(int argc, char **argv)
 	err = vhd_util_scan_find_targets(argc - optind, argv + optind,
 					 volume, filter, &targets, &cnt);
 	if (err) {
-		fprintf(stderr, "scan failed: %d\n", err);
+		fprintf(stderr, "scan failed: %d. Check syslog for details\n", err);
 		return err;
 	}
 
