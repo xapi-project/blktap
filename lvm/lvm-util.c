@@ -153,8 +153,10 @@ lvm_open_vg(const char *vgname, struct vg *vg)
 	}
 
 	err = -EINVAL;
-	if (!i)
+	if (!i) {
+		EPRINTF("No VGS data read for %s\n", vgname);
 		goto out;
+	}
 
 	if (strcmp(vg->name, vgname)) {
 		EPRINTF("VG name '%s' != '%s'\n", vg->name, vgname);
