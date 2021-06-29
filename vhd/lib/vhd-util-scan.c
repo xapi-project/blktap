@@ -1093,7 +1093,7 @@ vhd_util_scan_targets_pretty(int cnt, struct target *targets)
 
 	err = vhd_util_scan_pretty_allocate_list(cnt);
 	if (err) {
-		printf("scan failed: no memory\n");
+		fprintf(stderr, "scan failed: no memory\n");
 		return -ENOMEM;
 	}
 
@@ -1375,7 +1375,7 @@ vhd_util_scan(int argc, char **argv)
 	err = vhd_util_scan_find_targets(argc - optind, argv + optind,
 					 volume, filter, &targets, &cnt);
 	if (err) {
-		printf("scan failed: %d\n", err);
+		fprintf(stderr, "scan failed: %d\n", err);
 		return err;
 	}
 
