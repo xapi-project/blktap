@@ -49,6 +49,11 @@
 
 int tap_ctl_debug = 0;
 
+#define eintr_retry(res, op) \
+	do {		     \
+		res = op;    \
+	} while (res == -1 && errno == EINTR);
+
 int
 tap_ctl_read_raw(int fd, void *buf, size_t size, struct timeval *timeout)
 {
@@ -60,11 +65,11 @@ tap_ctl_read_raw(int fd, void *buf, size_t size, struct timeval *timeout)
 		FD_ZERO(&readfds);
 		FD_SET(fd, &readfds);
 
-		ret = select(fd + 1, &readfds, NULL, NULL, timeout);
+		eintr_retry(ret, select(fd + 1, &readfds, NULL, NULL, timeout))
 		if (ret == -1)
 			break;
 		else if (FD_ISSET(fd, &readfds)) {
-			ret = read(fd, buf + offset, size - offset);
+			eintr_retry(ret, read(fd, buf + offset, size - offset))
 			if (ret <= 0)
 				break;
 			offset += ret;
@@ -116,11 +121,11 @@ tap_ctl_write_message(int fd, tapdisk_message_t *message, struct timeval *timeou
 		/* we don't bother reinitializing tv. at worst, it will wait a
 		 * bit more time than expected. */
 
-		ret = select(fd + 1, NULL, &writefds, NULL, timeout);
+		eintr_retry(ret, select(fd + 1, NULL, &writefds, NULL, timeout))
 		if (ret == -1)
 			break;
 		else if (FD_ISSET(fd, &writefds)) {
-			ret = write(fd, (uint8_t*)message + offset, len - offset);
+			eintr_retry(ret, write(fd, (uint8_t*)message + offset, len - offset))
 			if (ret <= 0)
 				break;
 			offset += ret;
