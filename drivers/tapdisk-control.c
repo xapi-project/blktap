@@ -78,6 +78,11 @@
 			__FILE__, __LINE__, #_p);			\
 	}
 
+#define eintr_retry(res, op) \
+	do {		     \
+		res = op;    \
+	} while (res == -1 && errno == EINTR);
+
 struct tapdisk_ctl_conn {
 	int                          fd;
 
@@ -314,7 +319,7 @@ tapdisk_ctl_conn_drain(struct tapdisk_ctl_conn *conn)
 		FD_ZERO(&wfds);
 		FD_SET(conn->fd, &wfds);
 
-		n = select(conn->fd + 1, NULL, &wfds, NULL, &tv);
+		eintr_retry(n, select(conn->fd + 1, NULL, &wfds, NULL, &tv))
 		if (n < 0)
 			break;
 
@@ -491,11 +496,11 @@ tapdisk_control_read_message(int fd, tapdisk_message_t *message, int timeout)
 		FD_ZERO(&readfds);
 		FD_SET(fd, &readfds);
 
-		ret = select(fd + 1, &readfds, NULL, NULL, t);
+		eintr_retry(ret, select(fd + 1, &readfds, NULL, NULL, t))
 		if (ret == -1)
 			break;
 		else if (FD_ISSET(fd, &readfds)) {
-			ret = read(fd, message + offset, len - offset);
+			eintr_retry(ret, read(fd, message + offset, len - offset))
 			if (ret <= 0)
 				break;
 			offset += ret;
