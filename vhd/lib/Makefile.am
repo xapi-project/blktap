@@ -47,7 +47,7 @@ libvhd_la_LIBADD = -luuid -ldl $(LIBICONV)  $(top_srcdir)/lvm/liblvmutil.la
 libvhdio_la_SOURCES  = libvhdio.c
 libvhdio_la_SOURCES += ../../part/partition.c
 
-libvhdio_la_LDFLAGS  = -release $(VERSION)
+libvhdio_la_LDFLAGS  = -version-info 1:1:1
 libvhdio_la_LDFLAGS += -shared
 
 libvhdio_la_LIBADD  = libvhd.la
