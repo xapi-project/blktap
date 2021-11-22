@@ -30,7 +30,7 @@
 set -e
 
 PARTUTIL=/usr/sbin/part-util
-LIBVHDIO=/usr/lib/libvhdio.so.1.0
+LIBVHDIO=/usr/lib/libvhdio.so.0.1.1
 
 die()
 {
