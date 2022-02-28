@@ -121,7 +121,9 @@ td_fdreceiver_recv_fd(event_id_t id, char mode, void *data)
 	 * It is the responsibility of this callback function to arrange that
 	 * the fd is eventually closed
 	 */
-	fdreceiver->callback(fd, iobuf, fdreceiver->callback_data);
+	if (fd >= 0) {
+		fdreceiver->callback(fd, iobuf, fdreceiver->callback_data);
+	}
 out:
 	free(iobuf);
 }
