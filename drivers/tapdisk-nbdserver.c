@@ -667,6 +667,9 @@ tapdisk_nbdserver_free_client(td_nbdserver_client_t *client)
 	if (client->client_event_id >= 0)
 		tapdisk_nbdserver_disable_client(client);
 
+	close(client->client_fd);
+	client->client_fd = -1;
+
 	if (likely(!tapdisk_nbdserver_reqs_pending(client))) {
 		list_del(&client->clientlist);
 		tapdisk_nbdserver_reqs_free(client);
