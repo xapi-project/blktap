@@ -1367,7 +1367,7 @@ tapdisk_nbdserver_listen_unix(td_nbdserver_t *server)
 	if (new_fd == -1) {
 		err = -errno;
 		ERR("failed to create UNIX domain socket: %s\n", strerror(-err));
-		goto out;
+		goto out_no_fd;
 	}
 
 	server->local.sun_family = AF_UNIX;
@@ -1403,6 +1403,7 @@ tapdisk_nbdserver_listen_unix(td_nbdserver_t *server)
 		goto out;
 	}
 
+	server->unix_listening_fd = new_fd;
 	err = tapdisk_nbdserver_unpause_unix(server);
 	if (err) {
 		ERR("failed to unpause the NBD server (unix): %s\n",
@@ -1413,11 +1414,13 @@ tapdisk_nbdserver_listen_unix(td_nbdserver_t *server)
 	INFO("Successfully started NBD server on %s\n", server->sockpath);
 
 out:
-	if (err && (new_fd != -1)) {
+	if (err) {
 		close(new_fd);
-	} else {
-		server->unix_listening_fd = new_fd;
+		server->unix_listening_fd = -1;
 	}
+
+out_no_fd:
+
 	return err;
 }
 
