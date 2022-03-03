@@ -244,12 +244,12 @@ tapdisk_nbdserver_reqs_free(td_nbdserver_client_t *client)
 }
 
 void
-provide_server_info (td_nbdserver_t *server, uint64_t *exportsize, uint16_t *flags)
+provide_server_info (td_nbdserver_client_t *client, uint64_t *exportsize, uint16_t *flags)
 {
 	int64_t size;
 	uint16_t eflags = NBD_FLAG_HAS_FLAGS;
 
-	size = server->info.size * server->info.sector_size;
+	size = client->server->info.size * client->server->info.sector_size;
 
 	*exportsize = size;
 	*flags = eflags;
@@ -342,7 +342,8 @@ receive_info(int fd, char* buf, int size)
 }
 
 static int
-receive_newstyle_options(td_nbdserver_t *server, int new_fd, bool no_zeroes)
+receive_newstyle_options(td_nbdserver_client_t *client, int new_fd,
+			 bool no_zeroes)
 {
 	struct nbd_new_option n_option;
 	size_t n_options;
@@ -398,7 +399,7 @@ receive_newstyle_options(td_nbdserver_t *server, int new_fd, bool no_zeroes)
 			buf[opt_len] = '\0';
 			INFO("Exportname \"%s\"", buf);
 
-			provide_server_info(server, &exportsize, &flags);
+			provide_server_info(client, &exportsize, &flags);
 
 			bzero(&handshake_finish, sizeof handshake_finish);
 			handshake_finish.exportsize = htobe64 (exportsize);
@@ -414,16 +415,20 @@ receive_newstyle_options(td_nbdserver_t *server, int new_fd, bool no_zeroes)
 		break;
 		case NBD_OPT_ABORT:
 			ERR("NBD_OPT_ABORT: not implemented");
-			break;
+			ret = -1;
+			goto done;
 		case NBD_OPT_LIST:
 			ERR("NBD_OPT_LIST: not implemented");
-			break;
+			ret = -1;
+			goto done;
 		case NBD_OPT_STARTTLS:
 			ERR("NBD_OPT_STARTTLS: not implemented");
-			break;
+			ret = -1;
+			goto done;
 		case NBD_OPT_INFO:
 			ERR("NBD_OPT_INFO: not implemented");
-			break;
+			ret = -1;
+			goto done;
 		case NBD_OPT_GO:
 		{   
 			uint16_t flags;
@@ -437,7 +442,7 @@ receive_newstyle_options(td_nbdserver_t *server, int new_fd, bool no_zeroes)
 			buf[opt_len] = '\0';
 			INFO("Exportname \"%s\"", buf);
 
-			provide_server_info(server, &exportsize, &flags);
+			provide_server_info(client, &exportsize, &flags);
 	
 			if (send_info_export (new_fd, opt_code,
                                                     NBD_REP_INFO,
@@ -479,7 +484,8 @@ receive_newstyle_options(td_nbdserver_t *server, int new_fd, bool no_zeroes)
 			break;
 		case NBD_OPT_LIST_META_CONTEXT:
 			ERR("NBD_OPT_LIST_META_CONTEXT: not implemented");
-			break;
+			ret = -1;
+			goto done;
 		case NBD_OPT_SET_META_CONTEXT:
 		{
 			INFO("Processing NBD_OPT_SET_META_CONTEXT");
@@ -791,11 +797,14 @@ tapdisk_nbdserver_handshake_cb(event_id_t id, char mode, void *data)
 {
 	uint32_t cflags = 0;
 
-	td_nbdserver_t *server = (td_nbdserver_t* )data;
+	td_nbdserver_client_t *client = data;
 
-	int rc = recv(server->handshake_fd, &cflags, sizeof(cflags), 0);
+	tapdisk_server_unregister_event(id);
+
+	int rc = recv(client->client_fd, &cflags, sizeof(cflags), 0);
 	if(rc < sizeof(cflags)) {
 		ERR("Could not receive client flags");
+		tapdisk_nbdserver_free_client(client);
 		return;
 	}
 
@@ -803,17 +812,28 @@ tapdisk_nbdserver_handshake_cb(event_id_t id, char mode, void *data)
 	bool no_zeroes = (NBD_FLAG_NO_ZEROES & cflags) != 0;
 
         /* Receive newstyle options. */
-        if (receive_newstyle_options (server, server->handshake_fd, no_zeroes) == -1){
+        if (receive_newstyle_options (client, client->client_fd, no_zeroes) == -1){
 		ERR("Option negotiation messed up");
+		tapdisk_nbdserver_free_client(client);
+		return;
 	}
 
-	tapdisk_server_unregister_event(id);
+	INFO("About to enable client on fd %d", client->client_fd);
+	if (tapdisk_nbdserver_enable_client(client) < 0) {
+		ERR("Error enabling client");
+		tapdisk_nbdserver_free_client(client);
+	}
 }
 
-int
-tapdisk_nbdserver_new_protocol_handshake(td_nbdserver_t *server, int new_fd)
+static void
+tapdisk_nbdserver_newclient_fd_new_fixed(td_nbdserver_t *server, int new_fd)
 {
+	ASSERT(server);
+	ASSERT(new_fd >= 0);
 	struct nbd_new_handshake handshake;
+	td_nbdserver_client_t *client;
+
+	INFO("Got a new client!");
 
 	handshake.nbdmagic = htobe64 (NBD_MAGIC);
 	handshake.version = htobe64 (NBD_NEW_VERSION);
@@ -822,18 +842,29 @@ tapdisk_nbdserver_new_protocol_handshake(td_nbdserver_t *server, int new_fd)
 	int rc = send(new_fd, &handshake, sizeof(handshake), 0);
 	if (rc != sizeof(handshake)) {
 		ERR("Sending newstyle handshake");
-		return -1;
+		close(new_fd);
+		return;
 	}
-	server->handshake_fd = new_fd;
 	/* We may need to wait upto 40 seconds for a reply especially during
 	 * SXM contexts, so setup an event and return so that tapdisk is 
 	 * reponsive during the interim*/
 
+	INFO("About to alloc client");
+	client = tapdisk_nbdserver_alloc_client(server);
+	if (client == NULL) {
+		ERR("Error allocating client");
+		close(new_fd);
+		return;
+	}
+
+	INFO("Got an allocated client at %p", client);
+	client->client_fd = new_fd;
+
 	tapdisk_server_register_event( SCHEDULER_POLL_READ_FD,
-				       new_fd, TV_ZERO,
+				       client->client_fd, TV_ZERO,
 				       tapdisk_nbdserver_handshake_cb,
-				       server);
-	return 0;
+				       client);
+	return;
 }
 
 static void
@@ -874,38 +905,6 @@ tapdisk_nbdserver_newclient_fd_old(td_nbdserver_t *server, int new_fd)
 					rc);
 		return;
 	}
-
-	INFO("About to alloc client");
-	client = tapdisk_nbdserver_alloc_client(server);
-	if (client == NULL) {
-		ERR("Error allocating client");
-		close(new_fd);
-		return;
-	}
-
-	INFO("Got an allocated client at %p", client);
-	client->client_fd = new_fd;
-
-	INFO("About to enable client on fd %d", client->client_fd);
-	if (tapdisk_nbdserver_enable_client(client) < 0) {
-		ERR("Error enabling client");
-		tapdisk_nbdserver_free_client(client);
-		close(new_fd);
-	}
-}
-
-static void
-tapdisk_nbdserver_newclient_fd_new_fixed(td_nbdserver_t *server, int new_fd)
-{
-	td_nbdserver_client_t *client;
-
-	ASSERT(server);
-	ASSERT(new_fd >= 0);
-
-	INFO("Got a new client!");
-
-	if(tapdisk_nbdserver_new_protocol_handshake(server, new_fd) != 0)
-		return;
 
 	INFO("About to alloc client");
 	client = tapdisk_nbdserver_alloc_client(server);

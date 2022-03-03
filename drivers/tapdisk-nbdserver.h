@@ -98,11 +98,6 @@ struct td_nbdserver {
 	int                     unix_listening_fd;
 
 	/**
-	 * Socket opened during handshake negotiation.
-	 */
-	int                     handshake_fd;
-
-	/**
 	 * Event ID for the file descriptor receiver.
 	 */
 	int                     unix_listening_event_id;
