@@ -427,7 +427,15 @@ receive_newstyle_options(td_nbdserver_t *server, int new_fd, bool no_zeroes)
 		case NBD_OPT_GO:
 		{   
 			uint16_t flags;
-			INFO("Processing NBD_OPT_EXORT_NAME");
+			INFO("Processing NBD_OPT_GO");
+
+			if(receive_info(new_fd, (char *)buf, opt_len) == -1){
+				ERR ("Failed to received data for NBD_OPT_GO");
+				ret = -1;
+				goto done;
+			}
+			buf[opt_len] = '\0';
+			INFO("Exportname \"%s\"", buf);
 
 			provide_server_info(server, &exportsize, &flags);
 	
