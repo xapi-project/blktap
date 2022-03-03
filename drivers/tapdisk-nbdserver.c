@@ -388,7 +388,7 @@ receive_newstyle_options(td_nbdserver_t *server, int new_fd, bool no_zeroes)
 		switch (opt_code) {
 		case NBD_OPT_EXPORT_NAME:
 		{
-			INFO("Processing NBD_OPT_EXORT_NAME");
+			INFO("Processing NBD_OPT_EXPORT_NAME");
 			uint16_t flags = 0;
 			if(receive_info(new_fd, (char *)buf, opt_len) == -1){
 				ERR ("Failed to received data for NBD_OPT_EXPORT_NAME");
@@ -396,7 +396,7 @@ receive_newstyle_options(td_nbdserver_t *server, int new_fd, bool no_zeroes)
 				goto done;
 			}
 			buf[opt_len] = '\0';
-			INFO("Exportname %s", buf);
+			INFO("Exportname \"%s\"", buf);
 
 			provide_server_info(server, &exportsize, &flags);
 
