@@ -1026,12 +1026,8 @@ tapdisk_nbdserver_clientcb(event_id_t id, char mode, void *data)
 
 		break;
 	case TAPDISK_NBD_CMD_DISC:
-		INFO("Received close message. Sending reconnect "
-				"header");
+		INFO("Received close message - closing connection");
 		tapdisk_nbdserver_free_client(client);
-		INFO("About to send initial connection message");
-		tapdisk_nbdserver_newclient_fd(server, fd);
-		INFO("Sent initial connection message");
 		return;
 	case TAPDISK_NBD_CMD_BLOCK_STATUS:
 	{
