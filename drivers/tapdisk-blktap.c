@@ -80,7 +80,7 @@ static void __tapdisk_blktap_close(td_blktap_t *);
 struct td_blktap_req {
 	td_vbd_request_t        vreq;
 	unsigned int            id;
-	char                    name[16];
+	char                    name[27];
 	struct td_iovec         iov[BLKTAP_SEGMENT_MAX];
         struct timeval          ts;
 };
