@@ -270,21 +270,21 @@ tapdisk_xenblkif_find(const domid_t domid, const int devid);
  * channel can be shared by multiple block interfaces, the event ID will be
  * shared as well.
  */
-extern inline event_id_t
+extern event_id_t
 tapdisk_xenblkif_evtchn_event_id(const struct td_xenblkif *blkif);
 
 /**
  * Returns the event ID associated wit checking the ring. This is a private
  * event.
  */
-extern inline event_id_t
+extern event_id_t
 tapdisk_xenblkif_chkrng_event_id(const struct td_xenblkif * const blkif);
 
 /**
  * Returns the event ID associated with stopping polling. This is a private
  * event.
  */
-extern inline event_id_t
+extern event_id_t
 tapdisk_xenblkif_stoppolling_event_id(const struct td_xenblkif * const blkif);
 
 /**
