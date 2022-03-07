@@ -585,15 +585,15 @@ tapdisk_xenblkif_connect(domid_t domid, int devid, const grant_ref_t * grefs,
 	td_blkif->chkrng_event = tapdisk_server_register_event(
 			SCHEDULER_POLL_TIMEOUT,	-1, TV_INF,
 			tapdisk_xenblkif_cb_chkrng, td_blkif);
-    if (unlikely(td_blkif->chkrng_event < 0)) {
-        err = td_blkif->chkrng_event;
-        RING_ERR(td_blkif, "failed to register event: %s\n", strerror(-err));
-        goto fail;
-    }
+	if (unlikely(td_blkif->chkrng_event < 0)) {
+		err = td_blkif->chkrng_event;
+		RING_ERR(td_blkif, "failed to register event: %s\n", strerror(-err));
+		goto fail;
+	}
 
-    err = td_metrics_vbd_start(td_blkif->domid, td_blkif->devid, &td_blkif->vbd_stats);
-    if (unlikely(err))
-        goto fail;
+	err = td_metrics_vbd_start(td_blkif->domid, td_blkif->devid, &td_blkif->vbd_stats);
+	if (unlikely(err))
+		goto fail;
 
 	td_blkif->stoppolling_event = tapdisk_server_register_event(
 			SCHEDULER_POLL_TIMEOUT,	-1, TV_INF,
