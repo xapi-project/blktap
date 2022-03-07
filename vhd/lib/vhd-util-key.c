@@ -51,8 +51,8 @@ int CRYPTO_SUPPORTED_KEYSIZE[] = { 512, 256, -1};
 
 typedef int (*vhd_calculate_keyhash)(struct vhd_keyhash *keyhash,
 				     const uint8_t *key, size_t key_byte);
-vhd_calculate_keyhash pvhd_calculate_keyhash;
-void *crypto_handle;
+static vhd_calculate_keyhash pvhd_calculate_keyhash;
+static void *crypto_handle;
 
 static int
 __load_crypto()

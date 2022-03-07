@@ -53,10 +53,10 @@ typedef int (*vhd_open_crypto)(vhd_context_t *, const uint8_t *, size_t,
 typedef int (*vhd_crypto_encrypt_block)(vhd_context_t *, uint64_t,
 					uint8_t *, uint8_t *,
 					unsigned int);
-vhd_calculate_keyhash pvhd_calculate_keyhash;
-vhd_open_crypto pvhd_open_crypto;
-vhd_crypto_encrypt_block pvhd_crypto_encrypt_block;
-void *crypto_handle;
+static vhd_calculate_keyhash pvhd_calculate_keyhash;
+static vhd_open_crypto pvhd_open_crypto;
+static vhd_crypto_encrypt_block pvhd_crypto_encrypt_block;
+static void *crypto_handle;
 
 static int
 __load_crypto()
