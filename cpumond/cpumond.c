@@ -120,7 +120,7 @@ err:
     return NULL;
 }
 
-inline int statread(int statfd, long long *total, long long *idle){
+static int statread(int statfd, long long *total, long long *idle){
     long long val[10];
     char      buf[256];
     int       i, err = 0;
