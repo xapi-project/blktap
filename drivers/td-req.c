@@ -453,16 +453,16 @@ out:
  */
 void
 tapdisk_xenblkif_complete_request(struct td_xenblkif * const blkif,
-        struct td_xenblkif_req* tapreq, int err, const int final)
+		struct td_xenblkif_req* tapreq, int err, const int final)
 {
 	int _err;
-    long long *max = NULL, *sum = NULL, *cnt = NULL;
+	long long *max = NULL, *sum = NULL, *cnt = NULL;
 	static int depth = 0;
 	bool processing_barrier_message;
-    uint64_t *ticks = NULL;
+	uint64_t *ticks = NULL;
 
-    ASSERT(blkif);
-    ASSERT(tapreq);
+	ASSERT(blkif);
+	ASSERT(tapreq);
 	ASSERT(depth >= 0);
 
 	depth++;
@@ -525,7 +525,7 @@ tapdisk_xenblkif_complete_request(struct td_xenblkif * const blkif,
 			long long interval;
 			gettimeofday(&now, NULL);
 			interval = timeval_to_us(&now) - timeval_to_us(&tapreq->ts);
-                       *ticks += interval;
+			*ticks += interval;
 			if (interval > *max)
 				*max = interval;
 
@@ -534,23 +534,23 @@ tapdisk_xenblkif_complete_request(struct td_xenblkif * const blkif,
 		}
 
 		if (likely(err == 0))
-            _err = BLKIF_RSP_OKAY;
+			_err = BLKIF_RSP_OKAY;
 		else
-            _err = BLKIF_RSP_ERROR;
+			_err = BLKIF_RSP_ERROR;
 
 		xenio_blkif_put_response(blkif, tapreq, _err, final);
 	}
 
-    tapdisk_xenblkif_free_request(blkif, tapreq);
+	tapdisk_xenblkif_free_request(blkif, tapreq);
 
-    blkif->stats.reqs.out++;
-    if (final)
-        blkif->stats.kicks.out++;
+	blkif->stats.reqs.out++;
+	if (final)
+		blkif->stats.kicks.out++;
 
 	if (unlikely(processing_barrier_message))
 		blkif->barrier.msg = NULL;
 
-    /*
+	/*
 	 * Schedule a ring check in case we left requests in it due to lack of
 	 * memory or in case we stopped processing it because of a barrier.
 	 *
