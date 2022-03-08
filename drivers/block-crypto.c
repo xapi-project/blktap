@@ -348,7 +348,8 @@ vhd_open_crypto(vhd_context_t *vhd, const uint8_t *key, size_t key_bytes, const 
 	struct vhd_keyhash keyhash;
 	int err;
 #ifdef OPEN_XT
-	uint8_t key[MAX_AES_XTS_PLAIN_KEYSIZE / sizeof(uint8_t)] = { 0 };
+	uint8_t keybuf[MAX_AES_XTS_PLAIN_KEYSIZE / sizeof(uint8_t)] = { 0 };
+	key = keybuf;
 	int keysize = 0;
 #endif
 
@@ -356,7 +357,7 @@ vhd_open_crypto(vhd_context_t *vhd, const uint8_t *key, size_t key_bytes, const 
 		return 0;
 
 #ifdef OPEN_XT
-	err = chain_find_keyed_vhd(vhd, key, &keysize, &keyhash);
+	err = chain_find_keyed_vhd(vhd, keybuf, &keysize, &keyhash);
 	if (err) {
 	    DPRINTF("error in vhd chain: %d\n", err);
 	    return err;
