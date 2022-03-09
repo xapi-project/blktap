@@ -96,7 +96,7 @@ int
 __wrap_fwrite(const void *ptr, size_t size, size_t nmemb, FILE *stream)
 {
 	if (mock_fwrite) {
-		struct fwrite_data *data = mock();
+		struct fwrite_data *data = (struct fwrite_data *)mock();
 
 		size_t remaining = data->size - data->offset;
 		size_t len = size * nmemb;
@@ -142,7 +142,7 @@ int
 wrap_vprintf(const char *format, va_list ap)
 {
 	if (mock_vprintf) {
-		struct printf_data *data = mock();
+		struct printf_data *data = (struct printf_data *)mock();
 		int remaining = data->size - data->offset;
 		int len = vsnprintf(data->buf + data->offset, remaining, format, ap);
 		assert_in_range(len, 0, remaining);
