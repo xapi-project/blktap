@@ -57,10 +57,10 @@ static const struct CMUnitTest tapdisk_vbd_tests[] = {
 	cmocka_unit_test(test_vbd_complete_block_status_request)
 };
 
-void test_nbdserver_new_protocol_handshake(void **state);
-void test_nbdserver_new_protocol_handshake_send_fails(void **state);
+void test_nbdserver_newclient_fd_new_fixed(void **state);
+void test_nbdserver_newclient_fd_new_fixed_send_fails(void **state);
 static const struct CMUnitTest tapdisk_nbdserver_tests[] = {
-	cmocka_unit_test(test_nbdserver_new_protocol_handshake)
+	cmocka_unit_test(test_nbdserver_newclient_fd_new_fixed)
 };
 
 #endif /* __TEST_SUITES_H__ */

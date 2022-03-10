@@ -39,11 +39,28 @@
 #include "tapdisk-nbdserver.h"
 #include "tapdisk-protocol-new.h"
 
+/* tapdisk_vsyslog() will call down to syslog() and send().  That throws using
+ * __wrap_send to check the handshake.  Interposing tapdisk_vsyslog side-steps
+ * that problem. */
+int
+__wrap_tapdisk_vsyslog(void *log, int prio, const char *fmt, va_list ap)
+{
+	(void)log;
+	(void)prio;
+	(void)fmt;
+	(void)ap;
+	return mock();//return wrap_vprintf(fmt, ap);
+}
+
 void
-test_nbdserver_new_protocol_handshake(void **state)
+test_nbdserver_newclient_fd_new_fixed(void **state)
 {
 	td_nbdserver_t server;
 	int new_fd =123 ;
+
+	/* Avoid segfault when tapdisk_nbdserver_alloc_client tries to add
+	 * to list. */
+	INIT_LIST_HEAD(&server.clients);
 
 	uint16_t gflags = (NBD_FLAG_FIXED_NEWSTYLE | NBD_FLAG_NO_ZEROES);
 	struct nbd_new_handshake handshake;
@@ -52,6 +69,8 @@ test_nbdserver_new_protocol_handshake(void **state)
 	handshake.version = htobe64 (NBD_NEW_VERSION);
 	handshake.gflags = htobe16 (gflags);
 
+	will_return(__wrap_tapdisk_vsyslog, 0);
+
 	/* Check input to send */
 	expect_memory(__wrap_send, buf, &handshake, sizeof(handshake));
 	expect_value(__wrap_send, fd, new_fd);
@@ -59,8 +78,16 @@ test_nbdserver_new_protocol_handshake(void **state)
 	expect_value(__wrap_send, flags, 0);
 	will_return(__wrap_send, sizeof(handshake));
 
+	will_return(__wrap_tapdisk_vsyslog, 0);
+
+	will_return(__wrap_tapdisk_vsyslog, 0);
+
+	will_return(__wrap_tapdisk_vsyslog, 0);
+
+	will_return(__wrap_tapdisk_vsyslog, 0);
+
 	expect_value(__wrap_tapdisk_server_register_event, cb, tapdisk_nbdserver_handshake_cb);
 	expect_value(__wrap_tapdisk_server_register_event, mode, SCHEDULER_POLL_READ_FD);
-	int err = tapdisk_nbdserver_new_protocol_handshake(&server, new_fd);
-	assert_int_equal(err, 0);
+
+	tapdisk_nbdserver_newclient_fd_new_fixed(&server, new_fd);
 }

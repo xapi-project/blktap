@@ -825,7 +825,7 @@ tapdisk_nbdserver_handshake_cb(event_id_t id, char mode, void *data)
 	}
 }
 
-static void
+void
 tapdisk_nbdserver_newclient_fd_new_fixed(td_nbdserver_t *server, int new_fd)
 {
 	ASSERT(server);

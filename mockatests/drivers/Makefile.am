@@ -14,6 +14,7 @@ test_drivers_LDFLAGS += -Wl,--wrap=tapdisk_image_check_request
 test_drivers_LDFLAGS += -Wl,--wrap=td_queue_block_status
 test_drivers_LDFLAGS += -Wl,--wrap=send
 test_drivers_LDFLAGS += -Wl,--wrap=tapdisk_server_register_event
+test_drivers_LDFLAGS += -Wl,--wrap=tapdisk_vsyslog
 
 clean-local:
 	-rm -rf *.gc??

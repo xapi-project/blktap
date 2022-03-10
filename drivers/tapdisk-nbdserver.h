@@ -182,7 +182,7 @@ void tapdisk_nbdserver_free_request(td_nbdserver_client_t *client,
  */
 int tapdisk_nbdserver_reqs_pending(td_nbdserver_client_t *client);
 
-int tapdisk_nbdserver_new_protocol_handshake(td_nbdserver_t*, int);
+void tapdisk_nbdserver_newclient_fd_new_fixed(td_nbdserver_t*, int);
 void tapdisk_nbdserver_handshake_cb(event_id_t, char, void*);
 
 #endif /* _TAPDISK_NBDSERVER_H_ */
