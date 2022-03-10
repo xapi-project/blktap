@@ -133,7 +133,7 @@ find_keyfile(char **keyfile, const char *dirs,
 	*keyfile  = NULL;
 
 	while (dirs && strlen(dirs) > 0) {
-		char keydir[256] = { 0 }, path[256] = { 0 };
+		char keydir[256] = { 0 }, path[277] = { 0 };
 		struct stat st;
 		int err;
 
