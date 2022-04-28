@@ -133,5 +133,8 @@ dist_bugtool_DATA = tapdisk-logs.xml
 bugtooltddir = $(sysconfdir)/xensource/bugtool/tapdisk-logs
 dist_bugtooltd_DATA = tapdisk-logs/description.xml
 
+crondailydir = $(sysconfdir)/cron.daily
+dist_crondaily_SCRIPTS = prune_tapdisk_logs
+
 clean-local:
 	-rm -rf *.gc??
