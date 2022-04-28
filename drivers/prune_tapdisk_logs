@@ -1,0 +1,6 @@
+#!/bin/sh
+
+find /var/log/blktap/ -type f -mtime +30 -delete
+
+# Reopen the tlogs for any long running tapdisk processes
+/usr/bin/pkill -HUP '^tapdisk$' || true
