@@ -248,7 +248,8 @@ vhdi_path_expand(const char *src, vhdi_path_t *dest, int *err)
 	char *path, *base, copy[VHD_MAX_NAME_LEN];
 	char *absolute_path, __absolute_path[PATH_MAX];
 
-	strcpy(copy, src);
+	strncpy(copy, src, sizeof(copy));
+	copy[sizeof(copy) - 1] = '\0';
 	base = dirname(copy);
 
 	*err = asprintf(&path, "%s/%s", base, dest->path);
@@ -838,7 +839,8 @@ vhdi_bat_load(const char *name, vhdi_bat_t *bat)
 	path = vhdi_path_expand(name, &header.vhd_path, &err);
 	if (err)
 		goto out;
-	strcpy(bat->vhd_path, path);
+	strncpy(bat->vhd_path, path, sizeof(bat->vhd_path));
+	bat->vhd_path[sizeof(bat->vhd_path) - 1] = '\0';
 	free(path);
 
 	err = access(bat->vhd_path, F_OK);
@@ -850,7 +852,8 @@ vhdi_bat_load(const char *name, vhdi_bat_t *bat)
 	path = vhdi_path_expand(name, &header.index_path, &err);
 	if (err)
 		goto out;
-	strcpy(bat->index_path, path);
+	strncpy(bat->index_path, path, sizeof(bat->index_path));
+	bat->index_path[sizeof(bat->index_path) - 1] = '\0';
 	free(path);
 
 	err = access(bat->index_path, F_OK);
@@ -862,7 +865,8 @@ vhdi_bat_load(const char *name, vhdi_bat_t *bat)
 	path = vhdi_path_expand(name, &header.file_table_path, &err);
 	if (err)
 		goto out;
-	strcpy(bat->file_table_path, path);
+	strncpy(bat->file_table_path, path, sizeof(bat->file_table_path));
+	bat->file_table_path[sizeof(bat->file_table_path) - 1] = '\0';
 	free(path);
 
 	err = access(bat->file_table_path, F_OK);

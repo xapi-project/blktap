@@ -921,7 +921,8 @@ tdnbd_open(td_driver_t* driver, const char* name,
 			return -1;
 		}
 		prv->remote_un.sun_family = AF_UNIX;
-		strcpy(prv->remote_un.sun_path, name);
+		strncpy(prv->remote_un.sun_path, name, sizeof(prv->remote_un.sun_path));
+		prv->remote_un.sun_path[sizeof(prv->remote_un.sun_path) - 1] = '\0';
 		len = strlen(prv->remote_un.sun_path)
 			+ sizeof(prv->remote_un.sun_family);
 		if ((rc = connect(prv->socket, (struct sockaddr*)&prv->remote_un, len)
@@ -937,12 +938,11 @@ tdnbd_open(td_driver_t* driver, const char* name,
 	} else {
 		rc = sscanf(name, "%255[^:]:%d", peer_ip, &port);
 		if (rc == 2) {
-			prv->peer_ip = malloc(strlen(peer_ip) + 1);
+			prv->peer_ip = strdup(peer_ip);
 			if (!prv->peer_ip) {
 				ERROR("Failure to malloc for NBD destination");
 				return -1;
 			}
-			strcpy(prv->peer_ip, peer_ip);
 			prv->port = port;
 			prv->name = NULL;
 			INFO("Export peer=%s port=%d\n", prv->peer_ip, prv->port);

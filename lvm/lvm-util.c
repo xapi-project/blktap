@@ -67,7 +67,8 @@ lvm_copy_name(char *dst, const char *src, size_t size)
 	if (strnlen(src, size) == size)
 		return -ENAMETOOLONG;
 
-	strcpy(dst, src);
+	strncpy(dst, src, size);
+	dst[size - 1] = '\0';
 	return 0;
 }
 

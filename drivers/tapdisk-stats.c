@@ -144,7 +144,7 @@ tapdisk_stats_vval(td_stats_t *st, const char *conv, va_list ap)
 		break;
 
 	default:
-		sprintf(fmt, "%%%s", conv);
+		snprintf(fmt, sizeof(fmt), "%%%s", conv);
 		__stats_vsprintf(st, fmt, ap);
 		break;
 	}

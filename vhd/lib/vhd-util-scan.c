@@ -479,7 +479,7 @@ copy_name(char *dst, const char *src)
  * /dev/<vol-group>/<lv-name> becomes /dev/mapper/<vol--group>-<lv--name>
  */
 static int
-vhd_util_scan_extract_volume_name(char *dst, const char *src)
+vhd_util_scan_extract_volume_name(char *dst, const char *src, size_t size)
 {
 	char copy[VHD_MAX_NAME_LEN], *name, *s, *c;
 
@@ -504,11 +504,13 @@ vhd_util_scan_extract_volume_name(char *dst, const char *src)
 	c = strrchr(copy, '/');
 	if (c == name) {
 		/* unrecognized format */
-		strcpy(dst, src);
+		strncpy(dst, src, size);
+		dst[size - 1] = '\0';
 		return -EINVAL;
 	}
 
-	strcpy(dst, ++c);
+	strncpy(dst, ++c, size);
+	dst[size - 1] = '\0';
 	return 0;
 }
 
@@ -537,7 +539,7 @@ vhd_util_scan_get_volume_parent(vhd_context_t *vhd, struct vhd_image *image)
 		return err;
 
 found:
-	err = vhd_util_scan_extract_volume_name(name, image->parent);
+	err = vhd_util_scan_extract_volume_name(name, image->parent, sizeof(name));
 	if (!err)
 		return copy_name(image->parent, name);
 

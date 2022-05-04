@@ -75,7 +75,8 @@ tap_ctl_connect_xenblkif(const pid_t pid, const domid_t domid, const int devid, 
             EPRINTF("pool name too long: %s\n", pool);
             return -ENAMETOOLONG;
         }
-        strcpy(message.u.blkif.pool, pool);
+        strncpy(message.u.blkif.pool, pool, sizeof(message.u.blkif.pool));
+        message.u.blkif.pool[sizeof(message.u.blkif.pool) - 1] = '\0';
     } else {
         message.u.blkif.pool[0] = 0;
     }

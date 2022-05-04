@@ -1543,7 +1543,7 @@ vhd_macx_encode_location(char *name, char **out, int *outlen)
 		goto out;
 	}
 
-	sprintf(uri, "file://%s", name);
+	snprintf(uri, ibl+1, "file://%s", name);
 
 	if (iconv(cd, &urip, &ibl, &uri_utf8p, &obl) == (size_t)-1 ||
 	    ibl || obl) {
@@ -2876,7 +2876,7 @@ vhd_initialize_footer(vhd_context_t *ctx, int type, uint64_t size)
 	ctx->footer.type         = type;
 	ctx->footer.saved        = 0;
 	ctx->footer.data_offset  = 0xFFFFFFFFFFFFFFFFULL;
-	strcpy(ctx->footer.crtr_app, "tap");
+	strncpy(ctx->footer.crtr_app, "tap", sizeof(ctx->footer.crtr_app));
 	uuid_generate(ctx->footer.uuid);
 }
 

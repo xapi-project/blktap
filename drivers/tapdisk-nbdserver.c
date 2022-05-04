@@ -1379,7 +1379,8 @@ tapdisk_nbdserver_listen_unix(td_nbdserver_t *server)
 		goto out;
 	}
 
-	strcpy(server->local.sun_path, server->sockpath);
+	strncpy(server->local.sun_path, server->sockpath, sizeof(server->local.sun_path));
+	server->local.sun_path[sizeof(server->local.sun_path) - 1] = '\0';
 	err = unlink(server->local.sun_path);
 	if (err == -1 && errno != ENOENT) {
 		err = -errno;

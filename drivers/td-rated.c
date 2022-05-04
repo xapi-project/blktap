@@ -407,7 +407,8 @@ rlb_sock_open(td_rlb_t *rlb)
 			err = -ENAMETOOLONG;
 			goto fail;
 		}
-		strcpy(rlb->addr.sun_path, rlb->name);
+		strncpy(rlb->addr.sun_path, rlb->name, sizeof(rlb->addr.sun_path));
+		rlb->addr.sun_path[sizeof(rlb->addr.sun_path) - 1] = '\0';
 	} else
 		snprintf(rlb->addr.sun_path, sizeof(rlb->addr.sun_path),
 			 "%s/%s", TD_VALVE_SOCKDIR, rlb->name);
