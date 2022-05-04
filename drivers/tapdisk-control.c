@@ -1624,7 +1624,8 @@ tapdisk_control_create_socket(char **socket_path)
 		err = ENAMETOOLONG;
 		goto fail;
 	}
-	strcpy(saddr.sun_path, td_control.path);
+	strncpy(saddr.sun_path, td_control.path, sizeof(saddr.sun_path));
+	saddr.sun_path[sizeof(saddr.sun_path) - 1] = '\0';
 
 	saddr.sun_family = AF_UNIX;
 

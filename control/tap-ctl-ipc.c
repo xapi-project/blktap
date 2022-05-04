@@ -253,7 +253,8 @@ tap_ctl_connect(const char *name, int *sfd)
 		return -ENAMETOOLONG;
 	}
 
-	strcpy(saddr.sun_path, name);
+	strncpy(saddr.sun_path, name, sizeof(saddr.sun_path));
+	saddr.sun_path[sizeof(saddr.sun_path) - 1] = '\0';
 
 	err = connect(fd, (const struct sockaddr *)&saddr, sizeof(saddr));
 	if (err) {
