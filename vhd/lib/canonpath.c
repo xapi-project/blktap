@@ -109,7 +109,7 @@ normalize_path(const char *path, size_t path_len)
  * Symlinks are also kept if a /dev/drbd/by-res/<UUID>/<VOLUME_ID> path is used.
  */
 char *
-canonpath(const char *path, char *resolved_path)
+canonpath(const char *path, char *resolved_path, size_t dest_size)
 {
 	static const char dev_path[] = "/dev/";
 	static const size_t dev_len = sizeof(dev_path) - 1;
@@ -140,7 +140,8 @@ canonpath(const char *path, char *resolved_path)
 	if (strncmp(canon, dev_mapper_path, dev_mapper_len) == 0 &&
 	    strchr(canon + dev_mapper_len, '/') == NULL &&
 	    access(canon, F_OK) == 0) {
-		strcpy(resolved_path, canon);
+		strncpy(resolved_path, canon, dest_size);
+		resolved_path[dest_size - 1] = '\0';
 		goto end;
 	}
 
@@ -152,7 +153,8 @@ canonpath(const char *path, char *resolved_path)
 	 */
 	if (strncmp(canon, dev_path, dev_len) == 0 && (p = strchr(canon + dev_len, '/')) != NULL) {
 		if (strchr(p+1, '/') == NULL) {
-			strcpy(resolved_path, dev_mapper_path);
+			strncpy(resolved_path, dev_mapper_path, dest_size);
+			resolved_path[dest_size - 1] = '\0';
 			dst = strchr(resolved_path, 0);
 			for (p = canon + dev_len; *p; ++p) {
 				if (dst - resolved_path >= PATH_MAX - 2)
@@ -188,7 +190,8 @@ canonpath(const char *path, char *resolved_path)
 			if (p == resolved_path + dev_drbd_prefix_len || errno == ERANGE || *p != '\0')
 				goto end; /* Cannot parse correctly pattern. */
 
-			strcpy(resolved_path, canon);
+			strncpy(resolved_path, canon, dest_size);
+			resolved_path[dest_size - 1] = '\0';
 		} else
 			goto fallback;
 		if (access(resolved_path, F_OK) == 0)
