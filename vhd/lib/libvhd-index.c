@@ -682,13 +682,14 @@ out:
 }
 
 static int
-vhdi_copy_path_to(vhdi_path_t *path, const char *src, const char *dest)
+vhdi_copy_path_to(vhdi_path_t *path, const char *src, const char *dest, size_t dest_size)
 {
 	int len, err;
 	char *file, *relative_path, copy[VHD_MAX_NAME_LEN];
 	char *absolute_path, __absolute_path[PATH_MAX];
 
-	strcpy(copy, dest);
+	strncpy(copy, dest, sizeof(copy));
+	copy[sizeof(copy) - 1] = '\0';
 
 	file          = basename(copy);
 	absolute_path = canonpath(copy, __absolute_path);
@@ -716,7 +717,8 @@ vhdi_copy_path_to(vhdi_path_t *path, const char *src, const char *dest)
 		goto out;
 	}
 
-	strcpy(path->path, relative_path);
+	strncpy(path->path, relative_path, dest_size);
+	path->path[dest_size - 1] = '\0';
 	path->bytes = len + 1;
 
 	err = 0;
@@ -760,15 +762,15 @@ vhdi_bat_create(const char *name, const char *vhd,
 	if (fd == -1)
 		return -errno;
 
-	err = vhdi_copy_path_to(&header.vhd_path, name, vhd);
+	err = vhdi_copy_path_to(&header.vhd_path, name, vhd, sizeof(header.vhd_path.path));
 	if (err)
 		goto fail;
 
-	err = vhdi_copy_path_to(&header.index_path, name, index);
+	err = vhdi_copy_path_to(&header.index_path, name, index, sizeof(header.index_path.path));
 	if (err)
 		goto fail;
 
-	err = vhdi_copy_path_to(&header.file_table_path, name, file_table);
+	err = vhdi_copy_path_to(&header.file_table_path, name, file_table, sizeof(header.file_table_path.path));
 	if (err)
 		goto fail;
 
@@ -1134,7 +1136,7 @@ vhdi_file_table_entry_initialize(vhdi_file_table_entry_t *entry,
 
 	vhd_close(&vhd);
 
-	err = vhdi_copy_path_to(&entry->p, file_table, file);
+	err = vhdi_copy_path_to(&entry->p, file_table, file, sizeof(entry->p.path));
 	if (err)
 		goto out;
 
