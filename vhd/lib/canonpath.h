@@ -34,6 +34,6 @@
 /*
  * returns a canonical path from @path to @resolved_path
  */
-char *canonpath(const char *path, char *resolved_path);
+char *canonpath(const char *path, char *resolved_path, size_t dest_size);
 
 #endif

@@ -258,7 +258,7 @@ vhdi_path_expand(const char *src, vhdi_path_t *dest, int *err)
 		return NULL;
 	}
 
-	absolute_path = canonpath(path, __absolute_path);
+	absolute_path = canonpath(path, __absolute_path, sizeof(__absolute_path));
 	free(path);
 	if (absolute_path)
 		absolute_path = strdup(absolute_path);
@@ -692,7 +692,7 @@ vhdi_copy_path_to(vhdi_path_t *path, const char *src, const char *dest, size_t d
 	copy[sizeof(copy) - 1] = '\0';
 
 	file          = basename(copy);
-	absolute_path = canonpath(copy, __absolute_path);
+	absolute_path = canonpath(copy, __absolute_path, sizeof(__absolute_path));
 	relative_path = NULL;
 
 	if (!absolute_path) {
@@ -1080,7 +1080,7 @@ vhdi_file_table_next_fid(const char *name,
 	if (err)
 		return err;
 
-	path = canonpath(file, __path);
+	path = canonpath(file, __path, sizeof(__path));
 	if (!path) {
 		err = -errno;
 		goto out;

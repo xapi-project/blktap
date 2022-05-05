@@ -240,14 +240,14 @@ relative_path_to(char *from, char *to, int *err)
 		return NULL;
 	}
 
-	to_absolute = canonpath(to, __to_absolute);
+	to_absolute = canonpath(to, __to_absolute, sizeof(__to_absolute));
 	if (!to_absolute) {
 		EPRINTF("failed to get absolute path of %s\n", to);
 		*err = -errno;
 		goto out;
 	}
 
-	from_absolute = canonpath(from, __from_absolute);
+	from_absolute = canonpath(from, __from_absolute, sizeof(__from_absolute));
 	if (!from_absolute) {
 		EPRINTF("failed to get absolute path of %s\n", from);
 		*err = -errno;

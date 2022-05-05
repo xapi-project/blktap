@@ -788,7 +788,7 @@ vhd_util_scan_open(vhd_context_t *vhd, struct vhd_image *image)
 	else {
 		char __image_name[PATH_MAX];
 
-		image->name = canonpath(target->name, __image_name);
+		image->name = canonpath(target->name, __image_name, sizeof(__image_name));
 		if (image->name)
 			image->name = strdup(__image_name);
 		if (!image->name) {

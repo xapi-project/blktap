@@ -257,13 +257,13 @@ vhd_util_pathcmp(const char *a, const char *b, int *cmp)
 	char *apath = NULL, __apath[PATH_MAX];
 	char *bpath = NULL, __bpath[PATH_MAX];
 
-	apath = canonpath(a, __apath);
+	apath = canonpath(a, __apath, sizeof(__apath));
 	if (!apath) {
 		err = -errno;
 		goto out;
 	}
 
-	bpath = canonpath(b, __bpath);
+	bpath = canonpath(b, __bpath, sizeof(__bpath));
 	if (!bpath) {
 		err = -errno;
 		goto out;
