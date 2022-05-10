@@ -47,6 +47,7 @@
 
 #include "tap-ctl.h"
 #include "compiler.h"
+#include "util.h"
 
 int
 tap_ctl_connect_xenblkif(const pid_t pid, const domid_t domid, const int devid, int poll_duration,
@@ -75,8 +76,7 @@ tap_ctl_connect_xenblkif(const pid_t pid, const domid_t domid, const int devid, 
             EPRINTF("pool name too long: %s\n", pool);
             return -ENAMETOOLONG;
         }
-        strncpy(message.u.blkif.pool, pool, sizeof(message.u.blkif.pool));
-        message.u.blkif.pool[sizeof(message.u.blkif.pool) - 1] = '\0';
+        safe_strncpy(message.u.blkif.pool, pool, sizeof(message.u.blkif.pool));
     } else {
         message.u.blkif.pool[0] = 0;
     }

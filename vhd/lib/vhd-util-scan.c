@@ -50,6 +50,7 @@
 #include "libvhd.h"
 #include "lvm-util.h"
 #include "canonpath.h"
+#include "util.h"
 
 #define VHD_SCAN_FAST        0x01
 #define VHD_SCAN_PRETTY      0x02
@@ -504,13 +505,11 @@ vhd_util_scan_extract_volume_name(char *dst, const char *src, size_t size)
 	c = strrchr(copy, '/');
 	if (c == name) {
 		/* unrecognized format */
-		strncpy(dst, src, size);
-		dst[size - 1] = '\0';
+		safe_strncpy(dst, src, size);
 		return -EINVAL;
 	}
 
-	strncpy(dst, ++c, size);
-	dst[size - 1] = '\0';
+	safe_strncpy(dst, ++c, size);
 	return 0;
 }
 

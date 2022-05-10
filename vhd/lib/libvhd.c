@@ -57,6 +57,7 @@
 #include "relative-path.h"
 #include "canonpath.h"
 #include "compiler.h"
+#include "util.h"
 
 /* VHD uses an epoch of 12:00AM, Jan 1, 2000. This is the Unix timestamp for 
  * the start of the VHD epoch. */
@@ -2876,7 +2877,7 @@ vhd_initialize_footer(vhd_context_t *ctx, int type, uint64_t size)
 	ctx->footer.type         = type;
 	ctx->footer.saved        = 0;
 	ctx->footer.data_offset  = 0xFFFFFFFFFFFFFFFFULL;
-	strncpy(ctx->footer.crtr_app, "tap", sizeof(ctx->footer.crtr_app));
+	safe_strncpy(ctx->footer.crtr_app, "tap", sizeof(ctx->footer.crtr_app));
 	uuid_generate(ctx->footer.uuid);
 }
 

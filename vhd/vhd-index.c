@@ -42,6 +42,7 @@
 
 #include "libvhd.h"
 #include "libvhd-index.h"
+#include "util.h"
 
 static void
 usage(void)
@@ -413,12 +414,9 @@ vhd_index_add_bat(vhdi_name_t *name,
 	bat.vhd_blocks     = vhd_blocks;
 	bat.vhd_block_size = vhd_block_size;
 
-	strncpy(bat.vhd_path, name->vhd, sizeof(bat.vhd_path));
-	bat.vhd_path[sizeof(bat.vhd_path) - 1] = '\0';
-	strncpy(bat.index_path, name->index, sizeof(bat.index_path));
-	bat.index_path[sizeof(bat.index_path) - 1] = '\0';
-	strncpy(bat.file_table_path, name->files, sizeof(bat.file_table_path));
-	bat.file_table_path[sizeof(bat.file_table_path) - 1] = '\0';
+	safe_strncpy(bat.vhd_path, name->vhd, sizeof(bat.vhd_path));
+	safe_strncpy(bat.index_path, name->index, sizeof(bat.index_path));
+	safe_strncpy(bat.file_table_path, name->files, sizeof(bat.file_table_path));
 
 	err = vhdi_open(&vhdi, name->index, O_RDWR);
 	if (err)

@@ -61,6 +61,7 @@
 #include "tapdisk-nbdserver.h"
 #include "td-blkif.h"
 #include "timeout-math.h"
+#include "util.h"
 
 #define TD_CTL_MAX_CONNECTIONS  10
 #define TD_CTL_SOCK_BACKLOG     32
@@ -573,8 +574,8 @@ tapdisk_control_list(struct tapdisk_ctl_conn *conn,
 		response->u.list.path[0] = 0;
 
 		if (vbd->name)
-			strncpy(response->u.list.path, vbd->name,
-				sizeof(response->u.list.path));
+			safe_strncpy(response->u.list.path, vbd->name,
+				     sizeof(response->u.list.path));
 
 		tapdisk_control_write_message(conn, response);
 	}
@@ -1624,8 +1625,7 @@ tapdisk_control_create_socket(char **socket_path)
 		err = ENAMETOOLONG;
 		goto fail;
 	}
-	strncpy(saddr.sun_path, td_control.path, sizeof(saddr.sun_path));
-	saddr.sun_path[sizeof(saddr.sun_path) - 1] = '\0';
+	safe_strncpy(saddr.sun_path, td_control.path, sizeof(saddr.sun_path));
 
 	saddr.sun_family = AF_UNIX;
 

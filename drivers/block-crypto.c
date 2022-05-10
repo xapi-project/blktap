@@ -140,11 +140,11 @@ find_keyfile(char **keyfile, const char *dirs,
 		sep = strchr(dirs, ',');
 		/* get directory element */
 		if (sep == NULL) {
-			strncpy(keydir, dirs, sizeof(keydir));
+			safe_strncpy(keydir, dirs, sizeof(keydir));
 			dirs = NULL;
 		} else {
 			size_t len = sep - dirs;
-			strncpy(keydir, dirs, len);
+			safe_strncpy(keydir, dirs, len);
 			dirs = sep+1;
 		}
 

@@ -46,6 +46,7 @@
 #include "tap-ctl.h"
 #include "blktap2.h"
 #include "compiler.h"
+#include "util.h"
 
 int tap_ctl_debug = 0;
 
@@ -253,8 +254,7 @@ tap_ctl_connect(const char *name, int *sfd)
 		return -ENAMETOOLONG;
 	}
 
-	strncpy(saddr.sun_path, name, sizeof(saddr.sun_path));
-	saddr.sun_path[sizeof(saddr.sun_path) - 1] = '\0';
+	safe_strncpy(saddr.sun_path, name, sizeof(saddr.sun_path));
 
 	err = connect(fd, (const struct sockaddr *)&saddr, sizeof(saddr));
 	if (err) {

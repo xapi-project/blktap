@@ -44,6 +44,7 @@
 #include <unistd.h>
 
 #include "canonpath.h"
+#include "util.h"
 
 char *
 normalize_path(const char *path, size_t path_len)
@@ -140,8 +141,7 @@ canonpath(const char *path, char *resolved_path, size_t dest_size)
 	if (strncmp(canon, dev_mapper_path, dev_mapper_len) == 0 &&
 	    strchr(canon + dev_mapper_len, '/') == NULL &&
 	    access(canon, F_OK) == 0) {
-		strncpy(resolved_path, canon, dest_size);
-		resolved_path[dest_size - 1] = '\0';
+		safe_strncpy(resolved_path, canon, dest_size);
 		goto end;
 	}
 
@@ -153,8 +153,7 @@ canonpath(const char *path, char *resolved_path, size_t dest_size)
 	 */
 	if (strncmp(canon, dev_path, dev_len) == 0 && (p = strchr(canon + dev_len, '/')) != NULL) {
 		if (strchr(p+1, '/') == NULL) {
-			strncpy(resolved_path, dev_mapper_path, dest_size);
-			resolved_path[dest_size - 1] = '\0';
+			safe_strncpy(resolved_path, dev_mapper_path, dest_size);
 			dst = strchr(resolved_path, 0);
 			for (p = canon + dev_len; *p; ++p) {
 				if (dst - resolved_path >= PATH_MAX - 2)
@@ -190,8 +189,7 @@ canonpath(const char *path, char *resolved_path, size_t dest_size)
 			if (p == resolved_path + dev_drbd_prefix_len || errno == ERANGE || *p != '\0')
 				goto end; /* Cannot parse correctly pattern. */
 
-			strncpy(resolved_path, canon, dest_size);
-			resolved_path[dest_size - 1] = '\0';
+			safe_strncpy(resolved_path, canon, dest_size);
 		} else
 			goto fallback;
 		if (access(resolved_path, F_OK) == 0)

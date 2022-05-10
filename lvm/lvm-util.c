@@ -39,6 +39,7 @@
 #include <syslog.h>
 
 #include "lvm-util.h"
+#include "util.h"
 
 #define EPRINTF(_f, _a...)					\
 	do {							\
@@ -67,8 +68,7 @@ lvm_copy_name(char *dst, const char *src, size_t size)
 	if (strnlen(src, size) == size)
 		return -ENAMETOOLONG;
 
-	strncpy(dst, src, size);
-	dst[size - 1] = '\0';
+	safe_strncpy(dst, src, size);
 	return 0;
 }
 
