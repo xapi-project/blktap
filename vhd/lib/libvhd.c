@@ -1518,10 +1518,9 @@ vhd_macx_encode_location(char *name, char **out, int *outlen)
 	iconv_t cd;
 	int len, err;
 	size_t ibl, obl;
-	char *uri, *urip, *uri_utf8, *uri_utf8p, *ret;
+	char *uri, *urip, *uri_utf8, *uri_utf8p;
 
 	err     = 0;
-	ret     = NULL;
 	*out    = NULL;
 	*outlen = 0;
 	len     = strlen(name) + strlen("file://");
@@ -1540,6 +1539,7 @@ vhd_macx_encode_location(char *name, char **out, int *outlen)
 
 	cd = iconv_open("UTF-8", "ASCII");
 	if (cd == (iconv_t)-1) {
+		free(uri_utf8);
 		err = -errno;
 		goto out;
 	}
@@ -1548,23 +1548,16 @@ vhd_macx_encode_location(char *name, char **out, int *outlen)
 
 	if (iconv(cd, &urip, &ibl, &uri_utf8p, &obl) == (size_t)-1 ||
 	    ibl || obl) {
+		free(uri_utf8);
 		err = (errno ? -errno : -EIO);
 		goto out;
 	}
 
-	ret = malloc(len);
-	if (!ret) {
-		err = -ENOMEM;
-		goto out;
-	}
-
-	memcpy(ret, uri_utf8, len);
 	*outlen = len;
-	*out    = ret;
+	*out    = uri_utf8;
 
  out:
 	free(uri);
-	free(uri_utf8);
 	if (cd != (iconv_t)-1)
 		iconv_close(cd);
 
@@ -1577,10 +1570,9 @@ vhd_w2u_encode_location(char *name, char **out, int *outlen)
 	iconv_t cd;
 	int len, err;
 	size_t ibl, obl;
-	char *uri, *urip, *uri_utf16, *uri_utf16p, *tmp, *ret;
+	char *uri, *urip, *uri_utf16, *uri_utf16p, *tmp;
 
 	err     = 0;
-	ret     = NULL;
 	*out    = NULL;
 	*outlen = 0;
 	cd      = (iconv_t) -1;
@@ -1627,31 +1619,25 @@ vhd_w2u_encode_location(char *name, char **out, int *outlen)
 	 */
 	cd = iconv_open("UTF-16LE", "ASCII");
 	if (cd == (iconv_t)-1) {
+		free(uri_utf16);
 		err = -errno;
 		goto out;
 	}
 
 	if (iconv(cd, &urip, &ibl, &uri_utf16p, &obl) == (size_t)-1 ||
 	    ibl || obl) {
+		free(uri_utf16);
 		err = (errno ? -errno : -EIO);
 		goto out;
 	}
 
 	len = len * 2;
-	ret = malloc(len);
-	if (!ret) {
-		err = -ENOMEM;
-		goto out;
-	}
-
-	memcpy(ret, uri_utf16, len);
 	*outlen = len;
-	*out    = ret;
+	*out    = uri_utf16;
 	err     = 0;
 
  out:
 	free(uri);
-	free(uri_utf16);
 	if (cd != (iconv_t)-1)
 		iconv_close(cd);
 
