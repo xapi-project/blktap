@@ -51,6 +51,7 @@
 #include "timeout-math.h"
 #include "tapdisk-nbdserver.h"
 #include "tapdisk-protocol-new.h"
+#include "util.h"
 
 #ifdef HAVE_CONFIG_H
 #include "config.h"
@@ -199,9 +200,8 @@ tdnbd_stash_passed_fd(int fd, char *msg, void *data)
 		close(passed_fds[free_index].fd);
 
 	passed_fds[free_index].fd = fd;
-	strncpy(passed_fds[free_index].id, msg,
-		sizeof(passed_fds[free_index].id) - 1);
-	passed_fds[free_index].id[sizeof(passed_fds[free_index].id) - 1] = '\0';
+	safe_strncpy(passed_fds[free_index].id, msg,
+		     sizeof(passed_fds[free_index].id));
 }
 
 static int
@@ -921,8 +921,7 @@ tdnbd_open(td_driver_t* driver, const char* name,
 			return -1;
 		}
 		prv->remote_un.sun_family = AF_UNIX;
-		strncpy(prv->remote_un.sun_path, name, sizeof(prv->remote_un.sun_path));
-		prv->remote_un.sun_path[sizeof(prv->remote_un.sun_path) - 1] = '\0';
+		safe_strncpy(prv->remote_un.sun_path, name, sizeof(prv->remote_un.sun_path));
 		len = strlen(prv->remote_un.sun_path)
 			+ sizeof(prv->remote_un.sun_family);
 		if ((rc = connect(prv->socket, (struct sockaddr*)&prv->remote_un, len)

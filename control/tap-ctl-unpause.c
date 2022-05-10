@@ -40,6 +40,7 @@
 #include <getopt.h>
 
 #include "tap-ctl.h"
+#include "util.h"
 
 int
 tap_ctl_unpause(const int id, const int minor, const char *params, int flags,
@@ -54,8 +55,8 @@ tap_ctl_unpause(const int id, const int minor, const char *params, int flags,
 	message.u.params.flags = flags;
 
 	if (params)
-		strncpy(message.u.params.path, params,
-				sizeof(message.u.params.path) - 1);
+		safe_strncpy(message.u.params.path, params,
+			     sizeof(message.u.params.path));
 	if (secondary) {
 		err = snprintf(message.u.params.secondary,
 				sizeof(message.u.params.secondary) - 1, "%s",

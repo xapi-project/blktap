@@ -47,6 +47,7 @@
 #include "libvhd-index.h"
 #include "relative-path.h"
 #include "canonpath.h"
+#include "util.h"
 
 typedef struct vhdi_path                    vhdi_path_t;
 typedef struct vhdi_header                  vhdi_header_t;
@@ -248,8 +249,7 @@ vhdi_path_expand(const char *src, vhdi_path_t *dest, int *err)
 	char *path, *base, copy[VHD_MAX_NAME_LEN];
 	char *absolute_path, __absolute_path[PATH_MAX];
 
-	strncpy(copy, src, sizeof(copy));
-	copy[sizeof(copy) - 1] = '\0';
+	safe_strncpy(copy, src, sizeof(copy));
 	base = dirname(copy);
 
 	*err = asprintf(&path, "%s/%s", base, dest->path);
@@ -688,8 +688,7 @@ vhdi_copy_path_to(vhdi_path_t *path, const char *src, const char *dest, size_t d
 	char *file, *relative_path, copy[VHD_MAX_NAME_LEN];
 	char *absolute_path, __absolute_path[PATH_MAX];
 
-	strncpy(copy, dest, sizeof(copy));
-	copy[sizeof(copy) - 1] = '\0';
+	safe_strncpy(copy, dest, sizeof(copy));
 
 	file          = basename(copy);
 	absolute_path = canonpath(copy, __absolute_path, sizeof(__absolute_path));
@@ -717,8 +716,7 @@ vhdi_copy_path_to(vhdi_path_t *path, const char *src, const char *dest, size_t d
 		goto out;
 	}
 
-	strncpy(path->path, relative_path, dest_size);
-	path->path[dest_size - 1] = '\0';
+	safe_strncpy(path->path, relative_path, dest_size);
 	path->bytes = len + 1;
 
 	err = 0;
@@ -841,8 +839,7 @@ vhdi_bat_load(const char *name, vhdi_bat_t *bat)
 	path = vhdi_path_expand(name, &header.vhd_path, &err);
 	if (err)
 		goto out;
-	strncpy(bat->vhd_path, path, sizeof(bat->vhd_path));
-	bat->vhd_path[sizeof(bat->vhd_path) - 1] = '\0';
+	safe_strncpy(bat->vhd_path, path, sizeof(bat->vhd_path));
 	free(path);
 
 	err = access(bat->vhd_path, F_OK);
@@ -854,8 +851,7 @@ vhdi_bat_load(const char *name, vhdi_bat_t *bat)
 	path = vhdi_path_expand(name, &header.index_path, &err);
 	if (err)
 		goto out;
-	strncpy(bat->index_path, path, sizeof(bat->index_path));
-	bat->index_path[sizeof(bat->index_path) - 1] = '\0';
+	safe_strncpy(bat->index_path, path, sizeof(bat->index_path));
 	free(path);
 
 	err = access(bat->index_path, F_OK);
@@ -867,8 +863,7 @@ vhdi_bat_load(const char *name, vhdi_bat_t *bat)
 	path = vhdi_path_expand(name, &header.file_table_path, &err);
 	if (err)
 		goto out;
-	strncpy(bat->file_table_path, path, sizeof(bat->file_table_path));
-	bat->file_table_path[sizeof(bat->file_table_path) - 1] = '\0';
+	safe_strncpy(bat->file_table_path, path, sizeof(bat->file_table_path));
 	free(path);
 
 	err = access(bat->file_table_path, F_OK);

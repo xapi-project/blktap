@@ -248,7 +248,7 @@ tapdisk_disktype_parse_params(const char *params, const char **_path)
 		return -ENAMETOOLONG;
 
 	memset(name, 0, sizeof(name));
-	strncpy(name, params, len);
+	safe_strncpy(name, params, len);
 
 	type = tapdisk_disktype_find(name);
 

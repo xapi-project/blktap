@@ -54,6 +54,7 @@
 #include "tapdisk-fdreceiver.h"
 
 #include "timeout-math.h"
+#include "util.h"
 
 #ifdef HAVE_CONFIG_H
 #include "config.h"
@@ -1379,8 +1380,7 @@ tapdisk_nbdserver_listen_unix(td_nbdserver_t *server)
 		goto out;
 	}
 
-	strncpy(server->local.sun_path, server->sockpath, sizeof(server->local.sun_path));
-	server->local.sun_path[sizeof(server->local.sun_path) - 1] = '\0';
+	safe_strncpy(server->local.sun_path, server->sockpath, sizeof(server->local.sun_path));
 	err = unlink(server->local.sun_path);
 	if (err == -1 && errno != ENOENT) {
 		err = -errno;
