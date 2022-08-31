@@ -90,8 +90,6 @@ libtapdisk_la_SOURCES += block-vindex.c
 libtapdisk_la_SOURCES += block-lcache.c
 libtapdisk_la_SOURCES += block-llcache.c
 libtapdisk_la_SOURCES += block-nbd.c
-libtapdisk_la_SOURCES += block-ntnx.c
-libtapdisk_la_SOURCES += block-ntnx.h
 libtapdisk_la_SOURCES += block-log.c
 
 # shared ring
