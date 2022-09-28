@@ -1263,6 +1263,8 @@ tapdisk_nbdserver_unpause_unix(td_nbdserver_t *server)
 			err = server->unix_listening_event_id;
 			server->unix_listening_event_id = -1;
 		}
+
+		/* Note: any failures after this point need to unregister the event */
 	}
 
 	return err;
@@ -1368,7 +1370,7 @@ tapdisk_nbdserver_listen_unix(td_nbdserver_t *server)
 	if (new_fd == -1) {
 		err = -errno;
 		ERR("failed to create UNIX domain socket: %s\n", strerror(-err));
-		goto out;
+		goto fail;
 	}
 
 	server->local.sun_family = AF_UNIX;
@@ -1377,7 +1379,7 @@ tapdisk_nbdserver_listen_unix(td_nbdserver_t *server)
 		     (sizeof(server->local.sun_path) - 1))) {
 		err = -ENAMETOOLONG;
 		ERR("socket name too long: %s\n", server->sockpath);
-		goto out;
+		goto fail;
 	}
 
 	safe_strncpy(server->local.sun_path, server->sockpath, sizeof(server->local.sun_path));
@@ -1386,7 +1388,7 @@ tapdisk_nbdserver_listen_unix(td_nbdserver_t *server)
 		err = -errno;
 		ERR("failed to remove %s: %s\n", server->local.sun_path,
 				strerror(-err));
-		goto out;
+		goto fail;
 	}
 	len = strlen(server->local.sun_path) + sizeof(server->local.sun_family);
 	err = bind(new_fd, (struct sockaddr *)&server->local,
@@ -1394,31 +1396,35 @@ tapdisk_nbdserver_listen_unix(td_nbdserver_t *server)
 	if (err == -1) {
 		err = -errno;
 		ERR("failed to bind: %s\n", strerror(-err));
-		goto out;
+		goto fail;
 	}
 
 	err = listen(new_fd, 10);
 	if (err == -1) {
 		err = -errno;
 		ERR("failed to listen: %s\n", strerror(-err));
-		goto out;
+		goto fail;
 	}
+
+	server->unix_listening_fd = new_fd;
 
 	err = tapdisk_nbdserver_unpause_unix(server);
 	if (err) {
 		ERR("failed to unpause the NBD server (unix): %s\n",
 				strerror(-err));
-		goto out;
+		goto fail;
 	}
 
 	INFO("Successfully started NBD server on %s\n", server->sockpath);
 
-out:
-	if (err && (new_fd != -1)) {
+	return 0;
+
+fail:
+	if (new_fd > -1) {
 		close(new_fd);
-	} else {
-		server->unix_listening_fd = new_fd;
 	}
+	server->unix_listening_fd = -1;
+
 	return err;
 }
 
