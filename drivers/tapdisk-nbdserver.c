@@ -1131,7 +1131,7 @@ tapdisk_nbdserver_newclient_unix(event_id_t id, char mode, void *data)
 
 	INFO("server: got connection\n");
 
-	tapdisk_nbdserver_newclient_fd(server, new_fd);
+	tapdisk_nbdserver_newclient_fd_new_fixed(server, new_fd);
 }
 
 td_nbdserver_t *
