@@ -1596,7 +1596,7 @@ schedule_redundant_bm_write(struct vhd_state *s, uint32_t blk)
 	offset = bat_entry(s, blk);
 	ASSERT(offset != DD_BLK_UNUSED);
 	offset <<= VHD_SECTOR_SHIFT;
-	offset -= s->padbm_size - (s->bm_secs << VHD_SECTOR_SHIFT);
+	offset -= s->padbm_size - ((uint64_t)s->bm_secs << VHD_SECTOR_SHIFT);
 
 	req->op        = VHD_OP_REDUNDANT_BM_WRITE;
 	req->treq.sec  = (td_sector_t)blk * s->spb;
