@@ -106,6 +106,7 @@ enum TD_OPS{
 #define TD_OPEN_STANDBY              0x00800
 #define TD_IGNORE_ENOSPC             0x01000
 #define TD_OPEN_NO_O_DIRECT          0x02000
+#define TD_OPEN_RATED                0x04000
 
 #define TD_CREATE_SPARSE             0x00001
 #define TD_CREATE_MULTITYPE          0x00002

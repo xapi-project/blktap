@@ -80,6 +80,7 @@ int tap_ctl_connect_send_and_receive(int id,
 int tap_ctl_connect_send_receive_ex(int id,
 				    tapdisk_message_t *message,
 				    const char *logpath,
+				    const char *sockpath,
 				    uint8_t key_size,
 				    const uint8_t *encryption_key,
 				    struct timeval *timeout);
@@ -135,14 +136,17 @@ int tap_ctl_pause(const int id, const int minor, struct timeval *timeout);
 /**
  * Unpauses the VBD
  *
- * @param pid the process ID of the tapdisk
+ * @param id the process ID of the tapdisk
+ * @param minor the minor device number for the tapdisk
  * @param flags TODO
  * @param secondary TODO
- * @param uuid
- * @param new_params the new VDI to use (type:/path/to/file), optional
+ * @param params the new VDI to use (type:/path/to/file), optional
+ * @param logpath path for changed block tracking log
+ * @param sockpath path for socket to connect td-rated valve layer
  */
 int tap_ctl_unpause(const int id, const int minor, const char *params,
-		int flags, char *secondary, const char *logpath);
+		    int flags, char *secondary, const char *logpath,
+		    const char *sockpath);
 
 ssize_t tap_ctl_stats(pid_t pid, int minor, char *buf, size_t size);
 int tap_ctl_stats_fwrite(pid_t pid, int minor, FILE *out);

@@ -75,7 +75,7 @@ tap_ctl_open(const int id, const int minor, const char *params, int flags,
 	}
 	if (flags & (TAPDISK_MESSAGE_FLAG_ADD_LOG | TAPDISK_MESSAGE_FLAG_OPEN_ENCRYPTED)) {
 		err = tap_ctl_connect_send_receive_ex(
-			id, &message, logpath, key_size, encryption_key, NULL);
+			id, &message, logpath, NULL, key_size, encryption_key, NULL);
 	}
 	else {
 		err = tap_ctl_connect_send_and_receive(id, &message, NULL);

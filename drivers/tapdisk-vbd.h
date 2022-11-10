@@ -166,6 +166,9 @@ struct td_vbd_handle {
 	struct td_vbd_encryption   encryption;
 
 	bool                       watchdog_warned;
+
+	/* Socket path for IO rating service */
+	char                       *rated_sockpath;
 };
 
 #define tapdisk_vbd_for_each_request(vreq, tmp, list)	                \

@@ -44,7 +44,7 @@
 
 int
 tap_ctl_unpause(const int id, const int minor, const char *params, int flags,
-		char *secondary, const char *logpath)
+		char *secondary, const char *logpath, const char *sockpath)
 {
 	int err;
 	tapdisk_message_t message;
@@ -66,8 +66,8 @@ tap_ctl_unpause(const int id, const int minor, const char *params, int flags,
 			return -ENAMETOOLONG;
 		}
 	}
-	if (logpath) {
-		err = tap_ctl_connect_send_receive_ex(id, &message, logpath, 0, NULL, NULL);
+	if (logpath || sockpath) {
+		err = tap_ctl_connect_send_receive_ex(id, &message, logpath, sockpath, 0, NULL, NULL);
 	}
 	else {
 		err = tap_ctl_connect_send_and_receive(id, &message, NULL);
