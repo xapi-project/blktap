@@ -38,7 +38,9 @@
 #include <stdio.h>
 #include <limits.h>
 #include <regex.h>
+#include <glob.h>
 
+#include "blktap.h"
 #include "tapdisk-image.h"
 #include "tapdisk-driver.h"
 #include "tapdisk-server.h"
@@ -287,6 +289,49 @@ tapdisk_image_close_chain(struct list_head *list)
 		tapdisk_image_close(image);
 }
 
+static int
+find_parent_nbd_path(int prt_devnum, char **prt_nbd_path)
+{
+	int err;
+	char *pattern;
+	glob_t glbuf = { 0 };
+
+	/* This is glob pattern not a regex */
+	err = asprintf(&pattern, "%s/nbd[0-9]*.%d", BLKTAP2_CONTROL_DIR, prt_devnum);
+	if (err == -1) {
+		return -errno;
+	}
+
+	err = glob(pattern, 0, NULL, &glbuf);
+	switch (err) {
+	case GLOB_NOMATCH:
+		EPRINTF("%s, failed to find parent NBD path", pattern);
+		err = -ENOENT;
+		goto done;
+
+	case GLOB_ABORTED:
+	case GLOB_NOSPACE:
+		err = -errno;
+		EPRINTF("%s: glob failed, err %d", pattern, err);
+		goto done;
+	}
+
+	if (glbuf.gl_pathc != 1) {
+		/* Got more than one match */
+		err = -EINVAL;
+		EPRINTF("%s got more than one match, %lu", pattern, glbuf.gl_pathc);
+		goto done;
+	}
+	*prt_nbd_path = strdup(glbuf.gl_pathv[0]);
+	err = 0;
+
+done:
+	globfree(&glbuf);
+	free(pattern);
+
+	return err;
+}
+
 /**
  * Opens the image and all of its parents.
  *
@@ -302,6 +347,7 @@ __tapdisk_image_open_chain(int type, const char *name, int flags,
 			   struct td_vbd_encryption *encryption, struct list_head *_head,
 			   int prt_devnum)
 {
+	char *prt_nbd_path = NULL;
 	struct list_head head = LIST_HEAD_INIT(head);
 	td_image_t *image;
 	int err;
@@ -313,14 +359,21 @@ __tapdisk_image_open_chain(int type, const char *name, int flags,
 	list_add_tail(&image->next, &head);
 
 	if (unlikely(prt_devnum >= 0)) {
-		char dev[32];
-		snprintf(dev, sizeof(dev),
-			 "%s%d", BLKTAP2_IO_DEVICE, prt_devnum);
-		err = tapdisk_image_open(DISK_TYPE_AIO, dev,
-					 flags|TD_OPEN_RDONLY, encryption, &image);
+		err = find_parent_nbd_path(prt_devnum, &prt_nbd_path);
+		if (err != 0) {
+			ERR(err, "Failed to find NBD path for parent, %d", prt_devnum);
+			goto fail;
+		}
+		/* Don't open parent NBD in secondary mode*/
+		flags &= ~TD_OPEN_SECONDARY;
+		err = tapdisk_image_open(DISK_TYPE_NBD, prt_nbd_path,
+					 flags | TD_OPEN_RDONLY | TD_USE_NEW_NBD,
+					 encryption, &image);
 		if (err)
 			goto fail;
 
+		free(prt_nbd_path);
+		prt_nbd_path = NULL;
 		list_add_tail(&image->next, &head);
 		goto done;
 	}
@@ -334,6 +387,8 @@ done:
 	return 0;
 
 fail:
+	free(prt_nbd_path);
+
 	tapdisk_image_close_chain(&head);
 	return err;
 }

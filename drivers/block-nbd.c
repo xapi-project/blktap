@@ -809,7 +809,7 @@ tdnbd_nbd_negotiate_new(struct tdnbd_data *prv, td_driver_t *driver)
 static int
 tdnbd_nbd_negotiate(struct tdnbd_data *prv, td_driver_t *driver)
 {
-	if(CLIENT_USE_OLD_HANDSHAKE) {
+	if(CLIENT_USE_OLD_HANDSHAKE && !td_flag_test(driver->state, TD_DRIVER_NEW_NBD)) {
 		return tdnbd_nbd_negotiate_old(prv, driver);
 	} else {
 		return tdnbd_nbd_negotiate_new(prv, driver);

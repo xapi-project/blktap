@@ -985,7 +985,8 @@ vhd_validate_parent(td_driver_t *child_driver,
 			return -EINVAL;
 		if (!vhd_parent_raw(&child->vhd) &&
 		    !(parent_driver->type == DISK_TYPE_LCACHE ||
-		      parent_driver->type == DISK_TYPE_AIO))
+		      parent_driver->type == DISK_TYPE_AIO ||
+		      parent_driver->type == DISK_TYPE_NBD))
 			return -EINVAL;
 		return 0;
 	}
