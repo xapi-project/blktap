@@ -39,6 +39,7 @@
 
 #define TD_DRIVER_OPEN               0x0001
 #define TD_DRIVER_RDONLY             0x0002
+#define TD_DRIVER_NEW_NBD            0x0004
 #define SECTOR_SIZE                  512
 
 struct td_driver_handle {
