@@ -14,7 +14,11 @@
 
 /* Get the correct defines for memory barriers - do not fall
  * back to those provided by the kernel */
-#define xen_mb()  asm volatile ("mfence" ::: "memory")
+#ifdef __i386__
+#define xen_mb()  asm volatile ( "lock addl $0, -4(%%esp)" ::: "memory" )
+#else
+#define xen_mb()  asm volatile ( "lock addl $0, -32(%%rsp)" ::: "memory" )
+#endif
 #define xen_rmb() asm volatile ("" ::: "memory")
 #define xen_wmb() asm volatile ("" ::: "memory")
 
