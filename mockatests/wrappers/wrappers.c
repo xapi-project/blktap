@@ -164,7 +164,7 @@ int
 wrap_vprintf(const char *format, va_list ap)
 {
 	if (mock_vprintf) {
-		struct printf_data *data = (struct printf_data *)mock();
+		struct printf_data *data = mock_ptr_type(struct printf_data *);
 		int remaining = data->size - data->offset;
 		int len = vsnprintf(data->buf + data->offset, remaining, format, ap);
 		assert_in_range(len, 0, remaining);
