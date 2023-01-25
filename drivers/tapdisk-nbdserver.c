@@ -266,7 +266,7 @@ send_info_export (int new_fd, uint32_t option, uint32_t reply, uint16_t info, ui
 	fixed_new_option_reply.magic = htobe64 (NBD_REP_MAGIC);
 	fixed_new_option_reply.option = htobe32 (option);
 	fixed_new_option_reply.reply = htobe32 (reply);
-	fixed_new_option_reply.replylen = htobe32 (sizeof export);
+	fixed_new_option_reply.replylen = htobe32 (sizeof(export));
 
 	export.info = htobe16 (info);
 	export.exportsize = htobe64 (exportsize);
@@ -356,6 +356,7 @@ receive_newstyle_options(td_nbdserver_t *server, int new_fd, bool no_zeroes)
 	uint64_t exportsize;
 	struct nbd_export_name_option_reply handshake_finish;
 	char *buf = NULL;
+	char *exportname = NULL;
 	int ret = 0;
 
 	for (n_options = 0; n_options < MAX_OPTIONS; n_options++) {
@@ -429,21 +430,63 @@ receive_newstyle_options(td_nbdserver_t *server, int new_fd, bool no_zeroes)
 			ERR("NBD_OPT_INFO: not implemented");
 			break;
 		case NBD_OPT_GO:
-		{   
+		{
 			uint16_t flags;
-			INFO("Processing NBD_OPT_EXPORT_NAME");
+			uint32_t exportnamelen;
+			uint16_t nrInfoReq;
 
-			provide_server_info(server, &exportsize, &flags);
-	
-			if (send_info_export (new_fd, opt_code,
-                                                    NBD_REP_INFO,
-                                                    NBD_INFO_EXPORT,
-                                                    exportsize, flags) == -1){
-				ERR("Could not send reply info export");
-				ret = -1;	
+			INFO("Processing NBD_OPT_GO");
+
+			if (recv(new_fd, &exportnamelen, sizeof(exportnamelen), 0) == -1) {
+				ret = -1;
 				goto done;
 			}
-			
+			exportnamelen = be32toh(exportnamelen);
+
+			exportname = malloc(exportnamelen + 1);
+			if (exportname == NULL) {
+				ERR("Could not malloc space for export name");
+				ret = -1;
+				goto done;
+			}
+			if (recv(new_fd, exportname, exportnamelen, 0) == -1) {
+				ret = -1;
+				goto done;
+			}
+			exportname[exportnamelen] = '\0';
+			INFO("Exportname %s", exportname);
+
+			if (recv(new_fd, &nrInfoReq, sizeof(nrInfoReq), 0) == -1) {
+				ret = -1;
+				goto done;
+			}
+			nrInfoReq = be16toh(nrInfoReq);
+			INFO("nrInfoReq is %d", nrInfoReq);
+
+			while(nrInfoReq--) {
+				uint16_t request;
+				if (recv(new_fd, &request, sizeof(request), 0) == -1) {
+					ERR("Failed to read NBD_INFO");
+					ret = -1;
+					goto done;
+				}
+				request = be16toh(request);
+				INFO("Client requested NBD_INFO %u", request);
+			}
+
+			provide_server_info(server, &exportsize, &flags);
+
+			/* Always send NBD_INFO_EXPORT*/
+			if (send_info_export (new_fd, opt_code,
+					      NBD_REP_INFO,
+					      NBD_INFO_EXPORT,
+					      exportsize, flags) == -1){
+				ERR("Could not send reply info export");
+				ret = -1;
+				goto done;
+			}
+			/* TODO: Can send more than one INFO but do we need to? */
+
 			/* 
 			 * We could read the option infos here but nothing we
 			 * connect to seems to use them
@@ -538,6 +581,7 @@ receive_newstyle_options(td_nbdserver_t *server, int new_fd, bool no_zeroes)
 
 done:
 	free(buf);
+	free(exportname);
 	return ret;
 }
 
