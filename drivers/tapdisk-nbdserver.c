@@ -302,18 +302,21 @@ send_meta_context (int new_fd, uint32_t reply, uint32_t context_id, const char *
 
 	int rc = send (new_fd, &fixed_new_option_reply, sizeof(fixed_new_option_reply), 0);
 	if(rc != sizeof(fixed_new_option_reply)) {
-		ERR("Failed to send new_option_reply");
-		return -1; 
+		ERR("Failed to send new_option_reply, sent %d of %lu",
+		    rc, sizeof(fixed_new_option_reply));
+		return -1;
 	}
 	rc = send (new_fd, &context, sizeof(context), 0);
-	if(rc != sizeof(fixed_new_option_reply)) {
-		ERR("Failed to send context");
-		return -1; 
+	if(rc != sizeof(context)) {
+		ERR("Failed to send context, sent %d of %lu",
+		    rc, sizeof(context));
+		return -1;
 	}
 	rc = send (new_fd, name, namelen, 0);
-	if(rc != sizeof(fixed_new_option_reply)) {
-		ERR("Failed to send name");
-		return -1; 
+	if(rc != namelen) {
+		ERR("Failed to send name, sent %d of %lu",
+		    rc, namelen);
+		return -1;
 	}
 
 	return 0;
