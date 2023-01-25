@@ -978,7 +978,7 @@ tapdisk_nbdserver_clientcb(event_id_t id, char mode, void *data)
 	}
 
 	if (request.magic != htonl(NBD_REQUEST_MAGIC)) {
-		ERR("Not enough magic");
+		ERR("Not enough magic, %X", request.magic);
 		goto fail;
 	}
 
