@@ -42,6 +42,7 @@
 void
 test_nbdserver_new_protocol_handshake(void **state)
 {
+	td_nbdserver_client_t client;
 	td_nbdserver_t server;
 	int new_fd =123 ;
 
@@ -59,8 +60,10 @@ test_nbdserver_new_protocol_handshake(void **state)
 	expect_value(__wrap_send, flags, 0);
 	will_return(__wrap_send, sizeof(handshake));
 
+	client.server = &server;
+
 	expect_value(__wrap_tapdisk_server_register_event, cb, tapdisk_nbdserver_handshake_cb);
 	expect_value(__wrap_tapdisk_server_register_event, mode, SCHEDULER_POLL_READ_FD);
-	int err = tapdisk_nbdserver_new_protocol_handshake(&server, new_fd);
+	int err = tapdisk_nbdserver_new_protocol_handshake(&client, new_fd);
 	assert_int_equal(err, 0);
 }
