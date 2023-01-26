@@ -346,7 +346,7 @@ receive_info(int fd, char* buf, int size)
 }
 
 static int
-receive_newstyle_options(td_nbdserver_t *server, int new_fd, bool no_zeroes)
+receive_newstyle_options(td_nbdserver_client_t *client, int new_fd, bool no_zeroes)
 {
 	struct nbd_new_option n_option;
 	size_t n_options;
@@ -358,6 +358,7 @@ receive_newstyle_options(td_nbdserver_t *server, int new_fd, bool no_zeroes)
 	char *buf = NULL;
 	char *exportname = NULL;
 	int ret = 0;
+	td_nbdserver_t *server = client->server;
 
 	for (n_options = 0; n_options < MAX_OPTIONS; n_options++) {
 
@@ -503,22 +504,19 @@ receive_newstyle_options(td_nbdserver_t *server, int new_fd, bool no_zeroes)
 		}
 			break;
 		case NBD_OPT_STRUCTURED_REPLY:
-			/*
-			 * We don't support all of the required Structured Reply types so reply
-			 * with UNSUP
-			 */
-			INFO("Processing NBD_OPT_STRUCTURED_REPLY and sending NBD_REP_ERR_UNSUP");
+			INFO("Processing NBD_OPT_STRUCTURED_REPLY");
 			if (opt_len != 0) {
 				send_option_reply (new_fd, opt_code, NBD_REP_ERR_INVALID);
 				ret = -1;
 				goto done;
 			}
 
-			if (send_option_reply (new_fd, opt_code, NBD_REP_ERR_UNSUP) == -1){
+			if (send_option_reply (new_fd, opt_code, NBD_REP_ACK) == -1){
 				ret = -1;
 				goto done;
 			}
 
+			client->structured_reply = true;
 			break;
 		case NBD_OPT_LIST_META_CONTEXT:
 			ERR("NBD_OPT_LIST_META_CONTEXT: not implemented");
@@ -699,6 +697,7 @@ tapdisk_nbdserver_alloc_client(td_nbdserver_t *server)
 
 	client->paused = 0;
 	client->dead = false;
+	client->structured_reply = false;
 
 	return client;
 
@@ -745,6 +744,108 @@ __tapdisk_nbdserver_block_status_cb(td_vbd_request_t *vreq, int err,
 	tapdisk_extents_t* extents = (tapdisk_extents_t *)(vreq->data);
 	send_structured_reply_block_status (client->client_fd, req->id, extents);
 	free_extents(extents);
+	free(vreq->iov->base);
+	tapdisk_nbdserver_free_request(client, req);
+}
+
+static int
+__tapdisk_nbdserver_send_structured_reply(
+	int fd, uint16_t type, uint16_t flags, char *handle, uint32_t length)
+{
+	struct nbd_structured_reply reply;
+	int tosend = 0;
+	int sent = 0;
+	int len = 0;
+
+	reply.magic = htobe32(NBD_STRUCTURED_REPLY_MAGIC);
+	reply.flags = htobe16(flags);
+	reply.type = htobe16(type);
+	memcpy(&reply.handle, handle, sizeof(reply.handle));
+	reply.length = htobe32(length);
+
+	tosend = len = sizeof(reply);
+	while (tosend > 0) {
+		sent = send(fd,
+			    ((char *)&reply) + (len - tosend),
+			    tosend, 0);
+		if (sent <= 0) {
+			sent = errno;
+			ERR("Short send/error in callback: %s", strerror(sent));
+			return -1;
+		}
+		tosend -= sent;
+	}
+
+
+	return 0;
+}
+
+static void
+__tapdisk_nbdserver_structured_read_cb(
+	td_vbd_request_t *vreq, int error, void *token, int final)
+{
+	td_nbdserver_client_t *client = token;
+	td_nbdserver_t *server = client->server;
+	td_nbdserver_req_t *req = container_of(vreq, td_nbdserver_req_t, vreq);
+	unsigned long long interval;
+	struct timeval now;
+	uint64_t offset;
+	int tosend = 0;
+	int sent = 0;
+	int len = 0;
+
+	gettimeofday(&now, NULL);
+	interval = timeval_to_us(&now) - timeval_to_us(&vreq->ts);
+
+	if (interval > 20 * 1000 * 1000) {
+		INFO("request took %llu microseconds to complete", interval);
+	}
+
+	if (client->client_fd < 0) {
+		ERR("Finishing request for client that has disappeared");
+		goto finish;
+	}
+
+	tosend = len = vreq->iov->secs << SECTOR_SHIFT;
+
+	/* For now, say we're done, if we have to support multiple chunks it will be harder */
+	if (__tapdisk_nbdserver_send_structured_reply(
+		client->client_fd, NBD_REPLY_TYPE_OFFSET_DATA,
+		NBD_REPLY_FLAG_DONE, req->id, len + sizeof(uint64_t)) == -1)
+	{
+		ERR("Failed to send structured reply header");
+		goto finish;
+	}
+
+	offset = vreq->sec << SECTOR_SHIFT;
+	offset = htobe64(offset);
+	sent = send(client->client_fd, &offset, sizeof(offset), 0);
+	if (sent != sizeof(offset)) {
+		ERR("Failed to send offset for structured read reply");
+		goto finish;
+	}
+
+	tosend = len = vreq->iov->secs << SECTOR_SHIFT;
+	server->nbd_stats.stats->read_reqs_completed++;
+	server->nbd_stats.stats->read_sectors += vreq->iov->secs;
+	server->nbd_stats.stats->read_total_ticks += interval;
+	while (tosend > 0) {
+		sent = send(client->client_fd,
+			    vreq->iov->base + (len - tosend),
+			    tosend, 0);
+		if (sent <= 0) {
+			sent = errno;
+			ERR("Short send/error in callback: %s", strerror(sent));
+			goto finish;
+		}
+
+		tosend -= sent;
+	}
+
+	if (error)
+		server->nbd_stats.stats->io_errors++;
+
+finish:
 	free(vreq->iov->base);
 	tapdisk_nbdserver_free_request(client, req);
 }
@@ -832,7 +933,8 @@ tapdisk_nbdserver_handshake_cb(event_id_t id, char mode, void *data)
 {
 	uint32_t cflags = 0;
 
-	td_nbdserver_t *server = (td_nbdserver_t* )data;
+	td_nbdserver_client_t *client = (td_nbdserver_client_t*)data;
+	td_nbdserver_t *server = client->server;
 
 	int rc = recv(server->handshake_fd, &cflags, sizeof(cflags), 0);
 	if(rc < sizeof(cflags)) {
@@ -844,7 +946,7 @@ tapdisk_nbdserver_handshake_cb(event_id_t id, char mode, void *data)
 	bool no_zeroes = (NBD_FLAG_NO_ZEROES & cflags) != 0;
 
         /* Receive newstyle options. */
-        if (receive_newstyle_options (server, server->handshake_fd, no_zeroes) == -1){
+        if (receive_newstyle_options (client, server->handshake_fd, no_zeroes) == -1){
 		ERR("Option negotiation messed up");
 	}
 
@@ -852,8 +954,9 @@ tapdisk_nbdserver_handshake_cb(event_id_t id, char mode, void *data)
 }
 
 int
-tapdisk_nbdserver_new_protocol_handshake(td_nbdserver_t *server, int new_fd)
+tapdisk_nbdserver_new_protocol_handshake(td_nbdserver_client_t *client, int new_fd)
 {
+	td_nbdserver_t *server = client->server;
 	struct nbd_new_handshake handshake;
 
 	handshake.nbdmagic = htobe64 (NBD_MAGIC);
@@ -873,7 +976,7 @@ tapdisk_nbdserver_new_protocol_handshake(td_nbdserver_t *server, int new_fd)
 	tapdisk_server_register_event( SCHEDULER_POLL_READ_FD,
 				       new_fd, TV_ZERO,
 				       tapdisk_nbdserver_handshake_cb,
-				       server);
+				       client);
 	return 0;
 }
 
@@ -945,9 +1048,6 @@ tapdisk_nbdserver_newclient_fd_new_fixed(td_nbdserver_t *server, int new_fd)
 
 	INFO("Got a new client!");
 
-	if(tapdisk_nbdserver_new_protocol_handshake(server, new_fd) != 0)
-		return;
-
 	INFO("About to alloc client");
 	client = tapdisk_nbdserver_alloc_client(server);
 	if (client == NULL) {
@@ -955,8 +1055,14 @@ tapdisk_nbdserver_newclient_fd_new_fixed(td_nbdserver_t *server, int new_fd)
 		close(new_fd);
 		return;
 	}
-
 	INFO("Got an allocated client at %p", client);
+
+	if(tapdisk_nbdserver_new_protocol_handshake(client, new_fd) != 0) {
+		ERR("Error handshaking new client connection");
+		tapdisk_nbdserver_free_client(client);
+		return;
+	}
+
 	client->client_fd = new_fd;
 
 	INFO("About to enable client on fd %d", client->client_fd);
@@ -1052,16 +1158,23 @@ tapdisk_nbdserver_clientcb(event_id_t id, char mode, void *data)
 	vreq->iov = &req->iov;
 	vreq->iov->secs = len >> SECTOR_SHIFT;
 	vreq->token = client;
-	vreq->cb = __tapdisk_nbdserver_request_cb;
 	vreq->name = req->id;
 	vreq->vbd = server->vbd;
 
+	vreq->cb = client->structured_reply ?
+		__tapdisk_nbdserver_structured_read_cb :
+		__tapdisk_nbdserver_request_cb;
+
 	switch(request.type) {
 	case TAPDISK_NBD_CMD_READ:
+		vreq->cb = client->structured_reply ?
+			__tapdisk_nbdserver_structured_read_cb :
+		        __tapdisk_nbdserver_request_cb;
 		vreq->op = TD_OP_READ;
                 server->nbd_stats.stats->read_reqs_submitted++;
 		break;
 	case TAPDISK_NBD_CMD_WRITE:
+		vreq->cb = __tapdisk_nbdserver_request_cb;
 		vreq->op = TD_OP_WRITE;
 		server->nbd_stats.stats->write_reqs_submitted++;
 		n = 0;
@@ -1091,7 +1204,7 @@ tapdisk_nbdserver_clientcb(event_id_t id, char mode, void *data)
 		if(extents == NULL) {
 			ERR("Could not allocate memory for tapdisk_extents_t");
 			goto fail;
-		}	
+		}
 		bzero(extents, sizeof(tapdisk_extents_t));
 		vreq->data = extents;
 		vreq->cb = __tapdisk_nbdserver_block_status_cb;
