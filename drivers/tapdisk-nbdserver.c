@@ -499,22 +499,22 @@ receive_newstyle_options(td_nbdserver_t *server, int new_fd, bool no_zeroes)
 		}
 			break;
 		case NBD_OPT_STRUCTURED_REPLY:
-			/* 
-			 * We are always going to do structured replies so just acknowledge the
-			 * request
+			/*
+			 * We don't support all of the required Structured Reply types so reply
+			 * with UNSUP
 			 */
-			INFO("Processing NBD_OPT_STRUCTURED_REPLY");
+			INFO("Processing NBD_OPT_STRUCTURED_REPLY and sending NBD_REP_ERR_UNSUP");
 			if (opt_len != 0) {
 				send_option_reply (new_fd, opt_code, NBD_REP_ERR_INVALID);
-				ret = -1;	
-				goto done;
-			} 
-	  
-			if (send_option_reply (new_fd, opt_code, NBD_REP_ACK) == -1){
-				ret = -1;	
+				ret = -1;
 				goto done;
 			}
-	  
+
+			if (send_option_reply (new_fd, opt_code, NBD_REP_ERR_UNSUP) == -1){
+				ret = -1;
+				goto done;
+			}
+
 			break;
 		case NBD_OPT_LIST_META_CONTEXT:
 			ERR("NBD_OPT_LIST_META_CONTEXT: not implemented");
