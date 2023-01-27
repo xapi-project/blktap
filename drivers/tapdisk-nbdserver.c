@@ -418,7 +418,11 @@ receive_newstyle_options(td_nbdserver_t *server, int new_fd, bool no_zeroes)
 		}
 		break;
 		case NBD_OPT_ABORT:
-			ERR("NBD_OPT_ABORT: not implemented");
+			INFO("Processing NBD_OPT_ABORT");
+			if (send_option_reply (new_fd, opt_code, NBD_REP_ACK) == -1){
+				ret = -1;
+				goto done;
+			}
 			break;
 		case NBD_OPT_LIST:
 			ERR("NBD_OPT_LIST: not implemented");
