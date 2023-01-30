@@ -196,4 +196,10 @@ int tapdisk_nbdserver_reqs_pending(td_nbdserver_client_t *client);
 int tapdisk_nbdserver_new_protocol_handshake(td_nbdserver_client_t *client, int);
 void tapdisk_nbdserver_handshake_cb(event_id_t, char, void*);
 
+/**
+ * Send and receive from the NBD socket
+ */
+int recv_fully_or_fail(int f, void *buf, size_t len);
+int send_fully_or_fail(int f, void *buf, size_t len);
+
 #endif /* _TAPDISK_NBDSERVER_H_ */

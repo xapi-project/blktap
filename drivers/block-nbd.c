@@ -75,42 +75,6 @@ static const int CLIENT_USE_OLD_HANDSHAKE = 1;
  * too.
  */
 
-void readit(int f, void *buf, size_t len) {
-	ssize_t res;
-	int err = 0;
-	while (len > 0) {
-		res = recv(f, buf, len, 0);
-		if (res > 0) {
-			len -= res;
-			buf += res;
-		} else {
-			err = errno;
-			if(err != EAGAIN) {
-				ERROR("Read failed: %s", strerror(err));
-			}
-		}
-	}
-}
-
-void sendit(int f, void *buf, size_t len) {
-	ssize_t res;
-	int err = 0;
-	while (len > 0) {
-		res = send(f, buf, len, 0);
-		if (res > 0) {
-			len -= res;
-			buf += res;
-		} else {
-			err = errno;
-			if(err != EAGAIN) {
-				ERROR("Send failed: %s", strerror(err));
-				break;
-			} 
-		}
-	}
-}
-
-
 struct td_fdreceiver *fdreceiver = NULL;
 
 struct tdnbd_passed_fd {
@@ -583,6 +547,7 @@ tdnbd_wait_read(int fd)
 int 
 negotiate_client_newstyle_options(int sock, td_driver_t *driver)
 {
+	int rc;
 	struct nbd_new_option new_option;
 	char exportname[] = "tapdisk_client"; /* Hard code could make this unique */
 	new_option.version = htobe64(NBD_OPT_MAGIC);
@@ -590,19 +555,38 @@ negotiate_client_newstyle_options(int sock, td_driver_t *driver)
 	new_option.option = htobe32( NBD_OPT_EXPORT_NAME);
 
 	/* Send EXPORTNAME_NAME option request */
-	sendit(sock, &new_option, sizeof(new_option));
+	rc = send_fully_or_fail(sock, &new_option, sizeof(new_option));
+	if (rc < 0)
+	{
+		ERROR("Failed to send options to sock");
+		close(sock);
+		return -1;
+	}
 	/* Send exportname name */
-	sendit(sock, exportname, sizeof(exportname));
+	rc = send_fully_or_fail(sock, exportname, sizeof(exportname));
+	if (rc < 0)
+	{
+		ERROR("Failed to send export name to sock");
+		close(sock);
+		return -1;
+	}
 
 	/* Collect the results in the handshake finished */
 	struct nbd_export_name_option_reply handshake_finish;
 	static const size_t NO_ZERO_HANDSHAKE_FINISH_SIZE = 10;
-	readit(sock, &handshake_finish, NO_ZERO_HANDSHAKE_FINISH_SIZE);
+	rc = recv_fully_or_fail(sock, &handshake_finish, NO_ZERO_HANDSHAKE_FINISH_SIZE);
+	if (rc < 0)
+	{
+		ERROR("Failed to read handshake from sock");
+		close(sock);
+		return -1;
+	}
+
 	driver->info.size = be64toh(handshake_finish.exportsize) >> SECTOR_SHIFT;
 	driver->info.sector_size = DEFAULT_SECTOR_SIZE;
 	driver->info.info = 0;
 
-	int rc = fcntl(sock, F_SETFL, O_NONBLOCK);
+	rc = fcntl(sock, F_SETFL, O_NONBLOCK);
 
 	if (rc != 0) {
 		ERROR("Could not set O_NONBLOCK flag");
@@ -779,7 +763,13 @@ tdnbd_nbd_negotiate_new(struct tdnbd_data *prv, td_driver_t *driver)
 	}
 
 	/* Receive NBD magic_version */
-	readit(sock, &magic_version, sizeof(magic_version));
+	rc = recv_fully_or_fail(sock, &magic_version, sizeof(magic_version));
+	if (rc < 0)
+	{
+		ERROR("Failed to read magic from sock");
+		close(sock);
+		return -1;
+	}
 
 	if (ntohll(magic_version) != NBD_NEW_VERSION) {
 		ERROR("Not enough magic in negotiation(2) (%"PRIu64")\n",
