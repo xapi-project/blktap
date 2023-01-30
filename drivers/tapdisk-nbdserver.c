@@ -90,6 +90,56 @@ struct td_nbdserver_req {
 	struct td_iovec         iov;
 };
 
+int recv_fully_or_fail(int f, void *buf, size_t len) {
+	ssize_t res;
+	int err = 0;
+	while (len > 0) {
+		res = recv(f, buf, len, 0);
+		if (res > 0) {
+			len -= res;
+			buf += res;
+		} else if (res == 0) {
+			/* EOF */
+			INFO("Zero return from recv");
+			return -1;
+		} else {
+			err = errno;
+			if(err != EAGAIN && err != EINTR) {
+				ERR("Read failed: %s", strerror(err));
+				break;
+			}
+			err = 0;
+		}
+	}
+
+	return -err;
+}
+
+int send_fully_or_fail(int f, void *buf, size_t len) {
+	ssize_t res;
+	int err = 0;
+	while (len > 0) {
+		res = send(f, buf, len, 0);
+		if (res > 0) {
+			len -= res;
+			buf += res;
+		} else if (res == 0) {
+			/* EOF */
+			INFO("Zero return from send");
+			return -1;
+		} else {
+			err = errno;
+			if(err != EAGAIN && err != EINTR) {
+				ERR("Send failed: %s", strerror(err));
+				break;
+			}
+			err = 0;
+		}
+	}
+
+	return -err;
+}
+
 void
 free_extents(struct tapdisk_extents *extents)
 {
@@ -197,10 +247,10 @@ send_option_reply (int new_fd, uint32_t option, uint32_t reply)
 	fixed_new_option_reply.reply = htobe32 (reply);
 	fixed_new_option_reply.replylen = htobe32 (0);
 
-	int rc = send(new_fd, &fixed_new_option_reply, sizeof(fixed_new_option_reply), 0);
-	if(rc != sizeof(fixed_new_option_reply)) {
+	int rc = send_fully_or_fail(new_fd, &fixed_new_option_reply, sizeof(fixed_new_option_reply));
+	if(rc < 0) {
 		ERR("Failed to send new_option_reply");
-		return -1; 
+		return -1;
 	}
 	return 0;
 }
@@ -272,16 +322,16 @@ send_info_export (int new_fd, uint32_t option, uint32_t reply, uint16_t info, ui
 	export.exportsize = htobe64 (exportsize);
 	export.eflags = htobe16 (flags);
 
-	int rc = send(new_fd, &fixed_new_option_reply, sizeof(fixed_new_option_reply), 0);
-	if(rc != sizeof(fixed_new_option_reply)) {
+	int rc = send_fully_or_fail(new_fd, &fixed_new_option_reply, sizeof(fixed_new_option_reply));
+	if(rc < 0) {
 		ERR("Failed to send new_option_reply");
-		return -1; 
+		return -1;
 	}
 
-	rc = send(new_fd, &export, sizeof(export), 0);
-	if(rc != sizeof(export)) {
+	rc = send_fully_or_fail(new_fd, &export, sizeof(export));
+	if(rc < 0) {
 		ERR("Failed to send info export");
-		return -1; 
+		return -1;
 	}
 
 	return 0;
@@ -325,24 +375,7 @@ send_meta_context (int new_fd, uint32_t reply, uint32_t context_id, const char *
 int
 receive_info(int fd, char* buf, int size)
 {
-	int n = 0;
-	int hdrlen = size;
-
-	while (n < size) {
-		int rc = recv(fd, buf + n, hdrlen - n, 0);
-		if (rc == 0) {
-			ERR("Connection was closed by client");
-			return -1;
-		}
-		if (rc < 0) {
-			rc = errno;
-			ERR("Client caused following error %s", strerror(rc));
-			return -rc;
-		}
-		n += rc;
-	}
-
-	return 0;
+	return recv_fully_or_fail(fd, buf, size);
 }
 
 static int
@@ -362,7 +395,7 @@ receive_newstyle_options(td_nbdserver_client_t *client, int new_fd, bool no_zero
 
 	for (n_options = 0; n_options < MAX_OPTIONS; n_options++) {
 
-		if(receive_info(new_fd, (char *)&n_option, sizeof(n_option)) == -1){
+		if(receive_info(new_fd, (char *)&n_option, sizeof(n_option)) < 0){
 			return -1;	
 		}
 
@@ -396,9 +429,9 @@ receive_newstyle_options(td_nbdserver_client_t *client, int new_fd, bool no_zero
 		{
 			INFO("Processing NBD_OPT_EXPORT_NAME");
 			uint16_t flags = 0;
-			if(receive_info(new_fd, (char *)buf, opt_len) == -1){
+			if(receive_info(new_fd, (char *)buf, opt_len) < 0) {
 				ERR ("Failed to received data for NBD_OPT_EXPORT_NAME");
-				ret = -1;	
+				ret = -1;
 				goto done;
 			}
 			buf[opt_len] = '\0';
@@ -442,7 +475,7 @@ receive_newstyle_options(td_nbdserver_client_t *client, int new_fd, bool no_zero
 
 			INFO("Processing NBD_OPT_GO");
 
-			if (recv(new_fd, &exportnamelen, sizeof(exportnamelen), 0) == -1) {
+			if (recv_fully_or_fail(new_fd, &exportnamelen, sizeof(exportnamelen)) < 0) {
 				ret = -1;
 				goto done;
 			}
@@ -454,14 +487,14 @@ receive_newstyle_options(td_nbdserver_client_t *client, int new_fd, bool no_zero
 				ret = -1;
 				goto done;
 			}
-			if (recv(new_fd, exportname, exportnamelen, 0) == -1) {
+			if (recv_fully_or_fail(new_fd, exportname, exportnamelen) < 0) {
 				ret = -1;
 				goto done;
 			}
 			exportname[exportnamelen] = '\0';
 			INFO("Exportname %s", exportname);
 
-			if (recv(new_fd, &nrInfoReq, sizeof(nrInfoReq), 0) == -1) {
+			if (recv_fully_or_fail(new_fd, &nrInfoReq, sizeof(nrInfoReq)) < 0) {
 				ret = -1;
 				goto done;
 			}
@@ -470,7 +503,7 @@ receive_newstyle_options(td_nbdserver_client_t *client, int new_fd, bool no_zero
 
 			while(nrInfoReq--) {
 				uint16_t request;
-				if (recv(new_fd, &request, sizeof(request), 0) == -1) {
+				if (recv_fully_or_fail(new_fd, &request, sizeof(request)) < 0) {
 					ERR("Failed to read NBD_INFO");
 					ret = -1;
 					goto done;
@@ -528,7 +561,7 @@ receive_newstyle_options(td_nbdserver_client_t *client, int new_fd, bool no_zero
 			uint32_t exportnamelen;
 			uint32_t nr_queries;
 			uint32_t querylen;
-			if (recv(new_fd, buf, opt_len, 0) == -1){
+			if (recv_fully_or_fail(new_fd, buf, opt_len) < 0){
 				ret = -1;	
 				goto done;
 			}
@@ -753,9 +786,7 @@ __tapdisk_nbdserver_send_structured_reply(
 	int fd, uint16_t type, uint16_t flags, char *handle, uint32_t length)
 {
 	struct nbd_structured_reply reply;
-	int tosend = 0;
-	int sent = 0;
-	int len = 0;
+	int rc = 0;
 
 	reply.magic = htobe32(NBD_STRUCTURED_REPLY_MAGIC);
 	reply.flags = htobe16(flags);
@@ -763,19 +794,11 @@ __tapdisk_nbdserver_send_structured_reply(
 	memcpy(&reply.handle, handle, sizeof(reply.handle));
 	reply.length = htobe32(length);
 
-	tosend = len = sizeof(reply);
-	while (tosend > 0) {
-		sent = send(fd,
-			    ((char *)&reply) + (len - tosend),
-			    tosend, 0);
-		if (sent <= 0) {
-			sent = errno;
-			ERR("Short send/error in callback: %s", strerror(sent));
-			return -1;
-		}
-		tosend -= sent;
+	rc = send_fully_or_fail(fd, &reply, sizeof(reply));
+	if (rc < 0) {
+		ERR("Short send/error in callback");
+		return -1;
 	}
-
 
 	return 0;
 }
@@ -790,8 +813,7 @@ __tapdisk_nbdserver_structured_read_cb(
 	unsigned long long interval;
 	struct timeval now;
 	uint64_t offset;
-	int tosend = 0;
-	int sent = 0;
+	int rc = 0;
 	int len = 0;
 
 	gettimeofday(&now, NULL);
@@ -806,7 +828,7 @@ __tapdisk_nbdserver_structured_read_cb(
 		goto finish;
 	}
 
-	tosend = len = vreq->iov->secs << SECTOR_SHIFT;
+	len = vreq->iov->secs << SECTOR_SHIFT;
 
 	/* For now, say we're done, if we have to support multiple chunks it will be harder */
 	if (__tapdisk_nbdserver_send_structured_reply(
@@ -819,27 +841,20 @@ __tapdisk_nbdserver_structured_read_cb(
 
 	offset = vreq->sec << SECTOR_SHIFT;
 	offset = htobe64(offset);
-	sent = send(client->client_fd, &offset, sizeof(offset), 0);
-	if (sent != sizeof(offset)) {
+	rc = send_fully_or_fail(client->client_fd, &offset, sizeof(offset));
+	if (rc < 0) {
 		ERR("Failed to send offset for structured read reply");
 		goto finish;
 	}
 
-	tosend = len = vreq->iov->secs << SECTOR_SHIFT;
 	server->nbd_stats.stats->read_reqs_completed++;
 	server->nbd_stats.stats->read_sectors += vreq->iov->secs;
 	server->nbd_stats.stats->read_total_ticks += interval;
-	while (tosend > 0) {
-		sent = send(client->client_fd,
-			    vreq->iov->base + (len - tosend),
-			    tosend, 0);
-		if (sent <= 0) {
-			sent = errno;
-			ERR("Short send/error in callback: %s", strerror(sent));
-			goto finish;
-		}
-
-		tosend -= sent;
+	rc = send_fully_or_fail(client->client_fd,
+				vreq->iov->base, len);
+	if (rc < 0) {
+		ERR("Short send/error in callback");
+		goto finish;
 	}
 
 	if (error)
@@ -860,9 +875,7 @@ __tapdisk_nbdserver_request_cb(td_vbd_request_t *vreq, int error,
 	unsigned long long interval;
 	struct timeval now;
 	struct nbd_reply reply;
-	int tosend = 0;
-	int sent = 0;
-	int len = 0;
+	int rc = 0;
 
 	reply.magic = htonl(NBD_REPLY_MAGIC);
 	reply.error = htonl(error);
@@ -880,36 +893,25 @@ __tapdisk_nbdserver_request_cb(td_vbd_request_t *vreq, int error,
 		goto finish;
 	}
 
-	tosend = len = sizeof(reply);
-	while (tosend > 0) {
-		sent = send(client->client_fd,
-			    ((char *)&reply) + (len - tosend),
-			    tosend, 0);
-		if (sent <= 0) {
-			sent = errno;
-			ERR("Short send/error in callback: %s", strerror(sent));
-			goto finish;
-		}	
-		tosend -= sent;
+	rc = send_fully_or_fail(client->client_fd,
+				&reply,
+				sizeof(reply));
+	if (rc < 0) {
+		ERR("Short send/error in callback");
+		goto finish;
 	}
 
 	switch(vreq->op) {
 	case TD_OP_READ:
-		tosend = len = vreq->iov->secs << SECTOR_SHIFT;
 		server->nbd_stats.stats->read_reqs_completed++;
 		server->nbd_stats.stats->read_sectors += vreq->iov->secs;
 		server->nbd_stats.stats->read_total_ticks += interval;
-		while (tosend > 0) {
-			sent = send(client->client_fd,
-					vreq->iov->base + (len - tosend),
-					tosend, 0);
-			if (sent <= 0) {
-				sent = errno;
-				ERR("Short send/error in callback: %s", strerror(sent));
-				goto finish;
-			}
-
-			tosend -= sent;
+		rc = send_fully_or_fail(client->client_fd,
+					vreq->iov->base,
+					vreq->iov->secs << SECTOR_SHIFT);
+		if (rc < 0) {
+			ERR("Short send/error in callback");
+			goto finish;
 		}
 		break;
 	case TD_OP_WRITE:
@@ -936,8 +938,8 @@ tapdisk_nbdserver_handshake_cb(event_id_t id, char mode, void *data)
 	td_nbdserver_client_t *client = (td_nbdserver_client_t*)data;
 	td_nbdserver_t *server = client->server;
 
-	int rc = recv(server->handshake_fd, &cflags, sizeof(cflags), 0);
-	if(rc < sizeof(cflags)) {
+	int rc = recv_fully_or_fail(server->handshake_fd, &cflags, sizeof(cflags));
+	if(rc < 0) {
 		ERR("Could not receive client flags");
 		return;
 	}
@@ -963,8 +965,8 @@ tapdisk_nbdserver_new_protocol_handshake(td_nbdserver_client_t *client, int new_
 	handshake.version = htobe64 (NBD_NEW_VERSION);
 	handshake.gflags = htobe16 (gflags);
 
-	int rc = send(new_fd, &handshake, sizeof(handshake), 0);
-	if (rc != sizeof(handshake)) {
+	int rc = send_fully_or_fail(new_fd, &handshake, sizeof(handshake));
+	if (rc < 0) {
 		ERR("Sending newstyle handshake");
 		return -1;
 	}
@@ -1006,16 +1008,10 @@ tapdisk_nbdserver_newclient_fd_old(td_nbdserver_t *server, int new_fd)
 	memcpy(buffer + 24, &tmp32, sizeof(tmp32));
 	bzero(buffer + 28, 124);
 
-	rc = send(new_fd, buffer, 152, 0);
-
-	if (rc != 152) {
-		int err = errno;
+	rc = send_fully_or_fail(new_fd, buffer, 152);
+	if (rc < 0) {
 		close(new_fd);
-		if (rc == -1)
-			INFO("Short write in negotiation: %s", strerror(err));
-		else
-			INFO("Short write in negotiation: wrote %d bytes instead of 152\n",
-					rc);
+		INFO("Write failed in negotiation");
 		return;
 	}
 
@@ -1090,10 +1086,7 @@ tapdisk_nbdserver_clientcb(event_id_t id, char mode, void *data)
 	td_nbdserver_t *server = client->server;
 	int rc;
 	int len;
-	int hdrlen;
-	int n;
 	int fd = client->client_fd;
-	char *ptr;
 	td_vbd_request_t *vreq;
 	struct nbd_request request;
 	td_nbdserver_req_t *req;
@@ -1110,25 +1103,10 @@ tapdisk_nbdserver_clientcb(event_id_t id, char mode, void *data)
 	memset(req, 0, sizeof(td_nbdserver_req_t));
 	/* Read the request the client has sent */
 
-	hdrlen = sizeof(struct nbd_request);
-
-	n = 0;
-	ptr = (char *) &request;
-	while (n < hdrlen) {
-		rc = recv(fd, ptr + n, hdrlen - n, 0);
-		if (rc == 0) {
-			rc = errno;
-			if (rc == EAGAIN)
-				return;
-			goto fail;
-		}
-		if (rc < 0) {
-			rc = errno;
-			ERR("failed to receive from client errno: %s. Closing connection",
-			    strerror(rc));
-			goto fail;
-		}
-		n += rc;
+	rc = recv_fully_or_fail(fd, &request, sizeof(request));
+	if (rc < 0) {
+		ERR("failed to receive from client. Closing connection");
+		goto fail;
 	}
 
 	if (request.magic != htonl(NBD_REQUEST_MAGIC)) {
@@ -1177,17 +1155,12 @@ tapdisk_nbdserver_clientcb(event_id_t id, char mode, void *data)
 		vreq->cb = __tapdisk_nbdserver_request_cb;
 		vreq->op = TD_OP_WRITE;
 		server->nbd_stats.stats->write_reqs_submitted++;
-		n = 0;
-		while (n < len) {
-			rc = recv(fd, vreq->iov->base + n, (len - n), 0);
-			if (rc <= 0) {
-				ERR("Short send or error in "
-						"callback: %d", rc);
-				goto fail;
-			}
-
-			n += rc;
-		};
+		rc = recv_fully_or_fail(fd, vreq->iov->base, len);
+		if (rc < 0) {
+			ERR("Short send or error in "
+			    "callback: %d", rc);
+			goto fail;
+		}
 
 		break;
 	case TAPDISK_NBD_CMD_DISC:
