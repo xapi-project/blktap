@@ -62,6 +62,8 @@
 
 #define MAX_OPTIONS 32
 
+#define MAX_NBD_EXPORT_NAME_LEN 256
+
 #define NBD_SERVER_NUM_REQS TAPDISK_DATA_REQUESTS
 #define MAX_REQUEST_SIZE (64 * 1024 * 1024)
 
@@ -480,6 +482,13 @@ receive_newstyle_options(td_nbdserver_client_t *client, int new_fd, bool no_zero
 				goto done;
 			}
 			exportnamelen = be32toh(exportnamelen);
+
+			if (exportnamelen > MAX_NBD_EXPORT_NAME_LEN) {
+				ERR("Received %u as export name length which exceeds the maximum of %u",
+				    exportnamelen, MAX_NBD_EXPORT_NAME_LEN);
+				ret = -1;
+				goto done;
+			}
 
 			exportname = malloc(exportnamelen + 1);
 			if (exportname == NULL) {
