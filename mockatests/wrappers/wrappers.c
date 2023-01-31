@@ -96,7 +96,7 @@ int
 __wrap_fwrite(const void *ptr, size_t size, size_t nmemb, FILE *stream)
 {
 	if (mock_fwrite) {
-		struct fwrite_data *data = (struct fwrite_data *)mock();
+		struct fwrite_data *data = mock_ptr_type(struct fwrite_data *);
 
 		size_t remaining = data->size - data->offset;
 		size_t len = size * nmemb;
