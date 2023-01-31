@@ -1,3 +1,6 @@
+CFLAGS:=$(filter-out -fsanitize=leak,$(LDFLAGS))
+LDFLAGS:=$(filter-out -static-liblsan,$(LDFLAGS))
+
 AM_CFLAGS  = -Wall
 AM_CFLAGS += -Werror
 
