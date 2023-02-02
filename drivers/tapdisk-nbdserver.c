@@ -777,6 +777,14 @@ static void
 	return &(((struct sockaddr_in6*)ss)->sin6_addr);
 }
 
+static void tapdisk_nbd_server_free_vreq(td_nbdserver_client_t *client, td_vbd_request_t *vreq)
+{
+	td_nbdserver_req_t *req = container_of(vreq, td_nbdserver_req_t, vreq);
+	free(vreq->iov->base);
+	tapdisk_nbdserver_free_request(client, req);
+}
+
+
 static void
 __tapdisk_nbdserver_block_status_cb(td_vbd_request_t *vreq, int err,
 		void *token, int final)
@@ -786,8 +794,7 @@ __tapdisk_nbdserver_block_status_cb(td_vbd_request_t *vreq, int err,
 	tapdisk_extents_t* extents = (tapdisk_extents_t *)(vreq->data);
 	send_structured_reply_block_status (client->client_fd, req->id, extents);
 	free_extents(extents);
-	free(vreq->iov->base);
-	tapdisk_nbdserver_free_request(client, req);
+	tapdisk_nbd_server_free_vreq(client, vreq);
 }
 
 static int
@@ -1088,30 +1095,62 @@ tapdisk_nbdserver_newclient_fd(td_nbdserver_t *server, int new_fd)
 	}
 }	
 
+static td_vbd_request_t *create_request_vreq(
+	td_nbdserver_client_t *client, struct nbd_request request, uint32_t len)
+{
+	int rc;
+	td_nbdserver_t *server = client->server;
+	td_vbd_request_t *vreq;
+	td_nbdserver_req_t *req;
+
+	req = tapdisk_nbdserver_alloc_request(client);
+	if (!req) {
+		ERR("Couldn't allocate request in clientcb - killing client");
+		goto failreq;
+	}
+
+	vreq = &req->vreq;
+
+	memset(req, 0, sizeof(td_nbdserver_req_t));
+
+	bzero(req->id, sizeof(req->id));
+	memcpy(req->id, request.handle, sizeof(request.handle));
+
+	rc = posix_memalign(&req->iov.base, 512, len);
+	if (rc < 0) {
+		ERR("posix_memalign failed (%d)", rc);
+		goto fail;
+	}
+
+	vreq->sec = request.from >> SECTOR_SHIFT;
+	vreq->iovcnt = 1;
+	vreq->iov = &req->iov;
+	vreq->iov->secs = len >> SECTOR_SHIFT;
+	vreq->token = client;
+	vreq->name = req->id;
+	vreq->vbd = server->vbd;
+
+	return vreq;
+
+fail:
+	tapdisk_nbdserver_set_free_request(client, req);
+failreq:
+	return NULL;
+}
+
+
 void
 tapdisk_nbdserver_clientcb(event_id_t id, char mode, void *data)
 {
 	td_nbdserver_client_t *client = data;
 	td_nbdserver_t *server = client->server;
 	int rc;
-	int len;
+	uint32_t len;
 	int fd = client->client_fd;
-	td_vbd_request_t *vreq;
+	td_vbd_request_t *vreq = NULL;
 	struct nbd_request request;
-	td_nbdserver_req_t *req;
 
-	req = tapdisk_nbdserver_alloc_request(client);
-	if (!req) {
-		ERR("Couldn't allocate request in clientcb - killing client");
-		tapdisk_nbdserver_free_client(client);
-		return;
-	}
-
-	vreq = &req->vreq;
-
-	memset(req, 0, sizeof(td_nbdserver_req_t));
 	/* Read the request the client has sent */
-
 	rc = recv_fully_or_fail(fd, &request, sizeof(request));
 	if (rc < 0) {
 		ERR("failed to receive from client. Closing connection");
@@ -1131,29 +1170,13 @@ tapdisk_nbdserver_clientcb(event_id_t id, char mode, void *data)
 				request.from, len);
 	}
 
-	bzero(req->id, sizeof(req->id));
-	memcpy(req->id, request.handle, sizeof(request.handle));
-
-	rc = posix_memalign(&req->iov.base, 512, len);
-	if (rc < 0) {
-		ERR("posix_memalign failed (%d)", rc);
-		goto fail;
-	}
-
-	vreq->sec = request.from >> SECTOR_SHIFT;
-	vreq->iovcnt = 1;
-	vreq->iov = &req->iov;
-	vreq->iov->secs = len >> SECTOR_SHIFT;
-	vreq->token = client;
-	vreq->name = req->id;
-	vreq->vbd = server->vbd;
-
-	vreq->cb = client->structured_reply ?
-		__tapdisk_nbdserver_structured_read_cb :
-		__tapdisk_nbdserver_request_cb;
-
 	switch(request.type) {
 	case TAPDISK_NBD_CMD_READ:
+		vreq = create_request_vreq(client, request, len);
+		if (!vreq) {
+			ERR("Failed to create vreq");
+			goto fail;
+		}
 		vreq->cb = client->structured_reply ?
 			__tapdisk_nbdserver_structured_read_cb :
 		        __tapdisk_nbdserver_request_cb;
@@ -1161,6 +1184,11 @@ tapdisk_nbdserver_clientcb(event_id_t id, char mode, void *data)
                 server->nbd_stats.stats->read_reqs_submitted++;
 		break;
 	case TAPDISK_NBD_CMD_WRITE:
+		vreq = create_request_vreq(client, request, len);
+		if (!vreq) {
+			ERR("Failed to create vreq");
+			goto fail;
+		}
 		vreq->cb = __tapdisk_nbdserver_request_cb;
 		vreq->op = TD_OP_WRITE;
 		server->nbd_stats.stats->write_reqs_submitted++;
@@ -1179,9 +1207,14 @@ tapdisk_nbdserver_clientcb(event_id_t id, char mode, void *data)
 		INFO("About to send initial connection message");
 		tapdisk_nbdserver_newclient_fd(server, fd);
 		INFO("Sent initial connection message");
-		return;
+		goto free;
 	case TAPDISK_NBD_CMD_BLOCK_STATUS:
 	{
+		vreq = create_request_vreq(client, request, len);
+		if (!vreq) {
+			ERR("Failed to create vreq");
+			goto fail;
+		}
 		tapdisk_extents_t *extents = (tapdisk_extents_t*)malloc(sizeof(tapdisk_extents_t));
 		if(extents == NULL) {
 			ERR("Could not allocate memory for tapdisk_extents_t");
@@ -1208,6 +1241,10 @@ tapdisk_nbdserver_clientcb(event_id_t id, char mode, void *data)
 
 fail:
 	tapdisk_nbdserver_free_client(client);
+free:
+	if (vreq)
+		tapdisk_nbd_server_free_vreq(client, vreq);
+
 	return;
 }
 
