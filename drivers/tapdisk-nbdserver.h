@@ -144,6 +144,8 @@ struct td_nbdserver_client {
 	 * Send structured replies
 	 */
 	bool                    structured_reply;
+
+	int                     max_used_reqs;
 };
 
 td_nbdserver_t *tapdisk_nbdserver_alloc(td_vbd_t *, td_disk_info_t);

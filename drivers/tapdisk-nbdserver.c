@@ -230,11 +230,16 @@ td_nbdserver_req_t *
 tapdisk_nbdserver_alloc_request(td_nbdserver_client_t *client)
 {
 	td_nbdserver_req_t *req = NULL;
+	int pending;
 
 	ASSERT(client);
 
 	if (likely(client->n_reqs_free))
 		req = client->reqs_free[--client->n_reqs_free];
+
+	pending = tapdisk_nbdserver_reqs_pending(client);
+	if (pending > client->max_used_reqs)
+		client->max_used_reqs = pending;
 
 	return req;
 }
@@ -659,6 +664,7 @@ tapdisk_nbdserver_reqs_init(td_nbdserver_client_t *client, int n_reqs)
 
 	client->n_reqs      = n_reqs;
 	client->n_reqs_free = 0;
+	client->max_used_reqs = 0;
 
 	for (i = 0; i < n_reqs; i++) {
 		client->reqs[i].vreq.iov = &client->iovecs[i];
@@ -759,6 +765,8 @@ tapdisk_nbdserver_free_client(td_nbdserver_client_t *client)
 
 	if (client->client_event_id >= 0)
 		tapdisk_nbdserver_disable_client(client);
+
+	INFO("Freeing client, max used requests %d", client->max_used_reqs);
 
 	if (likely(!tapdisk_nbdserver_reqs_pending(client))) {
 		list_del(&client->clientlist);
