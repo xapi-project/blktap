@@ -100,6 +100,9 @@ shm_create(struct shm *shm);
 int
 shm_destroy(struct shm *shm);
 
-long long timeval_to_us(struct timeval *tv);
+static inline uint64_t timeval_to_us(struct timeval *tv)
+{
+	return (uint64_t)tv->tv_sec * 1000000 + tv->tv_usec;
+}
 
 #endif
