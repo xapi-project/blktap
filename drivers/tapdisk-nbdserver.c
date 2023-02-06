@@ -1218,6 +1218,9 @@ tapdisk_nbdserver_clientcb(event_id_t id, char mode, void *data)
 		goto free;
 	case TAPDISK_NBD_CMD_BLOCK_STATUS:
 	{
+		if (!client->structured_reply)
+			ERR("NBD_CMD_BLOCK_STATUS: when not in structured reply");
+
 		vreq = create_request_vreq(client, request, len);
 		if (!vreq) {
 			ERR("Failed to create vreq");
