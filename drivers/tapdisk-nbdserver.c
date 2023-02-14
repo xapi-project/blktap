@@ -64,8 +64,10 @@
 
 #define MAX_NBD_EXPORT_NAME_LEN 256
 
+#define MEGABYTES 1024 * 1024
+
 #define NBD_SERVER_NUM_REQS 128
-#define MAX_REQUEST_SIZE (64 * 1024 * 1024)
+#define MAX_REQUEST_SIZE (64 * MEGABYTES)
 
 uint16_t gflags = (NBD_FLAG_FIXED_NEWSTYLE | NBD_FLAG_NO_ZEROES);
 static const int SERVER_USE_OLD_PROTOCOL = 1;
@@ -345,6 +347,38 @@ send_info_export (int new_fd, uint32_t option, uint32_t reply, uint16_t info, ui
 }
 
 int
+send_info_block_size (int new_fd, uint32_t option, uint32_t reply, uint16_t info,
+		      uint32_t min_block_size, uint32_t preferred_block_size,
+		      uint32_t max_block_size)
+{
+	struct nbd_fixed_new_option_reply fixed_new_option_reply;
+	struct nbd_fixed_new_option_reply_info_block_size block_info;
+
+	fixed_new_option_reply.magic = htobe64 (NBD_REP_MAGIC);
+	fixed_new_option_reply.option = htobe32 (option);
+	fixed_new_option_reply.reply = htobe32 (reply);
+	fixed_new_option_reply.replylen = htobe32 (sizeof (block_info));
+
+	block_info.info = htobe16 (info);
+	block_info.min_block_size = htobe32(min_block_size);
+	block_info.preferred_block_size = htobe32(preferred_block_size);
+	block_info.max_block_size = htobe32(max_block_size);
+	int rc = send_fully_or_fail(new_fd, &fixed_new_option_reply, sizeof(fixed_new_option_reply));
+	if (rc < 0) {
+		ERR("Failed to send new_option_reply");
+		return -1;
+	}
+
+	rc = send_fully_or_fail(new_fd, &block_info, sizeof(block_info));
+	if (rc < 0) {
+		ERR("Failed to send info block size");
+		return -1;
+	}
+
+	return 0;
+}
+
+int
 send_meta_context (int new_fd, uint32_t reply, uint32_t context_id, const char *name)
 {
 	struct nbd_fixed_new_option_reply fixed_new_option_reply;
@@ -537,12 +571,16 @@ receive_newstyle_options(td_nbdserver_client_t *client, int new_fd, bool no_zero
 				ret = -1;
 				goto done;
 			}
-			/* TODO: Can send more than one INFO but do we need to? */
 
-			/* 
-			 * We could read the option infos here but nothing we
-			 * connect to seems to use them
-			 */
+			if (send_info_block_size(new_fd, opt_code,
+						 NBD_REP_INFO,
+						 NBD_INFO_BLOCK_SIZE,
+						 1, 4096, 2 * MEGABYTES) == -1) {
+				ERR("Could not send reply info block size");
+				ret = -1;
+				goto done;
+			}
+
 			if (send_option_reply (new_fd, NBD_OPT_GO, NBD_REP_ACK) == -1){
 				ERR("Could not send new style option reply");
 				ret = -1;	
