@@ -135,6 +135,14 @@ struct nbd_fixed_new_option_reply_info_export {
   uint16_t eflags;
 } __attribute__((__packed__));
 
+struct nbd_fixed_new_option_reply_info_block_size
+{
+	uint16_t info; /* NBD_INFO_BLOCK_SIZE */
+	uint32_t min_block_size;
+	uint32_t preferred_block_size;
+	uint32_t max_block_size;
+} __attribute__((__packed__));
+
 struct nbd_block_descriptor {
   uint32_t length;
   uint32_t status_flags;
