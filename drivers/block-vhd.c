@@ -749,6 +749,8 @@ __vhd_free_crypto(vhd_context_t *vhd)
 {
 	if (crypto_interface) {
 		crypto_interface->vhd_close_crypto(vhd);
+		free(crypto_interface);
+		crypto_interface = NULL;
 	}
 }
 
