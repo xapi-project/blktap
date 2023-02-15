@@ -66,7 +66,7 @@
 
 #define MEGABYTES 1024 * 1024
 
-#define NBD_SERVER_NUM_REQS 128
+#define NBD_SERVER_NUM_REQS 8
 #define MAX_REQUEST_SIZE (64 * MEGABYTES)
 
 uint16_t gflags = (NBD_FLAG_FIXED_NEWSTYLE | NBD_FLAG_NO_ZEROES);
@@ -243,6 +243,12 @@ tapdisk_nbdserver_alloc_request(td_nbdserver_client_t *client)
 	if (pending > client->max_used_reqs)
 		client->max_used_reqs = pending;
 
+	if (unlikely(client->n_reqs_free == 0)) {
+		/* last free request, mask the events */
+		tapdisk_server_mask_event(client->client_event_id, 1);
+	}
+
+
 	return req;
 }
 
@@ -282,6 +288,12 @@ tapdisk_nbdserver_free_request(td_nbdserver_client_t *client,
 	tapdisk_nbdserver_set_free_request(client, req);
 	if (unlikely(client->dead && !tapdisk_nbdserver_reqs_pending(client)))
 		tapdisk_nbdserver_free_client(client);
+
+	if (unlikely(client->n_reqs_free == (client->n_reqs / 4))) {
+		/* free requests, unmask the events */
+		tapdisk_server_mask_event(client->client_event_id, 0);
+	}
+
 }
 
 static void
