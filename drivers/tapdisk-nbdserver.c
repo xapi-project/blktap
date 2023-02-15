@@ -1271,6 +1271,11 @@ tapdisk_nbdserver_clientcb(event_id_t id, char mode, void *data)
 		if (!client->structured_reply)
 			ERR("NBD_CMD_BLOCK_STATUS: when not in structured reply");
 
+		if (len > 2 * MEGABYTES) {
+			/* limit request to 2MB */
+			len = 2 * MEGABYTES;
+		}
+
 		vreq = create_request_vreq(client, request, len);
 		if (!vreq) {
 			ERR("Failed to create vreq");
