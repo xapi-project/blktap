@@ -45,16 +45,38 @@ static int mock_fwrite = 0;
 static int mock_vprintf = 0;
 static int mock_fseek = 0;
 
+bool should_malloc_succeed()
+{
+	return (bool) mock();
+}
+
 void *
 __wrap_malloc(size_t size)
 {
 	bool succeed = true;
 	if (mock_malloc) {
-		succeed = (bool) mock();
+		succeed = should_malloc_succeed();
 	}
 	if (succeed) {
 		void * result = test_malloc(size);
 		/*fprintf(stderr, "Allocated block of %zu bytes at %p\n", size, result);*/
+		return result;
+	}
+	return NULL;
+}
+
+
+void *
+__wrap_calloc(size_t nmemb, size_t size)
+{
+	bool succeed = true;
+	fprintf(stderr, "In calloc\n");
+	if (mock_malloc) {
+		succeed = should_malloc_succeed();
+	}
+	if (succeed) {
+		void * result = test_calloc(nmemb, size);
+		/*fprintf(stderr, "Calloc: Allocated block of %zu bytes at %p\n", size, result);*/
 		return result;
 	}
 	return NULL;
@@ -240,7 +262,7 @@ void fail_fseek(int Errno)
 void malloc_succeeds(bool succeed)
 {
 	mock_malloc = true;
-	will_return(__wrap_malloc, succeed);
+	will_return(should_malloc_succeed, succeed);
 }
 
 void disable_malloc_mock()

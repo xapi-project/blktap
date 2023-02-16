@@ -1,8 +1,8 @@
 CFLAGS:=$(filter-out -fsanitize=leak,$(LDFLAGS))
 LDFLAGS:=$(filter-out -static-liblsan,$(LDFLAGS))
 
-AM_CFLAGS  = -Wall
-AM_CFLAGS += -Werror
+AM_CFLAGS = -Wall -g -Og
+AM_CFLAGS += -Werror -fno-inline
 
 AM_CPPFLAGS = -I../include
 
