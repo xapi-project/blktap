@@ -15,7 +15,7 @@ test_cbt_util_SOURCES = test-cbt-util.c test-cbt-util-commands.c test-cbt-util-s
 test_cbt_util_LDFLAGS = $(top_srcdir)/cbt/libcbtutil.la -lcmocka -luuid
 test_cbt_util_LDFLAGS += ../wrappers/libwrappers.la
 test_cbt_util_LDFLAGS += -Wl,--wrap=fopen,--wrap=fclose
-test_cbt_util_LDFLAGS += -Wl,--wrap=malloc,--wrap=free
+test_cbt_util_LDFLAGS += -Wl,--wrap=malloc,--wrap=free,--wrap=calloc
 # Need to wrap both of these as rpmbuild/mock set -D_FORTIFY_SOURCE=2
 test_cbt_util_LDFLAGS += -Wl,--wrap=printf,--wrap=__printf_chk
 # GCC will "optimise" printf calls - http://www.ciselant.de/projects/gcc_printf/gcc_printf.html
