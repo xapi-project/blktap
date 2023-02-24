@@ -188,7 +188,7 @@ bool tapdisk_nbdserver_contains_client(td_nbdserver_t *server,
 td_nbdserver_req_t *tapdisk_nbdserver_alloc_request(
 		td_nbdserver_client_t *client);
 void tapdisk_nbdserver_free_request(td_nbdserver_client_t *client,
-		td_nbdserver_req_t *req);
+		td_nbdserver_req_t *req, bool free_client_if_dead);
 
 /**
  * Tells how many requests are pending.
