@@ -283,17 +283,19 @@ tapdisk_nbdserver_set_free_request(td_nbdserver_client_t *client,
 
 void
 tapdisk_nbdserver_free_request(td_nbdserver_client_t *client,
-		td_nbdserver_req_t *req)
+			       td_nbdserver_req_t *req, bool free_client_if_dead)
 {
 	tapdisk_nbdserver_set_free_request(client, req);
-	if (unlikely(client->dead && !tapdisk_nbdserver_reqs_pending(client)))
-		tapdisk_nbdserver_free_client(client);
 
 	if (unlikely(client->n_reqs_free == (client->n_reqs / 4))) {
 		/* free requests, unmask the events */
 		tapdisk_server_mask_event(client->client_event_id, 0);
 	}
 
+	if (unlikely(free_client_if_dead &&
+		     client->dead &&
+		     !tapdisk_nbdserver_reqs_pending(client)))
+		tapdisk_nbdserver_free_client(client);
 }
 
 static void
@@ -835,11 +837,12 @@ static void
 	return &(((struct sockaddr_in6*)ss)->sin6_addr);
 }
 
-static void tapdisk_nbd_server_free_vreq(td_nbdserver_client_t *client, td_vbd_request_t *vreq)
+static void tapdisk_nbd_server_free_vreq(
+	td_nbdserver_client_t *client, td_vbd_request_t *vreq, bool free_client_if_dead)
 {
 	td_nbdserver_req_t *req = container_of(vreq, td_nbdserver_req_t, vreq);
 	free(vreq->iov->base);
-	tapdisk_nbdserver_free_request(client, req);
+	tapdisk_nbdserver_free_request(client, req, free_client_if_dead);
 }
 
 
@@ -852,7 +855,7 @@ __tapdisk_nbdserver_block_status_cb(td_vbd_request_t *vreq, int err,
 	tapdisk_extents_t* extents = (tapdisk_extents_t *)(vreq->data);
 	send_structured_reply_block_status (client->client_fd, req->id, extents);
 	free_extents(extents);
-	tapdisk_nbd_server_free_vreq(client, vreq);
+	tapdisk_nbd_server_free_vreq(client, vreq, true);
 }
 
 static int
@@ -936,7 +939,7 @@ __tapdisk_nbdserver_structured_read_cb(
 
 finish:
 	free(vreq->iov->base);
-	tapdisk_nbdserver_free_request(client, req);
+	tapdisk_nbdserver_free_request(client, req, true);
 }
 
 static void
@@ -1001,7 +1004,7 @@ __tapdisk_nbdserver_request_cb(td_vbd_request_t *vreq, int error,
 
 finish:
 	free(vreq->iov->base);
-	tapdisk_nbdserver_free_request(client, req);
+	tapdisk_nbdserver_free_request(client, req, true);
 }
 
 void
@@ -1265,7 +1268,7 @@ tapdisk_nbdserver_clientcb(event_id_t id, char mode, void *data)
 		INFO("About to send initial connection message");
 		tapdisk_nbdserver_newclient_fd(server, fd);
 		INFO("Sent initial connection message");
-		goto free;
+		return;
 	case TAPDISK_NBD_CMD_BLOCK_STATUS:
 	{
 		if (!client->structured_reply)
@@ -1306,11 +1309,10 @@ tapdisk_nbdserver_clientcb(event_id_t id, char mode, void *data)
 	return;
 
 fail:
-	tapdisk_nbdserver_free_client(client);
-free:
 	if (vreq)
-		tapdisk_nbd_server_free_vreq(client, vreq);
+		tapdisk_nbd_server_free_vreq(client, vreq, false);
 
+	tapdisk_nbdserver_free_client(client);
 	return;
 }
 
