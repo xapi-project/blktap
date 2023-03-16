@@ -46,25 +46,26 @@ vhd_util_query(int argc, char **argv)
 	char *name;
 	vhd_context_t vhd;
 	off64_t currsize;
-	int ret, err, c, size, physize, parent, fields, depth, fastresize, marker, allocated;
+	int ret, err, c, size, physize, parent, fields, depth, fastresize, marker, allocated, resolve_parent;
 
-	name       = NULL;
-	size       = 0;
-	physize    = 0;
-	parent     = 0;
-	fields     = 0;
-	depth      = 0;
-	fastresize = 0;
-	marker     = 0;
-	allocated  = 0;
-
+	name           = NULL;
+	size           = 0;
+	physize        = 0;
+	parent         = 0;
+	fields         = 0;
+	depth          = 0;
+	fastresize     = 0;
+	marker         = 0;
+	allocated      = 0;
+	resolve_parent = 1;
+	
 	if (!argc || !argv) {
 		err = -EINVAL;
 		goto usage;
 	}
 
 	optind = 0;
-	while ((c = getopt(argc, argv, "n:vspfdSmah")) != -1) {
+	while ((c = getopt(argc, argv, "n:vspfdSmauh")) != -1) {
 		switch (c) {
 		case 'n':
 			name = optarg;
@@ -92,6 +93,9 @@ vhd_util_query(int argc, char **argv)
 			break;
 		case 'a':
 			allocated = 1;
+			break;
+		case 'u':
+			resolve_parent = 0;
 			break;
 		case 'h':
 			err = 0;
@@ -132,7 +136,7 @@ vhd_util_query(int argc, char **argv)
 		else {
 			char *pname;
 
-			ret = vhd_parent_locator_get(&vhd, &pname);
+			ret = resolve_parent ? vhd_parent_locator_get(&vhd, &pname) : vhd_parent_locator_unresolved_get(&vhd, &pname);
 			if (ret)
 				printf("query failed\n");
 			else {
@@ -212,6 +216,8 @@ usage:
 	       "[-s print physical utilization (bytes)] [-p print parent] "
 	       "[-f print fields] [-m print marker] [-d print chain depth] "
 	       "[-S print max virtual size (MB) for fast resize] "
-	       "[-a print allocated block count] [-h help]\n");
+	       "[-a print allocated block count] "
+	       "[-u don't resolve parent path] "
+	       "[-h help]\n");
 	return err;
 }
