@@ -341,6 +341,7 @@ int vhd_initialize_header_parent_name(vhd_context_t *, const char *);
 int vhd_write_parent_locators(vhd_context_t *, const char *);
 int vhd_parent_locator_count(vhd_context_t *);
 int vhd_parent_locator_get(vhd_context_t *, char **);
+int vhd_parent_locator_unresolved_get(vhd_context_t *, char **);
 int vhd_custom_parent_set(vhd_context_t *vhd, const char *parent);
 
 int vhd_parent_locator_read(vhd_context_t *, vhd_parent_locator_t *, char **);
