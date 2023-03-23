@@ -73,7 +73,7 @@ vhd_util_coalesce_block(vhd_context_t *vhd, vhd_context_t *parent,
 			int parent_fd, uint64_t block)
 {
 	int i, err;
-	void *buf;
+	char *buf;
 	char *map;
 	uint64_t sec, secs;
 
@@ -84,11 +84,7 @@ vhd_util_coalesce_block(vhd_context_t *vhd, vhd_context_t *parent,
 	if (vhd->bat.bat[block] == DD_BLK_UNUSED)
 		return 0;
 
-	err = posix_memalign(&buf, 4096, vhd->header.block_size);
-	if (err)
-		return -err;
-
-	err = vhd_io_read(vhd, buf, sec, vhd->spb);
+	err = vhd_read_block(vhd, block, &buf);
 	if (err)
 		goto done;
 
