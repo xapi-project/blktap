@@ -84,11 +84,11 @@ vhd_util_coalesce_block(vhd_context_t *vhd, vhd_context_t *parent,
 	if (vhd->bat.bat[block] == DD_BLK_UNUSED)
 		return 0;
 
-	err = vhd_read_block(vhd, block, &buf);
-	if (err)
-		goto done;
-
 	if (vhd_has_batmap(vhd) && vhd_batmap_test(vhd, &vhd->batmap, block)) {
+		err = vhd_read_block(vhd, block, &buf);
+		if (err)
+			goto done;
+
 		if (parent->file)
 			err = vhd_io_write(parent, buf, sec, vhd->spb);
 		else
@@ -100,6 +100,12 @@ vhd_util_coalesce_block(vhd_context_t *vhd, vhd_context_t *parent,
 	if (err)
 		goto done;
 
+	err = posix_memalign((void *)&buf, 4096, vhd->header.block_size);
+	if (err) {
+		err = -err;
+		goto done;
+	}
+
 	for (i = 0; i < vhd->spb; i++) {
 		if (!vhd_bitmap_test(vhd, map, i))
 			continue;
@@ -107,6 +113,11 @@ vhd_util_coalesce_block(vhd_context_t *vhd, vhd_context_t *parent,
 		for (secs = 0; i + secs < vhd->spb; secs++)
 			if (!vhd_bitmap_test(vhd, map, i + secs))
 				break;
+
+		err = vhd_read_at(vhd, block, i, vhd_sectors_to_bytes(secs),
+				  buf + vhd_sectors_to_bytes(i));
+		if (err)
+			goto done;
 
 		if (parent->file)
 			err = vhd_io_write(parent,
