@@ -351,6 +351,7 @@ int vhd_read_header_at(vhd_context_t *, vhd_header_t *, off64_t);
 int vhd_read_bat(vhd_context_t *, vhd_bat_t *);
 int vhd_read_batmap(vhd_context_t *, vhd_batmap_t *);
 int vhd_read_bitmap(vhd_context_t *, uint32_t block, char **bufp);
+int vhd_read_at(vhd_context_t *ctx, uint64_t block, uint32_t from, size_t size, char *buf);
 int vhd_read_block(vhd_context_t *, uint32_t block, char **bufp);
 
 int vhd_write_footer(vhd_context_t *, vhd_footer_t *);

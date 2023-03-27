@@ -2041,19 +2041,14 @@ fail:
 }
 
 int
-vhd_read_block(vhd_context_t *ctx, uint32_t block, char **bufp)
+vhd_read_at(vhd_context_t *ctx, uint64_t block, uint32_t from, size_t size, char *buf)
 {
+	/*
+	 * Sub call function, assumes that dynamic disk has been checked
+	 */
 	int err;
-	void *buf;
-	size_t size;
 	uint64_t blk;
 	off64_t end, off;
-
-	buf   = NULL;
-	*bufp = NULL;
-
-	if (!vhd_type_dynamic(ctx))
-		return -EINVAL;
 
 	err = vhd_get_bat(ctx);
 	if (err)
@@ -2067,34 +2062,55 @@ vhd_read_block(vhd_context_t *ctx, uint32_t block, char **bufp)
 		return -EINVAL;
 
 	off  = vhd_sectors_to_bytes(blk + ctx->bm_secs);
-	size = vhd_sectors_to_bytes(ctx->spb);
 
 	err  = vhd_footer_offset_at_eof(ctx, &end);
 	if (err)
 		return err;
-
-	err  = posix_memalign(&buf, VHD_SECTOR_SIZE, size);
-	if (err) {
-		err = -err;
-		goto fail;
-	}
 
 	if (end < off + ctx->header.block_size) {
 		size = end - off;
 		memset(buf + size, 0, ctx->header.block_size - size);
 	}
 
+	off = off + vhd_sectors_to_bytes(from);
+
 	err  = vhd_seek(ctx, off, SEEK_SET);
 	if (err)
-		goto fail;
+		return err;
 
 	err  = vhd_read(ctx, buf, size);
+	if (err)
+		return err;
+
+	return 0;
+}
+
+int
+vhd_read_block(vhd_context_t *ctx, uint32_t block, char **bufp)
+{
+	int err;
+	void *buf;
+	size_t size;
+
+	buf   = NULL;
+	*bufp = NULL;
+
+	if (!vhd_type_dynamic(ctx))
+		return -EINVAL;
+
+	size = vhd_sectors_to_bytes(ctx->spb);
+	err  = posix_memalign(&buf, VHD_SECTOR_SIZE, size);
+	if (err) {
+		err = -err;
+		goto fail;
+	}
+
+	err = vhd_read_at(ctx, block, 0, size, buf);
 	if (err)
 		goto fail;
 
 	*bufp = buf;
 	return 0;
-
 fail:
 	free(buf);
 	return err;
