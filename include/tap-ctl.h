@@ -134,12 +134,6 @@ int tap_ctl_pause(const int id, const int minor, struct timeval *timeout);
 
 /**
  * Unpauses the VBD
- *
- * @param pid the process ID of the tapdisk
- * @param flags TODO
- * @param secondary TODO
- * @param uuid
- * @param new_params the new VDI to use (type:/path/to/file), optional
  */
 int tap_ctl_unpause(const int id, const int minor, const char *params,
 		int flags, char *secondary, const char *logpath);
@@ -201,7 +195,7 @@ int tap_ctl_info(pid_t pid, unsigned long long *sectors, unsigned int
 
 /**
  * Parses a type:/path/to/file string, storing the type and path to the output
- * parameters. Upon successful completion the caller must free @type and @path,
+ * parameters. Upon successful completion the caller must free \p type and \p path,
  * otherwise their values are undefined.
  *
  * @param params type:/path/to/file to parse
