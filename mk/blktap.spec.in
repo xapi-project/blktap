@@ -79,8 +79,6 @@ cat /usr/lib/udev/rules.d/65-md-incremental.rules >> /etc/udev/rules.d/65-md-inc
 %{_sbindir}/tap-ctl
 %{_sbindir}/td-util
 %{_sbindir}/td-rated
-%{_sbindir}/part-util
-%{_sbindir}/vhdpartx
 %{_libexecdir}/tapdisk
 %{_sysconfdir}/logrotate.d/blktap
 %{_sysconfdir}/cron.daily/prune_tapdisk_logs

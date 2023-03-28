@@ -44,19 +44,6 @@ libvhd_la_LDFLAGS = -version-info 1:1:1
 
 libvhd_la_LIBADD = -luuid -ldl $(LIBICONV)  $(top_srcdir)/lvm/liblvmutil.la
 
-libvhdio_la_SOURCES  = libvhdio.c
-libvhdio_la_SOURCES += ../../part/partition.c
-
-libvhdio_la_LDFLAGS  = -version-info 1:1:1
-libvhdio_la_LDFLAGS += -shared
-
-libvhdio_la_LIBADD  = libvhd.la
-libvhdio_la_LIBADD += -ldl
-
-if ENABLE_VHDIO
-MAYBE_libvhdio_la = libvhdio.la
-endif
-
 if ENABLE_TESTS
 MAYBE_test = test
 endif
