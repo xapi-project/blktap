@@ -45,19 +45,6 @@ AC_ARG_ENABLE([tests],
 	      [],
 	      [enable_tests=no])
 
-AM_CONDITIONAL([ENABLE_PART],
-	       [case "${host_os}" in
-		      linux-*) true ;;
-		      *) false ;;
-		esac])
-
-AM_CONDITIONAL([ENABLE_VHDIO],
-	       [test x$enable_shared = xyes &&
-	       	case "${host_os}" in
-		      linux-gnu) true ;;
-		      *) false ;;
-		esac])
-
 AM_CONDITIONAL([ENABLE_TESTS],
 	       [test x$enable_tests = xyes])
 
@@ -72,7 +59,6 @@ AC_DEFINE(_BLKTAP, 1,
 AC_CONFIG_FILES([
 Makefile
 lvm/Makefile
-part/Makefile
 cpumond/Makefile
 cbt/Makefile
 vhd/Makefile
