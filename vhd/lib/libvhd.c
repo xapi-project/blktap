@@ -4022,9 +4022,12 @@ struct vhd_block_vector {
 };
 
 /**
- * @vec: block vector describing read
+ * @param[in]		ctx		VHD context
+ * @param[in,out]	vec		block vector describing read
  *
- * @vec describes a list of byte-spans within a given block
+ * @return 0 on success, -errno on error
+ * 
+ * \p vec describes a list of byte-spans within a given block
  * and a corresponding list of destination buffers.
  */
 static int
@@ -4063,18 +4066,23 @@ out:
 }
 
 /**
- * @vec: block vector to initialize
- * @block: vhd block number
- * @map: optional bitmap of sectors to map (relative to beginning of block)
- * @buf: destination buffer
- * @blk_start: byte offset relative to beginning of block
- * @blk_end: byte offset relative to beginning of block
+ * @param[in]	ctx			VHD context
+ * @param[out]	vec 		block vector to initialize
+ * @param[in]	block		vhd block number
+ * @param[in]	map			optional bitmap of sectors to map (relative to beginning of block)
+ * @param[out]	buf			destination buffer
+ * @param[in]	blk_start	byte offset relative to beginning of block
+ * @param[in]	blk_end		byte offset relative to beginning of block
  *
- * initializes @vec to describe a read into a contiguous buffer
+ * @return 0 on success, -errno on error
+ * 
+ * Initializes \p vec to describe a read into a contiguous buffer
  * of potentially non-contiguous byte ranges in a given vhd block.
- * only sectors with corresponding bits set in @map (if it is not NULL)
+ * 
+ * Only sectors with corresponding bits set in \p map (if it is not NULL)
  * will be mapped; bits corresponding to unmapped sectors will be cleared.
- * first and last sector maps may be smaller than vhd sector size.
+ * 
+ * First and last sector maps may be smaller than vhd sector size.
  */
 static int
 vhd_block_vector_init(vhd_context_t *ctx,
@@ -4178,17 +4186,22 @@ out:
 #endif
 
 /**
- * @block: vhd block number
- * @map: bitmap of sectors in block which should be read
- * @buf: buffer to place data in
- * @start: byte offset into block from which to start reading
- * @end: byte offset in block at which to stop reading
+ * @param[in]		ctx			VHD context
+ * @param[in]		block		vhd block number
+ * @param[in,out]	map			bitmap of sectors in block which should be read
+ * @param[out]		buf			buffer to place data in
+ * @param[in]		start		byte offset into block from which to start reading
+ * @param[in]		end			byte offset in block at which to stop reading
  *
- * for every bit set in @map (corresponding to sectors in @block),
- * reads data (if it exists) into @buf.  if data does not exist,
- * clears corresponding bit in @map.  partial reads may occur
- * for the first and last sectors if @start and @end are not multiples
- * of vhd sector size.
+ * @return 0 on success, -errno on error
+ * 
+ * For every bit set in \p map (corresponding to sectors in \p block),
+ * reads data (if it exists) into \p buf.
+ * 
+ * If data does not exist, clears corresponding bit in \p map.
+ *
+ * Partial reads may occur for the first and last sectors if \p start and \p end
+ * are not multiples of vhd sector size.
  */
 static int
 vhd_block_vector_read_allocated_selective(vhd_context_t *ctx,
@@ -4212,13 +4225,16 @@ out:
 }
 
 /**
- * @map: bitmap of sectors which have already been read
- * @buf: destination buffer
- * @size: size in bytes to read
- * @off: byte offset in virtual disk to read
+ * @param[in]	ctx		VHD context
+ * @param[in]	map		bitmap of sectors which have already been read
+ * @param[out]	buf		destination buffer
+ * @param[in]	size	size in bytes to read
+ * @param[in]	off		byte offset in virtual disk to read
  *
- * reads @size bytes into @buf, starting at @off, skipping sectors
- * which have corresponding bits set in @map
+ * @return 0 on success, -errno on error
+ * 
+ * Reads \p size bytes into \p buf, starting at \p off, skipping sectors
+ * which have corresponding bits set in \p map
  */
 static int
 __vhd_io_dynamic_read_link_bytes(vhd_context_t *ctx, char *map,
