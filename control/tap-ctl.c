@@ -162,11 +162,21 @@ tap_cli_list(int argc, char **argv)
 		if (pid >= 0 && entry->pid != pid)
 			continue;
 
-		if (type && entry->type && strcmp(entry->type, type))
-			continue;
+		if (type) {
+			if (!entry->type)
+				continue;
 
-		if (file && entry->path && strcmp(entry->path, file))
-			continue;
+			if (strcmp(entry->type, type))
+				continue;
+		}
+
+		if (file) {
+			if (!entry->path)
+				continue;
+
+			if (strcmp(entry->path, file))
+				continue;
+		}
 
 		if (tty)
 			tap_cli_list_row(entry);
