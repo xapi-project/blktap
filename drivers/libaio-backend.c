@@ -425,7 +425,8 @@ libaio_backend_lio_event(event_id_t id, char mode, void *private)
 	for (i = split, ep = lio->aio_events; i-- > 0; ep++) {
 		iocb  = ep->obj;
 		tiocb = iocb->data;
-		complete_tiocb(queue, tiocb, ep->res);
+		if (tiocb)
+			complete_tiocb(queue, tiocb, ep->res);
 	}
 
 	queue_deferred_tiocbs(queue);
