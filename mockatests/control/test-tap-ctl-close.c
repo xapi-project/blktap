@@ -403,7 +403,7 @@ void test_tap_ctl_close_read_select_timeout(void **state)
 
 	read_timeout.tv_sec = 30;
 	read_timeout.tv_usec = 0;
-	read_select_params.result = 1;
+	read_select_params.result = 0;
 	expect_memory(__wrap_select, timeout, &read_timeout, sizeof(read_timeout));
 	will_return(__wrap_select, &read_select_params);
 
@@ -413,7 +413,7 @@ void test_tap_ctl_close_read_select_timeout(void **state)
 	/* Call test API */
 	result = tap_ctl_close(test_pid, test_minor, 0, &write_timeout);
 
-	assert_int_equal(-EIO, result);
+	assert_int_equal(-ETIMEDOUT, result);
 }
 
 void test_tap_ctl_close_error_response(void **state)

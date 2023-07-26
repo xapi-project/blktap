@@ -61,26 +61,34 @@ tap_ctl_read_raw(int fd, void *buf, size_t size, struct timeval *timeout)
 	fd_set readfds;
 	size_t offset = 0;
 	int ret;
+	int err = 0;
 
+	FD_ZERO(&readfds);
 	while (offset < size) {
-		FD_ZERO(&readfds);
 		FD_SET(fd, &readfds);
 
 		eintr_retry(ret, select(fd + 1, &readfds, NULL, NULL, timeout))
-		if (ret == -1)
+		if (ret == -1) {
+			err = errno;
 			break;
-		else if (FD_ISSET(fd, &readfds)) {
+		} else if (FD_ISSET(fd, &readfds)) {
 			eintr_retry(ret, read(fd, buf + offset, size - offset))
-			if (ret <= 0)
+			if (ret <= 0) {
+				err = errno;
 				break;
+			}
 			offset += ret;
-		} else
+		} else {
+			/* 0 return - timed out */
+			err = ETIMEDOUT;
 			break;
+		}
+
 	}
 
 	if (offset != size) {
 		EPRINTF("failure reading data %zd/%zd\n", offset, size);
-		return -EIO;
+		return err ? - err : -EIO;
 	}
 
 	return 0;
