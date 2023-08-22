@@ -1168,19 +1168,17 @@ tapdisk_vbd_request_should_retry(td_vbd_t *vbd, td_vbd_request_t *vreq)
 	    td_flag_test(vbd->state, TD_VBD_SHUTDOWN_REQUESTED))
 		return 0;
 
-	switch (abs(vreq->error)) {
-	case EPERM:
-	case ENOSYS:
-	case ESTALE:
-	case ENOSPC:
-	case EFAULT:
-		return 0;
-	}
-
 	if (tapdisk_vbd_request_timeout(vreq))
 		return 0;
 
-	return 1;
+	switch (abs(vreq->error)) {
+	case EAGAIN:
+	case EBUSY:
+	case EINTR:
+		return 1;
+	}
+
+	return 0;
 }
 
 static void
