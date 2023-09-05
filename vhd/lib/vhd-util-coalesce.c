@@ -65,14 +65,21 @@ __raw_io_write(int fd, char* buf, uint64_t sec, uint32_t secs)
 	return (errno ? -errno : -EIO);
 }
 
-/*
- * Use 'parent' if the parent is VHD, and 'parent_fd' if the parent is raw
+/**
+ * Coalesce a VHD allocation block
+ *
+ * @param[in] vhd the VHD being coalesced
+ * @param[in] parent the VHD to coalesce to unless raw
+ * @param[in] parent_fd raw FD to coalesce to unless VHD parent
+ * @param[in] parent block the allocation block number to coalese
+ * @return the number of sectors coalesced or negative errno on failure
  */
-static int
+static int64_t
 vhd_util_coalesce_block(vhd_context_t *vhd, vhd_context_t *parent,
 			int parent_fd, uint64_t block)
 {
 	int i, err;
+	int64_t coalesced_size = 0;
 	char *buf;
 	char *map;
 	uint64_t sec, secs;
@@ -93,6 +100,10 @@ vhd_util_coalesce_block(vhd_context_t *vhd, vhd_context_t *parent,
 			err = vhd_io_write(parent, buf, sec, vhd->spb);
 		else
 			err = __raw_io_write(parent_fd, buf, sec, vhd->spb);
+
+		if (err == 0)
+			coalesced_size = vhd->spb;
+
 		goto done;
 	}
 
@@ -130,6 +141,7 @@ vhd_util_coalesce_block(vhd_context_t *vhd, vhd_context_t *parent,
 		if (err)
 			goto done;
 
+		coalesced_size += secs;
 		i += secs;
 	}
 
@@ -138,15 +150,27 @@ vhd_util_coalesce_block(vhd_context_t *vhd, vhd_context_t *parent,
 done:
 	free(buf);
 	free(map);
-	return err;
+	if (err < 0)
+		return err;
+
+	return coalesced_size;
 }
 
-static int
+/**
+ * Coalesce VHD to its immediate parent
+ *
+ * @param[in] from the VHD to coalesce
+ * @param[in] to the VHD to coalesce to or NULL if raw
+ * @param[in] to_fd the raws file to coalesce to or NULL if to is to be used
+ * @param[in] progess whether to report progress as the operation is being performed
+ * @return positive number of sectors coalesced or negative errno in the case of failure
+ */
+static int64_t
 vhd_util_coalesce_onto(vhd_context_t *from,
 		       vhd_context_t *to, int to_fd, int progress)
 {
-	int err;
-	uint64_t i;
+	int i, err;
+	int64_t coalesced_size = 0;
 
 	err = vhd_get_bat(from);
 	if (err)
@@ -165,8 +189,10 @@ vhd_util_coalesce_onto(vhd_context_t *from,
 			fflush(stdout);
 		}
 		err = vhd_util_coalesce_block(from, to, to_fd, i);
-		if (err)
+		if (err < 0)
 			goto out;
+
+		coalesced_size += err;
 	}
 
 	err = 0;
@@ -175,10 +201,21 @@ vhd_util_coalesce_onto(vhd_context_t *from,
 		printf("\r100.00%%\n");
 
 out:
-	return err;
+	if (err < 0)
+		return err;
+
+	return coalesced_size;
 }
 
-static int
+/**
+ * Coalesce the VHD to its immediate parent
+ *
+ * @param[in] name the name (path) of the VHD to coalesce
+ * @param[in] sparse whether the parent VHD should be written sparsely
+ * @param[in] progess whether to report progress as the operation is being performed
+ * @return positive number of sectors coalesced or negative errno in the case of failure
+ */
+static int64_t
 vhd_util_coalesce_parent(const char *name, int sparse, int progress)
 {
 	char *pname;
@@ -243,7 +280,8 @@ int
 vhd_util_coalesce(int argc, char **argv)
 {
 	char *name;
-	int err, c, progress, sparse;
+	int c, progress, sparse;
+	int64_t result;
 
 	name        = NULL;
 	sparse      = 0;
@@ -273,12 +311,16 @@ vhd_util_coalesce(int argc, char **argv)
 	if (!name || optind != argc)
 		goto usage;
 
-	err = vhd_util_coalesce_parent(name, sparse, progress);
+	result = vhd_util_coalesce_parent(name, sparse, progress);
 
-	if (err)
-		printf("error coalescing: %d\n", err);
+	if (result < 0) {
+		/* -ve errors will be in range for int */
+		printf("error coalescing: %d\n", (int)result);
+		return result;
+	}
 
-	return err;
+	printf("Coalesced %" PRId64 " sectors", result);
+	return 0;
 
 usage:
 	printf("options: <-n name> "
