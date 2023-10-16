@@ -42,6 +42,7 @@
 #include "libvhd.h"
 #include "tapdisk.h"
 #include "vhd-util.h"
+#include "util.h"
 
 #include "crypto/compat-crypto-openssl.h"
 #include "crypto/xts_aes.h"
