@@ -945,12 +945,13 @@ tapdisk_vbd_pause(td_vbd_t *vbd)
 	if (vbd->nbdserver)
 		tapdisk_nbdserver_pause(vbd->nbdserver, log);
 
+	list_for_each_entry(blkif, &vbd->rings, entry)
+		tapdisk_xenblkif_suspend(blkif);
+
 	err = tapdisk_vbd_quiesce_queue(vbd);
 	if (err)
 		return err;
 
-	list_for_each_entry(blkif, &vbd->rings, entry)
-		tapdisk_xenblkif_suspend(blkif);
 
 	tapdisk_vbd_close_vdi(vbd);
 
