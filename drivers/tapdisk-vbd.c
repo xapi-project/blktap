@@ -1088,6 +1088,10 @@ tapdisk_vbd_check_state(td_vbd_t *vbd)
 {
 	struct td_xenblkif *blkif;
 
+	/* Don't check if we're already quiesced */
+	if (td_flag_test(vbd->state, TD_VBD_QUIESCED))
+		return;
+
 	/*
 	 * TODO don't ignore return value
 	 */
