@@ -1344,7 +1344,7 @@ tapdisk_vbd_forward_request(td_request_t treq)
 	if (tapdisk_vbd_queue_ready(vbd))
 		__tapdisk_vbd_reissue_td_request(vbd, image, treq);
 	else
-		__tapdisk_vbd_complete_td_request(vbd, vreq, treq, -EBUSY);
+		td_complete_request(treq, -EBUSY);
 }
 
 int
