@@ -1672,6 +1672,8 @@ tapdisk_vbd_issue_new_requests(td_vbd_t *vbd)
 int
 tapdisk_vbd_recheck_state(td_vbd_t *vbd)
 {
+	int err = 0;
+
 	if (list_empty(&vbd->new_requests))
 		return 0;
 
@@ -1679,9 +1681,10 @@ tapdisk_vbd_recheck_state(td_vbd_t *vbd)
 	    td_flag_test(vbd->state, TD_VBD_QUIESCE_REQUESTED))
 		return 0;
 
-	tapdisk_vbd_issue_new_requests(vbd);
+	err = tapdisk_vbd_issue_requests(vbd);
 
-	return 1;
+	/* If we have errors stop checking in this cycle */
+	return err ? 0 : 1;
 }
 
 static int
