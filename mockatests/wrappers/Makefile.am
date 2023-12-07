@@ -1,4 +1,4 @@
-CFLAGS:=$(filter-out -fsanitize=leak,$(LDFLAGS))
+CFLAGS:=$(filter-out -fsanitize=leak,$(CFLAGS))
 LDFLAGS:=$(filter-out -static-liblsan,$(LDFLAGS))
 
 AM_CFLAGS = -Wall -g -Og
