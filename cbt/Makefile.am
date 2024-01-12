@@ -11,7 +11,7 @@ noinst_LTLIBRARIES = libcbtutil.la
 libcbtutil_la_SOURCES = cbt-util.c
 
 cbt_util_SOURCES  = main.c
-cbt_util_LDADD  = -lrt -luuid libcbtutil.la
+cbt_util_LDADD  = libcbtutil.la -lrt -luuid
 
 clean-local:
 	-rm -rf *.gc??
