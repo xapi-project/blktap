@@ -44,7 +44,7 @@
 #include <sys/socket.h>
 
 #include "tap-ctl.h"
-#include "blktap2.h"
+#include "blktap.h"
 #include "compiler.h"
 #include "util.h"
 

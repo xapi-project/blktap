@@ -41,7 +41,7 @@
 #include <sys/wait.h>
 
 #include "tap-ctl.h"
-#include "blktap2.h"
+#include "blktap.h"
 
 static pid_t
 __tap_ctl_spawn(int *readfd)

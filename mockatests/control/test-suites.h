@@ -40,11 +40,10 @@
 
 /* tap-ctl allocate tests */
 void test_tap_ctl_allocate_prep_dir_no_access(void **state);
-void test_tap_ctl_allocate_no_device_info(void **state);
-void test_tap_ctl_allocate_make_device_fail(void **state);
-void test_tap_ctl_allocate_ring_create_fail(void **state);
-void test_tap_ctl_allocate_io_device_fail(void **state);
-void test_tap_ctl_allocate_success(void **state);
+void test_tap_ctl_allocate_prep_runtime_dir_no_access(void **state);
+void test_tap_ctl_allocate_first_success(void **state);
+void test_tap_ctl_allocate_create_failed(void **state);
+void test_tap_ctl_allocate_one_exists_success(void **state);
 
 /* tap-ctl close tests */
 void test_tap_ctl_close_success(void **state);
@@ -59,7 +58,7 @@ void test_tap_ctl_close_error_response(void **state);
 /* tap-ctl free tests */
 void test_tap_ctl_free_open_fail(void **state);
 void test_tap_ctl_free_success(void **state);
-void test_tap_ctl_free_ioctl_busy(void **state);
+void test_tap_ctl_free_locked(void **state);
 
 /* tap-ctl list tests */
 void test_tap_ctl_list_success_no_results(void **state);
@@ -70,11 +69,10 @@ void test_tap_ctl_list_success(void **state);
 
 static const struct CMUnitTest tap_ctl_allocate_tests[] = {
 	cmocka_unit_test(test_tap_ctl_allocate_prep_dir_no_access),
-	cmocka_unit_test(test_tap_ctl_allocate_no_device_info),
-	cmocka_unit_test(test_tap_ctl_allocate_make_device_fail),
-	cmocka_unit_test(test_tap_ctl_allocate_ring_create_fail),
-	cmocka_unit_test(test_tap_ctl_allocate_io_device_fail),
-	cmocka_unit_test(test_tap_ctl_allocate_success)
+	cmocka_unit_test(test_tap_ctl_allocate_prep_runtime_dir_no_access),
+	cmocka_unit_test(test_tap_ctl_allocate_first_success),
+	cmocka_unit_test(test_tap_ctl_allocate_create_failed),
+	cmocka_unit_test(test_tap_ctl_allocate_one_exists_success)
 };
 
 static const struct CMUnitTest tap_ctl_close_tests[] = {
@@ -91,7 +89,7 @@ static const struct CMUnitTest tap_ctl_close_tests[] = {
 static const struct CMUnitTest tap_ctl_free_tests[] = {
 	cmocka_unit_test(test_tap_ctl_free_open_fail),
 	cmocka_unit_test(test_tap_ctl_free_success),
-	cmocka_unit_test(test_tap_ctl_free_ioctl_busy)
+	cmocka_unit_test(test_tap_ctl_free_locked)
 };
 
 static const struct CMUnitTest tap_ctl_list_tests[] = {

@@ -705,54 +705,6 @@ usage:
 }
 
 static void
-tap_cli_major_usage(FILE *stream)
-{
-	fprintf(stream, "usage: major [-h]\n");
-}
-
-static int
-tap_cli_major(int argc, char **argv)
-{
-	int c, chr, major;
-
-	chr = 0;
-
-	while ((c = getopt(argc, argv, "bch")) != -1) {
-		switch (c) {
-		case 'b':
-			chr = 0;
-			break;
-		case 'c':
-			chr = 1;
-			break;
-		case '?':
-			goto usage;
-		case 'h':
-			tap_cli_major_usage(stdout);
-			return 0;
-		default:
-			goto usage;
-		}
-	}
-
-	if (chr)
-		major = -EINVAL;
-	else
-		major = tap_ctl_blk_major();
-
-	if (major < 0)
-		return -major;
-
-	printf("%d\n", major);
-
-	return 0;
-
-usage:
-	tap_cli_major_usage(stderr);
-	return EINVAL;
-}
-
-static void
 tap_cli_open_usage(FILE *stream)
 {
 	fprintf(stream, "usage: open <-p pid> <-m minor> <-a type:/path/to/file> [-R readonly] "
@@ -917,31 +869,6 @@ usage:
 	return EINVAL;
 }
 
-static void
-tap_cli_check_usage(FILE *stream)
-{
-	fprintf(stream, "usage: check\n"
-		"(checks whether environment is suitable for tapdisk2)\n");
-}
-
-static int
-tap_cli_check(int argc, char **argv)
-{
-	int err;
-	const char *msg;
-
-	if (argc != 1)
-		goto usage;
-
-	err = tap_ctl_check(&msg);
-	printf("%s\n", msg);
-
-	return err;
-
-usage:
-	tap_cli_check_usage(stderr);
-	return EINVAL;
-}
 
 struct command commands[] = {
 	{ .name = "list",         .func = tap_cli_list          },
@@ -957,8 +884,6 @@ struct command commands[] = {
 	{ .name = "pause",        .func = tap_cli_pause         },
 	{ .name = "unpause",      .func = tap_cli_unpause       },
 	{ .name = "stats",        .func = tap_cli_stats         },
-	{ .name = "major",        .func = tap_cli_major         },
-	{ .name = "check",        .func = tap_cli_check         },
 };
 
 #define print_commands()					\
@@ -1001,7 +926,6 @@ int
 main(int argc, char *argv[])
 {
 	char **cargv;
-	const char *msg;
 	struct command *cmd;
 	int cargc, i, cnt, ret;
 	char *path = NULL, *prgname = NULL;
@@ -1034,13 +958,6 @@ main(int argc, char *argv[])
 	if (!cmd) {
 		EPRINTF("invalid COMMAND %s", argv[1]);
 		help();
-	}
-
-	ret = tap_ctl_check(&msg);
-	if (ret) {
-		printf("%s\n", msg);
-		free(path);
-		return ret;
 	}
 
 	cargv = malloc(sizeof(char *) * cargc);

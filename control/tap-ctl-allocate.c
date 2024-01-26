@@ -34,21 +34,15 @@
 
 #include <stdio.h>
 #include <errno.h>
-#include <fcntl.h>
 #include <stdlib.h>
 #include <unistd.h>
 #include <string.h>
-#include <getopt.h>
-#include <libgen.h>
 #include <sys/file.h>
 #include <sys/stat.h>
-#include <sys/sysmacros.h>
 #include <sys/types.h>
-#include <sys/ioctl.h>
-#include <linux/major.h>
 
 #include "tap-ctl.h"
-#include "blktap2.h"
+#include "blktap.h"
 
 static int
 tap_ctl_prepare_directory(const char *dir)
@@ -62,7 +56,7 @@ tap_ctl_prepare_directory(const char *dir)
 
 	name = strdup(dir);
 	if (!name)
-		return ENOMEM;
+		return -errno;
 
 	start = name;
 
@@ -71,10 +65,10 @@ tap_ctl_prepare_directory(const char *dir)
 		if (ptr)
 			*ptr = '\0';
 
-		err = mkdir(name, 0755);
+		err = mkdir(name, 0700);
 		if (err && errno != EEXIST) {
+			err = -errno;
 			PERROR("mkdir %s", name);
-			err = errno;
 			EPRINTF("mkdir failed with %d\n", err);
 			break;
 		}
@@ -94,169 +88,93 @@ tap_ctl_prepare_directory(const char *dir)
 }
 
 static int
-tap_ctl_make_device(const char *devname, const int major,
-		    const int minor, const int perm)
-{
-	int err;
-	char *copy, *dir;
-
-	copy = strdup(devname);
-	if (!copy)
-		return ENOMEM;
-
-	dir = dirname(copy);
-
-	err = tap_ctl_prepare_directory(dir);
-	free(copy);
-
-	if (err)
-		return err;
-
-	if (unlink(devname)) {
-		err = errno;
-		if (err != ENOENT) {
-			PERROR("unlink %s", devname);
-			EPRINTF("Unlink failed with %d\n", err);
-			return err;
-		}
-	}
-
-	err = mknod(devname, perm, makedev(major, minor));
-	if (err) {
-		err = errno;
-		PERROR("mknod %s", devname);
-		EPRINTF("Mknod failed with %d\n", err);
-		return err;
-	}
-
-	return 0;
-}
-
-static int
 tap_ctl_check_environment(void)
 {
-	FILE *f;
-	int err, minor;
-	char name[256];
+	int err;
 
 	err = tap_ctl_prepare_directory(BLKTAP2_CONTROL_DIR);
 	if (err) {
-		EPRINTF("Prepare directory failed %d", err);
+		EPRINTF("Prepare %s directory failed %d",
+			BLKTAP2_CONTROL_DIR, err);
 		return err;
 	}
 
-	f = fopen("/proc/misc", "r");
-	if (!f) {
-		EPRINTF("failed to open /proc/misc: %d\n", errno);
-		return errno;
+	err = tap_ctl_prepare_directory(BLKTAP2_NP_RUN_DIR);
+	if (err) {
+		EPRINTF("Prepare %s directory failed %d",
+			BLKTAP2_NP_RUN_DIR, err);
+		return err;
 	}
-	/* There is not a lot we can do about an error returned
-	 * from flock() so don't check */
-	flock(fileno(f), LOCK_EX);
 
-	/* Note err is 0 owing to tap_ctl_prepare_directory() above */
-	if (!access(BLKTAP2_CONTROL_DEVICE, R_OK | W_OK))
-		goto out;
-
-	memset(name, 0, sizeof(name));
-
-	while (fscanf(f, "%d %256s", &minor, name) == 2)
-		if (!strcmp(name, BLKTAP2_CONTROL_NAME)) {
-			err = tap_ctl_make_device(BLKTAP2_CONTROL_DEVICE,
-						  MISC_MAJOR,
-						  minor, S_IFCHR | 0600);
-			if (err)
-				EPRINTF("tap_ctl_make_device failed\n");
-			goto out;
-		}
-
-	err = ENOSYS;
-	EPRINTF("didn't find %s in /proc/misc\n", BLKTAP2_CONTROL_NAME);
-
-out:
-	flock(fileno(f), LOCK_UN);
-	fclose(f);
 	return err;
 }
 
 static int
-tap_ctl_allocate_device(int *minor, char **devname)
+tap_ctl_allocate_minor(int *minor, char **minor_name)
 {
-	char *name;
-	int fd, err;
-	struct blktap2_handle handle;
-	char free_devname = 0;
+	char *path = NULL;
+	struct stat st_buf;
+	int err, id, st, f, fid;
 
 	*minor = -1;
-	if (!devname)
-		return EINVAL;
 
-	fd = open(BLKTAP2_CONTROL_DEVICE, O_RDONLY);
-	if (fd == -1) {
-		EPRINTF("failed to open control device: %d\n", errno);
-		return errno;
+	f = open(BLKTAP2_NP_RUN_DIR, O_RDONLY);
+	if (f == -1) {
+		err = -errno;
+		EPRINTF("Failed to open runtime directory %d\n", errno);
+		return err;
 	}
 
-	err = ioctl(fd, BLKTAP2_IOCTL_ALLOC_TAP, &handle);
-	close(fd);
+	/* The only way this can fail is with an EINTR or ENOLCK*/
+	err = flock(f, LOCK_EX);
 	if (err == -1) {
-		EPRINTF("failed to allocate new device: %d\n", errno);
-		return errno;
+		err = -errno;
+		EPRINTF("Failed to lock runtime directory %d\n", errno);
+		return err;
 	}
 
-	err = asprintf(&name, "%s%d", BLKTAP2_RING_DEVICE, handle.minor);
-	if (err == -1) {
-		err = ENOMEM;
-		goto fail;
-	}
-
-	err = tap_ctl_make_device(name, handle.ring,
-				  handle.minor, S_IFCHR | 0600);
-	free(name);
-	if (err) {
-		EPRINTF("creating ring device for %d failed: %d\n",
-			handle.minor, err);
-		goto fail;
-	}
-
-	if (*devname)
-		name = *devname;
-	else {
-		err = asprintf(&name, "%s%d",
-			       BLKTAP2_IO_DEVICE, handle.minor);
+	for (id=0; id<MAX_ID; id++) {
+		err = asprintf(&path, "%s/tapdisk-%d", BLKTAP2_NP_RUN_DIR, id);
 		if (err == -1) {
-			err = ENOMEM;
-			goto fail;
+			err = -errno;
+			goto out;
 		}
-		*devname = name;
-		free_devname = 1;
+
+		st = stat(path, &st_buf);
+		if (st == 0) {
+			/* Already exists */
+			free(path);
+			path = NULL;
+			continue;
+		}
+		if (errno != ENOENT) {
+			err = -errno;
+			free(path);
+			goto out;
+		}
+
+		fid = open(path, O_CREAT | O_WRONLY, 0600);
+		if (fid == -1) {
+			err = -errno;
+			EPRINTF("Failed to create ID file %s, %d\n", path, errno);
+			goto out;
+		}
+		close(fid);
+
+		*minor = id;
+		*minor_name = path;
+		break;
 	}
 
-	err = tap_ctl_make_device(name, handle.device,
-				  handle.minor, S_IFBLK | 0600);
-	if (err) {
-		EPRINTF("creating IO device for %d failed: %d\n",
-			handle.minor, err);
-		goto fail;
-	}
-
-	DBG("new interface: ring: %u, device: %u, minor: %u\n",
-	    handle.ring, handle.device, handle.minor);
-
-	*minor = handle.minor;
-	return 0;
-
-fail:
-	if (free_devname) {
-		free(*devname);
-		*devname = 0;
-	}
-	tap_ctl_free(handle.minor);
+	err = 0;
+out:
+	flock(f, LOCK_UN);
+	close(f);
 	return err;
 }
 
 int
-tap_ctl_allocate(int *minor, char **devname)
+tap_ctl_allocate(int *minor, char **minor_name)
 {
 	int err;
 
@@ -268,7 +186,7 @@ tap_ctl_allocate(int *minor, char **devname)
 		return err;
 	}
 
-	err = tap_ctl_allocate_device(minor, devname);
+	err = tap_ctl_allocate_minor(minor, minor_name);
 	if (err) {
 		EPRINTF("tap-ctl allocate failed to allocate device");
 		return err;

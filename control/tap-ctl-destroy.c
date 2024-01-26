@@ -40,7 +40,7 @@
 #include <getopt.h>
 
 #include "tap-ctl.h"
-#include "blktap2.h"
+#include "blktap.h"
 
 int
 tap_ctl_destroy(const int id, const int minor,

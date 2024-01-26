@@ -39,7 +39,7 @@
 #include <getopt.h>
 
 #include "tap-ctl.h"
-#include "blktap2.h"
+#include "blktap.h"
 
 int
 tap_ctl_create(const char *params, char **devname, int flags, int parent_minor,

@@ -1406,7 +1406,7 @@ tapdisk_nbdserver_alloc(td_vbd_t *vbd, td_disk_info_t info)
 	server->unix_listening_event_id = -1;
 	INIT_LIST_HEAD(&server->clients);
 
-	if (td_metrics_nbd_start(&server->nbd_stats, server->vbd->tap->minor)) {
+	if (td_metrics_nbd_start(&server->nbd_stats, server->vbd->uuid)) {
 		ERR("failed to create metrics file for nbdserver");
 		goto fail;
 	}

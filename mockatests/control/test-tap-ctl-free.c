@@ -33,13 +33,14 @@
 #include <setjmp.h>
 #include <cmocka.h>
 #include <errno.h>
+#include <sys/file.h>
 
 #include <wrappers.h>
 #include "control-wrappers.h"
 #include "test-suites.h"
 
 #include "tap-ctl.h"
-#include "blktap2.h"
+#include "blktap.h"
 
 void test_tap_ctl_free_open_fail(void **state)
 {
@@ -47,24 +48,47 @@ void test_tap_ctl_free_open_fail(void **state)
 	int result;
 
 	will_return(__wrap_open, dev_fd);
-	expect_string(__wrap_open, pathname, "/dev/xen/blktap-2/control");
+	expect_string(__wrap_open, pathname, "/run/blktap-control/tapdisk");
 
 	result = tap_ctl_free(0);
 
-	assert_int_equal(result, ENOENT);
+	assert_int_equal(result, -ENOENT);
 }
 
 void test_tap_ctl_free_success(void **state)
 {
 	int dev_fd = 12;
+	int marker_fd = 13;
 	int result;
 
 	will_return(__wrap_open, dev_fd);
-	expect_string(__wrap_open, pathname, "/dev/xen/blktap-2/control");
+	expect_string(__wrap_open, pathname, "/run/blktap-control/tapdisk");
 
-	will_return(__wrap_ioctl, 0);
-	expect_value(__wrap_ioctl, fd, dev_fd);
-	expect_value(__wrap_ioctl, request, BLKTAP2_IOCTL_FREE_TAP);
+	will_return(__wrap_flock, 0);
+	expect_value(__wrap_flock, fd, dev_fd);
+	expect_value(__wrap_flock, operation, LOCK_EX);
+
+	/* Open and lock, non-blocking, the marker file */
+	will_return(__wrap_open, marker_fd);
+	expect_string(__wrap_open, pathname, "/run/blktap-control/tapdisk/tapdisk-0");
+
+	will_return(__wrap_flock, 0);
+	expect_value(__wrap_flock, fd, marker_fd);
+	expect_value(__wrap_flock, operation, LOCK_EX | LOCK_NB);
+
+	will_return(__wrap_unlink, 0);
+	expect_string(__wrap_unlink, pathname, "/run/blktap-control/tapdisk/tapdisk-0");
+
+	will_return(__wrap_flock, 0);
+	expect_value(__wrap_flock, fd, marker_fd);
+	expect_value(__wrap_flock, operation, LOCK_UN);
+
+	will_return(__wrap_close, 0);
+	expect_value(__wrap_close, fd, marker_fd);
+
+	will_return(__wrap_flock, 0);
+	expect_value(__wrap_flock, fd, dev_fd);
+	expect_value(__wrap_flock, operation, LOCK_UN);
 
 	will_return(__wrap_close, 0);
 	expect_value(__wrap_close, fd, dev_fd);
@@ -74,22 +98,43 @@ void test_tap_ctl_free_success(void **state)
 	assert_int_equal(result, 0);
 }
 
-void test_tap_ctl_free_ioctl_busy(void **state)
+void test_tap_ctl_free_locked(void **state)
 {
 	int dev_fd = 12;
+	int marker_fd = 13;
 	int result;
 
 	will_return(__wrap_open, dev_fd);
-	expect_string(__wrap_open, pathname, "/dev/xen/blktap-2/control");
+	expect_string(__wrap_open, pathname, "/run/blktap-control/tapdisk");
 
-	will_return(__wrap_ioctl, EBUSY);
-	expect_value(__wrap_ioctl, fd, dev_fd);
-	expect_value(__wrap_ioctl, request, BLKTAP2_IOCTL_FREE_TAP);
+	will_return(__wrap_flock, 0);
+	expect_value(__wrap_flock, fd, dev_fd);
+	expect_value(__wrap_flock, operation, LOCK_EX);
+
+	/* Open and lock, non-blocking, the marker file */
+	will_return(__wrap_open, marker_fd);
+	expect_string(__wrap_open, pathname, "/run/blktap-control/tapdisk/tapdisk-0");
+
+	will_return(__wrap_flock, EAGAIN);
+	expect_value(__wrap_flock, fd, marker_fd);
+	expect_value(__wrap_flock, operation, LOCK_EX | LOCK_NB);
+
+	will_return(__wrap_flock, marker_fd);
+	expect_value(__wrap_flock, fd, marker_fd);
+	expect_value(__wrap_flock, operation, LOCK_UN);
+
+	will_return(__wrap_close, 0);
+	expect_value(__wrap_close, fd, marker_fd);
+
+	will_return(__wrap_flock, 0);
+	expect_value(__wrap_flock, fd, dev_fd);
+	expect_value(__wrap_flock, operation, LOCK_UN);
 
 	will_return(__wrap_close, 0);
 	expect_value(__wrap_close, fd, dev_fd);
 
 	result = tap_ctl_free(0);
 
-	assert_int_equal(result, -EBUSY);
+	assert_int_equal(result, -EAGAIN);
 }
+

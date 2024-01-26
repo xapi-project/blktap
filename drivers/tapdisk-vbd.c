@@ -39,6 +39,7 @@
 #include <unistd.h>
 #include <stdlib.h>
 #include <libgen.h>
+#include <sys/file.h>
 #include <sys/mman.h>
 #include <sys/ioctl.h>
 #include <sys/stat.h>
@@ -46,7 +47,6 @@
 
 #include "debug.h"
 #include "libvhd.h"
-#include "tapdisk-blktap.h"
 #include "tapdisk-image.h"
 #include "tapdisk-driver.h"
 #include "tapdisk-server.h"
@@ -469,7 +469,7 @@ static void signal_enospc(td_vbd_t *vbd)
 	int fd, err;
 	char *fn;
 
-	err = asprintf(&fn, BLKTAP2_ENOSPC_SIGNAL_FILE"%d", vbd->tap->minor);
+	err = asprintf(&fn, BLKTAP2_ENOSPC_SIGNAL_FILE"%d", vbd->uuid);
 	if (err == -1) {
 		EPRINTF("Failed to signal ENOSPC condition\n");
 		return;
@@ -643,7 +643,7 @@ tapdisk_vbd_open_vdi(td_vbd_t *vbd, const char *name, td_flag_t flags, int prt_d
 	if (err)
 		goto fail;
 
-	err = td_metrics_vdi_start(vbd->tap->minor, &vbd->vdi_stats);
+	err = td_metrics_vdi_start(vbd->uuid, &vbd->vdi_stats);
 	if (err)
 		goto fail;
 	if (tmp != vbd->name)
@@ -665,25 +665,53 @@ fail:
 	return err;
 }
 
-void
-tapdisk_vbd_detach(td_vbd_t *vbd)
+static int
+open_vbd_marker(int id)
 {
-	td_blktap_t *tap = vbd->tap;
+	char *path = NULL;
+	int err, fid;
 
-	if (tap) {
-		tapdisk_blktap_close(tap);
-		vbd->tap = NULL;
+	err = asprintf(&path, "%s/tapdisk-%d", BLKTAP2_NP_RUN_DIR, id);
+	if (err == -1) {
+		return -errno;
 	}
+
+	fid = open(path, O_RDONLY, 0600);
+	if (fid == -1) {
+		err = -errno;
+		EPRINTF("Failed to open VBD marker file for %d\n", id);
+		goto out;
+	}
+
+	return fid;
+
+out:
+	if (path) {
+		free(path);
+	}
+	return err;
 }
 
-int
-tapdisk_vbd_attach(td_vbd_t *vbd, const char *devname, int minor)
+void tapdisk_vbd_unlock(td_vbd_t *vbd)
 {
+	flock(vbd->lock_fd, LOCK_UN);
+	close(vbd->lock_fd);
+}
 
-	if (vbd->tap)
-		return -EALREADY;
+int tapdisk_vbd_lock(td_vbd_t *vbd)
+{
+	int fid;
 
-	return tapdisk_blktap_open(devname, vbd, &vbd->tap);
+	fid = open_vbd_marker(vbd->uuid);
+	if (fid < 0) {
+		/* Already logged */
+		return -1;
+	}
+
+	vbd->lock_fd = fid;
+	flock(vbd->lock_fd, LOCK_EX);
+
+	return 0;
 }
 
 /*
@@ -763,7 +791,7 @@ tapdisk_vbd_shutdown(td_vbd_t *vbd)
 		vbd->kicked);
 
 	tapdisk_vbd_close_vdi(vbd);
-	tapdisk_vbd_detach(vbd);
+	tapdisk_vbd_unlock(vbd);
 	tapdisk_server_remove_vbd(vbd);
 	free(vbd->name);
 	free(vbd);
@@ -858,12 +886,6 @@ tapdisk_vbd_retry_needed(td_vbd_t *vbd)
 {
 	return !(list_empty(&vbd->failed_requests) &&
 		 list_empty(&vbd->new_requests));
-}
-
-int
-tapdisk_vbd_lock(td_vbd_t *vbd)
-{
-	return 0;
 }
 
 int
@@ -1856,12 +1878,6 @@ tapdisk_vbd_stats(td_vbd_t *vbd, td_stats_t *st)
 	tapdisk_vbd_for_each_image(vbd, image, next)
 		tapdisk_image_stats(image, st);
 	tapdisk_stats_leave(st, ']');
-
-	if (vbd->tap) {
-		tapdisk_stats_field(st, "tap", "{");
-		tapdisk_blktap_stats(vbd->tap, st);
-		tapdisk_stats_leave(st, '}');
-	}
 
     /*
      * TODO Is this used by any one?
