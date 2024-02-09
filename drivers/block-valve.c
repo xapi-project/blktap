@@ -469,8 +469,12 @@ __valve_complete_treq(td_request_t treq, int error)
 	valve->done += TREQ_SIZE(treq);
 	valve_set_done_pending(valve);
 
+	/* Respond to original callback */
+	treq.cb = req->treq.cb;
+	treq.cb_data = req->treq.cb_data;
+	td_complete_request(treq, error);
+
 	if (!req->secs) {
-		td_complete_request(req->treq, error);
 		valve_free_request(valve, req);
 	}
 }
