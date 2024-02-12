@@ -143,8 +143,8 @@ find_keyfile(char **keyfile, const char *dirs,
 			safe_strncpy(keydir, dirs, sizeof(keydir));
 			dirs = NULL;
 		} else {
-			size_t len = sep - dirs;
-			safe_strncpy(keydir, dirs, len);
+			size_t len = (sep - dirs) + 1;
+			safe_strncpy(keydir, dirs, MIN(len, sizeof(keydir)));
 			dirs = sep+1;
 		}
 
