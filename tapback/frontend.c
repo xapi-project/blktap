@@ -300,6 +300,12 @@ connect_frontend(vbd_t *device) {
             break;
         }
 
+	if ((err = tapback_device_printf(device, xst, "feature-flush-cache", true,
+                        "%d", 1))) {
+		WARN(device, "failed to write feature-flush-cache: %s\n", strerror(-err));
+		break;
+        }
+
         if ((err = tapback_device_printf(device, xst, "sector-size", true,
                         "%u", device->sector_size))) {
             WARN(device, "failed to write sector-size: %s\n", strerror(-err));
