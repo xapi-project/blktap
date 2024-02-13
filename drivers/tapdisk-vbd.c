@@ -74,7 +74,8 @@ char* op_strings[TD_OPS_END] ={"read", "write", "block_status"};
 
 static void tapdisk_vbd_complete_vbd_request(td_vbd_t *, td_vbd_request_t *);
 static int  tapdisk_vbd_queue_ready(td_vbd_t *);
-static void tapdisk_vbd_check_queue_state(td_vbd_t *);
+static void tapdisk_vbd_check_complete_requests(td_vbd_t *);
+static void tapdisk_vbd_check_requests_for_issue(td_vbd_t *);
 
 static bool log=true;
 
@@ -944,12 +945,13 @@ tapdisk_vbd_pause(td_vbd_t *vbd)
 	if (vbd->nbdserver)
 		tapdisk_nbdserver_pause(vbd->nbdserver, log);
 
+	list_for_each_entry(blkif, &vbd->rings, entry)
+		tapdisk_xenblkif_suspend(blkif);
+
 	err = tapdisk_vbd_quiesce_queue(vbd);
 	if (err)
 		return err;
 
-	list_for_each_entry(blkif, &vbd->rings, entry)
-		tapdisk_xenblkif_suspend(blkif);
 
 	tapdisk_vbd_close_vdi(vbd);
 
@@ -1062,7 +1064,7 @@ tapdisk_vbd_request_timeout(td_vbd_request_t *vreq)
 }
 
 static void
-tapdisk_vbd_check_queue_state(td_vbd_t *vbd)
+tapdisk_vbd_check_complete_requests(td_vbd_t *vbd)
 {
 	td_vbd_request_t *vreq, *tmp;
 	struct timeval now;
@@ -1071,11 +1073,14 @@ tapdisk_vbd_check_queue_state(td_vbd_t *vbd)
 	tapdisk_vbd_for_each_request(vreq, tmp, &vbd->failed_requests)
 		if (__tapdisk_vbd_request_timeout(vreq, &now))
 			tapdisk_vbd_complete_vbd_request(vbd, vreq);
+}
 
+static void
+tapdisk_vbd_check_requests_for_issue(td_vbd_t *vbd)
+{
 	if (!list_empty(&vbd->new_requests) ||
 	    !list_empty(&vbd->failed_requests))
 		tapdisk_vbd_issue_requests(vbd);
-
 }
 
 void
@@ -1083,13 +1088,21 @@ tapdisk_vbd_check_state(td_vbd_t *vbd)
 {
 	struct td_xenblkif *blkif;
 
+	/* Don't check if we're already quiesced */
+	if (td_flag_test(vbd->state, TD_VBD_QUIESCED))
+		return;
+
 	/*
 	 * TODO don't ignore return value
 	 */
 	list_for_each_entry(blkif, &vbd->rings, entry)
 		tapdisk_xenblkif_ring_stats_update(blkif);
 
-	tapdisk_vbd_check_queue_state(vbd);
+	tapdisk_vbd_check_complete_requests(vbd);
+
+	if (!td_flag_test(vbd->state, TD_VBD_QUIESCE_REQUESTED) &&
+	      !td_flag_test(vbd->state, TD_VBD_PAUSE_REQUESTED))
+		tapdisk_vbd_check_requests_for_issue(vbd);
 
 	if (td_flag_test(vbd->state, TD_VBD_QUIESCE_REQUESTED))
 		tapdisk_vbd_quiesce_queue(vbd);
@@ -1344,7 +1357,7 @@ tapdisk_vbd_forward_request(td_request_t treq)
 	if (tapdisk_vbd_queue_ready(vbd))
 		__tapdisk_vbd_reissue_td_request(vbd, image, treq);
 	else
-		__tapdisk_vbd_complete_td_request(vbd, vreq, treq, -EBUSY);
+		td_complete_request(treq, -EBUSY);
 }
 
 int
@@ -1672,6 +1685,8 @@ tapdisk_vbd_issue_new_requests(td_vbd_t *vbd)
 int
 tapdisk_vbd_recheck_state(td_vbd_t *vbd)
 {
+	int err = 0;
+
 	if (list_empty(&vbd->new_requests))
 		return 0;
 
@@ -1679,9 +1694,10 @@ tapdisk_vbd_recheck_state(td_vbd_t *vbd)
 	    td_flag_test(vbd->state, TD_VBD_QUIESCE_REQUESTED))
 		return 0;
 
-	tapdisk_vbd_issue_new_requests(vbd);
+	err = tapdisk_vbd_issue_requests(vbd);
 
-	return 1;
+	/* If we have errors stop checking in this cycle */
+	return err ? 0 : 1;
 }
 
 static int

@@ -1,4 +1,4 @@
-CFLAGS:=$(filter-out -fsanitize=leak,$(LDFLAGS))
+CFLAGS:=$(filter-out -fsanitize=leak,$(CFLAGS))
 LDFLAGS:=$(filter-out -static-liblsan,$(LDFLAGS))
 
 AM_CFLAGS  = -Wall
@@ -11,9 +11,10 @@ AM_CPPFLAGS = -I$(top_srcdir)/include -I$(top_srcdir)/cbt -I../include
 check_PROGRAMS = test-cbt-util
 TESTS = test-cbt-util
 
+test_cbt_util_LDADD = $(top_srcdir)/cbt/libcbtutil.la ../wrappers/libwrappers.la
+
 test_cbt_util_SOURCES = test-cbt-util.c test-cbt-util-commands.c test-cbt-util-set.c test-cbt-util-get.c test-cbt-util-create.c test-cbt-util-coalesce.c
-test_cbt_util_LDFLAGS = $(top_srcdir)/cbt/libcbtutil.la -lcmocka -luuid
-test_cbt_util_LDFLAGS += ../wrappers/libwrappers.la
+test_cbt_util_LDFLAGS = -lcmocka
 test_cbt_util_LDFLAGS += -Wl,--wrap=fopen,--wrap=fclose
 test_cbt_util_LDFLAGS += -Wl,--wrap=malloc,--wrap=free,--wrap=calloc
 # Need to wrap both of these as rpmbuild/mock set -D_FORTIFY_SOURCE=2

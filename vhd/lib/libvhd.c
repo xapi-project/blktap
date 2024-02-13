@@ -2905,7 +2905,7 @@ vhd_initialize_header_parent_name(vhd_context_t *ctx, const char *parent_path)
 	cd = iconv_open(UTF_16BE, "ASCII");
 	if (cd == (iconv_t)-1) {
 		err = -errno;
-		goto out;
+		return err;
 	}
 
 	ppath = strdup(parent_path);
