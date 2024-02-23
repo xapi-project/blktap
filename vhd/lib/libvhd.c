@@ -1812,8 +1812,8 @@ out:
 	return err;
 }
 
-int
-vhd_parent_locator_get(vhd_context_t *ctx, char **parent)
+static int
+vhd_parent_locator_get_impl(vhd_context_t *ctx, char **parent, bool resolve_parent)
 {
 	int i, n, err;
 	char *name, *location;
@@ -1837,6 +1837,11 @@ vhd_parent_locator_get(vhd_context_t *ctx, char **parent)
 		if (_err)
 			continue;
 
+		if (!resolve_parent) {
+			*parent = name;
+			return 0;
+		}
+
 		err = vhd_find_parent(ctx, name, &location);
 		if (err)
 			VHDLOG("%s: couldn't find parent %s (%d)\n",
@@ -1850,6 +1855,18 @@ vhd_parent_locator_get(vhd_context_t *ctx, char **parent)
 	}
 
 	return err;
+}
+
+int
+vhd_parent_locator_get(vhd_context_t *ctx, char **parent)
+{
+	return vhd_parent_locator_get_impl(ctx, parent, true);
+}
+
+int
+vhd_parent_locator_unresolved_get(vhd_context_t *ctx, char **parent)
+{
+	return vhd_parent_locator_get_impl(ctx, parent, false);
 }
 
 /**
