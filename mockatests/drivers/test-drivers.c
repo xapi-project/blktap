@@ -41,7 +41,8 @@ int main(void)
 	int result =
 		cmocka_run_group_tests_name("Stats tests", tapdisk_stats_tests, NULL, NULL)+
 		cmocka_run_group_tests_name("nbd_server_tests", tapdisk_nbdserver_tests, NULL, NULL)+
-		cmocka_run_group_tests_name("VBD tests", tapdisk_vbd_tests, NULL, NULL);
+		cmocka_run_group_tests_name("VBD tests", tapdisk_vbd_tests, NULL, NULL)+
+		cmocka_run_group_tests_name("Scheduler tests", tapdisk_sched_tests, NULL, NULL);
 
 	return result;
 }
