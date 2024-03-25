@@ -1780,38 +1780,9 @@ schedule_data_write(struct vhd_state *s, td_request_t treq, vhd_flag_t flags)
 	uint64_t offset;
 	uint32_t blk = 0, sec = 0;
 	struct vhd_bitmap  *bm = NULL;
-	struct vhd_request *req;
+	struct vhd_request *req = NULL;
 	char *crypto_buf = NULL;
 
-	if (s->vhd.footer.type == HD_TYPE_FIXED) {
-		offset = vhd_sectors_to_bytes(treq.sec);
-		goto make_request;
-	}
-
-	blk    = treq.sec / s->spb;
-	ASSERT(blk < s->bat.bat.entries);
-	sec    = treq.sec % s->spb;
-	offset = bat_entry(s, blk);
-
-	if (test_vhd_flag(flags, VHD_FLAG_REQ_UPDATE_BAT)) {
-		if (test_vhd_flag(s->flags, VHD_FLAG_OPEN_PREALLOCATE))
-			err = allocate_block(s, blk);
-		else
-			err = update_bat(s, blk);
-
-		if (err)
-			return err;
-
-		offset = s->bat.pbw_offset;
-	}
-
-	offset += s->bm_secs + sec;
-	offset  = vhd_sectors_to_bytes(offset);
-
-	/* Make sure were not about to overwrite the header */
-	ASSERT(offset >= 1536);
-
- make_request:
 	if (vhd_is_encrypted(s)) {
 		err = posix_memalign((void **)&crypto_buf, VHD_SECTOR_SIZE,
 				     (size_t)treq.secs * VHD_SECTOR_SIZE);
@@ -1820,9 +1791,36 @@ schedule_data_write(struct vhd_state *s, td_request_t treq, vhd_flag_t flags)
 	}
 	req = alloc_vhd_request(s);
 	if (!req) {
-		if (vhd_is_encrypted(s))
-			free(crypto_buf);
-		return -EBUSY;
+		err = -EBUSY;
+		goto fail;
+	}
+
+	if (s->vhd.footer.type == HD_TYPE_FIXED) {
+		offset = vhd_sectors_to_bytes(treq.sec);
+	} else {
+		blk    = treq.sec / s->spb;
+		ASSERT(blk < s->bat.bat.entries);
+		sec    = treq.sec % s->spb;
+		offset = bat_entry(s, blk);
+
+		if (test_vhd_flag(flags, VHD_FLAG_REQ_UPDATE_BAT)) {
+			if (test_vhd_flag(s->flags, VHD_FLAG_OPEN_PREALLOCATE))
+				err = allocate_block(s, blk);
+			else
+				err = update_bat(s, blk);
+
+			if (err) {
+				goto fail;
+			}
+
+			offset = s->bat.pbw_offset;
+		}
+
+		offset += s->bm_secs + sec;
+		offset  = vhd_sectors_to_bytes(offset);
+
+		/* Make sure we're not about to overwrite the header */
+		ASSERT(offset >= 1536);
 	}
 
 	req->treq  = treq;
@@ -1860,6 +1858,14 @@ schedule_data_write(struct vhd_state *s, td_request_t treq, vhd_flag_t flags)
 	    s->vhd.file, treq.sec, blk, sec, treq.secs, offset, req->flags);
 
 	return 0;
+fail:
+	if (crypto_buf)
+		free(crypto_buf);
+
+	if (req)
+		free_vhd_request(s, req);
+
+	return err;
 }
 
 static int 
