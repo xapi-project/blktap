@@ -66,6 +66,8 @@ static const struct CMUnitTest tapdisk_nbdserver_tests[] = {
 void test_scheduler_set_max_timeout(void **state);
 void test_scheduler_set_max_timeout_lower(void **state);
 void test_scheduler_set_max_timeout_higher(void **state);
+void test_scheduler_set_max_timeout_negative(void **state);
+void test_scheduler_set_max_timeout_inf(void **state);
 void test_scheduler_register_event_null_callback(void **state);
 void test_scheduler_register_event_bad_mode(void **state);
 void test_scheduler_register_multiple_events(void **state);
@@ -108,7 +110,7 @@ void test_scheduler_multiple_timeout_events_use_lowest_timeout(void **state);
 void test_scheduler_timeout_event_is_instant_if_deadline_is_now(void **state);
 void test_scheduler_multiple_timeout_events_dont_interfere(void **state);
 void test_scheduler_timeout_event_ignored_if_no_timeout(void **state);
-void test_scheduler_with_no_eventS_will_timeout(void **state);
+void test_scheduler_with_no_events_will_timeout(void **state);
 void test_scheduler_run_single_read_fd(void **state);
 void test_scheduler_run_single_write_fd(void **state);
 void test_scheduler_run_single_dead_event(void **state);
@@ -117,6 +119,8 @@ static const struct CMUnitTest tapdisk_sched_tests[] = {
   cmocka_unit_test(test_scheduler_set_max_timeout),
   cmocka_unit_test(test_scheduler_set_max_timeout_lower),
   cmocka_unit_test(test_scheduler_set_max_timeout_higher),
+  cmocka_unit_test(test_scheduler_set_max_timeout_negative),
+  cmocka_unit_test(test_scheduler_set_max_timeout_inf),
   cmocka_unit_test(test_scheduler_register_event_null_callback),
   cmocka_unit_test(test_scheduler_register_event_bad_mode),
   cmocka_unit_test(test_scheduler_register_multiple_events),
@@ -159,7 +163,7 @@ static const struct CMUnitTest tapdisk_sched_tests[] = {
   cmocka_unit_test(test_scheduler_timeout_event_is_instant_if_deadline_is_now),
   cmocka_unit_test(test_scheduler_multiple_timeout_events_dont_interfere),
   cmocka_unit_test(test_scheduler_timeout_event_ignored_if_no_timeout),
-  cmocka_unit_test(test_scheduler_with_no_eventS_will_timeout),
+  cmocka_unit_test(test_scheduler_with_no_events_will_timeout),
   cmocka_unit_test(test_scheduler_run_single_read_fd),
   cmocka_unit_test(test_scheduler_run_single_write_fd),
   cmocka_unit_test(test_scheduler_run_single_dead_event),
