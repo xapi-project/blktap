@@ -83,9 +83,9 @@ test_scheduler_set_max_timeout(void **state)
 {
   scheduler_t s;
   s.max_timeout.tv_sec = 42;
-  struct timeval timeout = {.tv_sec = -1 };
+  struct timeval timeout = {.tv_sec = 0 };
   scheduler_set_max_timeout(&s, timeout);
-  assert_int_equal(s.max_timeout.tv_sec, 42);
+  assert_int_equal(s.max_timeout.tv_sec, 0);
 }
 
 void
@@ -108,6 +108,28 @@ test_scheduler_set_max_timeout_higher(void **state)
   struct timeval timeout = {.tv_sec = 458 };
   scheduler_set_max_timeout(&s, timeout);
   assert_int_equal(s.max_timeout.tv_sec, 430);
+}
+
+void
+test_scheduler_set_max_timeout_negative(void **state)
+{
+  // Setting a new negative value will be ignored
+  scheduler_t s;
+  s.max_timeout.tv_sec = 458;
+  struct timeval timeout = {.tv_sec = -2 };
+  scheduler_set_max_timeout(&s, timeout);
+  assert_int_equal(s.max_timeout.tv_sec, 458);
+}
+
+void
+test_scheduler_set_max_timeout_inf(void **state)
+{
+  // Setting TV_INF will be ignored
+  scheduler_t s;
+  s.max_timeout.tv_sec = 458;
+  struct timeval timeout = TV_INF;
+  scheduler_set_max_timeout(&s, timeout);
+  assert_int_equal(s.max_timeout.tv_sec, 458);
 }
 
 void
@@ -1073,7 +1095,7 @@ test_scheduler_timeout_event_ignored_if_no_timeout(void **state)
 }
 
 void
-test_scheduler_with_no_eventS_will_timeout(void **state)
+test_scheduler_with_no_events_will_timeout(void **state)
 {
   // Scheduler with no events will timeout
   scheduler_t s;
