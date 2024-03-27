@@ -68,7 +68,7 @@ lvm_copy_name(char *dst, const char *src, size_t size)
 	if (strnlen(src, size) == size)
 		return -ENAMETOOLONG;
 
-	safe_strncpy(dst, src, size);
+	strncpy(dst, src, size);
 	return 0;
 }
 
@@ -102,7 +102,7 @@ lvm_parse_pv(struct vg *vg, const char *name, int pvs, uint64_t start)
 	if (i == pvs)
 		return -ENOMEM;
 
-	err = lvm_copy_name(pv->name, name, sizeof(pv->name) - 1);
+	err = lvm_copy_name(pv->name, name, sizeof(pv->name));
 	if (err)
 		return err;
 
@@ -286,7 +286,7 @@ lvm_scan_lvs(struct vg *vg)
 		lv->segments      = segs;
 		lv->first_segment = seg;
 
-		err = lvm_copy_name(lv->name, name, sizeof(lv->name) - 1);
+		err = lvm_copy_name(lv->name, name, sizeof(lv->name));
 		if (err)
 			goto out;
 		err = -EINVAL;
