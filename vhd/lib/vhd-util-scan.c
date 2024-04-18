@@ -1149,6 +1149,11 @@ vhd_util_scan_find_file_targets(int cnt, char **names,
 		total += globs;
 	}
 
+	if (total == 0) {
+                err = 0;
+		goto out;
+        }
+
 	targets = calloc(total, sizeof(struct target));
 	if (!targets) {
 		err = -ENOMEM;
