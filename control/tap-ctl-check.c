@@ -45,7 +45,7 @@ tap_ctl_check_blktap(const char **msg)
 {
 	FILE *f;
 	int err = 0, minor;
-	char name[32];
+	char name[33];
 
 	memset(name, 0, sizeof(name));
 
