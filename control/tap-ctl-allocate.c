@@ -137,7 +137,7 @@ tap_ctl_check_environment(void)
 {
 	FILE *f;
 	int err, minor;
-	char name[256];
+	char name[257];
 
 	err = tap_ctl_prepare_directory(BLKTAP2_CONTROL_DIR);
 	if (err) {
