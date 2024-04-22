@@ -339,10 +339,11 @@ vhd_initialize(struct vhd_state *s)
 static void
 vhd_free(struct vhd_state *s)
 {
+	free(s->padbm_buf);
+
 	if (_vhd_master != s || !_vhd_zeros)
 		return;
 
-	free(s->padbm_buf);
 	munmap(_vhd_zeros, _vhd_zsize);
 	_vhd_zsize  = 0;
 	_vhd_zeros  = NULL;
