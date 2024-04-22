@@ -765,10 +765,17 @@ tapdisk_vbd_shutdown(td_vbd_t *vbd)
 	tapdisk_vbd_close_vdi(vbd);
 	tapdisk_vbd_detach(vbd);
 	tapdisk_server_remove_vbd(vbd);
-	free(vbd->name);
-	free(vbd);
+	tapdisk_vbd_free(vbd);
 
 	return 0;
+}
+
+void
+tapdisk_vbd_free(td_vbd_t *vbd)
+{
+	free(vbd->name);
+	free(vbd->encryption.encryption_key);
+	free(vbd);
 }
 
 int

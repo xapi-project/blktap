@@ -360,8 +360,7 @@ tapdisk_stream_close_image(td_stream_t *s)
 	if (vbd) {
 		tapdisk_vbd_close_vdi(vbd);
 		tapdisk_server_remove_vbd(vbd);
-		free(vbd->name);
-		free(vbd);
+		tapdisk_vbd_free(vbd);
 		s->vbd = NULL;
 	}
 }
