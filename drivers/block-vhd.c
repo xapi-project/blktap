@@ -744,13 +744,20 @@ __load_crypto(struct td_vbd_encryption *encryption)
 	return 0;
 }
 
+void vhd_atexit(void)
+{
+	if (crypto_interface) {
+		free(crypto_interface);
+		crypto_interface = NULL;
+	}
+}
+
 static void
 __vhd_free_crypto(vhd_context_t *vhd)
 {
 	if (crypto_interface) {
 		crypto_interface->vhd_close_crypto(vhd);
-		free(crypto_interface);
-		crypto_interface = NULL;
+		atexit(vhd_atexit);
 	}
 }
 
