@@ -609,8 +609,7 @@ tapdisk_stream_close_image(struct tapdisk_stream *s)
 		tapdisk_vbd_close_vdi(vbd);
 		tapdisk_server_remove_vbd(vbd);
 		free((void *)vbd->ring.vstart);
-		free(vbd->name);
-		free(vbd);
+		tapdisk_vbd_free(vbd);
 		s->vbd = NULL;
 	}
 }

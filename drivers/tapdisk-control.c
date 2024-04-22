@@ -692,7 +692,7 @@ tapdisk_control_detach_vbd(struct tapdisk_ctl_conn *conn,
 
 	if (list_empty(&vbd->images)) {
 		tapdisk_server_remove_vbd(vbd);
-		free(vbd);
+		tapdisk_vbd_free(vbd);
 	}
 
 out:
@@ -973,7 +973,7 @@ tapdisk_control_close_image(struct tapdisk_ctl_conn *conn,
 
 	if (!vbd->tap) {
 		tapdisk_server_remove_vbd(vbd);
-		free(vbd);
+		tapdisk_vbd_free(vbd);
 	}
 
 out:
