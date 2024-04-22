@@ -252,6 +252,8 @@ tapdisk_image_open_parent(td_image_t *image, struct td_vbd_encryption *encryptio
             ((id.flags & TD_OPEN_LOCAL_CACHE) == TD_OPEN_LOCAL_CACHE))
 		id.flags &= ~TD_OPEN_NO_O_DIRECT;
 	err = tapdisk_image_open(id.type, id.name, id.flags, encryption, &parent);
+	/* Name has been duped to driver_name */
+	free(id.name);
 	if (err)
 		return err;
 
