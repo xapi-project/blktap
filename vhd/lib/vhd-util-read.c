@@ -216,6 +216,7 @@ vhd_print_parent(vhd_context_t *vhd, vhd_parent_locator_t *loc)
 	}
 
 	printf("       decoded name : %s\n", buf);
+	free(buf);
 }
 
 static void
