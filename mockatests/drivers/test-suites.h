@@ -114,6 +114,10 @@ void test_scheduler_with_no_events_will_timeout(void **state);
 void test_scheduler_run_single_read_fd(void **state);
 void test_scheduler_run_single_write_fd(void **state);
 void test_scheduler_run_single_dead_event(void **state);
+void test_scheduler_run_duplicate_fds_are_handled_once(void **state);
+void test_scheduler_run_with_duplicate_callbacks(void **state);
+void test_scheduler_run_read_and_write_fd(void **state);
+void test_scheduler_run_deleted_duplicate_event(void **state);
 
 static const struct CMUnitTest tapdisk_sched_tests[] = {
   cmocka_unit_test(test_scheduler_set_max_timeout),
@@ -167,6 +171,10 @@ static const struct CMUnitTest tapdisk_sched_tests[] = {
   cmocka_unit_test(test_scheduler_run_single_read_fd),
   cmocka_unit_test(test_scheduler_run_single_write_fd),
   cmocka_unit_test(test_scheduler_run_single_dead_event),
+  cmocka_unit_test(test_scheduler_run_duplicate_fds_are_handled_once),
+  cmocka_unit_test(test_scheduler_run_with_duplicate_callbacks),
+  cmocka_unit_test(test_scheduler_run_read_and_write_fd),
+  cmocka_unit_test(test_scheduler_run_deleted_duplicate_event),
 };
 
 #endif /* __TEST_SUITES_H__ */
