@@ -38,6 +38,7 @@
 #include <errno.h>
 #include <limits.h>
 #include <stdio.h>
+#include <sys/eventfd.h>
 #include <sys/time.h>
 
 #include "scheduler.c"
@@ -49,10 +50,8 @@ int __wrap_gettimeofday(struct timeval* tv, struct timezone* tz)
   return 0;
 }
 
-void scheduler_gc_events(scheduler_t *s);
-
 typedef struct {
-  bool was_called;
+  int was_called;
   char mode;
   event_id_t id;
 } event_cb_spy_t;
@@ -60,7 +59,7 @@ typedef struct {
 void mock_event_cb(event_id_t id, char mode, void *private)
 {
   event_cb_spy_t* out = (event_cb_spy_t*)private;
-  out->was_called = true;
+  out->was_called += 1;
   out->mode = mode;
   out->id = id;
 }
@@ -77,6 +76,43 @@ event_queue_length(const scheduler_t* s)
 }
 
 void fake_event_cb (event_id_t id, char mode, void *private) {}
+
+int mock_fd_create()
+{
+  const int fd = eventfd(0, 0);
+  if (fd < 1) {
+    perror("eventfd");
+  }
+  assert_true(fd > 0);
+  return fd;
+}
+
+void mock_fd_set_readable(int fd)
+{
+  uint64_t b = 1;
+  if (write(fd, &b, sizeof(b)) != sizeof(b)) {
+    perror("write: ");
+    assert_true(false);
+  }
+}
+
+void mock_fd_set_unwritable(int fd)
+{
+  uint64_t b = 0xfffffffffffffffe;
+  if (write(fd, &b, sizeof(b)) != sizeof(b)) {
+    perror("write: ");
+    assert_true(false);
+  }
+}
+
+void mock_fd_set_writable(int fd)
+{
+  uint64_t b;
+  if (read(fd, &b, sizeof(b)) != sizeof(b)){
+    perror("read");
+    assert_true(false);
+  }
+}
 
 void
 test_scheduler_set_max_timeout(void **state)
@@ -260,7 +296,7 @@ test_scheduler_set_timeout_on_non_polled_event(void **state)
   scheduler_initialize(&s);
 
   char mode = SCHEDULER_POLL_READ_FD; // Not a POLL_TIMEOUT event
-  int fd = 1;
+  const int fd = mock_fd_create();
   struct timeval timeout = { .tv_sec = 996 };
   event_cb_t cb = &fake_event_cb;
 
@@ -268,6 +304,8 @@ test_scheduler_set_timeout_on_non_polled_event(void **state)
   const event_t* e = list_first_entry(&s.events, event_t, next);
   const int r = scheduler_event_set_timeout(&s, e->id, (struct timeval){});
   assert_int_equal(r, -EINVAL);
+
+  close(fd);
 }
 
 void
@@ -637,7 +675,7 @@ test_scheduler_callback(void **state)
   const char test_mode = 9;
 
   // Check callback has not been called
-  assert_false(event_cb_spy.was_called);
+  assert_int_equal(event_cb_spy.was_called, 0);
   assert_int_not_equal(event_cb_spy.mode, test_mode);
   assert_int_not_equal(event_cb_spy.id, event1->id);
 
@@ -647,7 +685,7 @@ test_scheduler_callback(void **state)
   scheduler_event_callback(event1, test_mode);
 
   // Check callback has been called
-  assert_true(event_cb_spy.was_called);
+  assert_int_equal(event_cb_spy.was_called, 1);
   assert_int_equal(event_cb_spy.mode, test_mode);
   assert_int_equal(event_cb_spy.id, event1->id);
 
@@ -677,7 +715,7 @@ test_scheduler_callback_ignores_masked_events(void **state)
   scheduler_event_callback(event1, test_mode);
 
   // Check callback has not been called
-  assert_false(event_cb_spy.was_called);
+  assert_int_equal(event_cb_spy.was_called, 0);
   assert_int_not_equal(event_cb_spy.mode, test_mode);
   assert_int_not_equal(event_cb_spy.id, event1->id);
 }
@@ -703,7 +741,7 @@ test_scheduler_run_events_run_callback_if_pending(void **state)
   const int n_dispatched = scheduler_run_events(&s);
 
   assert_int_equal(n_dispatched, 1);
-  assert_true(event_cb_spy.was_called);
+  assert_int_equal(event_cb_spy.was_called, 1);
 }
 
 void
@@ -726,7 +764,7 @@ test_scheduler_run_events_no_callback_if_not_pending(void **state)
   const int n_dispatched = scheduler_run_events(&s);
 
   assert_int_equal(n_dispatched, 0);
-  assert_false(event_cb_spy.was_called);
+  assert_int_equal(event_cb_spy.was_called, 0);
 }
 
 void
@@ -779,7 +817,7 @@ test_scheduler_run_events_ignore_event_if_dead(void **state)
   const int n_dispatched = scheduler_run_events(&s);
 
   assert_int_equal(n_dispatched, 0);
-  assert_false(event_cb_spy.was_called);
+  assert_int_equal(event_cb_spy.was_called, 0);
 }
 
 void
@@ -871,7 +909,7 @@ test_scheduler_read_event_with_invalid_fd(void **state)
   scheduler_initialize(&s);
 
   const char md = SCHEDULER_POLL_READ_FD;
-  const int fd = 1;
+  const int fd = mock_fd_create();
   const struct timeval to = {};
   (void)scheduler_register_event(&s, md, fd, to, &fake_event_cb, NULL);
   event_t* event = list_first_entry(&s.events, event_t, next);
@@ -882,6 +920,8 @@ test_scheduler_read_event_with_invalid_fd(void **state)
   scheduler_prepare_events(&s);
 
   assert_int_equal(s.max_fd, -1);
+
+  close(fd);
 }
 
 void
@@ -909,7 +949,7 @@ test_scheduler_write_event_with_invalid_fd(void **state)
   scheduler_initialize(&s);
 
   const char md = SCHEDULER_POLL_WRITE_FD;
-  const int fd = 1;
+  const int fd = mock_fd_create();
   const struct timeval to = {};
   (void)scheduler_register_event(&s, md, fd, to, &fake_event_cb, NULL);
   event_t* event = list_first_entry(&s.events, event_t, next);
@@ -920,6 +960,7 @@ test_scheduler_write_event_with_invalid_fd(void **state)
   scheduler_prepare_events(&s);
 
   assert_int_equal(s.max_fd, -1);
+  close(fd);
 }
 
 void
@@ -947,7 +988,7 @@ test_scheduler_except_event_with_invalid_fd(void **state)
   scheduler_initialize(&s);
 
   const char md = SCHEDULER_POLL_EXCEPT_FD;
-  const int fd = 1;
+  const int fd = mock_fd_create();
   const struct timeval to = {};
   (void)scheduler_register_event(&s, md, fd, to, &fake_event_cb, NULL);
   event_t* event = list_first_entry(&s.events, event_t, next);
@@ -958,6 +999,7 @@ test_scheduler_except_event_with_invalid_fd(void **state)
   scheduler_prepare_events(&s);
 
   assert_int_equal(s.max_fd, -1);
+  close(fd);
 }
 
 void
@@ -969,7 +1011,7 @@ test_scheduler_no_timeout_events_then_timeout_is_max(void **state)
   s.max_timeout = TV_SECS(600); // FIXME
 
   const char md = SCHEDULER_POLL_EXCEPT_FD;
-  const int test_fd = 991;
+  const int test_fd = mock_fd_create();
   const struct timeval to = {};
   (void)scheduler_register_event(&s, md, test_fd, to, &fake_event_cb, NULL);
 
@@ -977,6 +1019,8 @@ test_scheduler_no_timeout_events_then_timeout_is_max(void **state)
 
   const struct timeval expected_tv = TV_SECS(600);
   assert_int_equal(s.timeout.tv_sec, expected_tv.tv_sec);
+
+  close(test_fd);
 }
 
 void
@@ -1105,37 +1149,8 @@ test_scheduler_with_no_events_will_timeout(void **state)
   assert_int_equal(ret, 0);
 }
 
-static int
-checked_open(const char* filename, int flags)
-{
-  const int fd = open(filename, flags);
-  if (fd < 1) {
-    perror("open");
-  }
-  return fd;
-}
-
-static int
-checked_mkfifo(const char* pipe_name, int mode)
-{
-  const int r = mkfifo(pipe_name, 0666);
-  if (r != 0) {
-    if (errno == EEXIST) {
-      return 0;
-    } else {
-      perror("mkfifo");
-    }
-  }
-  return r;
-}
-
 /*
  * Test running a single SCHEDULER_POLL_READ_FD event to completion.
- * 1. Create a named pipe
- * 2. Create a SCHEDULER_POLL_READ_FD event for pipe
- * 3. Write data to the pipe
- * 4. Manually tick the scheduler
- * 5. Check that the event callback fired
  */
 void
 test_scheduler_run_single_read_fd(void **state)
@@ -1143,15 +1158,7 @@ test_scheduler_run_single_read_fd(void **state)
   scheduler_t s;
   scheduler_initialize(&s);
 
-  const char* pipe_name = "/tmp/bunnies";
-  assert_int_equal(checked_mkfifo(pipe_name, 0666), 0);
-
-  // Must be non-blocking or open will block waiting for the writer
-  const int fd = checked_open(pipe_name, O_RDONLY | O_NONBLOCK);
-  assert_true(fd > 0);
-
-  const int fd_wr = checked_open(pipe_name, O_WRONLY);
-  assert_true(fd_wr > 0);
+  const int fd = mock_fd_create();
 
   /* Create a scheduler event for this fd.
    * The callback will be called when fd is ready for reading. */
@@ -1165,34 +1172,26 @@ test_scheduler_run_single_read_fd(void **state)
 
   /* Tick 1 - nothing changed so should timeout with no callback */
   assert_int_equal(scheduler_wait_for_events(&s), 0);
-  assert_false(event_cb_spy.was_called);
+  assert_int_equal(event_cb_spy.was_called, 0);
 
-  /* Write something to the pipe so now there will be data available to read */
-  {
-    const char* test_string = "pancakes";
-    assert_int_equal(write(fd_wr, test_string, strlen(test_string)), strlen(test_string));
-  }
+  mock_fd_set_readable(fd);
 
   /* Tick 2 - fd has data, event callback should be called */
-  event_cb_spy.was_called = false;
   assert_int_equal(scheduler_wait_for_events(&s), 0);
-  assert_true(event_cb_spy.was_called);
+  assert_int_equal(event_cb_spy.was_called, 1);
 
   close(fd);
-  close(fd_wr);
-  unlink(pipe_name);
 }
 
 /*
  * Test running a single SCHEDULER_POLL_WRITE_FD event to completion.
- * 1. Create a named pipe
+ * 1. Create a mock fd
  * 2. Create a SCHEDULER_POLL_WRITE_FD event for pipe
  * 3. Manually tick the scheduler
  * 4. Check that the event callback fired
- * 5. Write data to the pipe until the internal buffer is full
+ * 5. Set the mock fd to unwriteable
  * 6. Manually tick the scheduler
- * 7. Check that the event callback did not fire because pipe is full and not
- *    ready for another write
+ * 7. Check that the event callback did not fire
  */
 void
 test_scheduler_run_single_write_fd(void **state)
@@ -1200,15 +1199,7 @@ test_scheduler_run_single_write_fd(void **state)
   scheduler_t s;
   scheduler_initialize(&s);
 
-  const char* pipe_name = "/tmp/bunnies";
-  assert_int_equal(checked_mkfifo(pipe_name, 0666), 0);
-
-  // Must be non-blocking or open will block waiting for the writer
-  const int fd_rd = checked_open(pipe_name, O_RDONLY | O_NONBLOCK);
-  assert_true(fd_rd > 0);
-
-  const int fd = checked_open(pipe_name, O_WRONLY);
-  assert_true(fd > 0);
+  const int fd = mock_fd_create();
 
   /* Create a scheduler event for this fd.
    * The callback will be called when fd is ready for writing. */
@@ -1222,42 +1213,24 @@ test_scheduler_run_single_write_fd(void **state)
 
   /* Tick 1 - fd is ready for writing so event callback should be called */
   assert_int_equal(scheduler_wait_for_events(&s), 0);
-  assert_true(event_cb_spy.was_called);
+  assert_int_equal(event_cb_spy.was_called, 1);
 
-  /* Get the pipe buffer size and fill it up */
-  const int pipesize = fcntl(fd, F_GETPIPE_SZ);
-  {
-    int i;
-    for (i = 0; i < pipesize; ++i) {
-      assert_int_equal(write(fd, "a", 1), 1);
-    }
-  }
-  /* With the buffer full the next write would now block */
+  mock_fd_set_unwritable(fd);
 
   /* We expect a timeout next tick so set a low value */
   scheduler_set_max_timeout(&s, (struct timeval){ .tv_sec = 0, .tv_usec = 500 });
 
   /* Tick 2 - fd is not ready for writing so should timeout and callback is not called*/
-  event_cb_spy.was_called = false;
   assert_int_equal(scheduler_wait_for_events(&s), 0);
-  assert_false(event_cb_spy.was_called);
+  assert_int_equal(event_cb_spy.was_called, 1);
 
-  /* Drain the buffer by reading all that was written */
-  {
-    char buf;
-    int i;
-    for (i = 0; i < pipesize; ++i) {
-      assert_int_equal(read(fd_rd, &buf, 1), 1);
-    }
-  }
+  mock_fd_set_writable(fd);
 
   /* Tick 3 - fd is ready again so callback should be called */
   assert_int_equal(scheduler_wait_for_events(&s), 0);
-  assert_true(event_cb_spy.was_called);
+  assert_int_equal(event_cb_spy.was_called, 2);
 
   close(fd);
-  close(fd_rd);
-  unlink(pipe_name);
 }
 
 #if 0
@@ -1277,9 +1250,9 @@ test_scheduler_run_single_except_fd(void **state)
 
 /*
  * Test running a single SCHEDULER_POLL_READ_FD event but then cancelling it.
- * 1. Create a named pipe
+ * 1. Create a mock fd
  * 2. Create a SCHEDULER_POLL_READ_FD event for pipe
- * 3. Write data to the pipe
+ * 3. Make the mock fd readable
  * 4. Unreregister the event
  * 5. Manually tick the scheduler
  * 6. Check that the event callback did not fire
@@ -1290,15 +1263,7 @@ test_scheduler_run_single_dead_event(void **state)
   scheduler_t s;
   scheduler_initialize(&s);
 
-  const char* pipe_name = "/tmp/bunnies";
-  assert_int_equal(checked_mkfifo(pipe_name, 0666), 0);
-
-  // Must be non-blocking or open will block waiting for the writer
-  const int fd = checked_open(pipe_name, O_RDONLY | O_NONBLOCK);
-  assert_true(fd > 0);
-
-  const int fd_wr = checked_open(pipe_name, O_WRONLY);
-  assert_true(fd_wr > 0);
+  const int fd = mock_fd_create();
 
   /* Create a scheduler event for this fd.
    * The callback will be called when fd is ready for reading. */
@@ -1313,25 +1278,221 @@ test_scheduler_run_single_dead_event(void **state)
 
   /* Tick 1 - nothing changed so should timeout with no callback */
   assert_int_equal(scheduler_wait_for_events(&s), 0);
-  assert_false(event_cb_spy.was_called);
+  assert_int_equal(event_cb_spy.was_called, 0);
 
-  /* Write something to the pipe so now there will be data available to read */
-  {
-    const char* test_string = "pancakes";
-    assert_int_equal(write(fd_wr, test_string, strlen(test_string)), strlen(test_string));
-  }
+  mock_fd_set_readable(fd);
 
+  const event_t* e1 = list_first_entry(&s.events, event_t, next);
   scheduler_unregister_event(&s, event_id);
+  /* Event struct still exists but is marked as dead */
+  assert_int_equal(e1->id, event_id);
+  assert_int_equal(e1->dead, 1);
 
   /* We expect a timeout next tick so set a low value */
   scheduler_set_max_timeout(&s, (struct timeval){ .tv_sec = 0, .tv_usec = 500 });
 
   /* Tick 2 - fd has data, but event was unregistered so expect no callback */
-  event_cb_spy.was_called = false;
   assert_int_equal(scheduler_wait_for_events(&s), 0);
-  assert_false(event_cb_spy.was_called);
+  assert_int_equal(event_cb_spy.was_called, 0);
+
+  /* The garbage collector has now removed the dead event from the list */
+  const event_t* e2 = list_first_entry(&s.events, event_t, next);
+  /* The head of the list is now an empty placeholder. */
+  assert_int_equal(e2->id, 0);
+  assert_ptr_not_equal(e2, e1); /* The dead event is gone. */
 
   close(fd);
-  close(fd_wr);
-  unlink(pipe_name);
+}
+
+/* Create two events with the same fd but different callbacks.
+ * Only the first registered callback should fire.
+ * If we unregister the first event then the second callback should fire next.
+ *
+ * This seems to be more of an accident of how the earlier select version of
+ * the scheduler was written rather than a concious design decision.
+ *
+ * It is important to preserve this behaviour because some parts of blktap will
+ * accidentally register multiple events with the same fd but then break if the
+ * callback is called more than once.
+ */
+void
+test_scheduler_run_duplicate_fds_are_handled_once(void **state)
+{
+  scheduler_t s;
+  scheduler_initialize(&s);
+
+  const int fd = mock_fd_create();
+
+  event_cb_spy_t event_cb_spy1 = {};
+  event_cb_spy_t event_cb_spy2 = {};
+
+  const char mode = SCHEDULER_POLL_WRITE_FD;
+  const struct timeval timeout = {};
+
+  /* Create a scheduler event for this fd. */
+  const int event_id1 = scheduler_register_event(&s, mode, fd, timeout, &mock_event_cb, &event_cb_spy1);
+  assert_int_not_equal(event_id1, 0);
+
+  /* Register same fd and callback again */
+  const int event_id2 = scheduler_register_event(&s, mode, fd, timeout, &mock_event_cb, &event_cb_spy2);
+  assert_int_not_equal(event_id2, 0);
+
+  /* The scheduler regards them as two separate events */
+  assert_int_not_equal(event_id1, event_id2);
+
+  assert_int_equal(scheduler_wait_for_events(&s), 0);
+
+  /* Only first callback should have fired */
+  assert_int_equal(event_cb_spy1.was_called, 1);
+  assert_int_equal(event_cb_spy2.was_called, 0);
+
+  scheduler_unregister_event(&s, event_id1);
+
+  assert_int_equal(scheduler_wait_for_events(&s), 0);
+
+  /* Now the second callback should have fired instead */
+  assert_int_equal(event_cb_spy1.was_called, 1);
+  assert_int_equal(event_cb_spy2.was_called, 1);
+
+  close(fd);
+}
+
+/* Register two events with different fds but the same callback.
+ * The callback should be called twice when both fds are ready.
+ */
+void
+test_scheduler_run_with_duplicate_callbacks(void **state)
+{
+  scheduler_t s;
+  scheduler_initialize(&s);
+
+  const int fd1 = mock_fd_create();
+  const int fd2 = mock_fd_create();
+
+  event_cb_spy_t event_cb_spy = {};
+
+  {
+    const char mode = SCHEDULER_POLL_WRITE_FD;
+    const struct timeval timeout = {};
+
+    /* Create a scheduler event for fd1. */
+    const int event_id1 = scheduler_register_event(&s, mode, fd1, timeout, &mock_event_cb, &event_cb_spy);
+    assert_int_not_equal(event_id1, 0);
+
+    /* Create a scheduler event for fd2 but same callback */
+    const int event_id2 = scheduler_register_event(&s, mode, fd2, timeout, &mock_event_cb, &event_cb_spy);
+    assert_int_not_equal(event_id2, 0);
+  }
+
+  /* Tick the scheduler */
+  assert_int_equal(scheduler_wait_for_events(&s), 0);
+
+  /* Callback is called twice because both events had a different fd */
+  assert_int_equal(event_cb_spy.was_called, 2);
+
+  close(fd1);
+  close(fd2);
+}
+
+void
+test_scheduler_run_read_and_write_fd(void **state)
+{
+  scheduler_t s;
+  scheduler_initialize(&s);
+
+  const int fd = mock_fd_create();
+
+  event_cb_spy_t event_cb_spy1 = {};
+  event_cb_spy_t event_cb_spy2 = {};
+
+  int event_id1, event_id2;
+  {
+    const char mode = SCHEDULER_POLL_WRITE_FD;
+    const struct timeval timeout = {};
+
+    /* Create a write event for fd. */
+    event_id1 = scheduler_register_event(&s, mode, fd, timeout, &mock_event_cb, &event_cb_spy1);
+    assert_int_not_equal(event_id1, 0);
+  }
+
+  {
+    const char mode = SCHEDULER_POLL_READ_FD;
+    const struct timeval timeout = {};
+
+    /* Create a read event for fd1. */
+    event_id2 = scheduler_register_event(&s, mode, fd, timeout, &mock_event_cb, &event_cb_spy2);
+    assert_int_not_equal(event_id2, 0);
+  }
+
+  /* Make the fd read and writable */
+  mock_fd_set_readable(fd);
+
+  /* Tick the scheduler */
+  assert_int_equal(scheduler_wait_for_events(&s), 0);
+
+  /* Both read and write callbacks were called */
+  assert_int_equal(event_cb_spy1.was_called, 1);
+  assert_int_equal(event_cb_spy2.was_called, 1);
+
+  /* Tick the scheduler again*/
+  assert_int_equal(scheduler_wait_for_events(&s), 0);
+
+  /* Both read and write callbacks were called again */
+  assert_int_equal(event_cb_spy1.was_called, 2);
+  assert_int_equal(event_cb_spy2.was_called, 2);
+
+  /* Unregister the READ event */
+  scheduler_unregister_event(&s, event_id2);
+
+  assert_int_equal(scheduler_wait_for_events(&s), 0);
+
+  /* Only the WRITE event callback is called */
+  assert_int_equal(event_cb_spy1.was_called, 3);
+  assert_int_equal(event_cb_spy2.was_called, 2);
+
+  close(fd);
+}
+
+void
+test_scheduler_run_deleted_duplicate_event(void **state)
+{
+  scheduler_t s;
+  scheduler_initialize(&s);
+
+  const int fd = mock_fd_create();
+
+  event_cb_spy_t event_cb_spy1 = {};
+  event_cb_spy_t event_cb_spy2 = {};
+
+  int event_id1, event_id2;
+  {
+    const char mode = SCHEDULER_POLL_WRITE_FD;
+    const struct timeval timeout = {};
+
+    /* Create two identical events with the same fd. */
+    event_id1 = scheduler_register_event(&s, mode, fd, timeout, &mock_event_cb, &event_cb_spy1);
+    assert_int_not_equal(event_id1, 0);
+
+    event_id2 = scheduler_register_event(&s, mode, fd, timeout, &mock_event_cb, &event_cb_spy2);
+    assert_int_not_equal(event_id2, 0);
+  }
+
+  /* Tick the scheduler */
+  assert_int_equal(scheduler_wait_for_events(&s), 0);
+
+  /* Only the callback registered first should fire */
+  assert_int_equal(event_cb_spy1.was_called, 1);
+  assert_int_equal(event_cb_spy2.was_called, 0);
+
+  /* Unregister the first event */
+  scheduler_unregister_event(&s, event_id1);
+
+  /* Tick the scheduler again*/
+  assert_int_equal(scheduler_wait_for_events(&s), 0);
+
+  /* This time the second callback should fire */
+  assert_int_equal(event_cb_spy1.was_called, 1);
+  assert_int_equal(event_cb_spy2.was_called, 1);
+
+  close(fd);
 }
