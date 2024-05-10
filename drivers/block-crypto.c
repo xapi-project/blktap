@@ -42,6 +42,7 @@
 #include "libvhd.h"
 #include "tapdisk.h"
 #include "vhd-util.h"
+#include "util.h"
 
 #include "crypto/compat-crypto-openssl.h"
 #include "crypto/xts_aes.h"
@@ -133,7 +134,7 @@ find_keyfile(char **keyfile, const char *dirs,
 	*keyfile  = NULL;
 
 	while (dirs && strlen(dirs) > 0) {
-		char keydir[256] = { 0 }, path[256] = { 0 };
+		char keydir[256] = { 0 }, path[277] = { 0 };
 		struct stat st;
 		int err;
 
@@ -348,19 +349,22 @@ vhd_open_crypto(vhd_context_t *vhd, const uint8_t *key, size_t key_bytes, const 
 	struct vhd_keyhash keyhash;
 	int err;
 #ifdef OPEN_XT
-	uint8_t key[MAX_AES_XTS_PLAIN_KEYSIZE / sizeof(uint8_t)] = { 0 };
-	int keysize = 0;
+	uint8_t keybuf[MAX_AES_XTS_PLAIN_KEYSIZE / sizeof(uint8_t)] = { 0 };
+	key = keybuf;
+	int key_bits;
 #endif
 
 	if (vhd->xts_tfm)
 		return 0;
 
 #ifdef OPEN_XT
-	err = chain_find_keyed_vhd(vhd, key, &keysize, &keyhash);
+	err = chain_find_keyed_vhd(vhd, keybuf, &key_bits, &keyhash);
 	if (err) {
 	    DPRINTF("error in vhd chain: %d\n", err);
 	    return err;
 	}
+
+	key_bytes = key_bits / 8;
 
 	if (keyhash.cookie == 0) {
 		return 0;

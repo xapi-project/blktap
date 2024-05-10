@@ -695,18 +695,19 @@ void dummy_close_crypto(vhd_context_t *vhd)
 static int
 __load_crypto(struct td_vbd_encryption *encryption)
 {
+	bool load_crypto = encryption->encryption_key != NULL;
+
 	crypto_interface = malloc(sizeof(struct crypto_interface));
 	if (!crypto_interface) {
 		EPRINTF("Failed to allocate memory\n");
 		return -ENOMEM;
 	}
 
-	if (encryption->encryption_key == NULL) {
-		crypto_interface->vhd_open_crypto = dummy_open_crypto;
-		crypto_interface->vhd_close_crypto = dummy_close_crypto;
-		crypto_interface->vhd_crypto_encrypt = NULL;
-		crypto_interface->vhd_crypto_decrypt = NULL;
-	} else {
+#ifdef OPEN_XT
+	load_crypto = true;
+#endif
+
+	if (load_crypto) {
 		dlerror();
 		crypto_handle = dlopen(LIBBLOCKCRYPTO_NAME, RTLD_LAZY);
 		if (crypto_handle == NULL) {
@@ -740,6 +741,11 @@ __load_crypto(struct td_vbd_encryption *encryption)
 			return -EINVAL;
 		}
 		DPRINTF("Loaded cryptography library\n");
+	} else {
+		crypto_interface->vhd_open_crypto = dummy_open_crypto;
+		crypto_interface->vhd_close_crypto = dummy_close_crypto;
+		crypto_interface->vhd_crypto_encrypt = NULL;
+		crypto_interface->vhd_crypto_decrypt = NULL;
 	}
 
 	return 0;
