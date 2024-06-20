@@ -230,7 +230,8 @@ __xenio_blkif_get_requests(struct td_xenblkif * const blkif,
 
         xenio_blkif_get_request(blkif, dst, rc);
 
-		if (unlikely(dst->operation == BLKIF_OP_WRITE_BARRIER))
+		if (unlikely(dst->operation == BLKIF_OP_WRITE_BARRIER ||
+			     dst->operation == BLKIF_OP_FLUSH_DISKCACHE))
 			barrier = true;
     }
 
@@ -278,7 +279,8 @@ xenio_blkif_get_requests(struct td_xenblkif * const blkif,
 
         n += __xenio_blkif_get_requests(blkif, reqs + n, count - n);
 
-		if (unlikely(n && reqs[(n - 1)]->operation == BLKIF_OP_WRITE_BARRIER))
+		if (unlikely(n && (reqs[(n - 1)]->operation == BLKIF_OP_WRITE_BARRIER ||
+				   reqs[(n - 1)]->operation == BLKIF_OP_FLUSH_DISKCACHE)))
 			break;
 
     } while (1);
@@ -327,8 +329,8 @@ tapdisk_xenio_ctx_process_ring(struct td_xenblkif *blkif,
 		limit -= n_reqs;
         final = 1;
 
-		if (unlikely(reqs[(n_reqs - 1)]->operation ==
-					BLKIF_OP_WRITE_BARRIER)) {
+		if (unlikely(reqs[(n_reqs - 1)]->operation == BLKIF_OP_WRITE_BARRIER ||
+			     reqs[(n_reqs - 1)]->operation == BLKIF_OP_FLUSH_DISKCACHE)) {
 			ASSERT(!blkif->barrier.msg);
 			blkif->barrier.msg = reqs[(n_reqs - 1)];
 			blkif->barrier.io_done = false;

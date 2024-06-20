@@ -467,8 +467,9 @@ tapdisk_xenblkif_complete_request(struct td_xenblkif * const blkif,
 
 	depth++;
 
-	processing_barrier_message =
-		tapreq->msg.operation == BLKIF_OP_WRITE_BARRIER;
+	processing_barrier_message = (
+		tapreq->msg.operation == BLKIF_OP_WRITE_BARRIER ||
+		tapreq->msg.operation == BLKIF_OP_FLUSH_DISKCACHE);
 
 	/*
 	 * If a barrier request completes, check whether it's an I/O completion
@@ -763,6 +764,7 @@ tapdisk_xenblkif_make_vbd_request(struct td_xenblkif * const blkif,
         break;
     case BLKIF_OP_WRITE:
     case BLKIF_OP_WRITE_BARRIER:
+    case BLKIF_OP_FLUSH_DISKCACHE:
         if (likely(blkif->stats.xenvbd))
 			blkif->stats.xenvbd->st_wr_req++;
 	if (likely(blkif->vbd_stats.stats))
@@ -783,7 +785,8 @@ tapdisk_xenblkif_make_vbd_request(struct td_xenblkif * const blkif,
      * Check that the number of segments is sane.
      */
     if (unlikely((tapreq->msg.nr_segments == 0 &&
-                tapreq->msg.operation != BLKIF_OP_WRITE_BARRIER) ||
+                (tapreq->msg.operation != BLKIF_OP_WRITE_BARRIER &&
+                 tapreq->msg.operation != BLKIF_OP_FLUSH_DISKCACHE)) ||
             tapreq->msg.nr_segments > BLKIF_MMAX_SEGMENTS_PER_REQUEST)) {
         RING_ERR(blkif, "req %lu: bad number of segments in request (%d)\n",
                 tapreq->msg.id, tapreq->msg.nr_segments);
