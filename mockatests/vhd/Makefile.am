@@ -11,7 +11,7 @@ TESTS = test-vhd-util
 
 test_vhd_util_LDADD = $(top_srcdir)/vhd/lib/libvhd.la
 
-test_vhd_util_SOURCES = test-vhd-util.c test-vhd-util-snapshot.c test-canonpath.c test-vhd-util-utilities.c vhd-wrappers.c
+test_vhd_util_SOURCES = test-vhd-util.c test-vhd-util-snapshot.c test-canonpath.c test-bitops.c test-vhd-util-utilities.c vhd-wrappers.c
 test_vhd_util_LDFLAGS = -lcmocka
 test_vhd_util_LDFLAGS += -static-libtool-libs
 test_vhd_util_LDFLAGS += -Wl,--wrap=free,--wrap=malloc,--wrap=realloc
