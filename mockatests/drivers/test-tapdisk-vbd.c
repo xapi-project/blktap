@@ -40,26 +40,30 @@
 #include "tapdisk-disktype.h"
 #include "tapdisk-image.h"
 #include "tapdisk-interface.h"
+#include "tapdisk-nbdserver.h"
 
 void
 test_vbd_linked_list(void **state)
 {
-	tapdisk_extents_t extents;
-	bzero(&extents, sizeof(tapdisk_extents_t));
+	tapdisk_extents_t *extents = malloc(sizeof(*extents));
+	bzero(extents, sizeof(tapdisk_extents_t));
 	td_request_t vreq;
 	bzero(&vreq, sizeof(td_request_t));
 
 	vreq.sec = 0;
 	vreq.secs = 2;
 	vreq.status = 1;
-	
-	add_extent(&extents, &vreq);
-	assert_ptr_equal(extents.tail, extents.head);
-	assert_int_equal(extents.tail->start, 0);
-	assert_int_equal(extents.tail->length, 2);
-	assert_int_equal(extents.tail->flag, 1);
-	assert_null(extents.tail->next);
-	assert_int_equal(extents.count, 1);
+
+	add_extent(extents, &vreq);
+
+	assert_ptr_equal(extents->tail, extents->head);
+	assert_int_equal(extents->tail->start, 0);
+	assert_int_equal(extents->tail->length, 2);
+	assert_int_equal(extents->tail->flag, 1);
+	assert_null(extents->tail->next);
+	assert_int_equal(extents->count, 1);
+
+	free_extents(extents);
 }
 
 void
@@ -114,8 +118,8 @@ test_vbd_complete_block_status_request(void **stat)
 	td_image_t *image = tapdisk_image_allocate("blah", DISK_TYPE_VHD, TD_OPEN_RDONLY | TD_OPEN_SHAREABLE);
 	list_add_tail(&image->next, &vbd.images);
 
-	tapdisk_extents_t extents;
-	bzero(&extents, sizeof(extents));
+	tapdisk_extents_t *extents = malloc(sizeof(*extents));
+	bzero(extents, sizeof(*extents));
 	
 	td_vbd_request_t vreq;
 	bzero(&vreq, sizeof(td_vbd_request_t));
@@ -127,7 +131,7 @@ test_vbd_complete_block_status_request(void **stat)
 	iov.secs = 123;
 	vreq.iov = &iov;
 	vreq.op = TD_OP_BLOCK_STATUS;
-	vreq.data = &extents;
+	vreq.data = extents;
 
 	td_request_t my_treq;
 	bzero(&my_treq, sizeof(my_treq));
@@ -143,8 +147,11 @@ test_vbd_complete_block_status_request(void **stat)
 	my_treq.cb = tapdisk_vbd_complete_block_status_request;
 
 	tapdisk_vbd_complete_block_status_request(my_treq, 0);
-	assert_non_null(extents.head);
-	assert_int_equal(extents.head->flag, TD_BLOCK_STATE_HOLE);
-	assert_int_equal(extents.head->start, my_treq.sec);
-	assert_int_equal(extents.head->length, my_treq.secs);
+	assert_non_null(extents->head);
+	assert_int_equal(extents->head->flag, TD_BLOCK_STATE_HOLE);
+	assert_int_equal(extents->head->start, my_treq.sec);
+	assert_int_equal(extents->head->length, my_treq.secs);
+
+	tapdisk_image_close(image);
+	free_extents(extents);
 }

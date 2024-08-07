@@ -182,6 +182,9 @@ test_scheduler_register_event_null_callback(void **state)
 
   const int r = scheduler_register_event(&s, mode, fd, timeout, cb, private);
   assert_int_equal(r, -EINVAL);
+
+  scheduler_unregister_event(&s, r);
+  scheduler_gc_events(&s);
 }
 
 void
@@ -198,6 +201,9 @@ test_scheduler_register_event_bad_mode(void **state)
 
   const int r = scheduler_register_event(&s, mode, fd, timeout, cb, private);
   assert_int_equal(r, -EINVAL);
+
+  scheduler_unregister_event(&s, r);
+  scheduler_gc_events(&s);
 }
 
 void
@@ -225,6 +231,10 @@ test_scheduler_register_multiple_events(void **state)
 
   /* The two event IDs we were given are different */
   assert_int_not_equal(event_id1, event_id2);
+
+  scheduler_unregister_event(&s, event_id1);
+  scheduler_unregister_event(&s, event_id2);
+  scheduler_gc_events(&s);
 }
 
 void
@@ -256,6 +266,9 @@ test_scheduler_register_event_populates_event(void **state)
 
   assert_int_equal(e->deadline.tv_sec,  fake_gettimeofday.tv_sec + timeout.tv_sec);
   assert_int_equal(e->deadline.tv_usec, fake_gettimeofday.tv_usec + timeout.tv_usec);
+
+  scheduler_unregister_event(&s, event_id1);
+  scheduler_gc_events(&s);
 }
 
 void
@@ -270,11 +283,14 @@ test_scheduler_set_timeout_inf(void **state)
   struct timeval timeout = TV_INF;
   event_cb_t cb = &fake_event_cb;
 
-  (void)scheduler_register_event(&s, mode, fd, timeout, cb, NULL);
+  const int id = scheduler_register_event(&s, mode, fd, timeout, cb, NULL);
 
   const event_t* e = list_first_entry(&s.events, event_t, next);
 
   assert_true(TV_IS_INF(e->timeout));
+
+  scheduler_unregister_event(&s, id);
+  scheduler_gc_events(&s);
 }
 
 void
@@ -300,12 +316,14 @@ test_scheduler_set_timeout_on_non_polled_event(void **state)
   struct timeval timeout = { .tv_sec = 996 };
   event_cb_t cb = &fake_event_cb;
 
-  (void)scheduler_register_event(&s, mode, fd, timeout, cb, NULL);
+  const int id = scheduler_register_event(&s, mode, fd, timeout, cb, NULL);
   const event_t* e = list_first_entry(&s.events, event_t, next);
   const int r = scheduler_event_set_timeout(&s, e->id, (struct timeval){});
   assert_int_equal(r, -EINVAL);
 
   close(fd);
+  scheduler_unregister_event(&s, id);
+  scheduler_gc_events(&s);
 }
 
 void
@@ -320,10 +338,13 @@ test_scheduler_set_timeout_missing_event(void **state)
   struct timeval timeout = { .tv_sec = 996 };
   event_cb_t cb = &fake_event_cb;
 
-  (void)scheduler_register_event(&s, mode, fd, timeout, cb, NULL);
+  const int id = scheduler_register_event(&s, mode, fd, timeout, cb, NULL);
   const event_t* e = list_first_entry(&s.events, event_t, next);
   const int r = scheduler_event_set_timeout(&s, e->id+1, (struct timeval){});
   assert_int_equal(r, -ENOENT);
+
+  scheduler_unregister_event(&s, id);
+  scheduler_gc_events(&s);
 }
 
 void
@@ -343,9 +364,9 @@ test_scheduler_set_timeout(void **state)
   int fake_gettimeofday_tv_sec = 1;
   fake_gettimeofday = (struct timeval){ .tv_sec = fake_gettimeofday_tv_sec, .tv_usec = 0};
 
-  (void)scheduler_register_event(&s, mode, fd, timeout1, cb, NULL);
-  (void)scheduler_register_event(&s, mode, fd, timeout2, cb, NULL);
-  (void)scheduler_register_event(&s, mode, fd, timeout3, cb, NULL);
+  const int id1 = scheduler_register_event(&s, mode, fd, timeout1, cb, NULL);
+  const int id2 = scheduler_register_event(&s, mode, fd, timeout2, cb, NULL);
+  const int id3 = scheduler_register_event(&s, mode, fd, timeout3, cb, NULL);
   const event_t* e1 = list_first_entry(&s.events, event_t, next);
   const event_t* e2 = list_next_entry(e1, next);
   const event_t* e3 = list_next_entry(e2, next);
@@ -366,6 +387,11 @@ test_scheduler_set_timeout(void **state)
   assert_int_equal(e1->deadline.tv_sec, fake_gettimeofday_tv_sec + timeout1.tv_sec);
   assert_int_equal(e2->deadline.tv_sec, fake_gettimeofday_tv_sec + new_timeout2.tv_sec);
   assert_int_equal(e3->deadline.tv_sec, fake_gettimeofday_tv_sec + timeout3.tv_sec);
+
+  scheduler_unregister_event(&s, id1);
+  scheduler_unregister_event(&s, id2);
+  scheduler_unregister_event(&s, id3);
+  scheduler_gc_events(&s);
 }
 
 void
@@ -382,7 +408,7 @@ test_scheduler_set_timeout_inf_and_deadline(void **state)
 
   fake_gettimeofday = (struct timeval){ .tv_sec = 1, .tv_usec = 2};
 
-  (void)scheduler_register_event(&s, mode, fd, timeout, cb, NULL);
+  const int id = scheduler_register_event(&s, mode, fd, timeout, cb, NULL);
   const event_t* e = list_first_entry(&s.events, event_t, next);
 
   assert_int_equal(e->timeout.tv_sec, timeout.tv_sec);
@@ -392,6 +418,9 @@ test_scheduler_set_timeout_inf_and_deadline(void **state)
 
   assert_true(TV_IS_INF(e->timeout));
   assert_true(TV_IS_INF(e->deadline));
+
+  scheduler_unregister_event(&s, id);
+  scheduler_gc_events(&s);
 }
 
 void
@@ -406,12 +435,15 @@ test_scheduler_unregister_event_will_set_dead_field(void **state)
   struct timeval timeout = { .tv_sec = 1 };
   event_cb_t cb = &fake_event_cb;
 
-  (void)scheduler_register_event(&s, mode, fd, timeout, cb, NULL);
+  const int id = scheduler_register_event(&s, mode, fd, timeout, cb, NULL);
   const event_t* e = list_first_entry(&s.events, event_t, next);
   assert_int_not_equal(e->dead, 1);
 
   scheduler_unregister_event(&s, e->id);
   assert_int_equal(e->dead, 1);
+
+  scheduler_unregister_event(&s, id);
+  scheduler_gc_events(&s);
 }
 
 void
@@ -426,12 +458,15 @@ test_scheduler_unregister_event_will_ignore_invalid_event(void **state)
   struct timeval timeout = { .tv_sec = 1 };
   event_cb_t cb = &fake_event_cb;
 
-  (void)scheduler_register_event(&s, mode, fd, timeout, cb, NULL);
+  const int id = scheduler_register_event(&s, mode, fd, timeout, cb, NULL);
   const event_t* e = list_first_entry(&s.events, event_t, next);
   assert_int_not_equal(e->dead, 1);
 
   scheduler_unregister_event(&s, 0);
   assert_int_not_equal(e->dead, 1);
+
+  scheduler_unregister_event(&s, id);
+  scheduler_gc_events(&s);
 }
 
 void
@@ -446,7 +481,7 @@ test_scheduler_mask_event_will_set_masked_field(void **state)
   struct timeval timeout = { .tv_sec = 1 };
   event_cb_t cb = &fake_event_cb;
 
-  (void)scheduler_register_event(&s, mode, fd, timeout, cb, NULL);
+  const int id = scheduler_register_event(&s, mode, fd, timeout, cb, NULL);
   const event_t* e = list_first_entry(&s.events, event_t, next);
   assert_int_not_equal(e->masked, 1);
 
@@ -455,6 +490,9 @@ test_scheduler_mask_event_will_set_masked_field(void **state)
 
   scheduler_mask_event(&s, e->id, 0);
   assert_int_not_equal(e->masked, 1);
+
+  scheduler_unregister_event(&s, id);
+  scheduler_gc_events(&s);
 }
 
 void
@@ -469,12 +507,15 @@ test_scheduler_mask_event_will_accept_non_zero_value(void **state)
   struct timeval timeout = { .tv_sec = 1 };
   event_cb_t cb = &fake_event_cb;
 
-  (void)scheduler_register_event(&s, mode, fd, timeout, cb, NULL);
+  const int id = scheduler_register_event(&s, mode, fd, timeout, cb, NULL);
   const event_t* e = list_first_entry(&s.events, event_t, next);
   assert_int_not_equal(e->masked, 1);
 
   scheduler_mask_event(&s, e->id, 959);
   assert_int_equal(e->masked, 1);
+
+  scheduler_unregister_event(&s, id);
+  scheduler_gc_events(&s);
 }
 
 void
@@ -489,12 +530,15 @@ test_scheduler_mask_event_will_ignore_invalid_event_id(void **state)
   struct timeval timeout = { .tv_sec = 1 };
   event_cb_t cb = &fake_event_cb;
 
-  (void)scheduler_register_event(&s, mode, fd, timeout, cb, NULL);
+  const int id = scheduler_register_event(&s, mode, fd, timeout, cb, NULL);
   const event_t* e = list_first_entry(&s.events, event_t, next);
   assert_int_not_equal(e->masked, 1);
 
   scheduler_mask_event(&s, 0, 1);
   assert_int_not_equal(e->masked, 1);
+
+  scheduler_unregister_event(&s, id);
+  scheduler_gc_events(&s);
 }
 
 void
@@ -538,11 +582,11 @@ test_scheduler_get_uuid_overflow_fragmented(void **state)
   // | 1 | 3 |   |...
   // +---+---+---+---
   s.uuid = 1;
-  (void)scheduler_register_event(&s, SCHEDULER_POLL_TIMEOUT, 1,
+  const int id1 = scheduler_register_event(&s, SCHEDULER_POLL_TIMEOUT, 1,
                                  (struct timeval){}, &fake_event_cb, NULL);
 
   s.uuid = 3;
-  (void)scheduler_register_event(&s, SCHEDULER_POLL_TIMEOUT, 1,
+  const int id2 = scheduler_register_event(&s, SCHEDULER_POLL_TIMEOUT, 1,
                                  (struct timeval){}, &fake_event_cb, NULL);
 
   // After an overflow the next UUID should be 2
@@ -560,6 +604,10 @@ test_scheduler_get_uuid_overflow_fragmented(void **state)
   // +---+---+---+---+---
   // | 1 | 3 | 2 | 4 |...
   // +---+---+---+---+---
+
+  scheduler_unregister_event(&s, id1);
+  scheduler_unregister_event(&s, id2);
+  scheduler_gc_events(&s);
 }
 
 void
@@ -578,9 +626,9 @@ test_scheduler_gc_will_remove_dead_events_from_list(void **state)
   // +---+  +---+  +---+
   // | 1 |->| 2 |->| 3 |
   // +---+  +---+  +---+
-  (void)scheduler_register_event(&s, mode, fd, timeout, cb, NULL);
-  (void)scheduler_register_event(&s, mode, fd, timeout, cb, NULL);
-  (void)scheduler_register_event(&s, mode, fd, timeout, cb, NULL);
+  const int id1 = scheduler_register_event(&s, mode, fd, timeout, cb, NULL);
+  const int id2 = scheduler_register_event(&s, mode, fd, timeout, cb, NULL);
+  const int id3 = scheduler_register_event(&s, mode, fd, timeout, cb, NULL);
   const event_t* e1 = list_first_entry(&s.events, event_t, next);
   const event_t* e2 = list_next_entry(e1, next);
   const event_t* e3 = list_next_entry(e2, next);
@@ -602,6 +650,11 @@ test_scheduler_gc_will_remove_dead_events_from_list(void **state)
 
   // event 1 is now linked to event 3
   assert_ptr_equal(list_next_entry(e1, next), e3);
+
+  scheduler_unregister_event(&s, id1);
+  scheduler_unregister_event(&s, id2);
+  scheduler_unregister_event(&s, id3);
+  scheduler_gc_events(&s);
 }
 
 void
@@ -616,12 +669,12 @@ test_scheduler_check_timeouts(void **state)
   struct timeval timeout = {};
   event_cb_t cb = &fake_event_cb;
 
-  (void)scheduler_register_event(&s, mode, fd, timeout, cb, NULL);
-  (void)scheduler_register_event(&s, mode, fd, timeout, cb, NULL);
-  (void)scheduler_register_event(&s, mode, fd, timeout, cb, NULL);
-  (void)scheduler_register_event(&s, mode, fd, timeout, cb, NULL);
-  (void)scheduler_register_event(&s, mode, fd, timeout, cb, NULL);
-  (void)scheduler_register_event(&s, mode, fd, timeout, cb, NULL);
+  const int id1 = scheduler_register_event(&s, mode, fd, timeout, cb, NULL);
+  const int id2 = scheduler_register_event(&s, mode, fd, timeout, cb, NULL);
+  const int id3 = scheduler_register_event(&s, mode, fd, timeout, cb, NULL);
+  const int id4 = scheduler_register_event(&s, mode, fd, timeout, cb, NULL);
+  const int id5 = scheduler_register_event(&s, mode, fd, timeout, cb, NULL);
+  const int id6 = scheduler_register_event(&s, mode, fd, timeout, cb, NULL);
 
   event_t* e1 = list_first_entry(&s.events, event_t, next);
   event_t* e2 = list_next_entry(e1, next);
@@ -647,6 +700,14 @@ test_scheduler_check_timeouts(void **state)
   assert_int_not_equal(e4->pending, SCHEDULER_POLL_TIMEOUT); // unchanged
   assert_int_not_equal(e5->pending, SCHEDULER_POLL_TIMEOUT); // unchanged
   assert_int_equal(e6->pending, SCHEDULER_POLL_TIMEOUT); // changed
+
+  scheduler_unregister_event(&s, id1);
+  scheduler_unregister_event(&s, id2);
+  scheduler_unregister_event(&s, id3);
+  scheduler_unregister_event(&s, id4);
+  scheduler_unregister_event(&s, id5);
+  scheduler_unregister_event(&s, id6);
+  scheduler_gc_events(&s);
 }
 
 void
@@ -666,7 +727,7 @@ test_scheduler_callback(void **state)
   // Update current time to time_now1
   fake_gettimeofday = (struct timeval){ .tv_sec = time_now1 };
 
-  (void)scheduler_register_event(&s, md, fd, to, &mock_event_cb, &event_cb_spy);
+  const int id = scheduler_register_event(&s, md, fd, to, &mock_event_cb, &event_cb_spy);
   event_t* event1 = list_first_entry(&s.events, event_t, next);
 
   // Event deadline is using time_now1
@@ -691,6 +752,9 @@ test_scheduler_callback(void **state)
 
   // Event deadline has been updated using time_now2
   assert_int_equal(event1->deadline.tv_sec, to.tv_sec + time_now2);
+
+  scheduler_unregister_event(&s, id);
+  scheduler_gc_events(&s);
 }
 
 void
@@ -705,7 +769,7 @@ test_scheduler_callback_ignores_masked_events(void **state)
   const struct timeval to = {};
   event_cb_spy_t event_cb_spy = {};
 
-  (void)scheduler_register_event(&s, md, fd, to, &mock_event_cb, &event_cb_spy);
+  const int id = scheduler_register_event(&s, md, fd, to, &mock_event_cb, &event_cb_spy);
   event_t* event1 = list_first_entry(&s.events, event_t, next);
 
   // Mask the event here
@@ -718,6 +782,9 @@ test_scheduler_callback_ignores_masked_events(void **state)
   assert_int_equal(event_cb_spy.was_called, 0);
   assert_int_not_equal(event_cb_spy.mode, test_mode);
   assert_int_not_equal(event_cb_spy.id, event1->id);
+
+  scheduler_unregister_event(&s, id);
+  scheduler_gc_events(&s);
 }
 
 void
@@ -732,7 +799,7 @@ test_scheduler_run_events_run_callback_if_pending(void **state)
   const struct timeval to = {};
   event_cb_spy_t event_cb_spy = {};
 
-  (void)scheduler_register_event(&s, md, fd, to, &mock_event_cb, &event_cb_spy);
+  const int id = scheduler_register_event(&s, md, fd, to, &mock_event_cb, &event_cb_spy);
   event_t* event = list_first_entry(&s.events, event_t, next);
 
   // Set event to pending
@@ -742,6 +809,9 @@ test_scheduler_run_events_run_callback_if_pending(void **state)
 
   assert_int_equal(n_dispatched, 1);
   assert_int_equal(event_cb_spy.was_called, 1);
+
+  scheduler_unregister_event(&s, id);
+  scheduler_gc_events(&s);
 }
 
 void
@@ -756,7 +826,7 @@ test_scheduler_run_events_no_callback_if_not_pending(void **state)
   const struct timeval to = {};
   event_cb_spy_t event_cb_spy = {};
 
-  (void)scheduler_register_event(&s, md, fd, to, &mock_event_cb, &event_cb_spy);
+  const int id = scheduler_register_event(&s, md, fd, to, &mock_event_cb, &event_cb_spy);
   event_t* event = list_first_entry(&s.events, event_t, next);
 
   event->pending = 0;
@@ -765,6 +835,9 @@ test_scheduler_run_events_no_callback_if_not_pending(void **state)
 
   assert_int_equal(n_dispatched, 0);
   assert_int_equal(event_cb_spy.was_called, 0);
+
+  scheduler_unregister_event(&s, id);
+  scheduler_gc_events(&s);
 }
 
 void
@@ -779,7 +852,7 @@ test_scheduler_run_events_pending_mode_is_reset(void **state)
   const struct timeval to = {};
   event_cb_spy_t event_cb_spy = {};
 
-  (void)scheduler_register_event(&s, md, fd, to, &mock_event_cb, &event_cb_spy);
+  const int id = scheduler_register_event(&s, md, fd, to, &mock_event_cb, &event_cb_spy);
   event_t* event = list_first_entry(&s.events, event_t, next);
 
   // Set event to pending
@@ -792,6 +865,9 @@ test_scheduler_run_events_pending_mode_is_reset(void **state)
 
   // Event pending flag is reset
   assert_int_not_equal(event->pending, SCHEDULER_POLL_TIMEOUT);
+
+  scheduler_unregister_event(&s, id);
+  scheduler_gc_events(&s);
 }
 
 void
@@ -806,7 +882,7 @@ test_scheduler_run_events_ignore_event_if_dead(void **state)
   const struct timeval to = {};
   event_cb_spy_t event_cb_spy = {};
 
-  (void)scheduler_register_event(&s, md, fd, to, &mock_event_cb, &event_cb_spy);
+  const int id = scheduler_register_event(&s, md, fd, to, &mock_event_cb, &event_cb_spy);
   event_t* event = list_first_entry(&s.events, event_t, next);
 
   // Set event to pending
@@ -818,6 +894,9 @@ test_scheduler_run_events_ignore_event_if_dead(void **state)
 
   assert_int_equal(n_dispatched, 0);
   assert_int_equal(event_cb_spy.was_called, 0);
+
+  scheduler_unregister_event(&s, id);
+  scheduler_gc_events(&s);
 }
 
 void
@@ -852,7 +931,7 @@ test_scheduler_prepare_events_masked_event_ignored(void **state)
   const char md = SCHEDULER_POLL_TIMEOUT;
   const int fd = 1;
   const struct timeval to = {};
-  (void)scheduler_register_event(&s, md, fd, to, &fake_event_cb, NULL);
+  const int id = scheduler_register_event(&s, md, fd, to, &fake_event_cb, NULL);
   event_t* event = list_first_entry(&s.events, event_t, next);
 
   // Mask the event here
@@ -861,6 +940,9 @@ test_scheduler_prepare_events_masked_event_ignored(void **state)
   scheduler_prepare_events(&s);
 
   assert_int_equal(s.max_fd, -1);
+
+  scheduler_unregister_event(&s, id);
+  scheduler_gc_events(&s);
 }
 
 void
@@ -873,7 +955,7 @@ test_scheduler_prepare_events_dead_event_ignored(void **state)
   const char md = SCHEDULER_POLL_TIMEOUT;
   const int fd = 1;
   const struct timeval to = {};
-  (void)scheduler_register_event(&s, md, fd, to, &fake_event_cb, NULL);
+  const int id = scheduler_register_event(&s, md, fd, to, &fake_event_cb, NULL);
   event_t* event = list_first_entry(&s.events, event_t, next);
 
   // Unalive event here
@@ -882,6 +964,9 @@ test_scheduler_prepare_events_dead_event_ignored(void **state)
   scheduler_prepare_events(&s);
 
   assert_int_equal(s.max_fd, -1);
+
+  scheduler_unregister_event(&s, id);
+  scheduler_gc_events(&s);
 }
 
 void
@@ -894,11 +979,14 @@ test_scheduler_add_read_event(void **state)
   const char md = SCHEDULER_POLL_READ_FD;
   const int test_fd = 991;
   const struct timeval to = {};
-  (void)scheduler_register_event(&s, md, test_fd, to, &fake_event_cb, NULL);
+  const int id = scheduler_register_event(&s, md, test_fd, to, &fake_event_cb, NULL);
 
   scheduler_prepare_events(&s);
 
   assert_int_equal(s.max_fd, test_fd);
+
+  scheduler_unregister_event(&s, id);
+  scheduler_gc_events(&s);
 }
 
 void
@@ -911,7 +999,7 @@ test_scheduler_read_event_with_invalid_fd(void **state)
   const char md = SCHEDULER_POLL_READ_FD;
   const int fd = mock_fd_create();
   const struct timeval to = {};
-  (void)scheduler_register_event(&s, md, fd, to, &fake_event_cb, NULL);
+  const int event_id = scheduler_register_event(&s, md, fd, to, &fake_event_cb, NULL);
   event_t* event = list_first_entry(&s.events, event_t, next);
 
   // Invalid event
@@ -922,6 +1010,8 @@ test_scheduler_read_event_with_invalid_fd(void **state)
   assert_int_equal(s.max_fd, -1);
 
   close(fd);
+  scheduler_unregister_event(&s, event_id);
+  scheduler_gc_events(&s);
 }
 
 void
@@ -934,11 +1024,14 @@ test_scheduler_add_write_event(void **state)
   const char md = SCHEDULER_POLL_WRITE_FD;
   const int test_fd = 991;
   const struct timeval to = {};
-  (void)scheduler_register_event(&s, md, test_fd, to, &fake_event_cb, NULL);
+  const int event_id = scheduler_register_event(&s, md, test_fd, to, &fake_event_cb, NULL);
 
   scheduler_prepare_events(&s);
 
   assert_int_equal(s.max_fd, test_fd);
+
+  scheduler_unregister_event(&s, event_id);
+  scheduler_gc_events(&s);
 }
 
 void
@@ -951,7 +1044,7 @@ test_scheduler_write_event_with_invalid_fd(void **state)
   const char md = SCHEDULER_POLL_WRITE_FD;
   const int fd = mock_fd_create();
   const struct timeval to = {};
-  (void)scheduler_register_event(&s, md, fd, to, &fake_event_cb, NULL);
+  const int event_id = scheduler_register_event(&s, md, fd, to, &fake_event_cb, NULL);
   event_t* event = list_first_entry(&s.events, event_t, next);
 
   // Invalid event
@@ -960,7 +1053,10 @@ test_scheduler_write_event_with_invalid_fd(void **state)
   scheduler_prepare_events(&s);
 
   assert_int_equal(s.max_fd, -1);
+
   close(fd);
+  scheduler_unregister_event(&s, event_id);
+  scheduler_gc_events(&s);
 }
 
 void
@@ -973,11 +1069,14 @@ test_scheduler_add_except_event(void **state)
   const char md = SCHEDULER_POLL_EXCEPT_FD;
   const int test_fd = 991;
   const struct timeval to = {};
-  (void)scheduler_register_event(&s, md, test_fd, to, &fake_event_cb, NULL);
+  const int event_id = scheduler_register_event(&s, md, test_fd, to, &fake_event_cb, NULL);
 
   scheduler_prepare_events(&s);
 
   assert_int_equal(s.max_fd, test_fd);
+
+  scheduler_unregister_event(&s, event_id);
+  scheduler_gc_events(&s);
 }
 
 void
@@ -990,7 +1089,7 @@ test_scheduler_except_event_with_invalid_fd(void **state)
   const char md = SCHEDULER_POLL_EXCEPT_FD;
   const int fd = mock_fd_create();
   const struct timeval to = {};
-  (void)scheduler_register_event(&s, md, fd, to, &fake_event_cb, NULL);
+  const int event_id = scheduler_register_event(&s, md, fd, to, &fake_event_cb, NULL);
   event_t* event = list_first_entry(&s.events, event_t, next);
 
   // Invalid event
@@ -1000,6 +1099,8 @@ test_scheduler_except_event_with_invalid_fd(void **state)
 
   assert_int_equal(s.max_fd, -1);
   close(fd);
+  scheduler_unregister_event(&s, event_id);
+  scheduler_gc_events(&s);
 }
 
 void
@@ -1013,7 +1114,7 @@ test_scheduler_no_timeout_events_then_timeout_is_max(void **state)
   const char md = SCHEDULER_POLL_EXCEPT_FD;
   const int test_fd = mock_fd_create();
   const struct timeval to = {};
-  (void)scheduler_register_event(&s, md, test_fd, to, &fake_event_cb, NULL);
+  const int event_id = scheduler_register_event(&s, md, test_fd, to, &fake_event_cb, NULL);
 
   scheduler_prepare_events(&s);
 
@@ -1021,6 +1122,8 @@ test_scheduler_no_timeout_events_then_timeout_is_max(void **state)
   assert_int_equal(s.timeout.tv_sec, expected_tv.tv_sec);
 
   close(test_fd);
+  scheduler_unregister_event(&s, event_id);
+  scheduler_gc_events(&s);
 }
 
 void
@@ -1035,7 +1138,7 @@ test_scheduler_add_timeout_event(void **state)
   const int fd = 1;
   const struct timeval to = { .tv_sec = 10 };
   fake_gettimeofday = (struct timeval){ .tv_sec = 0, .tv_usec = 0};
-  (void)scheduler_register_event(&s, md, fd, to, &fake_event_cb, NULL);
+  const int event_id = scheduler_register_event(&s, md, fd, to, &fake_event_cb, NULL);
 
   const struct timeval time_now = { .tv_sec = 2, .tv_usec = 0};
   fake_gettimeofday = time_now;
@@ -1044,6 +1147,9 @@ test_scheduler_add_timeout_event(void **state)
 
   // New timeout value is time to the event deadline
   assert_int_equal(s.timeout.tv_sec, to.tv_sec - time_now.tv_sec);
+
+  scheduler_unregister_event(&s, event_id);
+  scheduler_gc_events(&s);
 }
 
 void
@@ -1059,8 +1165,8 @@ test_scheduler_multiple_timeout_events_use_lowest_timeout(void **state)
   const struct timeval to1 = { .tv_sec = 20 };
   const struct timeval to2 = { .tv_sec = 10 };
   fake_gettimeofday = (struct timeval){ .tv_sec = 0, .tv_usec = 0};
-  (void)scheduler_register_event(&s, md, fd, to1, &fake_event_cb, NULL);
-  (void)scheduler_register_event(&s, md, fd, to2, &fake_event_cb, NULL);
+  const int id1 = scheduler_register_event(&s, md, fd, to1, &fake_event_cb, NULL);
+  const int id2 = scheduler_register_event(&s, md, fd, to2, &fake_event_cb, NULL);
 
   const struct timeval time_now = { .tv_sec = 2, .tv_usec = 0};
   fake_gettimeofday = time_now;
@@ -1069,6 +1175,10 @@ test_scheduler_multiple_timeout_events_use_lowest_timeout(void **state)
 
   // New timeout is based on the smaller event timeout value (to2).
   assert_int_equal(s.timeout.tv_sec, to2.tv_sec - time_now.tv_sec);
+
+  scheduler_unregister_event(&s, id1);
+  scheduler_unregister_event(&s, id2);
+  scheduler_gc_events(&s);
 }
 
 void
@@ -1083,7 +1193,7 @@ test_scheduler_timeout_event_is_instant_if_deadline_is_now(void **state)
   const int fd = 1;
   const struct timeval to = { .tv_sec = 10 };
   fake_gettimeofday = (struct timeval){ .tv_sec = 0, .tv_usec = 0};
-  (void)scheduler_register_event(&s, md, fd, to, &fake_event_cb, NULL);
+  const int event_id = scheduler_register_event(&s, md, fd, to, &fake_event_cb, NULL);
 
   // Set the time now to the event timeout
   fake_gettimeofday = to;
@@ -1092,6 +1202,9 @@ test_scheduler_timeout_event_is_instant_if_deadline_is_now(void **state)
 
   // New timeout is zero because deadline has already been reached.
   assert_int_equal(s.timeout.tv_sec, 0);
+
+  scheduler_unregister_event(&s, event_id);
+  scheduler_gc_events(&s);
 }
 
 void
@@ -1107,8 +1220,8 @@ test_scheduler_multiple_timeout_events_dont_interfere(void **state)
   const struct timeval to1 = { .tv_sec = 10 };
   const struct timeval to2 = { .tv_sec = 20 };
   fake_gettimeofday = (struct timeval){ .tv_sec = 0, .tv_usec = 0};
-  (void)scheduler_register_event(&s, md, fd, to1, &fake_event_cb, NULL);
-  (void)scheduler_register_event(&s, md, fd, to2, &fake_event_cb, NULL);
+  const int id1 = scheduler_register_event(&s, md, fd, to1, &fake_event_cb, NULL);
+  const int id2 = scheduler_register_event(&s, md, fd, to2, &fake_event_cb, NULL);
 
   // Set the time now to the first event timeout
   fake_gettimeofday = to1;
@@ -1117,6 +1230,10 @@ test_scheduler_multiple_timeout_events_dont_interfere(void **state)
 
   // Event though event2 still has 10 seconds left event1 is 0 therefor timeout is 0
   assert_int_equal(s.timeout.tv_sec, 0);
+
+  scheduler_unregister_event(&s, id1);
+  scheduler_unregister_event(&s, id2);
+  scheduler_gc_events(&s);
 }
 
 void
@@ -1131,11 +1248,13 @@ test_scheduler_timeout_event_ignored_if_no_timeout(void **state)
   const int fd = 1;
   const struct timeval to = TV_INF;
   fake_gettimeofday = (struct timeval){ .tv_sec = 0, .tv_usec = 0};
-  (void)scheduler_register_event(&s, md, fd, to, &fake_event_cb, NULL);
+  const int id = scheduler_register_event(&s, md, fd, to, &fake_event_cb, NULL);
 
   scheduler_prepare_events(&s);
 
   assert_int_equal(s.max_fd, -1);
+  scheduler_unregister_event(&s, id);
+  scheduler_gc_events(&s);
 }
 
 void
@@ -1163,11 +1282,12 @@ test_scheduler_run_single_read_fd(void **state)
   /* Create a scheduler event for this fd.
    * The callback will be called when fd is ready for reading. */
   event_cb_spy_t event_cb_spy = {};
+  int event_id;
   {
     const char mode = SCHEDULER_POLL_READ_FD;
     const struct timeval timeout = {};
-    const int ret = scheduler_register_event(&s, mode, fd, timeout, &mock_event_cb, &event_cb_spy);
-    assert_int_not_equal(ret, 0);
+    event_id = scheduler_register_event(&s, mode, fd, timeout, &mock_event_cb, &event_cb_spy);
+    assert_int_not_equal(event_id, 0);
   }
 
   /* Tick 1 - nothing changed so should timeout with no callback */
@@ -1181,6 +1301,8 @@ test_scheduler_run_single_read_fd(void **state)
   assert_int_equal(event_cb_spy.was_called, 1);
 
   close(fd);
+  scheduler_unregister_event(&s, event_id);
+  scheduler_gc_events(&s);
 }
 
 /*
@@ -1204,11 +1326,12 @@ test_scheduler_run_single_write_fd(void **state)
   /* Create a scheduler event for this fd.
    * The callback will be called when fd is ready for writing. */
   event_cb_spy_t event_cb_spy = {};
+  int event_id;
   {
     const char mode = SCHEDULER_POLL_WRITE_FD;
     const struct timeval timeout = {};
-    const int r = scheduler_register_event(&s, mode, fd, timeout, &mock_event_cb, &event_cb_spy);
-    assert_int_not_equal(r, 0);
+    event_id = scheduler_register_event(&s, mode, fd, timeout, &mock_event_cb, &event_cb_spy);
+    assert_int_not_equal(event_id, 0);
   }
 
   /* Tick 1 - fd is ready for writing so event callback should be called */
@@ -1231,6 +1354,8 @@ test_scheduler_run_single_write_fd(void **state)
   assert_int_equal(event_cb_spy.was_called, 2);
 
   close(fd);
+  scheduler_unregister_event(&s, event_id);
+  scheduler_gc_events(&s);
 }
 
 #if 0
@@ -1302,6 +1427,8 @@ test_scheduler_run_single_dead_event(void **state)
   assert_ptr_not_equal(e2, e1); /* The dead event is gone. */
 
   close(fd);
+  scheduler_unregister_event(&s, event_id);
+  scheduler_gc_events(&s);
 }
 
 /* Create two events with the same fd but different callbacks.
@@ -1355,6 +1482,9 @@ test_scheduler_run_duplicate_fds_are_handled_once(void **state)
   assert_int_equal(event_cb_spy2.was_called, 1);
 
   close(fd);
+  scheduler_unregister_event(&s, event_id1);
+  scheduler_unregister_event(&s, event_id2);
+  scheduler_gc_events(&s);
 }
 
 /* Register two events with different fds but the same callback.
@@ -1371,16 +1501,17 @@ test_scheduler_run_with_duplicate_callbacks(void **state)
 
   event_cb_spy_t event_cb_spy = {};
 
+  int event_id1, event_id2;
   {
     const char mode = SCHEDULER_POLL_WRITE_FD;
     const struct timeval timeout = {};
 
     /* Create a scheduler event for fd1. */
-    const int event_id1 = scheduler_register_event(&s, mode, fd1, timeout, &mock_event_cb, &event_cb_spy);
+    event_id1 = scheduler_register_event(&s, mode, fd1, timeout, &mock_event_cb, &event_cb_spy);
     assert_int_not_equal(event_id1, 0);
 
     /* Create a scheduler event for fd2 but same callback */
-    const int event_id2 = scheduler_register_event(&s, mode, fd2, timeout, &mock_event_cb, &event_cb_spy);
+    event_id2 = scheduler_register_event(&s, mode, fd2, timeout, &mock_event_cb, &event_cb_spy);
     assert_int_not_equal(event_id2, 0);
   }
 
@@ -1392,6 +1523,9 @@ test_scheduler_run_with_duplicate_callbacks(void **state)
 
   close(fd1);
   close(fd2);
+  scheduler_unregister_event(&s, event_id1);
+  scheduler_unregister_event(&s, event_id2);
+  scheduler_gc_events(&s);
 }
 
 void
@@ -1451,6 +1585,9 @@ test_scheduler_run_read_and_write_fd(void **state)
   assert_int_equal(event_cb_spy2.was_called, 2);
 
   close(fd);
+  scheduler_unregister_event(&s, event_id1);
+  scheduler_unregister_event(&s, event_id2);
+  scheduler_gc_events(&s);
 }
 
 void
@@ -1495,4 +1632,8 @@ test_scheduler_run_deleted_duplicate_event(void **state)
   assert_int_equal(event_cb_spy2.was_called, 1);
 
   close(fd);
+
+  scheduler_unregister_event(&s, event_id1);
+  scheduler_unregister_event(&s, event_id2);
+  scheduler_gc_events(&s);
 }

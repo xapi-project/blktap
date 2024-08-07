@@ -35,6 +35,7 @@
 #include <cmocka.h>
 #include <uuid/uuid.h>
 #include <stdint.h>
+#include <stdlib.h>
 #include <cbt-util.h>
 
 
