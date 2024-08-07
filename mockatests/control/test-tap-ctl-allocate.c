@@ -405,4 +405,6 @@ void test_tap_ctl_allocate_success(void **state)
 	free_mock_misc();
 
 	assert_int_equal(0, result);
+
+	free(devname);
 }

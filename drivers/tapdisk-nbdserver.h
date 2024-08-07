@@ -204,4 +204,6 @@ void tapdisk_nbdserver_handshake_cb(event_id_t, char, void*);
 int recv_fully_or_fail(int f, void *buf, size_t len);
 int send_fully_or_fail(int f, void *buf, size_t len);
 
+void free_extents(struct tapdisk_extents *extents);
+
 #endif /* _TAPDISK_NBDSERVER_H_ */

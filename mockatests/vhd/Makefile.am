@@ -1,6 +1,3 @@
-CFLAGS:=$(filter-out -fsanitize=leak,$(CFLAGS))
-LDFLAGS:=$(filter-out -static-liblsan,$(LDFLAGS))
-
 AM_CFLAGS  = -Wall
 AM_CFLAGS += -Werror
 AM_CFLAGS += -fprofile-dir=/tmp/coverage/blktap/mockatests/vhd -fprofile-arcs -ftest-coverage

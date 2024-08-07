@@ -51,8 +51,8 @@ test_cbt_util_set_parent(void **state)
 	int result;
 	void *log_meta;
 	uuid_t parent;
-	char uuid_str[36];
-	char uuid_str_after[36];
+	char uuid_str[37];
+	char uuid_str_after[37];
 
 	uuid_generate_random(parent);
 	uuid_unparse(parent, uuid_str);
@@ -80,8 +80,8 @@ test_cbt_util_set_child(void **state)
 	int result;
 	void *log_meta;
 	uuid_t child;
-	char uuid_str[36];
-	char uuid_str_after[36];
+	char uuid_str[37];
+	char uuid_str_after[37];
 
 	uuid_generate_random(child);
 	uuid_unparse(child, uuid_str);
@@ -108,7 +108,7 @@ test_cbt_util_set_flag(void **state)
 {
 	int result;
 	void *log_meta;
-	char flag_string[1] = "2";
+	char *flag_string = "2";
 	int flag_int = 2;
 	int log_flag;
 	char* args[] = {"cbt-util", "-n", "test_disk.log", "-f", flag_string};
@@ -337,7 +337,7 @@ test_cbt_util_set_malloc_failure(void **state)
 {
 	int result;
 	uuid_t parent;
-	char uuid_str[36];
+	char uuid_str[37];
 	uuid_generate_random(parent);
 	uuid_unparse(parent, uuid_str);
 
@@ -356,7 +356,7 @@ test_cbt_util_set_no_data_failure(void **state)
 {
 	int result;
 	uuid_t parent;
-	char uuid_str[36];
+	char uuid_str[37];
 	uuid_generate_random(parent);
 	uuid_unparse(parent, uuid_str);
 
@@ -377,7 +377,7 @@ test_cbt_util_set_no_file_failure(void **state)
 {
 	int result;
 	uuid_t parent;
-	char uuid_str[36];
+	char uuid_str[37];
 	uuid_generate_random(parent);
 	uuid_unparse(parent, uuid_str);
 
