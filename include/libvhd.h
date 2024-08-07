@@ -164,22 +164,28 @@ struct vhd_context {
 	char                      *custom_parent;
 };
 
-static inline int
-test_bit (volatile char *addr, int nr)
+/* Helpers for manipulating bitmaps *
+ *
+ * The bitmap is stored on a per-byte basis with the MSB representing
+ * the first bit in the bitmap.
+ */
+
+static inline bool
+test_bit (const void *addr, uint32_t nr)
 {
-	return ((addr[nr >> 3] << (nr & 7)) & BIT_MASK) != 0;
+	return (((const uint8_t *)addr)[nr >> 3] << (nr & 7)) & BIT_MASK;
 }
 
 static inline void
-set_bit (volatile char *addr, int nr)
+set_bit (void *addr, uint32_t nr)
 {
-	addr[nr >> 3] |= (BIT_MASK >> (nr & 7));
+	((uint8_t *)addr)[nr >> 3] |= (BIT_MASK >> (nr & 7));
 }
 
 static inline void
-clear_bit (volatile char *addr, int nr)
+clear_bit (void *addr, uint32_t nr)
 {
-	addr[nr >> 3] &= ~(BIT_MASK >> (nr & 7));
+	((uint8_t *)addr)[nr >> 3] &= ~(BIT_MASK >> (nr & 7));
 }
 
 static inline uint32_t

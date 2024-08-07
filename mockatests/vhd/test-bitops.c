@@ -1,18 +1,18 @@
 /*
- * Copyright (c) 2020, Citrix Systems, Inc.
+ * Copyright (c) 2024, Cloud Software Group, Inc.
  *
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
- * 
+ *
  *  1. Redistributions of source code must retain the above copyright
  *     notice, this list of conditions and the following disclaimer.
  *  2. Redistributions in binary form must reproduce the above copyright
  *     notice, this list of conditions and the following disclaimer in the
  *     documentation and/or other materials provided with the distribution.
- *  3. Neither the name of the copyright holder nor the names of its 
- *     contributors may be used to endorse or promote products derived from 
+ *  3. Neither the name of the copyright holder nor the names of its
+ *     contributors may be used to endorse or promote products derived from
  *     this software without specific prior written permission.
  *
  * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
@@ -29,32 +29,54 @@
  */
 
 #include <stddef.h>
+#include <stdlib.h>
 #include <stdarg.h>
 #include <setjmp.h>
 #include <cmocka.h>
-
+#include <errno.h>
 #include <wrappers.h>
+
 #include "test-suites.h"
+#include "libvhd.h"
 
-static int setupRealAllocator(void **state)
-{
-	set_use_real_allocator(true);
-	return 0;
+
+void test_set_clear_test_bit(void **state) {
+    /* Representative bitmap of 512 bytes */
+    uint32_t bit;
+    uint8_t *map = malloc(512);
+
+    /* Start zero'd */
+    bzero(map, 512);
+
+    for (bit = 0; bit < 4096; bit++) {
+        /* Start unset */
+        assert_false(test_bit(map, bit));
+
+        /* Set it and check */
+        set_bit(map, bit);
+        assert_true(test_bit(map, bit));
+
+        /* Clear it and check */
+        clear_bit(map, bit);
+        assert_false(test_bit(map, bit));
+    }
+
+    free(map);
 }
 
-static int teardownRealAllocator(void **state)
-{
-	set_use_real_allocator(false);
-	return 0;
+void test_bitmaps(void **state) {
+	uint8_t map[2] = { 0x80, 0x01 };
+
+	assert_true(test_bit(map, 0));
+	assert_false(test_bit(map, 1));
+
+	assert_false(test_bit(map, 14));
+	assert_true(test_bit(map, 15));
+
+	set_bit(map, 3);
+	assert_true(map[0] == 0x90);
+
+	clear_bit(map, 0);
+	assert_true(map[0] == 0x10);
 }
 
-int main(void)
-{
-	int result =
-		cmocka_run_group_tests_name("Snapshot tests", vhd_snapshot_tests, setupRealAllocator, teardownRealAllocator) +
-		cmocka_run_group_tests_name("Canonpath tests", canonpath_tests, NULL, NULL) +
-		cmocka_run_group_tests_name("Utility tests", utility_tests, NULL, NULL) +
-		cmocka_run_group_tests_name("Bit Ops tests", bitops_tests, NULL, NULL);
-
-	return result;
-}
