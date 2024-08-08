@@ -85,4 +85,11 @@ static const struct CMUnitTest utility_tests[] = {
 	cmocka_unit_test(test_vhd_validate_header_success)
 };
 
+/* Bit ops tests */
+void test_set_clear_test_bit(void **state);
+
+static const struct CMUnitTest bitops_tests[] = {
+	cmocka_unit_test(test_set_clear_test_bit)
+};
+
 #endif /* __TEST_SUITES_H__ */

@@ -61,8 +61,6 @@
   #define BE64_OUT(foo)
 #endif
 
-#define BIT_MASK                   0x80
-
 #define MIN(a, b)                  (((a) < (b)) ? (a) : (b))
 #define MAX(a, b)                  (((a) > (b)) ? (a) : (b))
 
@@ -165,21 +163,21 @@ struct vhd_context {
 };
 
 static inline int
-test_bit (volatile char *addr, int nr)
+test_bit (const void *addr, uint32_t nr)
 {
-	return ((addr[nr >> 3] << (nr & 7)) & BIT_MASK) != 0;
+	return (((const uint8_t *)addr)[nr >> 3] >> (nr & 7)) & 1;
 }
 
 static inline void
-set_bit (volatile char *addr, int nr)
+set_bit (void *addr, uint32_t nr)
 {
-	addr[nr >> 3] |= (BIT_MASK >> (nr & 7));
+	((uint8_t *)addr)[nr >> 3] |= (1 << (nr & 7));
 }
 
 static inline void
-clear_bit (volatile char *addr, int nr)
+clear_bit (void *addr, uint32_t nr)
 {
-	addr[nr >> 3] &= ~(BIT_MASK >> (nr & 7));
+	((uint8_t *)addr)[nr >> 3] &= ~(1 << (nr & 7));
 }
 
 static inline uint32_t

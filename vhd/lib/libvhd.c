@@ -104,24 +104,6 @@ static int vhd_cache_load(vhd_context_t *);
 static int vhd_cache_unload(vhd_context_t *);
 static vhd_context_t * vhd_cache_get_parent(vhd_context_t *);
 
-static inline int
-old_test_bit(volatile char *addr, int nr)
-{
-	return (((uint32_t *)addr)[nr >> 5] >> (nr & 31)) & 1;
-}
-
-static inline void
-old_set_bit(volatile char *addr, int nr)
-{
-	((uint32_t *)addr)[nr >> 5] |= (1 << (nr & 31));
-}
-
-static inline void
-old_clear_bit(volatile char *addr, int nr)
-{
-	((uint32_t *)addr)[nr >> 5] &= ~(1 << (nr & 31));
-}
-
 static int
 makedev_from_file(const char *file, dev_t *dev)
 {
@@ -744,7 +726,7 @@ vhd_bitmap_test(vhd_context_t *ctx, char *map, uint32_t block)
 {
 	if (vhd_creator_tapdisk(ctx) &&
 	    ctx->footer.crtr_ver == 0x00000001)
-		return old_test_bit(map, block);
+		return test_bit(map, block);
 
 	return test_bit(map, block);
 }
@@ -754,7 +736,7 @@ vhd_bitmap_set(vhd_context_t *ctx, char *map, uint32_t block)
 {
 	if (vhd_creator_tapdisk(ctx) &&
 	    ctx->footer.crtr_ver == 0x00000001)
-		return old_set_bit(map, block);
+		return set_bit(map, block);
 
 	return set_bit(map, block);
 }
@@ -764,7 +746,7 @@ vhd_bitmap_clear(vhd_context_t *ctx, char *map, uint32_t block)
 {
 	if (vhd_creator_tapdisk(ctx) &&
 	    ctx->footer.crtr_ver == 0x00000001)
-		return old_clear_bit(map, block);
+		return clear_bit(map, block);
 
 	return clear_bit(map, block);
 }
