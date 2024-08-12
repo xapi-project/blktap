@@ -70,7 +70,6 @@ cat /usr/lib/udev/rules.d/65-md-incremental.rules >> /etc/udev/rules.d/65-md-inc
 %{_libdir}/*.so
 %{_libdir}/*.so.*
 %{_bindir}/vhd-util
-%{_bindir}/vhd-update
 %{_bindir}/vhd-index
 %{_bindir}/tapback
 %{_bindir}/cpumond
