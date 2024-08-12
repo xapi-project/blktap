@@ -548,7 +548,7 @@ test_scheduler_get_uuid(void **state)
   scheduler_initialize(&s);
 
   s.uuid = 1;
-  const int new_uuid = scheduler_get_event_uuid(&s);
+  const event_id_t new_uuid = scheduler_get_event_uuid(&s);
   assert_int_equal(new_uuid, 1);
   assert_int_equal(s.uuid, 2);
 }
@@ -561,11 +561,11 @@ test_scheduler_get_uuid_overflow(void **state)
   scheduler_initialize(&s);
 
   s.uuid = INT_MAX;
-  const int new_uuid = scheduler_get_event_uuid(&s);
+  const event_id_t new_uuid = scheduler_get_event_uuid(&s);
   assert_int_equal(new_uuid, INT_MAX);
-  assert_int_equal(s.uuid, INT_MIN);
+  assert_int_equal(s.uuid, 1);
 
-  const int new_uuid2 = scheduler_get_event_uuid(&s);
+  const event_id_t new_uuid2 = scheduler_get_event_uuid(&s);
   assert_int_equal(new_uuid2, 1);
   assert_int_equal(s.uuid, 2);
 }
@@ -592,14 +592,14 @@ test_scheduler_get_uuid_overflow_fragmented(void **state)
   // After an overflow the next UUID should be 2
   // because that is the next free event id
   s.uuid = INT_MIN;
-  const int new_uuid1 = scheduler_get_event_uuid(&s);
+  const event_id_t new_uuid1 = scheduler_get_event_uuid(&s);
   assert_int_equal(new_uuid1, 2);
   // +---+---+---+---
   // | 1 | 3 | 2 |...
   // +---+---+---+---
 
   // The next UUID after that will be 4 because 3 is already used.
-  const int new_uuid2 = scheduler_get_event_uuid(&s);
+  const event_id_t new_uuid2 = scheduler_get_event_uuid(&s);
   assert_int_equal(new_uuid2, 4);
   // +---+---+---+---+---
   // | 1 | 3 | 2 | 4 |...
