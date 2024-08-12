@@ -32,6 +32,7 @@
 #define _SCHEDULER_H_
 
 #include <sys/select.h>
+#include <stdint.h>
 
 #include "list.h"
 
@@ -40,7 +41,7 @@
 #define SCHEDULER_POLL_EXCEPT_FD     0x4
 #define SCHEDULER_POLL_TIMEOUT       0x8
 
-typedef int                          event_id_t;
+typedef int32_t                      event_id_t;
 typedef void (*event_cb_t)          (event_id_t id, char mode, void *private);
 
 typedef struct scheduler {
@@ -50,7 +51,7 @@ typedef struct scheduler {
 
 	struct list_head             events;
 
-	int                          uuid;
+	event_id_t                   uuid;
 	int                          uuid_overflow;
 	int                          max_fd;
 	struct timeval               timeout;
@@ -70,7 +71,7 @@ event_id_t scheduler_register_event(scheduler_t *, char mode,
 				    int fd, struct timeval timeout,
 				    event_cb_t cb, void *private);
 
-int scheduler_get_event_uuid(scheduler_t *);
+event_id_t scheduler_get_event_uuid(scheduler_t *);
 void scheduler_unregister_event(scheduler_t *,  event_id_t);
 void scheduler_mask_event(scheduler_t *, event_id_t, int masked);
 void scheduler_set_max_timeout(scheduler_t *, struct timeval);

@@ -37,6 +37,7 @@
 #include <unistd.h>
 #include <string.h>
 #include <sys/time.h>
+#include <limits.h>
 
 #include "debug.h"
 #include "tapdisk.h"
@@ -263,35 +264,47 @@ scheduler_run_events(scheduler_t *s)
 	return n_dispatched;
 }
 
-int
+event_id_t
 scheduler_get_event_uuid(scheduler_t *s) {
 
-	int uuid_found;
+	bool uuid_found = false;
+	event_id_t ret;
 	event_t *event;
 
-        if(unlikely(s->uuid < 0)) {
-		EPRINTF("scheduler uuid overflow detected");
-                s->uuid = 1;
-                s->uuid_overflow = 1;
-        }
+	if (unlikely(s->uuid <= 0)) {
+		s->uuid = 1;
+		s->uuid_overflow = 1;
+	}
 
-        if(unlikely(s->uuid_overflow == 1)) {
-                do {
-                        uuid_found = 1;
-                        scheduler_for_each_event(s, event) {
-                                if(event->id == s->uuid) {
-                                        uuid_found = 0;
-                                        s->uuid++;
-					if(s->uuid < 0)
+	if(unlikely(s->uuid_overflow == 1)) {
+		do {
+			uuid_found = true;
+			scheduler_for_each_event(s, event) {
+				if(event->id == s->uuid) {
+					uuid_found = false;
+					if (unlikely(s->uuid == INT_MAX)) {
 						s->uuid = 1;
-                                        break;
-                                }
-                        }
+					} else {
+						s->uuid++;
+					}
+					break;
+				}
+			}
 
-                } while(!uuid_found);
-        }
-	
-	return s->uuid++;
+		} while(!uuid_found);
+	}
+
+	ret = s->uuid;
+	if (unlikely(s->uuid == INT_MAX)) {
+		/* overflowing */
+		EPRINTF("scheduler uuid overflow detected");
+		s->uuid_overflow = 1;
+		s->uuid = 1;
+	} else {
+		s->uuid += 1;
+	}
+
+	return ret;
 }
 
 int
