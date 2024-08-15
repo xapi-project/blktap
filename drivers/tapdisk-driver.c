@@ -98,11 +98,6 @@ tapdisk_driver_allocate(int type, const char *name, td_flag_t flags)
 	if (!driver->data)
 		goto fail;
 
-	if (td_flag_test(flags, TD_USE_NEW_NBD))
-	{
-		td_flag_set(driver->state, TD_DRIVER_NEW_NBD);
-	}
-
 	if (td_flag_test(flags, TD_OPEN_RDONLY)){
 		td_flag_set(driver->state, TD_DRIVER_RDONLY);
 		driver->prep_func = tapdisk_server_prep_tiocb_ro;

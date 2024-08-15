@@ -67,8 +67,6 @@
 #define NBD_TIMEOUT 30
 #define RECV_BUFFER_SIZE 256
 
-static const int CLIENT_USE_OLD_HANDSHAKE = 1;
-
 /*
  * We'll only ever have one nbdclient fd receiver per tapdisk process, so let's 
  * just store it here globally. We'll also keep track of the passed fds here
@@ -529,8 +527,14 @@ tdnbd_reader_cb(event_id_t eb, char mode, void *data)
 		tdnbd_disable(prv, EIO);
 }
 
+/* Wait a certain maximum amount of time for a socket to be readable and then
+ * recv() some bytes from it if it is. Returns -ETIMEDOUT if the select times out,
+ * otherwise -errno from whatever action failed.
+ *
+ * Otherwise, returns number of bytes read from the recv() (which could be 0)
+ */
 static int
-tdnbd_wait_read(int fd)
+tdnbd_wait_recv(int fd, void *buffer, size_t len, int flags)
 {
 	struct timeval select_tv;
 	fd_set socks;
@@ -540,7 +544,12 @@ tdnbd_wait_read(int fd)
 	FD_SET(fd, &socks);
 	select_tv.tv_sec = 10;
 	select_tv.tv_usec = 0;
-	rc = select(fd + 1, &socks, NULL, NULL, &select_tv);
+	rc = TEMP_FAILURE_RETRY(select(fd + 1, &socks, NULL, NULL, &select_tv));
+	if (rc < 0) return -errno;
+	if (rc == 0) return -ETIMEDOUT;
+
+	rc = TEMP_FAILURE_RETRY(recv(fd, buffer, len, flags));
+	if (rc < 0) return -errno;
 	return rc;
 }
 
@@ -554,32 +563,30 @@ negotiate_client_newstyle_options(int sock, td_driver_t *driver)
 	new_option.optlen = htobe32(sizeof(exportname));
 	new_option.option = htobe32( NBD_OPT_EXPORT_NAME);
 
+	struct nbd_export_name_option_reply handshake_finish;
+	static const size_t NO_ZERO_HANDSHAKE_FINISH_SIZE = 10;
+
 	/* Send EXPORTNAME_NAME option request */
 	rc = send_fully_or_fail(sock, &new_option, sizeof(new_option));
 	if (rc < 0)
 	{
 		ERROR("Failed to send options to sock");
-		close(sock);
-		return -1;
+		goto errout;
 	}
 	/* Send exportname name */
 	rc = send_fully_or_fail(sock, exportname, sizeof(exportname));
 	if (rc < 0)
 	{
 		ERROR("Failed to send export name to sock");
-		close(sock);
-		return -1;
+		goto errout;
 	}
 
 	/* Collect the results in the handshake finished */
-	struct nbd_export_name_option_reply handshake_finish;
-	static const size_t NO_ZERO_HANDSHAKE_FINISH_SIZE = 10;
-	rc = recv_fully_or_fail(sock, &handshake_finish, NO_ZERO_HANDSHAKE_FINISH_SIZE);
+	rc = tdnbd_wait_recv(sock, &handshake_finish, NO_ZERO_HANDSHAKE_FINISH_SIZE, 0);
 	if (rc < 0)
 	{
-		ERROR("Failed to read handshake from sock");
-		close(sock);
-		return -1;
+		ERROR("Failed to read handshake from sock: %s", strerror(-rc));
+		goto errout;
 	}
 
 	driver->info.size = be64toh(handshake_finish.exportsize) >> SECTOR_SHIFT;
@@ -587,35 +594,37 @@ negotiate_client_newstyle_options(int sock, td_driver_t *driver)
 	driver->info.info = 0;
 
 	rc = fcntl(sock, F_SETFL, O_NONBLOCK);
-
 	if (rc != 0) {
 		ERROR("Could not set O_NONBLOCK flag");
-		close(sock);
-		return -1;
+		goto errout;
 	}
 
-	INFO("Successfully connected to NBD server");
+	INFO("Successfully connected to New-style NBD server");
 
 	return 0;
+
+errout:
+	close(sock);
+	return -1;
 }
+
 
 static int
 tdnbd_nbd_negotiate_old(struct tdnbd_data *prv, td_driver_t *driver)
 {
 	int rc;
 	char buffer[RECV_BUFFER_SIZE];
-	uint64_t magic;
 	uint64_t size;
 	uint32_t flags;
 	int padbytes = 124;
 	int sock = prv->socket;
 
 	/*
-	 * NBD negotiation protocol: 
+	 * NBD OLD-style negotiation protocol:
 	 *
 	 * Server sends 'NBDMAGIC'
 	 * then it sends 0x00420281861253L
-	 * then it sends a 64 bit bigendian size
+	 * then it sends a 64 bit bigendian size <-- YOU ARE HERE
 	 * then it sends a 32 bit bigendian flags
 	 * then it sends 124 bytes of nothing
 	 */
@@ -624,57 +633,15 @@ tdnbd_nbd_negotiate_old(struct tdnbd_data *prv, td_driver_t *driver)
 	 * We need to limit the time we spend in this function as we're still
 	 * using blocking IO at this point
 	 */
-	if (tdnbd_wait_read(sock) <= 0) {
-		ERROR("Timeout in nbd_negotiate");
-		close(sock);
-		return -1;
+
+	rc = tdnbd_wait_recv(sock, &size, sizeof(size), 0);
+	if (rc < 0) {
+		ERROR("Error in nbd_negotiate: %s", strerror(-rc));
+		goto errout;
 	}
-
-	rc = recv(sock, buffer, 8, 0);
-	if (rc < 8) {
-		ERROR("Short read in negotiation(1) (%d)\n", rc);
-		close(sock);
-		return -1;
-	}
-
-	if (memcmp(buffer, "NBDMAGIC", 8) != 0) {
-		buffer[8] = 0;
-		ERROR("Error in NBD negotiation: got '%s'", buffer);
-		close(sock);
-		return -1;
-	}
-
-	if (tdnbd_wait_read(sock) <= 0) {
-		ERROR("Timeout in nbd_negotiate");
-		close(sock);
-		return -1;
-	}
-
-	rc = recv(sock, &magic, sizeof(magic), 0);
-	if (rc < 8) {
-		ERROR("Short read in negotiation(2) (%d)\n", rc);
-
-		return -1;
-	}
-
-	if (ntohll(magic) != NBD_NEGOTIATION_MAGIC) {
-		ERROR("Not enough magic in negotiation(2) (%"PRIu64")\n",
-				ntohll(magic));
-		close(sock);
-		return -1;
-	}
-
-	if (tdnbd_wait_read(sock) <= 0) {
-		ERROR("Timeout in nbd_negotiate");
-		close(sock);
-		return -1;
-	}
-
-	rc = recv(sock, &size, sizeof(size), 0);
 	if (rc < sizeof(size)) {
-		ERROR("Short read in negotiation(3) (%d)\n", rc);
-		close(sock);
-		return -1;
+		ERROR("Short read in OLD negotiation(3) (%d)\n", rc);
+		goto errout;
 	}
 
 	INFO("Got size: %"PRIu64"", ntohll(size));
@@ -683,33 +650,23 @@ tdnbd_nbd_negotiate_old(struct tdnbd_data *prv, td_driver_t *driver)
 	driver->info.sector_size = DEFAULT_SECTOR_SIZE;
 	driver->info.info = 0;
 
-	if (tdnbd_wait_read(sock) <= 0) {
-		ERROR("Timeout in nbd_negotiate");
-		close(sock);
-		return -1;
+	rc = tdnbd_wait_recv(sock, &flags, sizeof(flags), 0);
+	if (rc < 0) {
+		ERROR("Error in nbd_negotiate: %s", strerror(-rc));
+		goto errout;
 	}
-
-	rc = recv(sock, &flags, sizeof(flags), 0);
 	if (rc < sizeof(flags)) {
-		ERROR("Short read in negotiation(4) (%d)\n", rc);
-		close(sock);
-		return -1;
+		ERROR("Short read in OLD negotiation(4) (%d)\n", rc);
+		goto errout;
 	}
 
 	INFO("Got flags: %"PRIu32"", ntohl(flags));
 
 	while (padbytes > 0) {
-		if (tdnbd_wait_read(sock) <= 0) {
-			ERROR("Timeout in nbd_negotiate");
-			close(sock);
-			return -1;
-		}
-
-		rc = recv(sock, buffer, padbytes, 0);
+		rc = tdnbd_wait_recv(sock, buffer, padbytes, 0);
 		if (rc < 0) {
-			ERROR("Bad read in negotiation(5) (%d)\n", rc);
-			close(sock);
-			return -1;
+			ERROR("Error in nbd_negotiate: %s", strerror(-rc));
+			goto errout;
 		}
 		padbytes -= rc;
 	}
@@ -718,92 +675,106 @@ tdnbd_nbd_negotiate_old(struct tdnbd_data *prv, td_driver_t *driver)
 
 	if (rc != 0) {
 		ERROR("Could not set O_NONBLOCK flag");
-		close(sock);
-		return -1;
+		goto errout;
 	}
-	INFO("Successfully connected to NBD server");
+	INFO("Successfully connected to Old-style NBD server");
 
 	return 0;
+
+errout:
+	close(sock);
+	return -1;
 }
 
 static int
 tdnbd_nbd_negotiate_new(struct tdnbd_data *prv, td_driver_t *driver)
 {
 	int rc;
-	uint64_t magic_version;
 	uint16_t gflags;
 	uint32_t cflags = htobe32(NBD_FLAG_FIXED_NEWSTYLE | NBD_FLAG_NO_ZEROES);
 	int sock = prv->socket;
-	char buffer[RECV_BUFFER_SIZE];
 
-	if (tdnbd_wait_read(sock) <= 0) {
-		ERROR("Timeout in nbd_negotiate");
-		close(sock);
-                return -1;
-        }
-
-        rc = recv(sock, buffer, 8, 0);
-        if (rc < 8) {
-		ERROR("Short read in negotiation(1) (%d)\n", rc);
-		close(sock);
-		return -1;
-        }
-
-	if (memcmp(buffer, "NBDMAGIC", 8) != 0) {
-	  buffer[8] = 0;
-	  ERROR("Error in NBD negotiation: got '%s'", buffer);
-	  close(sock);
-	  return -1;
-	}
-
-	if (tdnbd_wait_read(sock) <= 0) {
-	  ERROR("Timeout in nbd_negotiate");
-	  close(sock);
-	  return -1;
-	}
-
-	/* Receive NBD magic_version */
-	rc = recv_fully_or_fail(sock, &magic_version, sizeof(magic_version));
-	if (rc < 0)
-	{
-		ERROR("Failed to read magic from sock");
-		close(sock);
-		return -1;
-	}
-
-	if (ntohll(magic_version) != NBD_NEW_VERSION) {
-		ERROR("Not enough magic in negotiation(2) (%"PRIu64")\n",
-				ntohll(magic_version));
-		close(sock);
-		return -1;
-	}
+	/*
+	 * NBD NEW-style negotiation protocol:
+	 *
+	 * Server sends 'NBDMAGIC'
+	 * then it sends 'IHAVEOPT'
+	 * then it sends 16 bits of server handshake flags <-- YOU ARE HERE
+	 * then it expects 32 bits of client handshake flags
+	 * then we send additional options
+	 */
 
 	/* Receive NBD flags */
-	rc = recv(sock, &gflags, sizeof(gflags), 0);
+	rc = tdnbd_wait_recv(sock, &gflags, sizeof(gflags), 0);
+	if (rc < 0) {
+		ERROR("Error in nbd_negotiate: %s", strerror(-rc));
+		goto errout;
+	}
 	if (rc < sizeof(gflags)) {
-		ERROR("Short read in negotiation(2) (%d)\n", rc);
-
-		return -1;
+		ERROR("Short read in NEW negotiation(3) (%d)\n", rc);
+		goto errout;
 	}
 
 	/* Send back flags*/
 	rc = send(sock, &cflags, sizeof(cflags), 0);
 	if (rc < sizeof(cflags)) {
 		ERROR("Failed to send client flags");
-		return -1;
+		goto errout;
 	}
 
 	return negotiate_client_newstyle_options(sock, driver);
+
+errout:
+	close(sock);
+	return -1;
 }
 
 static int
 tdnbd_nbd_negotiate(struct tdnbd_data *prv, td_driver_t *driver)
 {
-	if(CLIENT_USE_OLD_HANDSHAKE && !td_flag_test(driver->state, TD_DRIVER_NEW_NBD)) {
-		return tdnbd_nbd_negotiate_old(prv, driver);
-	} else {
-		return tdnbd_nbd_negotiate_new(prv, driver);
+	int rc;
+	uint64_t magic;
+	int sock = prv->socket;
+
+	/* Read the NBD opening magic number, which is the same for all protocol
+	 * versions */
+	rc = tdnbd_wait_recv(sock, &magic, sizeof(magic), 0);
+	if (rc < 0) {
+		ERROR("Error in nbd_negotiate: %s", strerror(-rc));
+		goto errout;
 	}
+	if (rc < sizeof(magic)) {
+		ERROR("Short read in negotiation(1) (wanted %ld got %d)\n", sizeof(magic), rc);
+		goto errout;
+	}
+	if (htonll(NBD_MAGIC) != magic) {
+		ERROR("Error in NBD negotiation: wanted '0x%" PRIx64 "' got '0x%" PRIx64 "'", htonll(NBD_MAGIC), magic);
+		goto errout;
+	}
+
+	/* Read the second magic number, which tells us which NBD protocol the
+	 * server is offering. */
+	rc = tdnbd_wait_recv(sock, &magic, sizeof(magic), 0);
+	if (rc < 0) {
+		ERROR("Error in nbd_negotiate: %s", strerror(-rc));
+		goto errout;
+	}
+	if (rc < sizeof(magic)) {
+		ERROR("Short read in negotiation(2) (wanted %ld got %d)\n", sizeof(magic), rc);
+		goto errout;
+	}
+
+	if (htonll(NBD_OLD_VERSION) == magic)
+		return tdnbd_nbd_negotiate_old(prv, driver);
+	if (htonll(NBD_OPT_MAGIC) == magic)
+		return tdnbd_nbd_negotiate_new(prv, driver);
+
+	ERROR("Unknown NBD MAGIC 2: Wanted '0x%" PRIx64 "' or '0x%" PRIx64 "', got '0x%" PRIx64 "'",
+			htonll(NBD_OLD_VERSION), htonll(NBD_OPT_MAGIC), magic);
+
+errout:
+	close(sock);
+	return -1;
 }
 
 static int

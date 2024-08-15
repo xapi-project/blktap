@@ -369,7 +369,7 @@ __tapdisk_image_open_chain(int type, const char *name, int flags,
 		/* Don't open parent NBD in secondary mode*/
 		flags &= ~TD_OPEN_SECONDARY;
 		err = tapdisk_image_open(DISK_TYPE_NBD, prt_nbd_path,
-					 flags | TD_OPEN_RDONLY | TD_USE_NEW_NBD,
+					 flags | TD_OPEN_RDONLY,
 					 encryption, &image);
 		if (err)
 			goto fail;
