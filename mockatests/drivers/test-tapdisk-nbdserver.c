@@ -50,7 +50,7 @@ test_nbdserver_new_protocol_handshake(void **state)
 	struct nbd_new_handshake handshake;
 	bzero(&handshake, sizeof(handshake));
 	handshake.nbdmagic = htobe64 (NBD_MAGIC);
-	handshake.version = htobe64 (NBD_NEW_VERSION);
+	handshake.version = htobe64 (NBD_OPT_MAGIC);
 	handshake.gflags = htobe16 (gflags);
 
 	/* Check input to send */

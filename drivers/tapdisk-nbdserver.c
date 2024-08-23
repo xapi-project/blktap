@@ -1041,7 +1041,7 @@ tapdisk_nbdserver_new_protocol_handshake(td_nbdserver_client_t *client, int new_
 	struct nbd_new_handshake handshake;
 
 	handshake.nbdmagic = htobe64 (NBD_MAGIC);
-	handshake.version = htobe64 (NBD_NEW_VERSION);
+	handshake.version = htobe64 (NBD_OPT_MAGIC);
 	handshake.gflags = htobe16 (gflags);
 
 	int rc = send_fully_or_fail(new_fd, &handshake, sizeof(handshake));
