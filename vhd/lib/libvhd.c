@@ -2805,7 +2805,7 @@ vhd_open(vhd_context_t *ctx, const char *file, int flags)
 	    ctx->footer.crtr_ver == 0x00000001) {
 		VHDLOG("error unsupported version 0.1 VHD");
 		err = -EINVAL;
-		goto out;
+		goto fail;
 	}
 
 	err = vhd_cache_load(ctx);
