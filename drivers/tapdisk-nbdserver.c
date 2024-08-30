@@ -1067,11 +1067,34 @@ tapdisk_nbdserver_newclient_fd_old(td_nbdserver_t *server, int new_fd)
 	int rc;
 	uint64_t tmp64;
 	uint32_t tmp32;
+	struct timespec ts_req = {0, 0};
 
 	ASSERT(server);
 	ASSERT(new_fd >= 0);
 
 	INFO("Got a new client!");
+
+	/*
+	 * There are 2 different kinds of clients,
+	 *
+	 * One is kernel nbd driver, here we wait for a while and then send
+	 * reports error, we free the socket fd. If we do not wait, send
+	 * might succeed, and then the socket fd would never be freed.
+	 *
+	 * The other is sxm, tap-ctl pause and unpause would do close and
+	 * then reconnect, and it does not free the socket fd in the close
+	 * operation but reuse the socket fd. During the reconnection, client
+	 * waits for server to issue negotiation again, client calls internal
+	 * function, tdnbd_wait_read, to wait for handshake packets from
+	 * server. Inside tdnbd_wait_read, the maximum waiting time are 10
+	 * seconds, so, here we should limit the sleep time.
+	 */
+
+	ts_req.tv_sec = 0;
+	ts_req.tv_nsec = 100 * 1000000L;  // 100 milliseconds
+	while (nanosleep (&ts_req, &ts_req) == -1 && errno == EINTR) {
+		continue;
+	}
 
 	/* Spit out the NBD connection stuff */
 
