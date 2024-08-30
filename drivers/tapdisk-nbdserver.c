@@ -823,8 +823,6 @@ tapdisk_nbdserver_free_client(td_nbdserver_client_t *client)
 	if (likely(!tapdisk_nbdserver_reqs_pending(client))) {
 		list_del(&client->clientlist);
 		tapdisk_nbdserver_reqs_free(client);
-		if (client->client_fd > 0)
-			close(client->client_fd);
 		free(client);
 	} else
 		client->dead = true;
@@ -1109,6 +1107,7 @@ tapdisk_nbdserver_newclient_fd_old(td_nbdserver_t *server, int new_fd)
 	if (tapdisk_nbdserver_enable_client(client) < 0) {
 		ERR("Error enabling client");
 		tapdisk_nbdserver_free_client(client);
+		close(new_fd);
 	}
 }
 
@@ -1131,18 +1130,19 @@ tapdisk_nbdserver_newclient_fd_new_fixed(td_nbdserver_t *server, int new_fd)
 	}
 	INFO("Got an allocated client at %p", client);
 
-	client->client_fd = new_fd;
-
 	if(tapdisk_nbdserver_new_protocol_handshake(client, new_fd) != 0) {
 		ERR("Error handshaking new client connection");
 		tapdisk_nbdserver_free_client(client);
 		return;
 	}
 
+	client->client_fd = new_fd;
+
 	INFO("About to enable client on fd %d", client->client_fd);
 	if (tapdisk_nbdserver_enable_client(client) < 0) {
 		ERR("Error enabling client");
 		tapdisk_nbdserver_free_client(client);
+		close(new_fd);
 	}
 }
 
@@ -1262,8 +1262,12 @@ tapdisk_nbdserver_clientcb(event_id_t id, char mode, void *data)
 
 		break;
 	case TAPDISK_NBD_CMD_DISC:
-		INFO("Received close message. Free client");
+		INFO("Received close message. Sending reconnect "
+				"header");
 		tapdisk_nbdserver_free_client(client);
+		INFO("About to send initial connection message");
+		tapdisk_nbdserver_newclient_fd(server, fd);
+		INFO("Sent initial connection message");
 		return;
 	case TAPDISK_NBD_CMD_BLOCK_STATUS:
 	{
