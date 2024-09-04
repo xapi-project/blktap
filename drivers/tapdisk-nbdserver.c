@@ -808,6 +808,19 @@ fail:
 	return NULL;
 }
 
+/**
+ * @param[in,out]    client  Pointer to NBD client structure to free
+ * @return void
+ * 
+ * Frees the resources associated with an Logical NBD client connection.
+ * It is important to note that this does NOT close the FD associated with
+ * the network connection the client is using. A new Logical NBD client
+ * connection could be created later which uses the same filedescriptor.
+ * 
+ * Thus, any caller which is calling this because of an error which should
+ * result in the closure of the client FD should make sure to close the FD
+ * itself.
+ */
 void
 tapdisk_nbdserver_free_client(td_nbdserver_client_t *client)
 {
@@ -1133,6 +1146,7 @@ tapdisk_nbdserver_newclient_fd_new_fixed(td_nbdserver_t *server, int new_fd)
 	if(tapdisk_nbdserver_new_protocol_handshake(client, new_fd) != 0) {
 		ERR("Error handshaking new client connection");
 		tapdisk_nbdserver_free_client(client);
+		close(new_fd);
 		return;
 	}
 
@@ -1313,6 +1327,10 @@ fail:
 		tapdisk_nbd_server_free_vreq(client, vreq, false);
 
 	tapdisk_nbdserver_free_client(client);
+	/* fd was set from client->client_fd on the way into this function. If we
+	 * are leaving through an error path we must close it because
+	 * tapdisk_nbdserver_free_client() does not */
+	close(fd);
 	return;
 }
 
