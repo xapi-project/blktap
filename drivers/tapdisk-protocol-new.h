@@ -122,11 +122,21 @@ struct nbd_new_option {
   uint32_t optlen;
 } __attribute__((__packed__));
 
+/** 
+ * Define this on the stack when you don't need the data, but use
+ * malloc() on a suitable size when you do
+ */
 struct nbd_fixed_new_option_reply {
   uint64_t magic;
   uint32_t option;
   uint32_t reply;
   uint32_t replylen;
+  uint8_t  data[];
+} __attribute__((__packed__));
+
+struct nbd_fixed_new_option_rep_server {
+  uint32_t namelen;
+  char name[];
 } __attribute__((__packed__));
 
 struct nbd_fixed_new_option_reply_info_export {
