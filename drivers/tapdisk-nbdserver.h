@@ -56,6 +56,11 @@ enum {
 	TAPDISK_NBD_CMD_BLOCK_STATUS
 };
 
+typedef enum nbd_protocol_style {
+	TAPDISK_NBD_PROTOCOL_OLD = 0,
+	TAPDISK_NBD_PROTOCOL_NEW
+} nbd_protocol_style_t;
+
 struct nbd_request {
 	uint32_t magic;
 	uint32_t type;	
@@ -73,8 +78,10 @@ struct nbd_reply {
 
 #define TAPDISK_NBDSERVER_MAX_PATH_LEN 256
 #define TAPDISK_NBDCLIENT_LISTEN_SOCK_PATH BLKTAP2_CONTROL_DIR"/nbdclient"
-#define TAPDISK_NBDSERVER_LISTEN_SOCK_PATH BLKTAP2_CONTROL_DIR"/nbdserver"
-#define TAPDISK_NBDSERVER_SOCK_PATH BLKTAP2_CONTROL_DIR"/nbd"
+#define TAPDISK_NBDSERVER_OLD_LISTEN_SOCK_PATH BLKTAP2_CONTROL_DIR"/nbdserver"
+#define TAPDISK_NBDSERVER_NEW_LISTEN_SOCK_PATH BLKTAP2_CONTROL_DIR"/nbdserver-new"
+#define TAPDISK_NBDSERVER_OLD_SOCK_PATH BLKTAP2_CONTROL_DIR"/nbd"
+#define TAPDISK_NBDSERVER_NEW_SOCK_PATH BLKTAP2_CONTROL_DIR"/nbd-new"
 
 struct td_nbdserver {
 	td_vbd_t               *vbd;
@@ -121,6 +128,7 @@ struct td_nbdserver {
 
 	stats_t                 nbd_stats;
 
+	nbd_protocol_style_t	style;
 };
 
 struct td_nbdserver_client {
@@ -148,7 +156,7 @@ struct td_nbdserver_client {
 	int                     max_used_reqs;
 };
 
-td_nbdserver_t *tapdisk_nbdserver_alloc(td_vbd_t *, td_disk_info_t);
+td_nbdserver_t *tapdisk_nbdserver_alloc(td_vbd_t *, td_disk_info_t, nbd_protocol_style_t);
 
 /**
  * Listen for connections on a TCP socket at the specified port.

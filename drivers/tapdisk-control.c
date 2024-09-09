@@ -839,7 +839,7 @@ tapdisk_control_open_image(struct tapdisk_ctl_conn *conn,
 	 * For now, let's do this automatically on all 'open' calls. In the
 	 * future, we'll probably want a separate call to start the NBD server
 	 */
-	err = tapdisk_vbd_start_nbdserver(vbd);
+	err = tapdisk_vbd_start_nbdservers(vbd);
 	if (err) {
 		EPRINTF("failed to start NBD server: %d\n", err);
 		goto fail_close;
@@ -892,9 +892,10 @@ tapdisk_control_close_image(struct tapdisk_ctl_conn *conn,
 	if (!list_empty(&vbd->failed_requests))
 		EPRINTF("closing VBD %d with failed requests\n", request->cookie);
 
-	if (vbd->nbdserver) {
+	if (vbd->nbdserver)
 		tapdisk_nbdserver_pause(vbd->nbdserver, true);
-	}
+	if (vbd->nbdserver_new)
+		tapdisk_nbdserver_pause(vbd->nbdserver_new, true);
 
     err = 0;
     list_for_each_entry_safe(blkif, _blkif, &vbd->rings, entry) {
@@ -959,6 +960,10 @@ tapdisk_control_close_image(struct tapdisk_ctl_conn *conn,
 	if (vbd->nbdserver) {
 		tapdisk_nbdserver_free(vbd->nbdserver);
 		vbd->nbdserver = NULL;
+	}
+	if (vbd->nbdserver_new) {
+		tapdisk_nbdserver_free(vbd->nbdserver_new);
+		vbd->nbdserver_new = NULL;
 	}
 
 	tapdisk_vbd_close_vdi(vbd);

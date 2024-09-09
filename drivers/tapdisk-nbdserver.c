@@ -70,7 +70,6 @@
 #define MAX_REQUEST_SIZE (64 * MEGABYTES)
 
 uint16_t gflags = (NBD_FLAG_FIXED_NEWSTYLE | NBD_FLAG_NO_ZEROES);
-static const int SERVER_USE_OLD_PROTOCOL = 1;
 
 /*
  * Server
@@ -1038,9 +1037,8 @@ tapdisk_nbdserver_handshake_cb(event_id_t id, char mode, void *data)
 	bool no_zeroes = (NBD_FLAG_NO_ZEROES & cflags) != 0;
 
         /* Receive newstyle options. */
-        if (receive_newstyle_options (client, server->handshake_fd, no_zeroes) == -1){
-		ERR("Option negotiation messed up");
-	}
+        if (receive_newstyle_options (client, server->handshake_fd, no_zeroes) == -1)
+			INFO("Option negotiation terminated");
 
 	tapdisk_server_unregister_event(id);
 }
@@ -1163,12 +1161,15 @@ tapdisk_nbdserver_newclient_fd_new_fixed(td_nbdserver_t *server, int new_fd)
 static void
 tapdisk_nbdserver_newclient_fd(td_nbdserver_t *server, int new_fd)
 {
-	if(SERVER_USE_OLD_PROTOCOL){
-		tapdisk_nbdserver_newclient_fd_old(server, new_fd);
-	} else {
-		tapdisk_nbdserver_newclient_fd_new_fixed(server, new_fd);
-	}
-}	
+	switch (server->style) {
+		case TAPDISK_NBD_PROTOCOL_OLD:
+			tapdisk_nbdserver_newclient_fd_old(server, new_fd);
+			break;
+		case TAPDISK_NBD_PROTOCOL_NEW:
+			tapdisk_nbdserver_newclient_fd_new_fixed(server, new_fd);
+			break;
+	};
+}
 
 static td_vbd_request_t *create_request_vreq(
 	td_nbdserver_client_t *client, struct nbd_request request, uint32_t len)
@@ -1404,7 +1405,7 @@ tapdisk_nbdserver_newclient_unix(event_id_t id, char mode, void *data)
 }
 
 td_nbdserver_t *
-tapdisk_nbdserver_alloc(td_vbd_t *vbd, td_disk_info_t info)
+tapdisk_nbdserver_alloc(td_vbd_t *vbd, td_disk_info_t info, nbd_protocol_style_t style)
 {
 	td_nbdserver_t *server;
 	char fdreceiver_path[TAPDISK_NBDSERVER_MAX_PATH_LEN];
@@ -1422,15 +1423,28 @@ tapdisk_nbdserver_alloc(td_vbd_t *vbd, td_disk_info_t info)
 	server->fdrecv_listening_event_id = -1;
 	server->unix_listening_fd = -1;
 	server->unix_listening_event_id = -1;
+	server->style = style;
 	INIT_LIST_HEAD(&server->clients);
 
-	if (td_metrics_nbd_start(&server->nbd_stats, server->vbd->tap->minor)) {
-		ERR("failed to create metrics file for nbdserver");
-		goto fail;
+	switch (style) {
+		case TAPDISK_NBD_PROTOCOL_OLD:
+			if (td_metrics_nbd_start_old(&server->nbd_stats, server->vbd->tap->minor)) {
+				ERR("failed to create metrics file for nbdserver");
+				goto fail;
+			}
+			break;
+		case TAPDISK_NBD_PROTOCOL_NEW:
+			if (td_metrics_nbd_start_new(&server->nbd_stats, server->vbd->tap->minor)) {
+				ERR("failed to create metrics file for nbdserver");
+				goto fail;
+			}
+			break;
 	}
 
 	if (snprintf(fdreceiver_path, TAPDISK_NBDSERVER_MAX_PATH_LEN,
-			"%s%d.%d", TAPDISK_NBDSERVER_LISTEN_SOCK_PATH, getpid(),
+			"%s%d.%d",
+			(style == TAPDISK_NBD_PROTOCOL_OLD)?TAPDISK_NBDSERVER_OLD_LISTEN_SOCK_PATH:TAPDISK_NBDSERVER_NEW_LISTEN_SOCK_PATH,
+			getpid(),
 			vbd->uuid) < 0) {
 		ERR("Failed to snprintf fdreceiver_path");
 		goto fail;
@@ -1444,7 +1458,9 @@ tapdisk_nbdserver_alloc(td_vbd_t *vbd, td_disk_info_t info)
 	}
 
 	if (snprintf(server->sockpath, TAPDISK_NBDSERVER_MAX_PATH_LEN,
-			"%s%d.%d", TAPDISK_NBDSERVER_SOCK_PATH, getpid(),
+			"%s%d.%d",
+			(style == TAPDISK_NBD_PROTOCOL_OLD)?TAPDISK_NBDSERVER_OLD_SOCK_PATH:TAPDISK_NBDSERVER_NEW_SOCK_PATH,
+			getpid(),
 			vbd->uuid) < 0) {
 		ERR("Failed to snprintf sockpath");
 		goto fail;
