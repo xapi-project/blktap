@@ -808,6 +808,19 @@ fail:
 	return NULL;
 }
 
+/**
+ * @param[in,out]    client  Pointer to NBD client structure to free
+ * @return void
+ * 
+ * Frees the resources associated with an Logical NBD client connection.
+ * It is important to note that this does NOT close the FD associated with
+ * the network connection the client is using. A new Logical NBD client
+ * connection could be created later which uses the same filedescriptor.
+ * 
+ * Thus, any caller which is calling this because of an error which should
+ * result in the closure of the client FD should make sure to close the FD
+ * itself.
+ */
 void
 tapdisk_nbdserver_free_client(td_nbdserver_client_t *client)
 {
@@ -823,8 +836,6 @@ tapdisk_nbdserver_free_client(td_nbdserver_client_t *client)
 	if (likely(!tapdisk_nbdserver_reqs_pending(client))) {
 		list_del(&client->clientlist);
 		tapdisk_nbdserver_reqs_free(client);
-		if (client->client_fd > 0)
-			close(client->client_fd);
 		free(client);
 	} else
 		client->dead = true;
@@ -1109,6 +1120,7 @@ tapdisk_nbdserver_newclient_fd_old(td_nbdserver_t *server, int new_fd)
 	if (tapdisk_nbdserver_enable_client(client) < 0) {
 		ERR("Error enabling client");
 		tapdisk_nbdserver_free_client(client);
+		close(new_fd);
 	}
 }
 
@@ -1131,18 +1143,20 @@ tapdisk_nbdserver_newclient_fd_new_fixed(td_nbdserver_t *server, int new_fd)
 	}
 	INFO("Got an allocated client at %p", client);
 
-	client->client_fd = new_fd;
-
 	if(tapdisk_nbdserver_new_protocol_handshake(client, new_fd) != 0) {
 		ERR("Error handshaking new client connection");
 		tapdisk_nbdserver_free_client(client);
+		close(new_fd);
 		return;
 	}
+
+	client->client_fd = new_fd;
 
 	INFO("About to enable client on fd %d", client->client_fd);
 	if (tapdisk_nbdserver_enable_client(client) < 0) {
 		ERR("Error enabling client");
 		tapdisk_nbdserver_free_client(client);
+		close(new_fd);
 	}
 }
 
@@ -1262,8 +1276,12 @@ tapdisk_nbdserver_clientcb(event_id_t id, char mode, void *data)
 
 		break;
 	case TAPDISK_NBD_CMD_DISC:
-		INFO("Received close message. Free client");
+		INFO("Received close message. Sending reconnect "
+				"header");
 		tapdisk_nbdserver_free_client(client);
+		INFO("About to send initial connection message");
+		tapdisk_nbdserver_newclient_fd(server, fd);
+		INFO("Sent initial connection message");
 		return;
 	case TAPDISK_NBD_CMD_BLOCK_STATUS:
 	{
@@ -1309,6 +1327,10 @@ fail:
 		tapdisk_nbd_server_free_vreq(client, vreq, false);
 
 	tapdisk_nbdserver_free_client(client);
+	/* fd was set from client->client_fd on the way into this function. If we
+	 * are leaving through an error path we must close it because
+	 * tapdisk_nbdserver_free_client() does not */
+	close(fd);
 	return;
 }
 
