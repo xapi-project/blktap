@@ -558,7 +558,7 @@ negotiate_client_newstyle_options(int sock, td_driver_t *driver)
 {
 	int rc;
 	struct nbd_new_option new_option;
-	char exportname[] = "tapdisk_client"; /* Hard code could make this unique */
+	char exportname[] = NBD_FIXED_SINGLE_EXPORT;
 	new_option.version = htobe64(NBD_OPT_MAGIC);
 	new_option.optlen = htobe32(sizeof(exportname));
 	new_option.option = htobe32( NBD_OPT_EXPORT_NAME);

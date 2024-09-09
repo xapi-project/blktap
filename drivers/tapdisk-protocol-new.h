@@ -31,6 +31,8 @@
 #ifndef _TAPDISK_PROTOCOL_NEW_H_
 #define _TAPDISK_PROTOCOL_NEW_H_
 
+#define NBD_FIXED_SINGLE_EXPORT "tapdisk_client"
+
 #define NBD_REP_ERR(val) (0x80000000 | (val))
 #define NBD_MAGIC       UINT64_C(0x4e42444d41474943) /* ASCII "NBDMAGIC" aka INIT_PASSWD */
 #define NBD_OLD_VERSION UINT64_C(0x0000420281861253) /* "cliserv_magic" - the NBD old-style magic number */
