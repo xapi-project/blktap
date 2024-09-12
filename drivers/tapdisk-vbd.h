@@ -151,6 +151,7 @@ struct td_vbd_handle {
 	td_sector_count_t           secs;
 
 	struct td_nbdserver        *nbdserver;
+	struct td_nbdserver        *nbdserver_new;
 
 	/**
 	 * We keep a copy of the disk info because we might receive a disk info
@@ -240,7 +241,7 @@ int tapdisk_vbd_recheck_state(td_vbd_t *);
 
 void tapdisk_vbd_check_progress(td_vbd_t *);
 void tapdisk_vbd_debug(td_vbd_t *);
-int tapdisk_vbd_start_nbdserver(td_vbd_t *);
+int tapdisk_vbd_start_nbdservers(td_vbd_t *);
 void tapdisk_vbd_stats(td_vbd_t *, td_stats_t *);
 void tapdisk_vbd_complete_block_status_request(td_request_t, int);
 

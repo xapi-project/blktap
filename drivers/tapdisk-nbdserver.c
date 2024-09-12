@@ -70,7 +70,6 @@
 #define MAX_REQUEST_SIZE (64 * MEGABYTES)
 
 uint16_t gflags = (NBD_FLAG_FIXED_NEWSTYLE | NBD_FLAG_NO_ZEROES);
-static const int SERVER_USE_OLD_PROTOCOL = 1;
 
 /*
  * Server
@@ -253,21 +252,55 @@ tapdisk_nbdserver_alloc_request(td_nbdserver_client_t *client)
 }
 
 static int
-send_option_reply (int new_fd, uint32_t option, uint32_t reply)
+send_fixed_option_reply(int fd, uint32_t option, uint32_t reply)
 {
 	struct nbd_fixed_new_option_reply fixed_new_option_reply;
 
-	fixed_new_option_reply.magic = htobe64 (NBD_REP_MAGIC);
-	fixed_new_option_reply.option = htobe32 (option);
-	fixed_new_option_reply.reply = htobe32 (reply);
-	fixed_new_option_reply.replylen = htobe32 (0);
+	fixed_new_option_reply.magic = htobe64(NBD_REP_MAGIC);
+	fixed_new_option_reply.option = htobe32(option);
+	fixed_new_option_reply.reply = htobe32(reply);
+	fixed_new_option_reply.replylen = htobe32(0);
 
-	int rc = send_fully_or_fail(new_fd, &fixed_new_option_reply, sizeof(fixed_new_option_reply));
+	int rc = send_fully_or_fail(fd, &fixed_new_option_reply, sizeof(fixed_new_option_reply));
 	if(rc < 0) {
 		ERR("Failed to send new_option_reply");
 		return -1;
 	}
 	return 0;
+}
+
+static int
+send_nbd_rep_server(int fd, const char *name, int namelen)
+{
+	struct nbd_fixed_new_option_reply *reply;
+	struct nbd_fixed_new_option_rep_server *rep;
+	size_t 	size = sizeof(struct nbd_fixed_new_option_reply) + sizeof(struct nbd_fixed_new_option_rep_server) + namelen;
+	int 	rc;
+
+	reply = malloc(size);
+	if (!reply) {
+		ERR("Failed to allocate memory for NBD_REP_SERVER");
+		goto fail;
+	}
+	reply->magic = htobe64(NBD_REP_MAGIC);
+	reply->option = htobe32(NBD_OPT_LIST);
+	reply->reply = htobe32(NBD_REP_SERVER);
+	reply->replylen = htobe32(sizeof(struct nbd_fixed_new_option_rep_server) + namelen);
+	rep = (struct nbd_fixed_new_option_rep_server *)reply->data;
+	rep->namelen = htobe32(namelen);
+	memcpy(rep->name, name, namelen);
+	rc = send_fully_or_fail(fd, reply, size);
+	if(rc < 0) {
+		ERR("Failed to send NBD_REP_SERVER");
+		goto fail2;
+	}
+	free(reply);
+	return 0;
+
+fail2:
+	free(reply);
+fail:
+	return -1;
 }
 
 static void
@@ -315,18 +348,6 @@ tapdisk_nbdserver_reqs_free(td_nbdserver_client_t *client)
 		free(client->reqs_free);
 		client->reqs_free = NULL;
 	}
-}
-
-void
-provide_server_info (td_nbdserver_t *server, uint64_t *exportsize, uint16_t *flags)
-{
-	int64_t size;
-	uint16_t eflags = NBD_FLAG_HAS_FLAGS;
-
-	size = server->info.size * server->info.sector_size;
-
-	*exportsize = size;
-	*flags = eflags;
 }
 
 static int 
@@ -427,6 +448,85 @@ send_meta_context (int new_fd, uint32_t reply, uint32_t context_id, const char *
 	return 0;
 }
 
+#define NBD_EXPORTSIZE(X) (uint64_t)((X)->info.size * (X)->info.sector_size)
+#define NBD_FLAGS (uint16_t)(NBD_FLAG_HAS_FLAGS)
+
+/**
+ * Sends an NBD_OPT_INFO or an NBD_OPT_GO response. These are identical; the only difference is that
+ * NBD_OPT_GO moves to the transmission phase immediately, while NPD_OPT_INFO does not.
+ *
+ * We cheat outrageously here, by accepting whatever exportname the client provides as meaning they
+ * want our single fixed export (because it's all we have).
+ *
+ */
+int
+send_nbd_opt_infogo(int fd, td_nbdserver_t *server, int option)
+{
+	uint32_t exportnamelen;
+	uint16_t nrInfoReq;
+	char *exportname = NULL;
+
+	if (recv_fully_or_fail(fd, &exportnamelen, sizeof(exportnamelen)) < 0)
+		goto fail;
+	exportnamelen = be32toh(exportnamelen);
+
+	if (exportnamelen > MAX_NBD_EXPORT_NAME_LEN) {
+		ERR("Received %u as export name length which exceeds the maximum of %u",
+			exportnamelen, MAX_NBD_EXPORT_NAME_LEN);
+		goto fail;
+	}
+
+	exportname = malloc(exportnamelen + 1);
+	if (exportname == NULL) {
+		ERR("Could not malloc space for export name");
+		goto fail;
+	}
+	if (recv_fully_or_fail(fd, exportname, exportnamelen) < 0)
+		goto fail1;
+	exportname[exportnamelen] = '\0';
+	INFO("Exportname %s", exportname);
+
+	if (recv_fully_or_fail(fd, &nrInfoReq, sizeof(nrInfoReq)) < 0)
+		goto fail1;
+
+	nrInfoReq = be16toh(nrInfoReq);
+	INFO("nrInfoReq is %d", nrInfoReq);
+
+	while(nrInfoReq--) {
+		uint16_t request;
+		if (recv_fully_or_fail(fd, &request, sizeof(request)) < 0) {
+			ERR("Failed to read NBD_INFO");
+			goto fail1;
+		}
+		request = be16toh(request);
+		INFO("Client requested NBD_INFO %u", request);
+	}
+
+	/* Always send NBD_INFO_EXPORT*/
+	if (send_info_export(fd, option, NBD_REP_INFO, NBD_INFO_EXPORT, NBD_EXPORTSIZE(server), NBD_FLAGS)){
+		ERR("Could not send reply info export");
+		goto fail1;
+	}
+
+	if (send_info_block_size(fd, option, NBD_REP_INFO, NBD_INFO_BLOCK_SIZE, 1, 4096, 2 * MEGABYTES)) {
+		ERR("Could not send reply info block size");
+		goto fail1;
+	}
+
+	if (send_fixed_option_reply(fd, option, NBD_REP_ACK)) {
+		ERR("Could not send new style option reply");
+		goto fail1;
+	}
+	free(exportname);
+	return 0;
+
+fail1:
+	free(exportname);
+fail:
+	return -1;
+}
+
+
 int
 receive_info(int fd, char* buf, int size)
 {
@@ -440,250 +540,168 @@ receive_newstyle_options(td_nbdserver_client_t *client, int new_fd, bool no_zero
 	size_t n_options;
 	uint32_t opt_code;
 	uint32_t opt_len;
-	uint64_t opt_version;
-	uint64_t exportsize;
 	struct nbd_export_name_option_reply handshake_finish;
-	char *buf = NULL;
-	char *exportname = NULL;
-	int ret = 0;
 	td_nbdserver_t *server = client->server;
 
 	for (n_options = 0; n_options < MAX_OPTIONS; n_options++) {
+		if(receive_info(new_fd, (char *)&n_option, sizeof(n_option)) < 0)
+			goto fail;
 
-		if(receive_info(new_fd, (char *)&n_option, sizeof(n_option)) < 0){
-			return -1;	
+		if (NBD_OPT_MAGIC != be64toh(n_option.version)) {
+			ERR("Bad NBD option version %" PRIx64 ", expected %" PRIx64,
+				be64toh(n_option.version), NBD_OPT_MAGIC);
+			goto fail;
 		}
-
-		opt_version = be64toh(n_option.version);
-		if (NBD_OPT_MAGIC != opt_version){
-			ERR("Bad NBD option version %" PRIx64
-			    ", expected %" PRIx64,
-                            opt_version, NBD_OPT_MAGIC);
-			ret = -1;	
-			goto done;
-		}
-
 		opt_len = be32toh (n_option.optlen);
 		if (opt_len > MAX_REQUEST_SIZE) {
 			ERR ("NBD optlen to big (%" PRIu32 ")", opt_len);
-			ret = -1;	
-			goto done;
+			goto fail;
 		}
-
-		buf = malloc (opt_len + 1); 
-		if (buf == NULL) {
-			ERR("Could not malloc option data buff");
-			ret = -1;	
-			goto done;
-		}
-
 		opt_code = be32toh (n_option.option);
 
 		switch (opt_code) {
-		case NBD_OPT_EXPORT_NAME:
-		{
-			INFO("Processing NBD_OPT_EXPORT_NAME");
-			uint16_t flags = 0;
-			if(receive_info(new_fd, (char *)buf, opt_len) < 0) {
-				ERR ("Failed to received data for NBD_OPT_EXPORT_NAME");
-				ret = -1;
-				goto done;
-			}
-			buf[opt_len] = '\0';
-			INFO("Exportname %s", buf);
+			case NBD_OPT_EXPORT_NAME:
+			{
+				char *buf = NULL;
 
-			provide_server_info(server, &exportsize, &flags);
-
-			bzero(&handshake_finish, sizeof handshake_finish);
-			handshake_finish.exportsize = htobe64 (exportsize);
-      			handshake_finish.eflags = htobe16 (flags);
-			ssize_t len = no_zeroes ? 10 : sizeof(handshake_finish);
-			ssize_t sent = send (new_fd, &handshake_finish,len, 0);
-			if(sent != len) {
-				ERR ("Failed to send handshake finish");
-				ret = -1;	
-				goto done;
-			}
-		}
-		break;
-		case NBD_OPT_ABORT:
-			INFO("Processing NBD_OPT_ABORT");
-			if (send_option_reply (new_fd, opt_code, NBD_REP_ACK) == -1){
-				ret = -1;
-				goto done;
-			}
-			break;
-		case NBD_OPT_LIST:
-			ERR("NBD_OPT_LIST: not implemented");
-			break;
-		case NBD_OPT_STARTTLS:
-			ERR("NBD_OPT_STARTTLS: not implemented");
-			break;
-		case NBD_OPT_INFO:
-			ERR("NBD_OPT_INFO: not implemented");
-			break;
-		case NBD_OPT_GO:
-		{
-			uint16_t flags;
-			uint32_t exportnamelen;
-			uint16_t nrInfoReq;
-
-			INFO("Processing NBD_OPT_GO");
-
-			if (recv_fully_or_fail(new_fd, &exportnamelen, sizeof(exportnamelen)) < 0) {
-				ret = -1;
-				goto done;
-			}
-			exportnamelen = be32toh(exportnamelen);
-
-			if (exportnamelen > MAX_NBD_EXPORT_NAME_LEN) {
-				ERR("Received %u as export name length which exceeds the maximum of %u",
-				    exportnamelen, MAX_NBD_EXPORT_NAME_LEN);
-				ret = -1;
-				goto done;
-			}
-
-			exportname = malloc(exportnamelen + 1);
-			if (exportname == NULL) {
-				ERR("Could not malloc space for export name");
-				ret = -1;
-				goto done;
-			}
-			if (recv_fully_or_fail(new_fd, exportname, exportnamelen) < 0) {
-				ret = -1;
-				goto done;
-			}
-			exportname[exportnamelen] = '\0';
-			INFO("Exportname %s", exportname);
-
-			if (recv_fully_or_fail(new_fd, &nrInfoReq, sizeof(nrInfoReq)) < 0) {
-				ret = -1;
-				goto done;
-			}
-			nrInfoReq = be16toh(nrInfoReq);
-			INFO("nrInfoReq is %d", nrInfoReq);
-
-			while(nrInfoReq--) {
-				uint16_t request;
-				if (recv_fully_or_fail(new_fd, &request, sizeof(request)) < 0) {
-					ERR("Failed to read NBD_INFO");
-					ret = -1;
-					goto done;
+				INFO("Processing NBD_OPT_EXPORT_NAME");
+				if (!(buf=malloc(opt_len + 1))) { ERR("malloc fail"); goto fail; }
+				if(receive_info(new_fd, (char *)buf, opt_len) < 0) {
+					ERR ("Failed to received data for NBD_OPT_EXPORT_NAME");
+					free(buf);
+					goto fail;
 				}
-				request = be16toh(request);
-				INFO("Client requested NBD_INFO %u", request);
-			}
+				buf[opt_len] = '\0';
+				INFO("Exportname %s", buf);
 
-			provide_server_info(server, &exportsize, &flags);
-
-			/* Always send NBD_INFO_EXPORT*/
-			if (send_info_export (new_fd, opt_code,
-					      NBD_REP_INFO,
-					      NBD_INFO_EXPORT,
-					      exportsize, flags) == -1){
-				ERR("Could not send reply info export");
-				ret = -1;
+				bzero(&handshake_finish, sizeof handshake_finish);
+				handshake_finish.exportsize = htobe64(NBD_EXPORTSIZE(server));
+				handshake_finish.eflags = htobe16(NBD_FLAGS);
+				ssize_t len = no_zeroes ? 10 : sizeof(handshake_finish);
+				ssize_t sent = send (new_fd, &handshake_finish,len, 0);
+				if(sent != len) {
+					ERR ("Failed to send handshake finish");
+					free(buf);
+					goto fail;
+				}
+				/* Immediately enter data transfer */
+				free(buf);
 				goto done;
 			}
-
-			if (send_info_block_size(new_fd, opt_code,
-						 NBD_REP_INFO,
-						 NBD_INFO_BLOCK_SIZE,
-						 1, 4096, 2 * MEGABYTES) == -1) {
-				ERR("Could not send reply info block size");
-				ret = -1;
-				goto done;
-			}
-
-			if (send_option_reply (new_fd, NBD_OPT_GO, NBD_REP_ACK) == -1){
-				ERR("Could not send new style option reply");
-				ret = -1;	
-				goto done;
-			}
-		}
 			break;
-		case NBD_OPT_STRUCTURED_REPLY:
-			INFO("Processing NBD_OPT_STRUCTURED_REPLY");
-			if (opt_len != 0) {
-				send_option_reply (new_fd, opt_code, NBD_REP_ERR_INVALID);
-				ret = -1;
+			case NBD_OPT_ABORT:
+				INFO("Processing NBD_OPT_ABORT");
+				/* Failure of this is irrelevant */
+				send_fixed_option_reply(new_fd, opt_code, NBD_REP_ACK);
+				/* There will be nothing after this */
 				goto done;
-			}
+				break;
+			case NBD_OPT_LIST:
+				INFO("Processing NBD_OPT_LIST('%s')",NBD_FIXED_SINGLE_EXPORT);
+				if (send_nbd_rep_server(new_fd, NBD_FIXED_SINGLE_EXPORT, strlen(NBD_FIXED_SINGLE_EXPORT)))
+					goto fail;
+				if (send_fixed_option_reply(new_fd, opt_code, NBD_REP_ACK))
+					goto fail;
+				break;
+			case NBD_OPT_STARTTLS:
+				ERR("NBD_OPT_STARTTLS: not implemented");
+				if (send_fixed_option_reply(new_fd, opt_code, NBD_REP_ERR_UNSUP))
+					goto fail;
+				break;
+			case NBD_OPT_INFO:
+				INFO("Processing NBD_OPT_INFO");
+				if (send_nbd_opt_infogo(new_fd, server, NBD_OPT_INFO))
+					goto fail;
+				break;
+			case NBD_OPT_GO:
+				INFO("Processing NBD_OPT_GO");
+				if (send_nbd_opt_infogo(new_fd, server, NBD_OPT_GO)) goto fail;
+				/* Immediately enter data transfer */
+				goto done;
+				break;
+			case NBD_OPT_STRUCTURED_REPLY:
+				INFO("Processing NBD_OPT_STRUCTURED_REPLY");
+				if (opt_len != 0) {
+					send_fixed_option_reply(new_fd, opt_code, NBD_REP_ERR_INVALID);
+					goto fail;
+				}
 
-			if (send_option_reply (new_fd, opt_code, NBD_REP_ACK) == -1){
-				ret = -1;
-				goto done;
-			}
+				if (send_fixed_option_reply(new_fd, opt_code, NBD_REP_ACK) == -1)
+					goto fail;
 
-			client->structured_reply = true;
-			break;
-		case NBD_OPT_LIST_META_CONTEXT:
-			ERR("NBD_OPT_LIST_META_CONTEXT: not implemented");
-			break;
-		case NBD_OPT_SET_META_CONTEXT:
-		{
-			INFO("Processing NBD_OPT_SET_META_CONTEXT");
-			uint32_t opt_index;
-			uint32_t exportnamelen;
-			uint32_t nr_queries;
-			uint32_t querylen;
-			if (recv_fully_or_fail(new_fd, buf, opt_len) < 0){
-				ret = -1;	
-				goto done;
+				client->structured_reply = true;
+				break;
+			case NBD_OPT_LIST_META_CONTEXT:
+			{
+				char *buf = NULL;
+				INFO("NBD_OPT_LIST_META_CONTEXT: not implemented");
+				/* We may not support the option, but we still need to read and discard it */
+				if (!(buf=malloc(opt_len + 1))) { ERR("malloc fail"); goto fail; }
+				receive_info(new_fd, (char *)buf, opt_len);
+				free(buf); /* Don't care about the contents */
+				if (send_fixed_option_reply(new_fd, opt_code, NBD_REP_ERR_UNSUP)) goto fail;
 			}
-        
-			memcpy (&exportnamelen, &buf[0], 4);
-			exportnamelen = be32toh (exportnamelen);
-			opt_index = 4 + exportnamelen;
-	
-			memcpy (&nr_queries, &buf[opt_index], 4);
-			nr_queries = be32toh (nr_queries);
-			opt_index += 4;
-			while (nr_queries > 0) {
-				char temp[16];
-				memcpy (&querylen, &buf[opt_index], 4);
-				querylen = be32toh (querylen);
+			break;
+			case NBD_OPT_SET_META_CONTEXT:
+			{
+				char *buf = NULL;
+				uint32_t opt_index;
+				uint32_t exportnamelen;
+				uint32_t nr_queries;
+				uint32_t querylen;
+
+				INFO("Processing NBD_OPT_SET_META_CONTEXT");
+				if (!(buf=malloc(opt_len + 1))) { ERR("malloc fail"); goto fail; }
+				if (recv_fully_or_fail(new_fd, buf, opt_len) < 0) {
+					free(buf);
+					goto fail;
+				}
+
+				memcpy (&exportnamelen, &buf[0], 4);
+				exportnamelen = be32toh (exportnamelen);
+				opt_index = 4 + exportnamelen;
+
+				memcpy (&nr_queries, &buf[opt_index], 4);
+				nr_queries = be32toh (nr_queries);
 				opt_index += 4;
-				memcpy (temp, &buf[opt_index], 15);
-				temp[15]= '\0';
-				INFO("actual string %s\n", temp);
-				if (querylen == 15 && strncmp (&buf[opt_index], "base:allocation", 15) == 0) {
-				    if(send_meta_context (new_fd, NBD_REP_META_CONTEXT, 1, "base:allocation") !=0) {
-					ret = -1;	
-					goto done;
-				    }
+				while (nr_queries > 0) {
+					char temp[16];
+					memcpy (&querylen, &buf[opt_index], 4);
+					querylen = be32toh (querylen);
+					opt_index += 4;
+					memcpy (temp, &buf[opt_index], 15);
+					temp[15]= '\0';
+					INFO("actual string %s\n", temp);
+					if (querylen == 15 && strncmp (&buf[opt_index], "base:allocation", 15) == 0) {
+						if (send_meta_context (new_fd, NBD_REP_META_CONTEXT, 1, "base:allocation") !=0) {
+							free(buf);
+							goto fail;
+						}
+					}
+					nr_queries--;
 				}
-				nr_queries--;
+				if (send_fixed_option_reply(new_fd, opt_code, NBD_REP_ACK) == -1) {
+					free(buf);
+					goto fail;
+				}
+				free(buf);
 			}
-			if (send_option_reply (new_fd, opt_code, NBD_REP_ACK) == -1){
-				ret = -1;	
-				goto done;
-			}
-		}
 			break;
-		default:
-			ret = -1;	
-			goto done;
+			default:
+				goto fail;
 		}
-
-		free(buf);
-		buf = NULL;
-
-		/* Loop ends here for these commands */
-		if (opt_code == NBD_OPT_GO || opt_code == NBD_OPT_EXPORT_NAME )
-			break;
 	} 
 
 	if (n_options >= MAX_OPTIONS) {
 		ERR("Max number of nbd options exceeded (%d)", MAX_OPTIONS);
-		ret = -1;	
-		goto done;
+		goto fail;
 	}
 
 done:
-	free(buf);
-	free(exportname);
-	return ret;
+	return 0;
+
+fail:
+	return -1;
 }
 
 int
@@ -808,19 +826,6 @@ fail:
 	return NULL;
 }
 
-/**
- * @param[in,out]    client  Pointer to NBD client structure to free
- * @return void
- * 
- * Frees the resources associated with an Logical NBD client connection.
- * It is important to note that this does NOT close the FD associated with
- * the network connection the client is using. A new Logical NBD client
- * connection could be created later which uses the same filedescriptor.
- * 
- * Thus, any caller which is calling this because of an error which should
- * result in the closure of the client FD should make sure to close the FD
- * itself.
- */
 void
 tapdisk_nbdserver_free_client(td_nbdserver_client_t *client)
 {
@@ -836,6 +841,8 @@ tapdisk_nbdserver_free_client(td_nbdserver_client_t *client)
 	if (likely(!tapdisk_nbdserver_reqs_pending(client))) {
 		list_del(&client->clientlist);
 		tapdisk_nbdserver_reqs_free(client);
+		if (client->client_fd > 0)
+			close(client->client_fd);
 		free(client);
 	} else
 		client->dead = true;
@@ -1038,9 +1045,8 @@ tapdisk_nbdserver_handshake_cb(event_id_t id, char mode, void *data)
 	bool no_zeroes = (NBD_FLAG_NO_ZEROES & cflags) != 0;
 
         /* Receive newstyle options. */
-        if (receive_newstyle_options (client, server->handshake_fd, no_zeroes) == -1){
-		ERR("Option negotiation messed up");
-	}
+        if (receive_newstyle_options (client, server->handshake_fd, no_zeroes) == -1)
+			INFO("Option negotiation terminated");
 
 	tapdisk_server_unregister_event(id);
 }
@@ -1120,7 +1126,6 @@ tapdisk_nbdserver_newclient_fd_old(td_nbdserver_t *server, int new_fd)
 	if (tapdisk_nbdserver_enable_client(client) < 0) {
 		ERR("Error enabling client");
 		tapdisk_nbdserver_free_client(client);
-		close(new_fd);
 	}
 }
 
@@ -1143,32 +1148,33 @@ tapdisk_nbdserver_newclient_fd_new_fixed(td_nbdserver_t *server, int new_fd)
 	}
 	INFO("Got an allocated client at %p", client);
 
+	client->client_fd = new_fd;
+
 	if(tapdisk_nbdserver_new_protocol_handshake(client, new_fd) != 0) {
 		ERR("Error handshaking new client connection");
 		tapdisk_nbdserver_free_client(client);
-		close(new_fd);
 		return;
 	}
-
-	client->client_fd = new_fd;
 
 	INFO("About to enable client on fd %d", client->client_fd);
 	if (tapdisk_nbdserver_enable_client(client) < 0) {
 		ERR("Error enabling client");
 		tapdisk_nbdserver_free_client(client);
-		close(new_fd);
 	}
 }
 
 static void
 tapdisk_nbdserver_newclient_fd(td_nbdserver_t *server, int new_fd)
 {
-	if(SERVER_USE_OLD_PROTOCOL){
-		tapdisk_nbdserver_newclient_fd_old(server, new_fd);
-	} else {
-		tapdisk_nbdserver_newclient_fd_new_fixed(server, new_fd);
-	}
-}	
+	switch (server->style) {
+		case TAPDISK_NBD_PROTOCOL_OLD:
+			tapdisk_nbdserver_newclient_fd_old(server, new_fd);
+			break;
+		case TAPDISK_NBD_PROTOCOL_NEW:
+			tapdisk_nbdserver_newclient_fd_new_fixed(server, new_fd);
+			break;
+	};
+}
 
 static td_vbd_request_t *create_request_vreq(
 	td_nbdserver_client_t *client, struct nbd_request request, uint32_t len)
@@ -1276,12 +1282,8 @@ tapdisk_nbdserver_clientcb(event_id_t id, char mode, void *data)
 
 		break;
 	case TAPDISK_NBD_CMD_DISC:
-		INFO("Received close message. Sending reconnect "
-				"header");
+		INFO("Received close message. Free client");
 		tapdisk_nbdserver_free_client(client);
-		INFO("About to send initial connection message");
-		tapdisk_nbdserver_newclient_fd(server, fd);
-		INFO("Sent initial connection message");
 		return;
 	case TAPDISK_NBD_CMD_BLOCK_STATUS:
 	{
@@ -1327,10 +1329,6 @@ fail:
 		tapdisk_nbd_server_free_vreq(client, vreq, false);
 
 	tapdisk_nbdserver_free_client(client);
-	/* fd was set from client->client_fd on the way into this function. If we
-	 * are leaving through an error path we must close it because
-	 * tapdisk_nbdserver_free_client() does not */
-	close(fd);
 	return;
 }
 
@@ -1404,7 +1402,7 @@ tapdisk_nbdserver_newclient_unix(event_id_t id, char mode, void *data)
 }
 
 td_nbdserver_t *
-tapdisk_nbdserver_alloc(td_vbd_t *vbd, td_disk_info_t info)
+tapdisk_nbdserver_alloc(td_vbd_t *vbd, td_disk_info_t info, nbd_protocol_style_t style)
 {
 	td_nbdserver_t *server;
 	char fdreceiver_path[TAPDISK_NBDSERVER_MAX_PATH_LEN];
@@ -1422,15 +1420,28 @@ tapdisk_nbdserver_alloc(td_vbd_t *vbd, td_disk_info_t info)
 	server->fdrecv_listening_event_id = -1;
 	server->unix_listening_fd = -1;
 	server->unix_listening_event_id = -1;
+	server->style = style;
 	INIT_LIST_HEAD(&server->clients);
 
-	if (td_metrics_nbd_start(&server->nbd_stats, server->vbd->tap->minor)) {
-		ERR("failed to create metrics file for nbdserver");
-		goto fail;
+	switch (style) {
+		case TAPDISK_NBD_PROTOCOL_OLD:
+			if (td_metrics_nbd_start_old(&server->nbd_stats, server->vbd->tap->minor)) {
+				ERR("failed to create metrics file for nbdserver");
+				goto fail;
+			}
+			break;
+		case TAPDISK_NBD_PROTOCOL_NEW:
+			if (td_metrics_nbd_start_new(&server->nbd_stats, server->vbd->tap->minor)) {
+				ERR("failed to create metrics file for nbdserver");
+				goto fail;
+			}
+			break;
 	}
 
 	if (snprintf(fdreceiver_path, TAPDISK_NBDSERVER_MAX_PATH_LEN,
-			"%s%d.%d", TAPDISK_NBDSERVER_LISTEN_SOCK_PATH, getpid(),
+			"%s%d.%d",
+			(style == TAPDISK_NBD_PROTOCOL_OLD)?TAPDISK_NBDSERVER_OLD_LISTEN_SOCK_PATH:TAPDISK_NBDSERVER_NEW_LISTEN_SOCK_PATH,
+			getpid(),
 			vbd->uuid) < 0) {
 		ERR("Failed to snprintf fdreceiver_path");
 		goto fail;
@@ -1444,7 +1455,9 @@ tapdisk_nbdserver_alloc(td_vbd_t *vbd, td_disk_info_t info)
 	}
 
 	if (snprintf(server->sockpath, TAPDISK_NBDSERVER_MAX_PATH_LEN,
-			"%s%d.%d", TAPDISK_NBDSERVER_SOCK_PATH, getpid(),
+			"%s%d.%d",
+			(style == TAPDISK_NBD_PROTOCOL_OLD)?TAPDISK_NBDSERVER_OLD_SOCK_PATH:TAPDISK_NBDSERVER_NEW_SOCK_PATH,
+			getpid(),
 			vbd->uuid) < 0) {
 		ERR("Failed to snprintf sockpath");
 		goto fail;

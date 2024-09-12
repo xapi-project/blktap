@@ -314,8 +314,8 @@ end:
 
 }
 
-int
-td_metrics_nbd_start(stats_t *nbd_stats, int minor)
+static int
+td_metrics_nbd_start(stats_t *nbd_stats, int minor, const char *pathf)
 {
     int err = 0;
 
@@ -324,7 +324,7 @@ td_metrics_nbd_start(stats_t *nbd_stats, int minor)
 
     shm_init(&nbd_stats->shm);
 
-    err = asprintf(&nbd_stats->shm.path, TAPDISK_METRICS_NBD_PATHF, td_metrics.path, minor);
+    err = asprintf(&nbd_stats->shm.path, pathf, td_metrics.path, minor);
     if(unlikely(err == -1)){
         err = errno;
         EPRINTF("failed to allocate memory to store NBD metrics path: %s\n",strerror(err));
@@ -343,6 +343,18 @@ td_metrics_nbd_start(stats_t *nbd_stats, int minor)
     nbd_stats->stats = nbd_stats->shm.mem;
 out:
     return err;
+}
+
+int
+td_metrics_nbd_start_old(stats_t *nbd_stats, int minor)
+{
+    return td_metrics_nbd_start(nbd_stats, minor, TAPDISK_METRICS_NBD_PATHF_OLD);
+}
+
+int
+td_metrics_nbd_start_new(stats_t *nbd_stats, int minor)
+{
+    return td_metrics_nbd_start(nbd_stats, minor, TAPDISK_METRICS_NBD_PATHF_NEW);
 }
 
 int

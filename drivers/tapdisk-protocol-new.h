@@ -31,6 +31,8 @@
 #ifndef _TAPDISK_PROTOCOL_NEW_H_
 #define _TAPDISK_PROTOCOL_NEW_H_
 
+#define NBD_FIXED_SINGLE_EXPORT "tapdisk_client"
+
 #define NBD_REP_ERR(val) (0x80000000 | (val))
 #define NBD_MAGIC       UINT64_C(0x4e42444d41474943) /* ASCII "NBDMAGIC" aka INIT_PASSWD */
 #define NBD_OLD_VERSION UINT64_C(0x0000420281861253) /* "cliserv_magic" - the NBD old-style magic number */
@@ -120,11 +122,21 @@ struct nbd_new_option {
   uint32_t optlen;
 } __attribute__((__packed__));
 
+/** 
+ * Define this on the stack when you don't need the data, but use
+ * malloc() on a suitable size when you do
+ */
 struct nbd_fixed_new_option_reply {
   uint64_t magic;
   uint32_t option;
   uint32_t reply;
   uint32_t replylen;
+  uint8_t  data[];
+} __attribute__((__packed__));
+
+struct nbd_fixed_new_option_rep_server {
+  uint32_t namelen;
+  char name[];
 } __attribute__((__packed__));
 
 struct nbd_fixed_new_option_reply_info_export {

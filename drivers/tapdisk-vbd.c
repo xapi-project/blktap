@@ -951,6 +951,8 @@ tapdisk_vbd_pause(td_vbd_t *vbd)
 
 	if (vbd->nbdserver)
 		tapdisk_nbdserver_pause(vbd->nbdserver, log);
+	if (vbd->nbdserver_new)
+		tapdisk_nbdserver_pause(vbd->nbdserver_new, log);
 
 	list_for_each_entry(blkif, &vbd->rings, entry)
 		tapdisk_xenblkif_suspend(blkif);
@@ -1028,6 +1030,8 @@ resume_failed:
 
 	if (vbd->nbdserver)
 		tapdisk_nbdserver_unpause(vbd->nbdserver);
+	if (vbd->nbdserver_new)
+		tapdisk_nbdserver_unpause(vbd->nbdserver_new);
 
     list_for_each_entry(blkif, &vbd->rings, entry)
 		tapdisk_xenblkif_resume(blkif);
@@ -1801,7 +1805,7 @@ tapdisk_vbd_kick(td_vbd_t *vbd)
 }
 
 int
-tapdisk_vbd_start_nbdserver(td_vbd_t *vbd)
+tapdisk_vbd_start_nbdservers(td_vbd_t *vbd)
 {
 	td_disk_info_t info;
 	int err;
@@ -1811,16 +1815,27 @@ tapdisk_vbd_start_nbdserver(td_vbd_t *vbd)
 	if (err)
 		return err;
 
-	vbd->nbdserver = tapdisk_nbdserver_alloc(vbd, info);
-
+	vbd->nbdserver = tapdisk_nbdserver_alloc(vbd, info, TAPDISK_NBD_PROTOCOL_OLD);
 	if (!vbd->nbdserver) {
 		EPRINTF("Error starting nbd server");
 		return -1;
 	}
-
 	err = tapdisk_nbdserver_listen_unix(vbd->nbdserver);
 	if (err) {
 		tapdisk_nbdserver_free(vbd->nbdserver);
+		EPRINTF("failed to listen on the UNIX domain socket: %s\n",
+				strerror(-err));
+		return err;
+	}
+
+	vbd->nbdserver_new = tapdisk_nbdserver_alloc(vbd, info, TAPDISK_NBD_PROTOCOL_NEW);
+	if (!vbd->nbdserver_new) {
+		EPRINTF("Error starting new-style nbd server");
+		return -1;
+	}
+	err = tapdisk_nbdserver_listen_unix(vbd->nbdserver_new);
+	if (err) {
+		tapdisk_nbdserver_free(vbd->nbdserver_new);
 		EPRINTF("failed to listen on the UNIX domain socket: %s\n",
 				strerror(-err));
 		return err;
