@@ -35,8 +35,8 @@
 #define TAPDISK_METRICS_VDI_PATHF    "%s/vdi-%hu"
 #define TAPDISK_METRICS_VBD_PATHF    "%s/vbd-%d-%d"
 #define TAPDISK_METRICS_BLKTAP_PATHF "%s/blktap-%d"
-#define TAPDISK_METRICS_NBD_PATHF_OLD "%s/nbd-%d"
-#define TAPDISK_METRICS_NBD_PATHF_NEW "%s/nbd-new-%d"
+#define TAPDISK_METRICS_NBD_PATHF_OLD "%s/nbd-old-%d"
+#define TAPDISK_METRICS_NBD_PATHF_NEW "%s/nbd-%d"
 
 #include <libaio.h>
 
