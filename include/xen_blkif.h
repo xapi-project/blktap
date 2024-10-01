@@ -133,6 +133,6 @@ static inline void blkif_get_x86_64_req(blkif_request_t *dst, blkif_x86_64_reque
 #define MAX_RING_PAGE_ORDER 3
 #define MAX_RING_PAGES (1 << MAX_RING_PAGE_ORDER)
 
-#define BLKIF_MMAX_SEGMENTS_PER_REQUEST 32
+#define BLKIF_MAX_BUFFER_SEGMENTS_PER_REQUEST 32
 
 #endif /* __XEN_BLKIF_H__ */

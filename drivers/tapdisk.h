@@ -73,12 +73,17 @@ extern unsigned int PAGE_SIZE;
 extern unsigned int PAGE_MASK;
 extern unsigned int PAGE_SHIFT;
 
-#define MAX_SEGMENTS_PER_REQ         11
+// Removed definition of MAX_SEGMENTS_PER_REQ from here. Use BLKIF_MAX_SEGMENTS_PER_REQUEST
+// which must match the value in xen/io/blkif.h, trying to make it clear that these are
+// the same thing.
+#ifndef BLKIF_MAX_SEGMENTS_PER_REQUEST
+#define BLKIF_MAX_SEGMENTS_PER_REQUEST 11
+#endif
 #define MAX_REQUESTS                 32U
 #define SECTOR_SHIFT                 9
 #define DEFAULT_SECTOR_SIZE          512
 
-#define TAPDISK_DATA_REQUESTS       (MAX_REQUESTS * MAX_SEGMENTS_PER_REQ)
+#define TAPDISK_DATA_REQUESTS       (MAX_REQUESTS * BLKIF_MAX_SEGMENTS_PER_REQUEST)
 
 //#define BLK_NOT_ALLOCATED            (-99)
 #define TD_NO_PARENT                 1

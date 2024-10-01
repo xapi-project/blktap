@@ -42,6 +42,7 @@
 #include <sys/vfs.h>
 
 #include "vhd.h"
+#include "td-req.h"
 #include "tapdisk.h"
 #include "tapdisk-utils.h"
 #include "tapdisk-driver.h"
@@ -66,8 +67,7 @@
 #define MIN(a, b)       ((a) < (b) ? (a) : (b))
 
 #define TD_LCACHE_MAX_REQ               (MAX_REQUESTS*2)
-#define TD_LCACHE_BUFSZ                 (MAX_SEGMENTS_PER_REQ * \
-					 sysconf(_SC_PAGE_SIZE))
+#define TD_LCACHE_BUFSZ                 (BLKIF_MAX_BUFFER_SEGMENTS_PER_REQUEST << PAGE_SHIFT)
 
 
 typedef struct lcache                   td_lcache_t;
@@ -126,7 +126,7 @@ lcache_destroy_buffers(td_lcache_t *cache)
 	do {
 		req = lcache_alloc_request(cache);
 		if (req)
-			munmap(req->buf, TD_LCACHE_BUFSZ);
+			munmap(req->buf, (size_t)TD_REQ_BUFFER_SIZE);
 	} while (req);
 }
 
@@ -143,7 +143,7 @@ lcache_create_buffers(td_lcache_t *cache)
 	for (i = 0; i < TD_LCACHE_MAX_REQ; i++) {
 		td_lcache_req_t *req = &cache->reqv[i];
 
-		req->buf = mmap(NULL, TD_LCACHE_BUFSZ, prot, flags, -1, 0);
+		req->buf = mmap(NULL, (size_t)TD_REQ_BUFFER_SIZE, prot, flags, -1, 0);
 		if (req->buf == MAP_FAILED) {
 			req->buf = NULL;
 			err = -errno;
