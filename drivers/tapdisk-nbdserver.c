@@ -351,7 +351,7 @@ tapdisk_nbdserver_reqs_free(td_nbdserver_client_t *client)
 }
 
 static int 
-send_info_export (int new_fd, uint32_t option, uint32_t reply, uint16_t info, uint64_t exportsize,
+send_info_export(int new_fd, uint32_t option, uint32_t reply, uint16_t info, uint64_t exportsize,
 		  uint16_t flags)
 {
 	struct nbd_fixed_new_option_reply fixed_new_option_reply;
@@ -1042,9 +1042,11 @@ tapdisk_nbdserver_handshake_cb(event_id_t id, char mode, void *data)
 	cflags = be32toh (cflags);
 	bool no_zeroes = (NBD_FLAG_NO_ZEROES & cflags) != 0;
 
-        /* Receive newstyle options. */
-        if (receive_newstyle_options (client, server->handshake_fd, no_zeroes) == -1)
-			INFO("Option negotiation terminated");
+	/* Receive newstyle options. */
+	if (receive_newstyle_options(client, server->handshake_fd, no_zeroes) == -1) {
+		INFO("Option negotiation terminated");
+		close(server->handshake_fd);
+	}
 
 	tapdisk_server_unregister_event(id);
 }
@@ -1331,7 +1333,7 @@ tapdisk_nbdserver_clientcb(event_id_t id, char mode, void *data)
 fail:
 	if (vreq)
 		tapdisk_nbd_server_free_vreq(client, vreq, false);
-
+	close(client->client_fd);
 	tapdisk_nbdserver_free_client(client);
 	return;
 }
