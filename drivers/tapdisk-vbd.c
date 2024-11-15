@@ -619,12 +619,6 @@ tapdisk_vbd_open_vdi(td_vbd_t *vbd, const char *name, td_flag_t flags, int prt_d
 			goto fail;
 	}
 
-	if (td_flag_test(vbd->flags, TD_OPEN_LOCAL_CACHE)) {
-		err = tapdisk_vbd_add_local_cache(vbd);
-		if (err)
-			goto fail;
-	}
-
 	err = tapdisk_vbd_validate_chain(vbd);
 	if (err)
 		goto fail;
@@ -637,6 +631,12 @@ tapdisk_vbd_open_vdi(td_vbd_t *vbd, const char *name, td_flag_t flags, int prt_d
 			INFO("Ignoring failed NBD secondary attach\n");
 			err = 0;
 		}
+	}
+
+	if (td_flag_test(vbd->flags, TD_OPEN_LOCAL_CACHE)) {
+		err = tapdisk_vbd_add_local_cache(vbd);
+		if (err)
+			goto fail;
 	}
 
 	err = vbd_stats_create(vbd);
