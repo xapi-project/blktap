@@ -38,6 +38,8 @@
 #include <xen/gntdev.h>
 #include "td-blkif.h"
 
+#define TD_REQ_BUFFER_SIZE (BLKIF_MAX_BUFFER_SEGMENTS_PER_REQUEST << PAGE_SHIFT)
+
 /**
  * Representation of the intermediate request used to retrieve a request from
  * the shared ring and handle it over to the main tapdisk request processing
@@ -78,9 +80,9 @@ struct td_xenblkif_req {
     /**
      * The scatter/gather list td_vbd_request_t.iov points to.
      */
-    struct td_iovec iov[BLKIF_MMAX_SEGMENTS_PER_REQUEST];
+    struct td_iovec iov[BLKIF_MAX_BUFFER_SEGMENTS_PER_REQUEST];
 
-    grant_ref_t gref[BLKIF_MMAX_SEGMENTS_PER_REQUEST];
+    grant_ref_t gref[BLKIF_MAX_BUFFER_SEGMENTS_PER_REQUEST];
     int prot;
 
 	struct gntdev_grant_copy_segment
