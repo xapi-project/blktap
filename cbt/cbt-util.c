@@ -105,7 +105,7 @@ read_cbt_metadata(char *name, FILE *f, struct cbt_log_metadata *log_meta)
 	ret = fread(log_meta, sizeof(struct cbt_log_metadata), 1, f);
 
 	if (!ret) {
-		fprintf(stderr, "Failed to read CBT metadata from file %s\n", name);
+		fprintf(stderr, "Failed to read CBT metadata from file %s, error %s\n", name, strerror(ferror(f)));
 		err = -EIO;
 	}
 
