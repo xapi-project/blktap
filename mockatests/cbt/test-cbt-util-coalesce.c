@@ -442,19 +442,19 @@ void test_cbt_util_coalesce_set_file_pointer_failure(void **state)
 	((struct cbt_log_metadata*)parent_data)->size = size;
 	//Fill bitmap with random bytes
 	memcpy(parent_data + sizeof(struct cbt_log_metadata), (void*)memcpy, bmsize );
-	FILE *parent_log = fmemopen((void*)parent_data, file_size, "w+");
+	FILE *parent_log = fmemopen((void*)parent_data, file_size, "r");
 
 	//Intialise size in metadata file
 	((struct cbt_log_metadata*)child_data)->size = size;
 	//Fill bitmap with random bytes
 	memcpy(child_data + sizeof(struct cbt_log_metadata), (void*)memcpy, bmsize );
-	FILE *child_log = fmemopen((void*)child_data, file_size, "w+");
+	FILE *child_log = fmemopen((void*)child_data, file_size, "r+");
 
 	will_return(__wrap_fopen, parent_log);
 	expect_value(__wrap_fclose, fp, parent_log);
 	will_return(__wrap_fopen, child_log);
 	expect_value(__wrap_fclose, fp, child_log);
-	
+
 	fail_fseek(EIO);
 
 	result = cbt_util_coalesce(6, args);
