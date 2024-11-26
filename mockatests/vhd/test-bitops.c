@@ -43,7 +43,7 @@
 void test_set_clear_test_bit(void **state) {
     /* Representative bitmap of 512 bytes */
     uint32_t bit;
-    uint8_t *map = malloc(512);
+    uint8_t map[512];
 
     /* Start zero'd */
     bzero(map, 512);
@@ -60,8 +60,6 @@ void test_set_clear_test_bit(void **state) {
         clear_bit(map, bit);
         assert_false(test_bit(map, bit));
     }
-
-    free(map);
 }
 
 void test_bitmaps(void **state) {
