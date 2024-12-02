@@ -177,6 +177,8 @@ struct td_vbd_request {
 	int                         num_retries;
 	struct timeval		    ts;
 	struct timeval              last_try;
+	/* When "reading-through" the local cache, don't write back to the source */
+	bool                        skip_mirror;
 
 	td_vbd_t                   *vbd;
 	struct list_head            next;

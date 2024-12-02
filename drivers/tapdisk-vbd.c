@@ -1552,7 +1552,9 @@ tapdisk_vbd_issue_request(td_vbd_t *vbd, td_vbd_request_t *vreq)
 		vreq->secs_pending += iov->secs;
 		vbd->secs_pending  += iov->secs;
 		if (vbd->secondary_mode == TD_VBD_SECONDARY_MIRROR &&
-		    vreq->op == TD_OP_WRITE) {
+		    vreq->op == TD_OP_WRITE &&
+			likely(vreq->skip_mirror == false))
+		{
 			vreq->secs_pending += iov->secs;
 			vbd->secs_pending  += iov->secs;
 		}
@@ -1560,18 +1562,23 @@ tapdisk_vbd_issue_request(td_vbd_t *vbd, td_vbd_request_t *vreq)
 		switch (vreq->op) {
 		case TD_OP_WRITE:
 			treq.op = TD_OP_WRITE;
-                        vbd->vdi_stats.stats->write_reqs_submitted++;
+			vbd->vdi_stats.stats->write_reqs_submitted++;
 			/*
-			 * it's important to queue the mirror request before 
-			 * queuing the main one. If the main image runs into 
-			 * ENOSPC, the mirroring could be disabled before 
-			 * td_queue_write returns, so if the mirror request was 
-			 * queued after (which would then not happen), we'd 
-			 * lose that write and cause the process to hang with 
-			 * unacknowledged writes
+			 * it's important to queue the mirror request before
+			 * queuing the main one. If the main image runs into
+			 * ENOSPC, the mirroring could be disabled before
+			 * td_queue_write returns, so if the mirror request was
+			 * queued after (which would then not happen), we'd
+			 * lose that write and cause the process to hang with
+			 * unacknowledged writes.
+			 *
+			 * Skip when lcache is storing a read-through.
 			 */
-			if (vbd->secondary_mode == TD_VBD_SECONDARY_MIRROR)
-				queue_mirror_req(vbd, treq);
+			if (vbd->secondary_mode == TD_VBD_SECONDARY_MIRROR &&
+				likely(vreq->skip_mirror == false)) {
+					queue_mirror_req(vbd, treq);
+			}
+
 			td_queue_write(treq.image, treq);
 			break;
 
