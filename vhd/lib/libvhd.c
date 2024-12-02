@@ -2857,7 +2857,10 @@ vhd_initialize_footer(vhd_context_t *ctx, int type, uint64_t size)
 	ctx->footer.type         = type;
 	ctx->footer.saved        = 0;
 	ctx->footer.data_offset  = 0xFFFFFFFFFFFFFFFFULL;
-	safe_strncpy(ctx->footer.crtr_app, "tap", sizeof(ctx->footer.crtr_app));
+	ctx->footer.crtr_app[0]  = 't';
+	ctx->footer.crtr_app[1]  = 'a';
+	ctx->footer.crtr_app[2]  = 'p';
+	ctx->footer.crtr_app[3]  = '\0';
 	uuid_generate(ctx->footer.uuid);
 }
 
