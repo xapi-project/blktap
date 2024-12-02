@@ -284,6 +284,7 @@ lcache_store_read(td_lcache_t *cache, td_lcache_req_t *req)
 	vreq->iovcnt = 1;
 	vreq->cb     = __lcache_write_cb;
 	vreq->token  = cache;
+	vreq->skip_mirror = true;
 
 	vbd = req->treq.vreq->vbd;
 
