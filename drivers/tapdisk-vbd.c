@@ -43,6 +43,7 @@
 #include <sys/ioctl.h>
 #include <sys/stat.h>
 #include <sys/types.h>
+#include <sys/file.h>
 
 #include "debug.h"
 #include "libvhd.h"
@@ -664,6 +665,55 @@ fail:
 	return err;
 }
 
+static int
+open_vbd_marker(int id)
+{
+   char *path = NULL;
+   int err, fid;
+
+   err = asprintf(&path, "%s/tapdisk-%d", BLKTAP2_NP_RUN_DIR, id);
+   if (err == -1) {
+       return -errno;
+   }
+
+   fid = open(path, O_RDONLY, 0600);
+   if (fid == -1) {
+       err = -errno;
+       EPRINTF("Failed to open VBD marker file for %d\n", id);
+       goto out;
+   }
+
+   return fid;
+
+out:
+   if (path) {
+       free(path);
+   }
+   return err;
+}
+
+void tapdisk_vbd_unlock(td_vbd_t *vbd)
+{
+   flock(vbd->lock_fd, LOCK_UN);
+   close(vbd->lock_fd);
+}
+
+int tapdisk_vbd_lock(td_vbd_t *vbd)
+{
+   int fid;
+
+   fid = open_vbd_marker(vbd->uuid);
+   if (fid < 0) {
+       /* Already logged */
+       return -1;
+   }
+
+   vbd->lock_fd = fid;
+   flock(vbd->lock_fd, LOCK_EX);
+
+   return 0;
+}
+
 /*
 int
 tapdisk_vbd_open(td_vbd_t *vbd, const char *name,
@@ -741,6 +791,7 @@ tapdisk_vbd_shutdown(td_vbd_t *vbd)
 		vbd->kicked);
 
 	tapdisk_vbd_close_vdi(vbd);
+	tapdisk_vbd_unlock(vbd);
 	tapdisk_server_remove_vbd(vbd);
 	tapdisk_vbd_free(vbd);
 
@@ -842,12 +893,6 @@ tapdisk_vbd_retry_needed(td_vbd_t *vbd)
 {
 	return !(list_empty(&vbd->failed_requests) &&
 		 list_empty(&vbd->new_requests));
-}
-
-int
-tapdisk_vbd_lock(td_vbd_t *vbd)
-{
-	return 0;
 }
 
 int

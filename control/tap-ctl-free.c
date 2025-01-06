@@ -37,8 +37,7 @@
 #include <fcntl.h>
 #include <stdlib.h>
 #include <unistd.h>
-#include <getopt.h>
-#include <sys/ioctl.h>
+#include <sys/file.h>
 
 #include "tap-ctl.h"
 #include "blktap.h"
@@ -46,19 +45,60 @@
 int
 tap_ctl_free(const int minor)
 {
-	/* TO-DO: Take the lock and remove the associated marker file */
-	/* int fd, err; */
+	char *path = NULL;
+	int mfd = -1, fd, err;
 
-	/* fd = open(BLKTAP2_CONTROL_DEVICE, O_RDONLY); */
-	/* if (fd == -1) { */
-	/* 	EPRINTF("failed to open control device: %d\n", errno); */
-	/* 	return errno; */
-	/* } */
+	fd = open(BLKTAP2_NP_RUN_DIR, O_RDONLY);
+	if (fd == -1) {
+		err = -errno;
+		EPRINTF("Failed to open runtime directory %d\n", errno);
+		return err;
+	}
 
-	/* err = ioctl(fd, BLKTAP2_IOCTL_FREE_TAP, minor); */
-	/* err = (err == -1) ? -errno : 0; */
-	/* close(fd); */
+	/* The only way this can fail is with an EINTR or ENOLCK*/
+	err = flock(fd, LOCK_EX);
+	if (err == -1) {
+		err = -errno;
+		EPRINTF("Failed to lock runtime directory %d\n", errno);
+		return err;
+	}
 
-	/* return err; */
-	return 0;
+	err = asprintf(&path, "%s/tapdisk-%d", BLKTAP2_NP_RUN_DIR, minor);
+	if (err == -1) {
+		err = -errno;
+		goto out;
+	}
+	err = 0;
+
+	/* Non-Blocking lock to check it's not in use */
+	mfd = open(path, O_RDONLY);
+	if (mfd == -1) {
+		err = -errno;
+		EPRINTF("Failed to open marker file %s, %d, err=%d\n",
+			path, minor, errno);
+		goto out;
+	}
+
+	err = flock(mfd, LOCK_EX | LOCK_NB);
+	if (err == -1) {
+		err = -errno;
+		EPRINTF("Unable to lock marker file %s, err = %d\n",
+			path, errno);
+		goto out;
+	}
+
+	unlink(path);
+
+out:
+	if (path)
+		free(path);
+
+	if (mfd != -1) {
+		flock(mfd, LOCK_UN);
+		close(mfd);
+	}
+
+	flock(fd, LOCK_UN);
+	close(fd);
+	return err;
 }
