@@ -46,7 +46,6 @@
 
 #include "debug.h"
 #include "libvhd.h"
-#include "tapdisk-blktap.h"
 #include "tapdisk-image.h"
 #include "tapdisk-driver.h"
 #include "tapdisk-server.h"
@@ -469,7 +468,7 @@ static void signal_enospc(td_vbd_t *vbd)
 	int fd, err;
 	char *fn;
 
-	err = asprintf(&fn, BLKTAP2_ENOSPC_SIGNAL_FILE"%d", vbd->tap->minor);
+	err = asprintf(&fn, BLKTAP2_ENOSPC_SIGNAL_FILE"%d", vbd->uuid);
 	if (err == -1) {
 		EPRINTF("Failed to signal ENOSPC condition\n");
 		return;
@@ -643,7 +642,7 @@ tapdisk_vbd_open_vdi(td_vbd_t *vbd, const char *name, td_flag_t flags, int prt_d
 	if (err)
 		goto fail;
 
-	err = td_metrics_vdi_start(vbd->tap->minor, &vbd->vdi_stats);
+	err = td_metrics_vdi_start(vbd->uuid, &vbd->vdi_stats);
 	if (err)
 		goto fail;
 	if (tmp != vbd->name)
@@ -663,27 +662,6 @@ fail:
 	vbd->flags = 0;
 
 	return err;
-}
-
-void
-tapdisk_vbd_detach(td_vbd_t *vbd)
-{
-	td_blktap_t *tap = vbd->tap;
-
-	if (tap) {
-		tapdisk_blktap_close(tap);
-		vbd->tap = NULL;
-	}
-}
-
-int
-tapdisk_vbd_attach(td_vbd_t *vbd, const char *devname, int minor)
-{
-
-	if (vbd->tap)
-		return -EALREADY;
-
-	return tapdisk_blktap_open(devname, vbd, &vbd->tap);
 }
 
 /*
@@ -763,7 +741,6 @@ tapdisk_vbd_shutdown(td_vbd_t *vbd)
 		vbd->kicked);
 
 	tapdisk_vbd_close_vdi(vbd);
-	tapdisk_vbd_detach(vbd);
 	tapdisk_server_remove_vbd(vbd);
 	tapdisk_vbd_free(vbd);
 
@@ -1885,12 +1862,6 @@ tapdisk_vbd_stats(td_vbd_t *vbd, td_stats_t *st)
 	tapdisk_vbd_for_each_image(vbd, image, next)
 		tapdisk_image_stats(image, st);
 	tapdisk_stats_leave(st, ']');
-
-	if (vbd->tap) {
-		tapdisk_stats_field(st, "tap", "{");
-		tapdisk_blktap_stats(vbd->tap, st);
-		tapdisk_stats_leave(st, '}');
-	}
 
     /*
      * TODO Is this used by any one?

@@ -33,7 +33,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include "blktap2.h"
+#include "blktap.h"
 #include "tapback.h"
 
 char *

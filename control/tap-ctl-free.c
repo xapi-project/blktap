@@ -41,22 +41,24 @@
 #include <sys/ioctl.h>
 
 #include "tap-ctl.h"
-#include "blktap2.h"
+#include "blktap.h"
 
 int
 tap_ctl_free(const int minor)
 {
-	int fd, err;
+	/* TO-DO: Take the lock and remove the associated marker file */
+	/* int fd, err; */
 
-	fd = open(BLKTAP2_CONTROL_DEVICE, O_RDONLY);
-	if (fd == -1) {
-		EPRINTF("failed to open control device: %d\n", errno);
-		return errno;
-	}
+	/* fd = open(BLKTAP2_CONTROL_DEVICE, O_RDONLY); */
+	/* if (fd == -1) { */
+	/* 	EPRINTF("failed to open control device: %d\n", errno); */
+	/* 	return errno; */
+	/* } */
 
-	err = ioctl(fd, BLKTAP2_IOCTL_FREE_TAP, minor);
-	err = (err == -1) ? -errno : 0;
-	close(fd);
+	/* err = ioctl(fd, BLKTAP2_IOCTL_FREE_TAP, minor); */
+	/* err = (err == -1) ? -errno : 0; */
+	/* close(fd); */
 
-	return err;
+	/* return err; */
+	return 0;
 }

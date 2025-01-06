@@ -1431,13 +1431,13 @@ tapdisk_nbdserver_alloc(td_vbd_t *vbd, td_disk_info_t info, nbd_protocol_style_t
 
 	switch (style) {
 		case TAPDISK_NBD_PROTOCOL_OLD:
-			if (td_metrics_nbd_start_old(&server->nbd_stats, server->vbd->tap->minor)) {
+			if (td_metrics_nbd_start_old(&server->nbd_stats, server->vbd->uuid)) {
 				ERR("failed to create metrics file for nbdserver");
 				goto fail;
 			}
 			break;
 		case TAPDISK_NBD_PROTOCOL_NEW:
-			if (td_metrics_nbd_start_new(&server->nbd_stats, server->vbd->tap->minor)) {
+			if (td_metrics_nbd_start_new(&server->nbd_stats, server->vbd->uuid)) {
 				ERR("failed to create metrics file for nbdserver");
 				goto fail;
 			}
