@@ -472,32 +472,6 @@ tapback_backend_run(backend_t *backend)
     return err;
 }
 
-static int
-get_tapdev_major()
-{
-    FILE *devices;
-    char buf[128], name[128];
-    int major, err = -ENODEV;
-
-    devices = fopen("/proc/devices", "r");
-    if (!devices)
-        return -errno;
-
-    while (fgets(buf, sizeof(buf), devices)){
-        memset(name, 0, sizeof(name));
-        if (sscanf(buf, "%d %127c", &major, name) == 2){
-            if (!strcmp(name, BLKTAP2_DEVNAME"\n")){
-                tapdev_major = major;
-                err = 0;
-                break;
-            }
-        }
-    }
-
-    fclose(devices);
-    return err;
-}
-
 /**
  * Print tapback's usage instructions.
  */
@@ -592,13 +566,6 @@ int main(int argc, char **argv)
 		err = EINVAL;
 		goto fail;
 	}
-
-    if (get_tapdev_major()) {
-        WARN(NULL, "Unable to find blktap2 device major\n");
-        err = EINVAL;
-        goto fail;
-    }
-    DBG(NULL, "Identified blktap2 device major = %d\n", tapdev_major);
 
     prog = basename(argv[0]);
 
