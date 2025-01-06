@@ -16,6 +16,8 @@ Requires(post): systemd
 Requires(preun): systemd
 Requires(postun): systemd
 
+Conflicts: sm < 4.0.0
+
 %description
 Blktap creates kernel block devices which realize I/O requests to
 processes implementing virtual hard disk images entirely in user
