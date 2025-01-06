@@ -40,7 +40,7 @@
 #include <glob.h>
 
 #include "tap-ctl.h"
-#include "blktap2.h"
+#include "blktap.h"
 #include "list.h"
 
 static tap_list_t*

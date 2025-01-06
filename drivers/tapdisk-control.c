@@ -51,7 +51,6 @@
 #include "list.h"
 #include "tapdisk.h"
 #include "tapdisk-vbd.h"
-#include "tapdisk-blktap.h"
 #include "tapdisk-utils.h"
 #include "tapdisk-server.h"
 #include "tapdisk-message.h"
@@ -569,7 +568,7 @@ tapdisk_control_list(struct tapdisk_ctl_conn *conn,
 
 	list_for_each_entry(vbd, head, next) {
 		response->u.list.count   = count--;
-		response->u.list.minor   = vbd->tap ? vbd->tap->minor : -1;
+		response->u.list.minor   = vbd->uuid;
 		response->u.list.state   = vbd->state;
 		response->u.list.path[0] = 0;
 
@@ -606,7 +605,7 @@ tapdisk_control_attach_vbd(struct tapdisk_ctl_conn *conn,
 {
 	char *devname = NULL;
 	td_vbd_t *vbd;
-	int minor, err;
+	int minor, err = 0;
 
     ASSERT(conn);
     ASSERT(request);
@@ -634,19 +633,6 @@ tapdisk_control_attach_vbd(struct tapdisk_ctl_conn *conn,
 		goto out;
 	}
 
-	err = asprintf(&devname, BLKTAP2_RING_DEVICE"%d", minor);
-	if (err == -1) {
-		devname = NULL;
-		err = -ENOMEM;
-		goto fail_vbd;
-	}
-
-	err = tapdisk_vbd_attach(vbd, devname, minor);
-	if (err) {
-		ERR(err, "failure attaching to %d\n", minor);
-		goto fail_vbd;
-	}
-
 	tapdisk_server_add_vbd(vbd);
 
 out:
@@ -659,11 +645,6 @@ out:
 	}
 
 	return err;
-
-fail_vbd:
-	tapdisk_vbd_detach(vbd);
-	free(vbd);
-	goto out;
 }
 
 static int
@@ -687,8 +668,6 @@ tapdisk_control_detach_vbd(struct tapdisk_ctl_conn *conn,
 		err = -EBUSY;
 		goto out;
 	}
-
-	tapdisk_vbd_detach(vbd);
 
 	if (list_empty(&vbd->images)) {
 		tapdisk_server_remove_vbd(vbd);
@@ -718,11 +697,6 @@ tapdisk_control_open_image(struct tapdisk_ctl_conn *conn,
 
 	vbd = tapdisk_server_get_vbd(request->cookie);
 	if (!vbd) {
-		err = -EINVAL;
-		goto out;
-	}
-
-	if (!vbd->tap) {
 		err = -EINVAL;
 		goto out;
 	}
@@ -822,14 +796,6 @@ tapdisk_control_open_image(struct tapdisk_ctl_conn *conn,
 		goto fail_close;
 	}
 
-	err = tapdisk_blktap_create_device(vbd->tap, &vbd->disk_info,
-					   !!(flags & TD_OPEN_RDONLY));
-	if (err && err != -EEXIST) {
-		err = -errno;
-		EPRINTF("create device failed: %d\n", err);
-		goto fail_close;
-	}
-
 	if (request->u.params.req_timeout > 0) {
 		vbd->req_timeout = request->u.params.req_timeout;
 		DPRINTF("Set request timeout to %d s\n", vbd->req_timeout);
@@ -897,50 +863,34 @@ tapdisk_control_close_image(struct tapdisk_ctl_conn *conn,
 	if (vbd->nbdserver_new)
 		tapdisk_nbdserver_pause(vbd->nbdserver_new, true);
 
-    err = 0;
-    list_for_each_entry_safe(blkif, _blkif, &vbd->rings, entry) {
+	err = 0;
+	list_for_each_entry_safe(blkif, _blkif, &vbd->rings, entry) {
+		DPRINTF("implicitly disconnecting ring %p domid=%d, devid=%d\n",
+				blkif, blkif->domid, blkif->devid);
 
-        DPRINTF("implicitly disconnecting ring %p domid=%d, devid=%d\n",
-                blkif, blkif->domid, blkif->devid);
+		err = tapdisk_xenblkif_disconnect(blkif->domid, blkif->devid);
+		if (unlikely(err)) {
+			EPRINTF("failed to disconnect ring %p: %s\n",
+					blkif, strerror(-err));
+			break;
+		}
+	}
 
-        err = tapdisk_xenblkif_disconnect(blkif->domid, blkif->devid);
-        if (unlikely(err)) {
-            EPRINTF("failed to disconnect ring %p: %s\n",
-                    blkif, strerror(-err));
-            break;
-        }
-    }
+	if (unlikely(err))
+		goto out;
 
-    if (unlikely(err))
-        goto out;
+	if(request->type != TAPDISK_MESSAGE_FORCE_SHUTDOWN) {
 
-    if(request->type != TAPDISK_MESSAGE_FORCE_SHUTDOWN) {
-
-        /*
-         * Wait for requests against dead rings to complete, otherwise, if we
-         * proceed with tearing down the VBD, we will free memory that will later
-         * be accessed by these requests, and this will lead to a crash.
-         */
-        while (unlikely(tapdisk_vbd_contains_dead_rings(vbd)))
-            tapdisk_server_iterate();
-    }
-    else {
-        DPRINTF("Ignoring dead rings in forced shutdown mode\n");
-    }
-
-	if (!err) {
-		do {
-			err = tapdisk_blktap_remove_device(vbd->tap);
-
-			if (err == -EBUSY)
-				EPRINTF("device %s still open\n", vbd->name);
-
-			if (!err || err != -EBUSY)
-				break;
-
+		/*
+		 * Wait for requests against dead rings to complete, otherwise, if we
+		 * proceed with tearing down the VBD, we will free memory that will later
+		 * be accessed by these requests, and this will lead to a crash.
+		 */
+		while (unlikely(tapdisk_vbd_contains_dead_rings(vbd)))
 			tapdisk_server_iterate();
-
-		} while (conn->fd >= 0);
+	}
+	else {
+		DPRINTF("Ignoring dead rings in forced shutdown mode\n");
 	}
 
 	if (err)
@@ -975,11 +925,6 @@ tapdisk_control_close_image(struct tapdisk_ctl_conn *conn,
 	 */
 	free(vbd->name);
 	vbd->name = NULL;
-
-	if (!vbd->tap) {
-		tapdisk_server_remove_vbd(vbd);
-		tapdisk_vbd_free(vbd);
-	}
 
 out:
 	response->cookie = request->cookie;

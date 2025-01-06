@@ -44,16 +44,16 @@
 #include "test-suites.h"
 
 #include "tap-ctl.h"
-#include "blktap2.h"
+#include "blktap.h"
 
 void test_tap_ctl_list_success_no_results(void **state)
 {
 	int err;
 	struct list_head list = LIST_HEAD_INIT(list);
 
-	expect_string(__wrap_glob, pattern, "/run/nonpersistent/tapdisk/tapdisk*");
+	expect_string(__wrap_glob, pattern, "/run/blktap-control/tapdisk/tapdisk*");
 	will_return(__wrap_glob, GLOB_NOMATCH);
-	expect_string(__wrap_glob, pattern, "/var/run/blktap-control/ctl*");
+	expect_string(__wrap_glob, pattern, "/run/blktap-control/ctl*");
 	will_return(__wrap_glob, GLOB_NOMATCH);
 
 	err = tap_ctl_list(&list);
@@ -69,7 +69,7 @@ void test_tap_ctl_list_success_one_minor_no_td(void **state)
 	tap_list_t *entry;
 	struct list_head list = LIST_HEAD_INIT(list);
 
-	char *sys_glob_path = "/run/nonpersistent/tapdisk/tapdisk-0";
+	char *sys_glob_path = "/run/blktap-control/tapdisk/tapdisk-0";
 	char *sys_glob_data;
 	char **sys_pathv = &sys_glob_data;
 
@@ -77,11 +77,11 @@ void test_tap_ctl_list_success_one_minor_no_td(void **state)
 	memset(sys_glob_data, 0, strlen(sys_glob_path) + 2);
 	strcpy(sys_glob_data, sys_glob_path);
 
-	expect_string(__wrap_glob, pattern, "/run/nonpersistent/tapdisk/tapdisk*");
+	expect_string(__wrap_glob, pattern, "/run/blktap-control/tapdisk/tapdisk*");
 	will_return(__wrap_glob, 0);
 	will_return(__wrap_glob, 1);
 	will_return(__wrap_glob, sys_pathv);
-	expect_string(__wrap_glob, pattern, "/var/run/blktap-control/ctl*");
+	expect_string(__wrap_glob, pattern, "/run/blktap-control/ctl*");
 	will_return(__wrap_glob, GLOB_NOMATCH);
 
 	/* Call API */
@@ -104,12 +104,12 @@ void test_tap_ctl_list_success_one_td_no_minor_no_path(void **state)
 
 	pid_t test_pid = 1236;
 	int ipc_socket = 7;
-	char *expected_sock_name = "/var/run/blktap-control/ctl1236";
+	char *expected_sock_name = "/run/blktap-control/ctl1236";
 	tapdisk_message_t write_message;
 	tapdisk_message_t *read_message;
 	struct mock_ipc_params *pid_ipc_params;
 	struct mock_ipc_params *list_ipc_params;
-	char *glob_path = "/var/run/blktap-control/ctl1236";
+	char *glob_path = "/run/blktap-control/ctl1236";
 	char *glob_data;
 	char **pathv = &glob_data;
 
@@ -117,9 +117,9 @@ void test_tap_ctl_list_success_one_td_no_minor_no_path(void **state)
 	memset(glob_data, 0, strlen(glob_path) + 2);
 	strcpy(glob_data, glob_path);
 
-	expect_string(__wrap_glob, pattern, "/run/nonpersistent/tapdisk/tapdisk*");
+	expect_string(__wrap_glob, pattern, "/run/blktap-control/tapdisk/tapdisk*");
 	will_return(__wrap_glob, GLOB_NOMATCH);
-	expect_string(__wrap_glob, pattern, "/var/run/blktap-control/ctl*");
+	expect_string(__wrap_glob, pattern, "/run/blktap-control/ctl*");
 	will_return(__wrap_glob, 0);
 	will_return(__wrap_glob, 1);
 	will_return(__wrap_glob, pathv);
@@ -187,7 +187,7 @@ void test_tap_ctl_list_success_one_td_one_minor_no_path(void **state)
 
 	pid_t test_pid = 1236;
 	int ipc_socket = 7;
-	char *expected_sock_name = "/var/run/blktap-control/ctl1236";
+	char *expected_sock_name = "/run/blktap-control/ctl1236";
 	tapdisk_message_t write_message;
 	tapdisk_message_t *read_message;
 	struct mock_ipc_params *pid_ipc_params;
@@ -195,7 +195,7 @@ void test_tap_ctl_list_success_one_td_one_minor_no_path(void **state)
 	char *sys_glob_path = "/run/nonpersistent/tapdisk/tapdisk-0";
 	char *sys_glob_data;
 	char **sys_pathv = &sys_glob_data;
-	char *glob_path = "/var/run/blktap-control/ctl1236";
+	char *glob_path = "/run/blktap-control/ctl1236";
 	char *glob_data;
 	char **pathv = &glob_data;
 
@@ -207,11 +207,11 @@ void test_tap_ctl_list_success_one_td_one_minor_no_path(void **state)
 	memset(glob_data, 0, strlen(glob_path) + 2);
 	strcpy(glob_data, glob_path);
 
-	expect_string(__wrap_glob, pattern, "/run/nonpersistent/tapdisk/tapdisk*");
+	expect_string(__wrap_glob, pattern, "/run/blktap-control/tapdisk/tapdisk*");
 	will_return(__wrap_glob, 0);
 	will_return(__wrap_glob, 1);
 	will_return(__wrap_glob, sys_pathv);
-	expect_string(__wrap_glob, pattern, "/var/run/blktap-control/ctl*");
+	expect_string(__wrap_glob, pattern, "/run/blktap-control/ctl*");
 	will_return(__wrap_glob, 0);
 	will_return(__wrap_glob, 1);
 	will_return(__wrap_glob, pathv);
@@ -279,15 +279,15 @@ void test_tap_ctl_list_success(void **state)
 
 	pid_t test_pid = 1236;
 	int ipc_socket = 7;
-	char *expected_sock_name = "/var/run/blktap-control/ctl1236";
+	char *expected_sock_name = "/run/blktap-control/ctl1236";
 	tapdisk_message_t write_message;
 	tapdisk_message_t *read_message;
 	struct mock_ipc_params *pid_ipc_params;
 	struct mock_ipc_params *list_ipc_params;
-	char *sys_glob_path = "/run/nonpersistent/tapdisk/tapdisk-0";
+	char *sys_glob_path = "/run/blktap-control/tapdisk/tapdisk-0";
 	char *sys_glob_data;
 	char **sys_pathv = &sys_glob_data;
-	char *glob_path = "/var/run/blktap-control/ctl1236";
+	char *glob_path = "/run/blktap-control/ctl1236";
 	char *glob_data;
 	char **pathv = &glob_data;
 	char *vdi_path =
@@ -302,11 +302,11 @@ void test_tap_ctl_list_success(void **state)
 	memset(glob_data, 0, strlen(glob_path) + 2);
 	strcpy(glob_data, glob_path);
 
-	expect_string(__wrap_glob, pattern, "/run/nonpersistent/tapdisk/tapdisk*");
+	expect_string(__wrap_glob, pattern, "/run/blktap-control/tapdisk/tapdisk*");
 	will_return(__wrap_glob, 0);
 	will_return(__wrap_glob, 1);
 	will_return(__wrap_glob, sys_pathv);
-	expect_string(__wrap_glob, pattern, "/var/run/blktap-control/ctl*");
+	expect_string(__wrap_glob, pattern, "/run/blktap-control/ctl*");
 	will_return(__wrap_glob, 0);
 	will_return(__wrap_glob, 1);
 	will_return(__wrap_glob, pathv);

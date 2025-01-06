@@ -36,7 +36,7 @@
 #include "tapdisk.h"
 #include "scheduler.h"
 #include "tapdisk-image.h"
-#include "tapdisk-blktap.h"
+#include "tapdisk-metrics.h"
 #include "td-blkif.h"
 
 #define TD_VBD_REQUEST_TIMEOUT      120
@@ -81,8 +81,6 @@ struct td_vbd_handle {
 	 * type:/path/to/file
 	 */
 	char                       *name;
-
-	td_blktap_t                *tap;
 
 	td_uuid_t                   uuid;
 
@@ -207,9 +205,6 @@ int tapdisk_vbd_close(td_vbd_t *);
 int tapdisk_vbd_open_vdi(td_vbd_t * vbd, const char *params, td_flag_t flags,
         int prt_devnum);
 void tapdisk_vbd_close_vdi(td_vbd_t *);
-
-int tapdisk_vbd_attach(td_vbd_t *, const char *, int);
-void tapdisk_vbd_detach(td_vbd_t *);
 
 int tapdisk_vbd_queue_request(td_vbd_t *, td_vbd_request_t *);
 void tapdisk_vbd_forward_request(td_request_t);

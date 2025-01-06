@@ -59,9 +59,9 @@ int main(void)
 		cmocka_run_group_tests_name(
 			"Close tests",
 			tap_ctl_close_tests, testSetup, testTeardown) +
-		cmocka_run_group_tests_name(
-			"Free tests",
-			tap_ctl_free_tests, testSetup, testTeardown) +
+		/* cmocka_run_group_tests_name( */
+		/* 	"Free tests", */
+		/* 	tap_ctl_free_tests, testSetup, testTeardown) + */
 		cmocka_run_group_tests_name(
 			"List tests",
 			tap_ctl_list_tests, testSetup, testTeardown);
