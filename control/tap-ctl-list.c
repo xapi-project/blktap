@@ -133,7 +133,7 @@ _tap_ctl_find_minors(struct list_head *list)
 
 	INIT_LIST_HEAD(list);
 
-	pattern = BLKTAP2_SYSFS_DIR"/blktap*";
+	pattern = BLKTAP2_NP_RUN_DIR"/tapdisk*";
 
 	err = glob(pattern, 0, NULL, &glbuf);
 	switch (err) {
@@ -156,7 +156,7 @@ _tap_ctl_find_minors(struct list_head *list)
 			goto fail;
 		}
 
-		n = sscanf(glbuf.gl_pathv[i], BLKTAP2_SYSFS_DIR"/blktap!blktap%d", &tl->minor);
+		n = sscanf(glbuf.gl_pathv[i], BLKTAP2_NP_RUN_DIR"/tapdisk-%d", &tl->minor);
 		if (n != 1) {
 			_tap_list_free(tl);
 			continue;

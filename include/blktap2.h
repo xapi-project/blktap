@@ -49,7 +49,7 @@
 #define BLKTAP2_IOCTL_RESUME           206
 #define BLKTAP2_IOCTL_REMOVE_DEVICE    207
 
-#define BLKTAP2_SYSFS_DIR              "/sys/class/blktap2"
+#define BLKTAP2_NP_RUN_DIR              "/run/nonpersistent/tapdisk"
 #define BLKTAP2_CONTROL_NAME           "blktap/control"
 #define BLKTAP2_CONTROL_DIR            "/var/run/blktap-control"
 #define BLKTAP2_CONTROL_SOCKET         "ctl"

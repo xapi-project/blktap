@@ -63,7 +63,6 @@ int tap_ctl_kernel_version(int *major, int *minor);
 
 int tap_ctl_check_blktap(const char **message);
 int tap_ctl_check_version(const char **message);
-int tap_ctl_check(const char **message);
 
 int tap_ctl_connect(const char *path, int *socket);
 int tap_ctl_connect_id(int id, int *socket);
