@@ -2,6 +2,7 @@
 AM_CFLAGS  = -Wall
 AM_CFLAGS += -Werror
 AM_CFLAGS += $(if $(GCOV),-fprofile-dir=/tmp/coverage/blktap/control -fprofile-arcs -ftest-coverage)
+AM_CFLAGS += -g
 
 AM_CPPFLAGS  = -D_GNU_SOURCE
 AM_CPPFLAGS += -DTAPCTL

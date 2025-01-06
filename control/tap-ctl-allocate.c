@@ -34,18 +34,12 @@
 
 #include <stdio.h>
 #include <errno.h>
-#include <fcntl.h>
 #include <stdlib.h>
 #include <unistd.h>
 #include <string.h>
-#include <getopt.h>
-#include <libgen.h>
 #include <sys/file.h>
 #include <sys/stat.h>
-#include <sys/sysmacros.h>
 #include <sys/types.h>
-#include <sys/ioctl.h>
-#include <linux/major.h>
 
 #include "tap-ctl.h"
 #include "blktap.h"
@@ -62,7 +56,7 @@ tap_ctl_prepare_directory(const char *dir)
 
 	name = strdup(dir);
 	if (!name)
-		return ENOMEM;
+		return -errno;
 
 	start = name;
 
@@ -73,8 +67,8 @@ tap_ctl_prepare_directory(const char *dir)
 
 		err = mkdir(name, 0700);
 		if (err && errno != EEXIST) {
+			err = -errno;
 			PERROR("mkdir %s", name);
-			err = errno;
 			EPRINTF("mkdir failed with %d\n", err);
 			break;
 		}
@@ -116,19 +110,72 @@ tap_ctl_check_environment(void)
 }
 
 static int
-tap_ctl_allocate_device(int *minor, char **devname)
+tap_ctl_allocate_minor(int *minor, char **minor_name)
 {
-	*minor = -1;
-	if (!devname)
-		return EINVAL;
+	char *path = NULL;
+	struct stat st_buf;
+	int err, id, st, f, fid;
 
-	/* TO-DO: get this from a file based resource */
-	*minor = 1;
-	return 0;
+	*minor = -1;
+
+	f = open(BLKTAP2_NP_RUN_DIR, O_RDONLY);
+	if (f == -1) {
+		err = -errno;
+		EPRINTF("Failed to open runtime directory %d\n", errno);
+		return err;
+	}
+
+	/* The only way this can fail is with an EINTR or ENOLCK*/
+	err = flock(f, LOCK_EX);
+	if (err == -1) {
+		err = -errno;
+		EPRINTF("Failed to lock runtime directory %d\n", errno);
+		return err;
+	}
+
+	for (id=0; id<MAX_ID; id++) {
+		err = asprintf(&path, "%s/tapdisk-%d", BLKTAP2_NP_RUN_DIR, id);
+		if (err == -1) {
+			err = -errno;
+			goto out;
+		}
+
+		st = stat(path, &st_buf);
+		if (st == 0) {
+			/* Already exists */
+			free(path);
+			path = NULL;
+			continue;
+		}
+		if (errno != ENOENT) {
+			err = -errno;
+			free(path);
+			goto out;
+		}
+
+		fid = open(path, O_CREAT | O_WRONLY, 0600);
+		if (fid == -1) {
+			err = -errno;
+			EPRINTF("Failed to create ID file %s, %d\n", path, errno);
+			free(path);
+			goto out;
+		}
+		close(fid);
+
+		*minor = id;
+		*minor_name = path;
+		break;
+	}
+
+	err = 0;
+out:
+	flock(f, LOCK_UN);
+	close(f);
+	return err;
 }
 
 int
-tap_ctl_allocate(int *minor, char **devname)
+tap_ctl_allocate(int *minor, char **minor_name)
 {
 	int err;
 
@@ -140,7 +187,7 @@ tap_ctl_allocate(int *minor, char **devname)
 		return err;
 	}
 
-	err = tap_ctl_allocate_device(minor, devname);
+	err = tap_ctl_allocate_minor(minor, minor_name);
 	if (err) {
 		EPRINTF("tap-ctl allocate failed to allocate device");
 		return err;

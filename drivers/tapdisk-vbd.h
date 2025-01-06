@@ -165,6 +165,8 @@ struct td_vbd_handle {
 	struct td_vbd_encryption   encryption;
 
 	bool                       watchdog_warned;
+
+	int                        lock_fd;
 };
 
 #define tapdisk_vbd_for_each_request(vreq, tmp, list)	                \
@@ -205,6 +207,9 @@ int tapdisk_vbd_close(td_vbd_t *);
 int tapdisk_vbd_open_vdi(td_vbd_t * vbd, const char *params, td_flag_t flags,
         int prt_devnum);
 void tapdisk_vbd_close_vdi(td_vbd_t *);
+
+int tapdisk_vbd_lock(td_vbd_t *);
+void tapdisk_vbd_unlock(td_vbd_t *);
 
 int tapdisk_vbd_queue_request(td_vbd_t *, td_vbd_request_t *);
 void tapdisk_vbd_forward_request(td_request_t);

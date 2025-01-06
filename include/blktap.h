@@ -37,4 +37,7 @@
 #define BLKTAP2_CONTROL_SOCKET         "ctl"
 #define BLKTAP2_ENOSPC_SIGNAL_FILE     "/run/tapdisk-enospc"
 
+/* Maximum number of possible minor ids, to match old kernel definition */
+#define MAX_ID  16384
+
 #endif /* _TD_BLKTAP_H_ */
