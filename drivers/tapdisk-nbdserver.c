@@ -1029,6 +1029,7 @@ void
 tapdisk_nbdserver_handshake_cb(event_id_t id, char mode, void *data)
 {
 	uint32_t cflags = 0;
+	int tmp_fd;
 
 	td_nbdserver_client_t *client = (td_nbdserver_client_t*)data;
 	td_nbdserver_t *server = client->server;
@@ -1036,7 +1037,8 @@ tapdisk_nbdserver_handshake_cb(event_id_t id, char mode, void *data)
 	int rc = recv_fully_or_fail(server->handshake_fd, &cflags, sizeof(cflags));
 	if(rc < 0) {
 		ERR("Could not receive client flags");
-		return;
+		close(server->handshake_fd);
+		goto out;
 	}
 
 	cflags = be32toh (cflags);
@@ -1048,6 +1050,15 @@ tapdisk_nbdserver_handshake_cb(event_id_t id, char mode, void *data)
 		close(server->handshake_fd);
 	}
 
+	INFO("About to enable client on fd %d", client->client_fd);
+	if (tapdisk_nbdserver_enable_client(client) < 0) {
+		ERR("Error enabling client");
+		tmp_fd = client->client_fd;
+		tapdisk_nbdserver_free_client(client);
+		close(tmp_fd);
+	}
+
+out:
 	tapdisk_server_unregister_event(id);
 }
 
@@ -1156,13 +1167,6 @@ tapdisk_nbdserver_newclient_fd_new_fixed(td_nbdserver_t *server, int new_fd)
 		tapdisk_nbdserver_free_client(client);
 		close(new_fd);
 		return;
-	}
-
-	INFO("About to enable client on fd %d", client->client_fd);
-	if (tapdisk_nbdserver_enable_client(client) < 0) {
-		ERR("Error enabling client");
-		tapdisk_nbdserver_free_client(client);
-		close(new_fd);
 	}
 }
 
@@ -1402,7 +1406,7 @@ tapdisk_nbdserver_newclient_unix(event_id_t id, char mode, void *data)
 		return;
 	}
 
-	INFO("server: got connection\n");
+	INFO("server: got connection fd = %d\n", new_fd);
 
 	tapdisk_nbdserver_newclient_fd_new_fixed(server, new_fd);
 }
