@@ -1,6 +1,6 @@
 AM_CFLAGS  = -Wall
 AM_CFLAGS += -Werror
-AM_CFLAGS += $(if $(GCOV),-fprofile-dir=/tmp/coverage/blktap/cbt -fprofile-arcs -ftest-coverage)
+AM_CFLAGS += $(if $(GCOV),-fprofile-arcs -ftest-coverage)
 
 AM_CPPFLAGS = -I$(top_srcdir)/include
 

@@ -1,6 +1,6 @@
 AM_CFLAGS  = -Wall
 AM_CFLAGS += -Werror
-AM_CFLAGS += -fprofile-dir=/tmp/coverage/blktap/mockatests/vhd -fprofile-arcs -ftest-coverage
+AM_CFLAGS += -fprofile-arcs -ftest-coverage
 AM_CFLAGS += -Og -fno-inline-functions -g
 AM_CFLAGS += -Doff64_t=__off64_t
 

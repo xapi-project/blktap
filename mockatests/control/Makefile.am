@@ -1,6 +1,6 @@
 AM_CFLAGS  = -Wall
 AM_CFLAGS += -Werror
-AM_CFLAGS += -fprofile-dir=/tmp/coverage/blktap/mockatests/control -fprofile-arcs -ftest-coverage
+AM_CFLAGS += -fprofile-arcs -ftest-coverage
 AM_CFLAGS += -Og -fno-inline -g
 
 AM_CPPFLAGS = -I$(top_srcdir)/include -I$(top_srcdir)/control -I../include

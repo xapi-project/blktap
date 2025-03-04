@@ -1,7 +1,7 @@
 
 AM_CFLAGS  = -Wall
 AM_CFLAGS += -Werror
-AM_CFLAGS += $(if $(GCOV),-fprofile-dir=/tmp/coverage/blktap/lvm -fprofile-arcs -ftest-coverage)
+AM_CFLAGS += $(if $(GCOV),-fprofile-arcs -ftest-coverage)
 
 sbin_PROGRAMS = lvm-util
 
