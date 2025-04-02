@@ -915,7 +915,7 @@ __tapdisk_nbdserver_structured_read_cb(
 	interval = timeval_to_us(&now) - timeval_to_us(&vreq->ts);
 
 	if (interval > 20 * 1000 * 1000) {
-		INFO("request took %llu microseconds to complete", interval);
+		INFO("Structured read took %llu microseconds to complete", interval);
 	}
 
 	if (client->client_fd < 0) {
@@ -980,7 +980,7 @@ __tapdisk_nbdserver_request_cb(td_vbd_request_t *vreq, int error,
 	interval = timeval_to_us(&now) - timeval_to_us(&vreq->ts);
 
 	if (interval > 20 * 1000 * 1000) {
-		INFO("request took %llu microseconds to complete", interval);
+		INFO("Op %d request took %llu microseconds to complete", vreq->op, interval);
 	}
 
 	if (client->client_fd < 0) {
