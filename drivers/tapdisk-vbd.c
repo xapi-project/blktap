@@ -1277,9 +1277,10 @@ __tapdisk_vbd_complete_td_request(td_vbd_t *vbd, td_vbd_request_t *vreq,
 			if (!vreq->error &&
 			    err != vreq->prev_error)
 				tlog_drv_error(image->driver, err,
-					       "req %s: %s 0x%04x secs @ 0x%08"PRIx64" - %s",
+					       "req %s: %s %s 0x%04x secs @ 0x%08"PRIx64" - %s",
 					       vreq->name,
 					       op_strings[treq.op],
+						   image->name,
 					       treq.secs, treq.sec, strerror(abs(err)));
 			vbd->errors++;
 		}

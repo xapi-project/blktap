@@ -183,6 +183,7 @@ td_queue_write(td_image_t *image, td_request_t treq)
 	}
 
 	if (!driver->ops->td_queue_write) {
+		EPRINTF("Driver %s does not support write", driver->name);
 		err = -EOPNOTSUPP;
 		goto fail;
 	}
@@ -217,6 +218,7 @@ td_queue_read(td_image_t *image, td_request_t treq)
 	}
 
 	if (!driver->ops->td_queue_read) {
+		EPRINTF("Driver %s does not support read", driver->name);
 		err = -EOPNOTSUPP;
 		goto fail;
 	}
@@ -251,6 +253,7 @@ td_queue_block_status(td_image_t *image, td_request_t *treq)
 	}
 
 	if (!driver->ops->td_queue_block_status) {
+		EPRINTF("Driver %s does not support block status", driver->name);
 		err = -EOPNOTSUPP;
 		goto fail;
 	}
