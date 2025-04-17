@@ -130,7 +130,7 @@ tap_ctl_allocate_minor(int *minor, char **minor_name)
 	if (err == -1) {
 		err = -errno;
 		EPRINTF("Failed to lock runtime directory %d\n", errno);
-		return err;
+		goto out;
 	}
 
 	for (id=0; id<MAX_ID; id++) {
