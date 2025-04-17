@@ -60,7 +60,7 @@ tap_ctl_free(const int minor)
 	if (err == -1) {
 		err = -errno;
 		EPRINTF("Failed to lock runtime directory %d\n", errno);
-		return err;
+		goto out;
 	}
 
 	err = asprintf(&path, "%s/tapdisk-%d", BLKTAP2_NP_RUN_DIR, minor);
