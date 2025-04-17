@@ -683,6 +683,8 @@ open_vbd_marker(int id)
        goto out;
    }
 
+   free(path);
+
    return fid;
 
 out:
