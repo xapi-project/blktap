@@ -603,7 +603,6 @@ static int
 tapdisk_control_attach_vbd(struct tapdisk_ctl_conn *conn,
 			   tapdisk_message_t *request, tapdisk_message_t * const response)
 {
-	char *devname = NULL;
 	td_vbd_t *vbd;
 	int minor, err = 0;
 
@@ -643,9 +642,6 @@ tapdisk_control_attach_vbd(struct tapdisk_ctl_conn *conn,
 	tapdisk_server_add_vbd(vbd);
 
 out:
-	if (devname)
-		free(devname);
-
 	if (!err) {
 		response->type = TAPDISK_MESSAGE_ATTACH_RSP;
 		response->cookie = request->cookie;
