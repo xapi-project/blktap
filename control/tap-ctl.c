@@ -196,7 +196,7 @@ usage:
 static void
 tap_cli_allocate_usage(FILE *stream)
 {
-	fprintf(stream, "usage: allocate [-d device name]>\n");
+	fprintf(stream, "usage: allocate\n");
 }
 
 static int
@@ -204,17 +204,12 @@ tap_cli_allocate(int argc, char **argv)
 {
 	char *devname;
 	int c, minor, err;
-	char d_flag = 0;
 
 	devname = NULL;
 
 	optind = 0;
-	while ((c = getopt(argc, argv, "d:h")) != -1) {
+	while ((c = getopt(argc, argv, "h")) != -1) {
 		switch (c) {
-		case 'd':
-			devname = optarg;
-			d_flag = 1;
-			break;
 		case '?':
 			goto usage;
 		case 'h':
@@ -227,8 +222,7 @@ tap_cli_allocate(int argc, char **argv)
 	if (!err)
 		printf("%s\n", devname);
 
-	if (!d_flag)
-		free(devname);
+	free(devname);
 
 	return err;
 
