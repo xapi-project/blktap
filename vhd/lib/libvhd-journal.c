@@ -586,9 +586,7 @@ vhd_journal_add_batmap(vhd_journal_t *j)
 
 	vhd  = &j->vhd;
 
-	err  = vhd_batmap_header_offset(vhd, &off);
-	if (err)
-		return err;
+	off = vhd_batmap_header_offset(vhd);
 
 	err  = vhd_read_batmap(vhd, &batmap);
 	if (err)

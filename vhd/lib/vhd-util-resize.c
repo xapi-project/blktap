@@ -429,9 +429,7 @@ vhd_clear_bat_entries(vhd_journal_t *journal, uint32_t entries)
 	new_entries  = orig_entries - entries;
 
 	if (vhd_has_batmap(vhd)) {
-		err = vhd_batmap_header_offset(vhd, &orig_map_off);
-		if (err)
-			return err;
+		orig_map_off = vhd_batmap_header_offset(vhd);
 	}
 
 	/* update header */
@@ -462,9 +460,7 @@ vhd_clear_bat_entries(vhd_journal_t *journal, uint32_t entries)
 		return 0;
 
 	/* zero out old batmap header if new header has moved */
-	err = vhd_batmap_header_offset(vhd, &new_map_off);
-	if (err)
-		return err;
+	new_map_off = vhd_batmap_header_offset(vhd);
 
 	if (orig_map_off != new_map_off) {
 		size_t size;

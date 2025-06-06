@@ -566,20 +566,17 @@ vhd_validate_batmap(vhd_context_t *ctx, vhd_batmap_t *batmap)
 	return 0;
 }
 
-int
-vhd_batmap_header_offset(vhd_context_t *ctx, off64_t *_off)
+off64_t
+vhd_batmap_header_offset(vhd_context_t *ctx)
 {
 	off64_t off;
 	size_t  bat;
-
-	*_off = 0;
 
 	off  = ctx->header.table_offset;
 	bat  = ctx->header.max_bat_size * sizeof(uint32_t);
 	off += vhd_bytes_padded(bat);
 
-	*_off = off;
-	return 0;
+	return off;
 }
 
 int
@@ -771,9 +768,7 @@ vhd_end_of_headers(vhd_context_t *ctx, off64_t *end)
 			return err;
 
 		hdr_secs = secs_round_up_no_zero(sizeof(vhd_batmap_header_t));
-		err      = vhd_batmap_header_offset(ctx, &hdr_end);
-		if (err)
-			return err;
+		hdr_end = vhd_batmap_header_offset(ctx);
 
 		hdr_end += vhd_sectors_to_bytes(hdr_secs);
 		eom      = MAX(eom, hdr_end);
@@ -1274,9 +1269,7 @@ vhd_read_batmap_header(vhd_context_t *ctx, vhd_batmap_t *batmap)
 
 	buf = NULL;
 
-	err = vhd_batmap_header_offset(ctx, &off);
-	if (err)
-		goto fail;
+	off = vhd_batmap_header_offset(ctx);
 
 	err = vhd_seek(ctx, off, SEEK_SET);
 	if (err)
@@ -2280,9 +2273,7 @@ vhd_write_batmap_header(vhd_context_t *ctx, vhd_batmap_t *batmap)
 	off64_t off;
 	void *buf = NULL;
 
-	err = vhd_batmap_header_offset(ctx, &off);
-	if (err)
-		goto out;
+	off = vhd_batmap_header_offset(ctx);
 
 	size = vhd_bytes_padded(sizeof(*batmap));
 
@@ -2356,9 +2347,7 @@ vhd_write_batmap(vhd_context_t *ctx, vhd_batmap_t *batmap)
 	if (err)
 		goto out;
 
-	err  = vhd_batmap_header_offset(ctx, &off);
-	if (err)
-		goto out;
+	off = vhd_batmap_header_offset(ctx);
 
 	size = vhd_bytes_padded(sizeof(vhd_batmap_header_t));
 
@@ -3158,9 +3147,7 @@ vhd_create_batmap(vhd_context_t *ctx)
 	memset(header, 0, sizeof(vhd_batmap_header_t));
 	memcpy(header->cookie, VHD_BATMAP_COOKIE, sizeof(header->cookie));
 
-	err = vhd_batmap_header_offset(ctx, &off);
-	if (err)
-		return err;
+	off = vhd_batmap_header_offset(ctx);
 
 	header->batmap_offset  = off +
 		vhd_bytes_padded(sizeof(vhd_batmap_header_t));

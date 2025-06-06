@@ -311,7 +311,7 @@ int vhd_offset(vhd_context_t *, uint32_t, uint32_t *);
 
 int vhd_end_of_headers(vhd_context_t *ctx, off64_t *off);
 int vhd_end_of_data(vhd_context_t *ctx, off64_t *off);
-int vhd_batmap_header_offset(vhd_context_t *ctx, off64_t *off);
+off64_t vhd_batmap_header_offset(vhd_context_t *ctx);
 
 int vhd_get_header(vhd_context_t *);
 int vhd_get_footer(vhd_context_t *);
