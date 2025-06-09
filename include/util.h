@@ -33,6 +33,7 @@
 
 #include <stddef.h>
 #include <string.h>
+#include <stdint.h>
 
 #define ARRAY_SIZE(_a) (sizeof(_a)/sizeof((_a)[0]))
 
@@ -48,5 +49,16 @@ safe_strncpy(char *dest, const char *src, size_t n)
 		dest[n - 1] = '\0';
 	return pdest;
 }
+
+/*
+ * Constants for cryptographic operations
+ */
+#define MAX_AES_XTS_PLAIN_KEYSIZE 1024
+
+/*
+ * Base64 encoding/decoding utilities using OpenSSL
+ */
+int base64_encode_data(const uint8_t *input, size_t input_len, char **output);
+int base64_decode_key(const char *input, uint8_t *output, size_t *output_len);
 
 #endif /* __TAPDISK_UTIL_H__ */
