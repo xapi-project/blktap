@@ -46,10 +46,10 @@ static int
 __raw_io_write(int fd, char* buf, uint64_t sec, uint32_t secs)
 {
 	off64_t off;
-	size_t ret;
+	ssize_t ret;
 
 	errno = 0;
-	off = lseek64(fd, vhd_sectors_to_bytes(sec), SEEK_SET);
+	off = lseek64(fd, (off64_t)vhd_sectors_to_bytes(sec), SEEK_SET);
 	if (off == (off64_t)-1) {
 		printf("raw parent: seek(0x%08"PRIx64") failed: %d\n",
 		       vhd_sectors_to_bytes(sec), -errno);
@@ -78,7 +78,8 @@ static int64_t
 vhd_util_coalesce_block(vhd_context_t *vhd, vhd_context_t *parent,
 			int parent_fd, uint64_t block)
 {
-	int i, err;
+	int err;
+	uint32_t i;
 	int64_t coalesced_size = 0;
 	char *buf;
 	char *map;
@@ -141,8 +142,8 @@ vhd_util_coalesce_block(vhd_context_t *vhd, vhd_context_t *parent,
 		if (err)
 			goto done;
 
-		coalesced_size += secs;
-		i += secs;
+		coalesced_size += (int64_t)secs;
+		i += (uint32_t)secs;
 	}
 
 	err = 0;
@@ -169,7 +170,8 @@ static int64_t
 vhd_util_coalesce_onto(vhd_context_t *from,
 		       vhd_context_t *to, int to_fd, int progress)
 {
-	int i, err;
+	int i;
+	int64_t err;
 	int64_t coalesced_size = 0;
 
 	err = vhd_get_bat(from);
@@ -188,7 +190,7 @@ vhd_util_coalesce_onto(vhd_context_t *from,
 			       ((float)i / (float)from->bat.entries) * 100.00);
 			fflush(stdout);
 		}
-		err = vhd_util_coalesce_block(from, to, to_fd, i);
+		err = vhd_util_coalesce_block(from, to, to_fd, (uint64_t)i);
 		if (err < 0)
 			goto out;
 
