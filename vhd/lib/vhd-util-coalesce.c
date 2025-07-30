@@ -221,7 +221,8 @@ static int64_t
 vhd_util_coalesce_parent(const char *name, int sparse, int progress)
 {
 	char *pname;
-	int err, parent_fd;
+	int64_t err;
+	int parent_fd;
 	vhd_context_t vhd, parent;
 
 	parent_fd   = -1;
@@ -229,7 +230,7 @@ vhd_util_coalesce_parent(const char *name, int sparse, int progress)
 
 	err = vhd_open(&vhd, name, VHD_OPEN_RDONLY);
 	if (err) {
-		printf("error opening %s: %d\n", name, err);
+		printf("error opening %s: %" PRId64 "\n", name, err);
 		return err;
 	}
 
@@ -241,7 +242,7 @@ vhd_util_coalesce_parent(const char *name, int sparse, int progress)
 
 	err = vhd_parent_locator_get(&vhd, &pname);
 	if (err) {
-		printf("error finding %s parent: %d\n", name, err);
+		printf("error finding %s parent: %" PRId64 "\n", name, err);
 		vhd_close(&vhd);
 		return err;
 	}
@@ -250,7 +251,7 @@ vhd_util_coalesce_parent(const char *name, int sparse, int progress)
 		parent_fd = open_optional_odirect(pname, O_RDWR | O_DIRECT | O_LARGEFILE, 0644);
 		if (parent_fd == -1) {
 			err = -errno;
-			printf("failed to open parent %s: %d\n", pname, err);
+			printf("failed to open parent %s: %" PRId64 "\n", pname, err);
 			free(pname);
 			vhd_close(&vhd);
 			return err;
@@ -260,7 +261,7 @@ vhd_util_coalesce_parent(const char *name, int sparse, int progress)
 		if (sparse) printf("opening for sparse writes\n");
 		err = vhd_open(&parent, pname, VHD_OPEN_RDWR | flags);
 		if (err) {
-			printf("error opening %s: %d\n", pname, err);
+			printf("error opening %s: %" PRId64 "\n", pname, err);
 			free(pname);
 			vhd_close(&vhd);
 			return err;
