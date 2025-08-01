@@ -765,17 +765,14 @@ tapdisk_server_init(void)
 		EPRINTF("Failed to initialize low memory handler: %s\n",
 		        strerror(-ret));
 		lowmem_cleanup();
-		goto out;
 	}
 
 	if ((ret = tapdisk_server_initialize_cpumond_client()) < 0) {
 		EPRINTF("Failed to connect to cpumond: %s\n",
 			strerror(-ret));
 		cpumond_cleanup();
-		goto out;
 	}
 
-out:
 	server.tlog_reopen_evid = -1;
 
 	return 0;
