@@ -35,10 +35,6 @@
 #include "tapdisk-vbd.h"
 #include "io-backend.h"
 
-enum memory_mode_t {NORMAL_MEMORY_MODE, LOW_MEMORY_MODE};
-
-enum memory_mode_t tapdisk_server_mem_mode(void);
-
 struct tap_disk *tapdisk_server_find_driver_interface(int);
 
 td_image_t *tapdisk_server_get_shared_image(td_image_t *);
