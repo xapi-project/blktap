@@ -34,8 +34,6 @@
 
 #include <stdint.h>
 
-#define BT3_LOW_MEMORY_MODE 0x0000000000000001
-
 struct stats {
     uint32_t version;
     uint32_t __pad;
