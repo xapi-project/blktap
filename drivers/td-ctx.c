@@ -300,17 +300,7 @@ tapdisk_xenio_ctx_process_ring(struct td_xenblkif *blkif,
 	if (unlikely(blkif->barrier.msg))
 		return 0;
 
-    /*
-     * In each iteration, copy as many request descriptors from the shared ring
-     * that can fit within the constraints.
-     * If there's memory available, use as many requests as available.
-     * If in low memory mode, don't copy any if there's some in flight.
-     * Otherwise, only copy one.
-     */
-	if (tapdisk_server_mem_mode() == LOW_MEMORY_MODE)
-	    limit = blkif->ring_size != blkif->n_reqs_free ? 0 : 1;
-    else
-	    limit = blkif->n_reqs_free;
+	limit = blkif->n_reqs_free;
 
     do {
         reqs = &blkif->reqs_free[blkif->ring_size - blkif->n_reqs_free];

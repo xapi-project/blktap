@@ -170,14 +170,10 @@ td_xenblkif_bufcache_put(struct td_xenblkif * const blkif, void *buf)
 
     blkif->reqs_bufcache[blkif->n_reqs_bufcache_free++] = buf;
 
-    /* If we're in low memory mode, prune the bufcache immediately. */
-    if (tapdisk_server_mem_mode() == LOW_MEMORY_MODE) {
-        td_xenblkif_bufcache_free(blkif);
-    } else {
-        // We only set the expire event when no requests are inflight
-        if (blkif->n_reqs_free == blkif->ring_size)
+    // We only set the expire event when no requests are inflight
+    if (blkif->n_reqs_free == blkif->ring_size)
             td_xenblkif_bufcache_evt_reg(blkif);
-    }
+
 }
 
 /**
