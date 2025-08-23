@@ -1710,6 +1710,10 @@ tapdisk_vbd_issue_new_requests(td_vbd_t *vbd)
 	int err;
 	td_vbd_request_t *vreq, *tmp;
 
+	if (!list_empty(&vbd->failed_requests)) {
+		return -EBUSY;
+	}
+
 	tapdisk_vbd_for_each_request(vreq, tmp, &vbd->new_requests) {
 		err = tapdisk_vbd_issue_request(vbd, vreq);
 		/*
