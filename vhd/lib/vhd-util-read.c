@@ -41,6 +41,7 @@
 
 #include "libvhd.h"
 #include "vhd-util.h"
+#include "util.h"
 
 #define nsize     21
 static char nbuf[nsize];
@@ -418,7 +419,7 @@ vhd_print_bat(vhd_context_t *vhd, uint64_t block, int count, int hex)
 }
 
 static int
-vhd_print_bat_str(vhd_context_t *vhd)
+vhd_print_bat_str(vhd_context_t *vhd, int use_base64)
 {
 	int i, err, total_blocks, bitmap_size;
 	char *bitmap;
@@ -444,9 +445,20 @@ vhd_print_bat_str(vhd_context_t *vhd)
 			set_bit(bitmap, i);
 	}
 
-	n = write(STDOUT_FILENO, bitmap, bitmap_size);
-	if (n < 0)
-		err = -errno;
+	if (use_base64) {
+		char *encoded_buf;
+		if (base64_encode_data((uint8_t*)bitmap, bitmap_size, &encoded_buf) != 0) {
+			fprintf(stderr, "Failed to encode BAT bitmap to base64\n");
+			err = -EIO;
+		} else {
+			printf("%s", encoded_buf);
+			free(encoded_buf);
+		}
+	} else {
+		n = write(STDOUT_FILENO, bitmap, bitmap_size);
+		if (n < 0)
+			err = -errno;
+	}
 
 	free(bitmap);
 
@@ -760,7 +772,7 @@ vhd_util_read(int argc, char **argv)
 {
 	char *name;
 	vhd_context_t vhd;
-	int c, err, headers, hex, bat_str, cache, flags;
+	int c, err, headers, hex, bat_str, cache, flags, bat_base64;
 	uint64_t bat, bitmap, tbitmap, ebitmap, batmap, tbatmap, data, lsec, count, read;
 	uint64_t bread;
 
@@ -769,6 +781,7 @@ vhd_util_read(int argc, char **argv)
 	cache   = 0;
 	headers = 0;
 	bat_str = 0;
+	bat_base64 = 0;
 	count   = 1;
 	bat     = -1;
 	bitmap  = -1;
@@ -786,7 +799,7 @@ vhd_util_read(int argc, char **argv)
 		goto usage;
 
 	optind = 0;
-	while ((c = getopt(argc, argv, "n:pt:b:Bm:i:e:aj:d:c:r:R:xCh")) != -1) {
+	while ((c = getopt(argc, argv, "n:pt:b:Bm:i:e:aj:d:c:r:R:xCEh")) != -1) {
 		switch(c) {
 		case 'n':
 			name = optarg;
@@ -836,6 +849,10 @@ vhd_util_read(int argc, char **argv)
 		case 'x':
 			hex = 1;
 			break;
+
+		case 'E':
+			bat_base64 = 1;
+			break;
 		case 'h':
 		default:
 			goto usage;
@@ -877,7 +894,7 @@ vhd_util_read(int argc, char **argv)
 	}
 
 	if (bat_str) {
-		err = vhd_print_bat_str(&vhd);
+		err = vhd_print_bat_str(&vhd, bat_base64);
 		if (err)
 			goto out;
 	}
@@ -953,6 +970,7 @@ vhd_util_read(int argc, char **argv)
 	       "-c num      num units\n"
 	       "-r sec      read num sectors at sec\n"
 	       "-R byte     read num bytes at byte\n"
-	       "-x          print in hex\n");
+	       "-x          print in hex\n"
+	       "-E          encode BAT bitmap output as base64\n");
 	return EINVAL;
 }
