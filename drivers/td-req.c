@@ -531,6 +531,8 @@ tapdisk_xenblkif_complete_request(struct td_xenblkif * const blkif,
 
 		if (likely(err == 0))
 			_err = BLKIF_RSP_OKAY;
+		else if (err == EOPNOTSUPP)
+			_err = BLKIF_RSP_EOPNOTSUPP;
 		else
 			_err = BLKIF_RSP_ERROR;
 
