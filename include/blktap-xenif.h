@@ -14,12 +14,28 @@
 
 /* Get the correct defines for memory barriers - do not fall
  * back to those provided by the kernel */
-#ifdef __i386__
+/* from <xen-barrier.h> in 4.20.0 */
+
+#define xen_barrier() asm volatile ( "" : : : "memory")
+
+#if defined(__i386__)
 #define xen_mb()  asm volatile ( "lock addl $0, -4(%%esp)" ::: "memory" )
-#else
+#define xen_rmb() xen_barrier()
+#define xen_wmb() xen_barrier()
+#elif defined(__x86_64__)
 #define xen_mb()  asm volatile ( "lock addl $0, -32(%%rsp)" ::: "memory" )
+#define xen_rmb() xen_barrier()
+#define xen_wmb() xen_barrier()
+#elif defined(__arm__)
+#define xen_mb()   asm volatile ("dmb" : : : "memory")
+#define xen_rmb()  asm volatile ("dmb" : : : "memory")
+#define xen_wmb()  asm volatile ("dmb" : : : "memory")
+#elif defined(__aarch64__)
+#define xen_mb()   asm volatile ("dmb sy" : : : "memory")
+#define xen_rmb()  asm volatile ("dmb sy" : : : "memory")
+#define xen_wmb()  asm volatile ("dmb sy" : : : "memory")
+#else
+#error "Define barriers"
 #endif
-#define xen_rmb() asm volatile ("" ::: "memory")
-#define xen_wmb() asm volatile ("" ::: "memory")
 
 #endif /* __BLKTAPXENIF_H__ */
