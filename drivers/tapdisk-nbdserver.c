@@ -688,7 +688,8 @@ receive_newstyle_options(td_nbdserver_client_t *client, int new_fd, bool no_zero
 			}
 			break;
 			default:
-				goto fail;
+				INFO("Unknown NBD option %u", opt_code);
+				if (send_fixed_option_reply(new_fd, opt_code, NBD_REP_ERR_UNSUP)) goto fail;
 		}
 	} 
 
