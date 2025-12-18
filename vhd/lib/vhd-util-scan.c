@@ -46,6 +46,7 @@
 #include <sys/stat.h>
 #include <sys/types.h>
 
+#include "debug.h"
 #include "list.h"
 #include "libvhd.h"
 #include "lvm-util.h"
@@ -482,6 +483,14 @@ copy_name(char *dst, const char *src)
 static int
 vhd_util_scan_extract_volume_name(char *dst, const char *src, size_t size)
 {
+	ASSERT(dst);
+	ASSERT(src);
+
+	if (!*src) {
+		EPRINTF("parent name is empty\n");
+		return -EINVAL;
+	}
+
 	char copy[VHD_MAX_NAME_LEN], *name, *s, *c;
 
 	name = strrchr(src, '/');
@@ -509,6 +518,7 @@ vhd_util_scan_extract_volume_name(char *dst, const char *src, size_t size)
 		return -EINVAL;
 	}
 
+	ASSERT(c && *c == '/');
 	safe_strncpy(dst, ++c, size);
 	return 0;
 }
@@ -542,7 +552,7 @@ found:
 	if (!err)
 		return copy_name(image->parent, name);
 
-	return 0;
+	return err;
 }
 
 static int
