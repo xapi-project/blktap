@@ -222,6 +222,71 @@ tapback_write_pid(const char *pidfile)
     return err;
 }
 
+static inline int
+tapback_slave_ready(const char *statefile)
+{
+    char *tmpfile = NULL;
+    FILE *fp;
+    int err = 0;
+
+    err = asprintf(&tmpfile, "%s.tmp", statefile);
+    if (err == -1) {
+        err = errno;
+        goto fail;
+    }
+
+    /* write temp file */
+    fp = fopen(tmpfile, "w");
+    if (!fp) {
+        err = errno;
+        goto fail;
+    }
+    err = fprintf(fp, "ping");
+    if (err < 0)
+        err = errno;
+    else
+        err = 0;
+    fclose(fp);
+
+    if (err)
+        goto fail;
+
+    /* rename, atomic operation */
+    err = rename(tmpfile, statefile);
+    if (err < 0)
+        err = errno;
+
+fail:
+    if (tmpfile)
+        free(tmpfile);
+    return err;
+}
+
+static inline bool
+tapback_slave_ack(const char *statefile)
+{
+    FILE *fp;
+    bool ret = true;
+    char buf[8], *b;
+
+    fp = fopen(statefile, "r");
+    if (!fp)
+        return false;
+
+    memset(buf, 0, 8);
+    b = fgets(buf, sizeof(buf), fp);
+    if (!b)
+        ret = false;
+    fclose(fp);
+
+    if (!ret)
+        return ret;
+
+    if (strcmp(buf, "pong") != 0)
+        ret = false;
+    return ret;
+}
+
 /**
  * Initializes the back-end descriptor. There is one back-end per tapback
  * process. Also, it initiates a watch to XenStore on backend/<backend name>.
@@ -663,6 +728,48 @@ int main(int argc, char **argv)
 		err = errno;
         WARN(NULL, "error creating back-end: %s\n", strerror(err));
         goto fail;
+    }
+
+    if (!tapback_is_master(backend))
+    {
+        int err;
+        bool ret;
+        char *statefile = NULL;
+        err = asprintf(&statefile, "/var/run/%s.%d.statefile", tapback_name,
+                opt_domid);
+        if (err == -1) {
+            err = errno;
+            WARN(NULL, "error creating tapback slave statefile string: %s\n",
+                    strerror(err));
+            goto fail;
+        }
+        /*
+         * notify xenopsd vbd-script, we are ready to process
+         * physical-device-path xenstore watch event
+         **/
+        err = tapback_slave_ready(statefile);
+        if (err) {
+            WARN(NULL, "error writing tapback slave process statefile: %s\n",
+                    strerror(err));
+            free(statefile);
+            goto fail;
+        }
+        /*
+         * wait for ack from xenopsd vbd-script
+         */
+        do {
+            ret = tapback_slave_ack(statefile);
+            if (ret) {
+                INFO(NULL, "ready to serve domain %d\n", opt_domid);
+                break;
+            } else {
+                INFO(NULL, "wait for xenopsd ack of domain %d\n", opt_domid);
+                sleep(1);
+            }
+        } while (1);
+
+        remove(statefile);
+        free(statefile);
     }
 
     err = tapback_backend_run(backend);
