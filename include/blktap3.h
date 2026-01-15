@@ -51,8 +51,8 @@ struct blkback_stats {
 	unsigned long long st_ds_req;
 
 	/**
-	 * BLKIF_OP_FLUSH_DISKCACHE, not currently supported in blktap3,
-	 * should always be zero
+	 * BLKIF_OP_FLUSH_DISKCACHE requests (implemented as no-op
+	 * since O_DIRECT bypasses write cache)
 	 */
 	unsigned long long st_f_req;
 

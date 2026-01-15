@@ -759,6 +759,17 @@ tapdisk_xenblkif_make_vbd_request(struct td_xenblkif * const blkif,
         tapreq->prot = PROT_WRITE;
         vreq->op = TD_OP_READ;
         break;
+    case BLKIF_OP_FLUSH_DISKCACHE:
+        /*
+         * Pure FLUSH (no data) is no-op since O_DIRECT bypasses cache.
+         * FLUSH with data falls through to WRITE handling.
+         */
+        if (unlikely(tapreq->msg.nr_segments == 0)) {
+            if (likely(blkif->stats.xenvbd))
+                blkif->stats.xenvbd->st_f_req++;
+            tapdisk_xenblkif_complete_request(blkif, tapreq, 0, 1);
+            return 0;
+        }
     case BLKIF_OP_WRITE:
     case BLKIF_OP_WRITE_BARRIER:
         if (likely(blkif->stats.xenvbd))
