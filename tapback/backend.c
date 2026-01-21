@@ -259,6 +259,15 @@ tapback_backend_create_device(backend_t *backend,
         goto out;
     }
 
+    /* After tapback has written it's capabilities to XenStore, switch to
+     * InitWait. */
+    err = xenbus_switch_state(device, XenbusStateInitWait);
+    if (unlikely(err)) {
+        WARN(device, "failed to switch to XenbusStateInitWait: %s\n",
+             strerror(-err));
+        goto out;
+    }
+
 out:
     if (err) {
         WARN(NULL, "%s: error creating device: %s\n", name, strerror(-err));
