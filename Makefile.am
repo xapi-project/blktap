@@ -3,7 +3,8 @@
 
 # FIXME run cppcheck
 
-SUBDIRS  = lvm
+SUBDIRS  = lib
+SUBDIRS += lvm
 SUBDIRS += vhd
 SUBDIRS += cpumond
 SUBDIRS += control
