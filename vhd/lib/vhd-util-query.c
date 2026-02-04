@@ -43,29 +43,29 @@
 int
 vhd_util_query(int argc, char **argv)
 {
-	char *name;
 	vhd_context_t vhd;
 	off64_t currsize;
-	int ret, err, c, size, physize, parent, fields, depth, fastresize, marker, allocated, resolve_parent;
+	int ret, err, c;
 
-	name           = NULL;
-	size           = 0;
-	physize        = 0;
-	parent         = 0;
-	fields         = 0;
-	depth          = 0;
-	fastresize     = 0;
-	marker         = 0;
-	allocated      = 0;
-	resolve_parent = 1;
-	
+	char *name         = NULL;
+	int size           = 0;
+	int physize        = 0;
+	int parent         = 0;
+	int fields         = 0;
+	int depth          = 0;
+	int fastresize     = 0;
+	int marker         = 0;
+	int allocated      = 0;
+	int resolve_parent = 1;
+	int flags          = VHD_OPEN_RDONLY | VHD_OPEN_IGNORE_DISABLED;
+
 	if (!argc || !argv) {
 		err = -EINVAL;
 		goto usage;
 	}
 
 	optind = 0;
-	while ((c = getopt(argc, argv, "n:vspfdSmauh")) != -1) {
+	while ((c = getopt(argc, argv, "n:vspfdSmaubh")) != -1) {
 		switch (c) {
 		case 'n':
 			name = optarg;
@@ -97,6 +97,9 @@ vhd_util_query(int argc, char **argv)
 		case 'u':
 			resolve_parent = 0;
 			break;
+		case 'b':
+			flags |= VHD_OPEN_USE_BKP_FOOTER;
+			break;
 		case 'h':
 			err = 0;
 			goto usage;
@@ -111,7 +114,7 @@ vhd_util_query(int argc, char **argv)
 		goto usage;
 	}
 
-	err = vhd_open(&vhd, name, VHD_OPEN_RDONLY | VHD_OPEN_IGNORE_DISABLED);
+	err = vhd_open(&vhd, name, flags);
 	if (err) {
 		printf("error opening %s: %d\n", name, err);
 		return err;
@@ -218,6 +221,7 @@ usage:
 	       "[-S print max virtual size (MB) for fast resize] "
 	       "[-a print allocated block count] "
 	       "[-u don't resolve parent path] "
+	       "[-b don't trust the footer, use the back-up one instead] "
 	       "[-h help]\n");
 	return err;
 }
