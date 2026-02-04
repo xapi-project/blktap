@@ -42,6 +42,7 @@
 
 #include "cbt-util.h"
 #include "cbt-util-priv.h"
+#include "util.h"
 
 int cbt_util_create(int , char **);
 int cbt_util_set(int , char **);
@@ -148,7 +149,7 @@ cbt_util_get(int argc, char **argv)
 {
 	char *name, uuid_str[37], *buf;
 	int err, c, ret;
-	int parent, child, flag, size, bitmap;
+	int parent, child, flag, size, bitmap, use_base64;
 	FILE *f = NULL;
 
 	err			= 0;
@@ -159,6 +160,7 @@ cbt_util_get(int argc, char **argv)
 	size		= 0;
 	buf			= NULL;
 	bitmap		= 0;
+	use_base64	= 0;
 
 	if (!argc || !argv)
 		goto usage;
@@ -166,7 +168,7 @@ cbt_util_get(int argc, char **argv)
 	/* Make sure we start from the start of the args */
 	optind = 1;
 
-	while ((c = getopt(argc, argv, "n:pcfsbh")) != -1) {
+	while ((c = getopt(argc, argv, "n:pcfsbEh")) != -1) {
 		switch (c) {
 			case 'n':
 				name = optarg;
@@ -185,6 +187,9 @@ cbt_util_get(int argc, char **argv)
 				break;
 			case 'b':
 				bitmap = 1;
+				break;
+			case 'E':
+				use_base64 = 1;
 				break;
 			case 'h':
 			default:
@@ -252,7 +257,18 @@ cbt_util_get(int argc, char **argv)
 						bmsize, name);
 		}
 
-		fwrite(buf, bmsize, 1, stdout);
+		if (use_base64) {
+			char *encoded_buf;
+			if (base64_encode_data((uint8_t*)buf, bmsize, &encoded_buf) != 0) {
+				fprintf(stderr, "Failed to encode bitmap to base64\n");
+				err = -EIO;
+				goto error;
+			}
+			printf("%s", encoded_buf);
+			free(encoded_buf);
+		} else {
+			fwrite(buf, bmsize, 1, stdout);
+		}
 	}
 
 error:
@@ -273,6 +289,7 @@ usage:
 	printf("[-f]\t\tPrint consistency flag\n");
 	printf("[-s]\t\tPrint size of disk in bytes\n");
 	printf("[-b]\t\tPrint bitmap contents\n");
+	printf("[-E]\t\tEncode bitmap output as base64\n");
 	printf("[-h]\t\thelp\n");
 
 	return -EINVAL;

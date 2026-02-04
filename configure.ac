@@ -58,6 +58,7 @@ AC_DEFINE(_BLKTAP, 1,
 		  Indicates whether this is an internal or external compilation.)
 AC_CONFIG_FILES([
 Makefile
+lib/Makefile
 lvm/Makefile
 cpumond/Makefile
 cbt/Makefile
