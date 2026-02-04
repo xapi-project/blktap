@@ -450,8 +450,10 @@ frontend_changed(vbd_t * const device, const XenbusState state)
 
     switch (state) {
         case XenbusStateInitialising:
-			if (device->hotplug_status_connected)
-				err = xenbus_switch_state(device, XenbusStateInitWait);
+            if (device->state == XenbusStateClosed) {
+                DBG(device, "prepare for reconnect\n");
+                err = xenbus_switch_state(device, XenbusStateInitWait);
+            }
             break;
         case XenbusStateInitialised:
     	case XenbusStateConnected:
@@ -488,7 +490,7 @@ tapback_backend_handle_otherend_watch(backend_t *backend,
 {
     vbd_t *device = NULL;
     int err = 0, state = 0;
-    char *s = NULL, *end = NULL, *_path = NULL;
+    char *s = NULL, *end = NULL;
 
 	ASSERT(backend);
     ASSERT(path);
@@ -519,41 +521,19 @@ tapback_backend_handle_otherend_watch(backend_t *backend,
      */
 	s = tapback_xs_read(device->backend->xs, XBT_NULL, "%s",
 			device->frontend_state_path);
-    if (!s) {
-        err = errno;
-		/*
-         * If the front-end XenBus node is missing, the XenBus device has been
-         * removed: remove the XenBus back-end node.
-		 */
-		if (err == ENOENT) {
-            err = asprintf(&_path, "%s/%s/%d/%d", XENSTORE_BACKEND,
-                    device->backend->name, device->domid, device->devid);
-            if (err == -1) {
-                err = errno;
-                WARN(device, "failed to asprintf: %s\n", strerror(err));
-                goto out;
-            }
-            err = 0;
-            if (!xs_rm(device->backend->xs, XBT_NULL, _path)) {
-                if (errno != ENOENT) {
-                    err = errno;
-                    WARN(device, "failed to remove %s: %s\n", path,
-                            strerror(err));
-                }
-            }
-		}
-    } else {
+    if (s) {
         state = strtol(s, &end, 0);
         if (*end != 0 || end == s) {
             WARN(device, "invalid XenBus state '%s'\n", s);
             err = EINVAL;
         } else
             err = frontend_changed(device, state);
+    } else {
+        WARN(device, "frontend disappeared!");
+        err = ENOENT;
     }
 
-out:
     free(s);
-    free(_path);
     return err;
 }
 
