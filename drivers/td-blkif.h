@@ -174,7 +174,7 @@ struct td_xenblkif {
 
 	struct {
 		/**
-		 * Pointer to he pending barrier request.
+		 * Pointer to the pending barrier request.
 		 */
 		blkif_request_t *msg;
 
