@@ -14,6 +14,10 @@ AC_CHECK_HEADERS([uuid/uuid.h], [], [Need uuid-dev])
 AC_CHECK_HEADERS([libaio.h], [], [Need libaio-dev])
 AC_CHECK_HEADERS([limits.h], [], [AC_MSG_ERROR([cannot find limits.h])])
 AC_CHECK_HEADERS([time.h], [], [AC_MSG_ERROR([cannot find time.h])])
+AC_CHECK_HEADERS([cmocka.h], [], [AC_MSG_ERROR([cannot find cmocka.h])], [[#include <stddef.h>
+#include <stdarg.h>
+#include <setjmp.h>]])
+AC_CHECK_HEADERS([xen/xen.h], [], [AC_MSG_ERROR([cannot find xen/xen.h])])
 
 AC_ARG_WITH([libiconv],
 	     [AS_HELP_STRING([--with-libiconv],
