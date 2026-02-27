@@ -39,7 +39,7 @@
 /*
  * Strncpy variant that guarantees to terminate the string
  */
-static inline char *
+static inline void
 safe_strncpy(char *dest, const char *src, size_t n)
 {
 #ifdef __GNUC__
@@ -53,7 +53,6 @@ safe_strncpy(char *dest, const char *src, size_t n)
 #ifdef __GNUC__
 #pragma GCC diagnostic pop
 #endif
-	return dest;
 }
 
 #endif /* __TAPDISK_UTIL_H__ */
