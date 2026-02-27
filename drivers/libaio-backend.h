@@ -29,7 +29,7 @@
  */
 
 #ifndef LIBAIO_BACKEND_H
-#define LIBAIO_BACLEND_H
+#define LIBAIO_BACKEND_H
 
 #include <libaio.h>
 
@@ -43,4 +43,4 @@ enum {
 
 struct backend* get_libaio_backend();
 
-#endif /* LIBAIO_BACLEND_H */
+#endif /* LIBAIO_BACKEND_H */
