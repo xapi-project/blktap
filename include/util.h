@@ -42,10 +42,17 @@
 static inline void
 safe_strncpy(char *dest, const char *src, size_t n)
 {
+#ifdef __GNUC__
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wstringop-truncation"
+#endif
 	if (n > 0) {
 		strncpy(dest, src, n - 1);
 		dest[n - 1] = '\0';
 	}
+#ifdef __GNUC__
+#pragma GCC diagnostic pop
+#endif
 }
 
 #endif /* __TAPDISK_UTIL_H__ */
