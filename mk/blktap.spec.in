@@ -2,7 +2,7 @@ Summary: blktap user space utilities
 Name: @PACKAGE_NAME@
 Version: @PACKAGE_VERSION@
 Release: @BLKTAP_RELEASE@
-License: BSD
+License: BSD AND GPL-2.0-or-later
 Group: System/Hypervisor
 Source0: %{name}-%{version}.tar.bz2
 URL: https://github.com/xapi-project/blktap
