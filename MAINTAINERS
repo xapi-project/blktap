@@ -1,13 +1,12 @@
 Maintainers list
 ----------------
 
-The project is maintained by many people but as a reference
-person contact
+The project is maintained by
 
-* Mark Syms <mark.syms@citrix.com>
+* Ronan Abhamon <ronan.abhamon@vates.tech>
+* Damien Thenot <damien.thenot@vates.tech>
+* Anthoine Bourgeois <anthoine.bourgeois@vates.tech>
 
-while for technical discussions of general interest
-use the public mailing lists
+Issues and pull requests can be created at
 
-* xs-devel@lists.xenserver.org
-* xen-api@lists.xen.org 
+* https://github.com/xapi-project/blktap
