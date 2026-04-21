@@ -769,6 +769,18 @@ reconnect(vbd_t *device) {
         }
     }
 
+    err = physical_device_path_changed(device);
+    if (err) {
+        if (err == -ENOENT) {
+            DBG(device, "no physical device path yet\n");
+            err = 0;
+        } else {
+            WARN(device, "failed to retrieve physical device path: "
+                    "%s\n", strerror(-err));
+            goto out;
+        }
+    }
+
     err = hotplug_status_changed(device);
     if (err) {
         if (err == -ENOENT) {
