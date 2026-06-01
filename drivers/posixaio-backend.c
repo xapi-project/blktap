@@ -46,7 +46,6 @@
 #include "timeout-math.h"
 #include <signal.h>
 
-#include "atomicio.h"
 #include "aio_getevents.h"
 #include <sys/signalfd.h>
 #include "debug.h"

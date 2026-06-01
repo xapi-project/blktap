@@ -37,8 +37,6 @@ The files licensed under other/different licenses are:
 blktap/
    |-- autogen.sh
    |-- drivers/
-   |      |-- atomicio.c
-   |      |-- atomicio.h
    |      |-- aio_getevents.c
    |
    |--include/

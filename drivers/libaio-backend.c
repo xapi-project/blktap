@@ -48,7 +48,6 @@
 #include "tapdisk-utils.h"
 #include "timeout-math.h"
 
-#include "atomicio.h"
 #include "aio_getevents.h"
 
 #define WARN(_f, _a...) tlog_write(TLOG_WARN, _f, ##_a)
