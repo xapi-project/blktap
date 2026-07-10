@@ -5,8 +5,8 @@ AM_CFLAGS += -Og -fno-inline-functions -g
 
 AM_CPPFLAGS = -I$(top_srcdir)/include -I$(top_srcdir)/drivers -I../include
 
-check_PROGRAMS = test-drivers
-TESTS = test-drivers
+check_PROGRAMS = test-drivers test-td-req
+TESTS = test-drivers test-td-req
 
 test_drivers_LDADD = $(top_srcdir)/drivers/libtapdisk.la
 
@@ -17,6 +17,12 @@ test_drivers_LDFLAGS += -Wl,--wrap=td_queue_block_status
 test_drivers_LDFLAGS += -Wl,--wrap=send
 test_drivers_LDFLAGS += -Wl,--wrap=tapdisk_server_register_event
 test_drivers_LDFLAGS += -Wl,--wrap=gettimeofday
+
+# test-td-req includes td-req.c directly to exercise its static request
+# validators, so it must NOT link libtapdisk (which also defines those
+# symbols); the externs it references are stubbed in the test itself.
+test_td_req_SOURCES = test-td-req.c
+test_td_req_LDFLAGS = -lcmocka
 
 clean-local:
 	-rm -rf *.gc??
