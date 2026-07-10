@@ -38,7 +38,14 @@
 #include <xen/gntdev.h>
 #include "td-blkif.h"
 
-#define TD_REQ_BUFFER_SIZE (BLKIF_MAX_BUFFER_SEGMENTS_PER_REQUEST << PAGE_SHIFT)
+/*
+ * A ring request descriptor (blkif_request_t) carries at most
+ * BLKIF_MAX_SEGMENTS_PER_REQUEST segments, each mapping a single page, so the
+ * per-request data buffer and the vectorised segment arrays below only ever
+ * need that many entries. (This backend does not implement BLKIF_OP_INDIRECT,
+ * which is the only mechanism that would raise the per-request segment count.)
+ */
+#define TD_REQ_BUFFER_SIZE (BLKIF_MAX_SEGMENTS_PER_REQUEST << PAGE_SHIFT)
 
 /**
  * Representation of the intermediate request used to retrieve a request from
@@ -80,9 +87,9 @@ struct td_xenblkif_req {
     /**
      * The scatter/gather list td_vbd_request_t.iov points to.
      */
-    struct td_iovec iov[BLKIF_MAX_BUFFER_SEGMENTS_PER_REQUEST];
+    struct td_iovec iov[BLKIF_MAX_SEGMENTS_PER_REQUEST];
 
-    grant_ref_t gref[BLKIF_MAX_BUFFER_SEGMENTS_PER_REQUEST];
+    grant_ref_t gref[BLKIF_MAX_SEGMENTS_PER_REQUEST];
     int prot;
 
 	struct gntdev_grant_copy_segment
