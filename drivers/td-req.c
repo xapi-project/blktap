@@ -644,8 +644,17 @@ tapdisk_xenblkif_parse_request(struct td_xenblkif * const blkif,
         /*
          * Note that first and last may be equal, which means only one sector
          * must be transferred.
+         *
+         * first_sect/last_sect are guest-controlled 8-bit values, but each
+         * segment addresses at most a single page. Reject any segment whose
+         * sectors fall outside the page: an out-of-range last_sect would
+         * produce an oversized transfer length (which also overflows the
+         * uint16_t gntdev grant-copy length) and drive out-of-bounds accesses
+         * to the per-request buffer.
          */
-        if (seg->last_sect < seg->first_sect) {
+        if (seg->last_sect < seg->first_sect ||
+	    seg->last_sect >= (PAGE_SIZE >> SECTOR_SHIFT))
+	{
             RING_ERR(blkif, "req %lu: invalid sectors %d-%d\n",
                     req->msg.id, seg->first_sect, seg->last_sect);
             err = EINVAL;
@@ -670,7 +679,7 @@ tapdisk_xenblkif_parse_request(struct td_xenblkif * const blkif,
         struct blkif_request_segment *seg = &req->msg.seg[i];
         size_t size;
 
-        /* TODO check that first_sect/last_sect are within page */
+        /* first_sect/last_sect are already validated, above */
 
         next = page + (seg->first_sect << SECTOR_SHIFT);
         size = seg->last_sect - seg->first_sect + 1;
