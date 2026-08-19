@@ -238,12 +238,6 @@ struct lio {
 
 #define LIO_FLAG_EVENTFD        (1<<0)
 
-static int
-libaio_backend_lio_check_resfd(void)
-{
-	return tapdisk_linux_version() >= KERNEL_VERSION(2, 6, 22);
-}
-
 static void
 libaio_backend_lio_destroy_aio(libaio_queue *queue)
 {
@@ -326,9 +320,7 @@ libaio_backend_lio_setup_aio(libaio_queue *queue, int qlen)
 	 * if not, fall back to the poll fd patch.
 	 */
 
-	err = !libaio_backend_lio_check_resfd();
-	if (!err)
-		err = old_err = __lio_setup_aio_eventfd(queue, qlen);
+	err = old_err = __lio_setup_aio_eventfd(queue, qlen);
 	if (err)
 		err = __lio_setup_aio_poll(queue, qlen);
 

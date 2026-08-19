@@ -253,38 +253,6 @@ tapdisk_get_image_size(int fd, uint64_t *_sectors, uint32_t *_sector_size)
 	return 0;
 }
 
-#ifdef __linux__
-
-int tapdisk_linux_version(void)
-{
-	struct utsname uts;
-	unsigned int version, patchlevel, sublevel;
-	int n, err;
-
-	err = uname(&uts);
-	if (err)
-		return -errno;
-
-	n = sscanf(uts.release, "%u.%u.%u", &version, &patchlevel, &sublevel);
-        if (n != 3) {
-                sublevel = 0;
-                n = sscanf(uts.release, "%u.%u", &version, &patchlevel);
-                if (n != 2)
-                        return -ENOSYS;
-        }
-
-	return KERNEL_VERSION(version, patchlevel, sublevel);
-}
-
-#else
-
-int tapdisk_linux_version(void)
-{
-	return -ENOSYS;
-}
-
-#endif
-
 #ifdef WORDS_BIGENDIAN
 uint64_t ntohll(uint64_t a) {
 	return a;
