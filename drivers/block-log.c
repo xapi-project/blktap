@@ -115,6 +115,17 @@ static int bitmap_free(struct tdlog_data *data)
 	int rc;
 	bmsize = bitmap_size(data->size * SECTOR_SIZE) + sizeof(struct cbt_log_metadata);
 	if (data->bitmap) {
+		/* The mapping covers the log header as well as the bitmap, and
+		 * writeback is per page, so page 0 carries both. On a shared file
+		 * SR the SR master stamps the header as soon as we are paused; if
+		 * our dirty pages are still queued then, the eventual writeback
+		 * reinstates the stale header and discards that update. Flush
+		 * synchronously so we are written back before pause completes. */
+		rc = msync(data->bitmap, bmsize, MS_SYNC);
+		if (rc != 0) {
+			EPRINTF("Failed to sync the bitmap block");
+		}
+
 		rc = munmap(data->bitmap, bmsize);
 		if (rc != 0) {
 			EPRINTF("Failed to unmap the bitmap block");
