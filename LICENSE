@@ -41,6 +41,7 @@ blktap/
    |
    |--include/
    |      |-- list.h 
+   |      |-- spdk/*.h
    |
    |--vhd/
        |--lib/
