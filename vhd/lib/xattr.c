@@ -1,3 +1,9 @@
+/*
+ * Copyright (c) 2018, Citrix Systems, Inc.
+ *
+ * SPDX-License-Identifier: BSD-3-Clause
+ */
+
 #include "xattr.h"
 
 #include <errno.h>
