@@ -41,8 +41,7 @@
 #include <sys/time.h>
 
 #include "tap-ctl.h"
-
-#define MAX_AES_XTS_PLAIN_KEYSIZE 1024
+#include "util.h"
 
 typedef int (*tap_ctl_func_t) (int, char **);
 
@@ -708,7 +707,7 @@ tap_cli_open_usage(FILE *stream)
 		"fail over to the secondary image on ENOSPC] "
 		"[-t request timeout in seconds] [-D no O_DIRECT] "
 		"[-C </path/to/logfile> insert log layer to track changed blocks] "
-		"[-E read encryption key from stdin]\n");
+		"[-E read base64-encoded encryption key from stdin]\n");
 }
 
 static int
@@ -773,13 +772,33 @@ tap_cli_open(int argc, char **argv)
 				fprintf(stderr, "Only supply -E once\n");
 				exit(1);
 			}
-			/* Allocate the space for the key, */
-			encryption_key = malloc(MAX_AES_XTS_PLAIN_KEYSIZE / sizeof(uint8_t));
-			if (!encryption_key) {
-				fprintf(stderr, "Failed to allocate space for encrpytion key\n");
+
+			char base64_key[512];
+			ssize_t read_len = read(STDIN_FILENO, base64_key, sizeof(base64_key) - 1);
+			if (read_len <= 0) {
+				fprintf(stderr, "Failed to read base64 key from stdin\n");
 				exit(1);
 			}
-			key_size = read(STDIN_FILENO, (void*)encryption_key, MAX_AES_XTS_PLAIN_KEYSIZE / sizeof(uint8_t));
+			base64_key[read_len] = '\0';
+
+			if (read_len > 0 && base64_key[read_len - 1] == '\n') {
+				base64_key[read_len - 1] = '\0';
+			}
+
+			encryption_key = malloc(MAX_AES_XTS_PLAIN_KEYSIZE / sizeof(uint8_t));
+			if (!encryption_key) {
+				fprintf(stderr, "Failed to allocate space for encryption key\n");
+				exit(1);
+			}
+
+			/* Decode base64 to binary key */
+			size_t decoded_len;
+			if (base64_decode_key(base64_key, encryption_key, &decoded_len) != 0) {
+				fprintf(stderr, "Failed to decode base64 encryption key\n");
+				free(encryption_key);
+				exit(1);
+			}
+			key_size = decoded_len;
 			if (key_size != 32 && key_size != 64){
 				fprintf(stderr, "Unsupported keysize, use either 256 bit or 512 bit key\n");
 				free(encryption_key);
